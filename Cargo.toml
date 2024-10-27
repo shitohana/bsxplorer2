@@ -14,6 +14,7 @@ zstd = "0.13.2"
 hashbrown = { version = "0.14.5", features = ["raw"] }
 bio = "2.0.3"
 zip = "=2.2.0"
+itertools = "0.13.0"
 
 [dependencies.polars]
 version = "0.43.1"
@@ -33,5 +34,8 @@ features = [
     "list_count",
     "search_sorted",
     "fmt",
-    "dtype-categorical"
+    "dtype-categorical",
+    "dtype-struct",
+    "list_any_all",
+    "dtype-array",
 ]

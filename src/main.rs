@@ -1,17 +1,22 @@
-mod genome;
+#![feature(btree_cursors)]
 
-use arrow::array::Datum;
+mod genome;
+mod ipc_reader;
+use ipc_reader::FileReader as IPCFileReader;
+use crate::genome::Annotation;
 use polars::export::arrow::datatypes::IntegerType;
 use polars::io::ipc::BatchedWriter;
-use polars::io::{ArrowReader, SerReader};
-use polars::prelude::{col, lit, when, BatchedCsvReader, CsvParseOptions, CsvReadOptions, CsvReader, Expr, IntoLazy, IpcWriterOptions, NULL};
-use polars_core::prelude::DataType::Boolean;
+use polars::io::ArrowReader;
+use polars::prelude::{as_struct, col, lit, when, ArgAgg, BatchedCsvReader, CsvParseOptions, CsvReadOptions, CsvReader, CsvWriter, Expr, GetOutput, IntoLazy, IpcReader, IpcWriterOptions, SerWriter, NULL};
 use polars_core::prelude::*;
 use polars_core::utils::arrow::io::ipc::read::{read_file_metadata, FileReader};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
+use std::ops::{BitOr, Not};
+use std::ops::Bound::Excluded;
 use std::time::Instant;
+use polars::export::arrow::io::ipc::read::FileMetadata;
 
 /// Get schema of BSXplorer internal format
 fn get_universal_schema(chr_names: Vec<&str>) -> Schema {
@@ -215,7 +220,7 @@ impl ReportType {
             .when(col("context").eq(lit("CHG")))
             .then(lit(false))
             .otherwise(lit(NULL))
-            .cast(Boolean);
+            .cast(DataType::Boolean);
         match self {
             ReportType::BEDGRAPH => todo!(),
             ReportType::COVERAGE => todo!(),
@@ -234,10 +239,10 @@ impl ReportType {
                     &ArrowDataType::Dictionary(
                         IntegerType::UInt32,
                         Box::new(ArrowDataType::Utf8),
-                        false
+                        false,
                     ),
-                    false)
-                ),
+                    false,
+                )),
             col("position").cast(schema.get_field("position").unwrap().dtype),
             col("strand").cast(schema.get_field("strand").unwrap().dtype),
             context_expr
@@ -301,64 +306,83 @@ impl ReportType {
     }
 }
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone)]
 enum Context {
-    CG, CHG, CHH
+    CG,
+    CHG,
+    CHH,
+    ALL,
 }
 
 impl Context {
-    fn decode(value: Option<bool>) -> Self {
+    fn from_bool(value: Option<bool>) -> Self {
         match value {
-            Some(true) => (Context::CG),
-            Some(false) => (Context::CHG),
-            None => (Context::CHH),
+            Some(true) => Context::CG,
+            Some(false) => Context::CHG,
+            None => Context::CHH,
         }
     }
 }
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone)]
 enum Strand {
-    Forward, Reverse, None
+    Forward,
+    Reverse,
+    None,
 }
 
 impl Strand {
-    fn decode(value: Option<bool>) -> Self {
+    fn from_bool(value: Option<bool>) -> Self {
         match value {
-            Some(true) => (Strand::Forward),
-            Some(false) => (Strand::Reverse),
-            None => (Strand::None),
+            Some(true) => Strand::Forward,
+            Some(false) => Strand::Reverse,
+            None => Strand::None,
+        }
+    }
+
+    fn from_str(value: &str) -> Self {
+        match value {
+            "+" => Strand::Forward,
+            "-" => Strand::Reverse,
+            _ => Strand::None,
         }
     }
 }
 
 type IpcIndex = HashMap<(String, Strand, Context), BTreeMap<u64, usize>>;
-fn index_ipc_file(path: &str) -> Result<IpcIndex, PolarsError>
-{
+fn get_index(path: &str) -> Result<IpcIndex, PolarsError> {
     let mut file = File::open(path).expect("could not open ipc path");
     let metadata = read_file_metadata(&mut file).expect("could not read ipc metadata");
     let mut reader = FileReader::new(file, metadata.clone(), None, None);
 
     let mut num_batch: usize = 0;
     let mut index: HashMap<(String, Strand, Context), BTreeMap<u64, usize>> = HashMap::new();
-    
-    
+
     while let Some(batch) = reader.next_record_batch()? {
-        let df =
-            DataFrame::try_from((batch, metadata.schema.clone().as_ref()))
-                .expect("could not create dataframe");
-        
-        let pos = df.column("position")?.u64()?.get(0).expect("could not get position");
-        let key: (String, Strand, Context)  = {
+        let df = DataFrame::try_from((batch, metadata.schema.clone().as_ref()))
+            .expect("could not create dataframe");
+
+        let pos = df
+            .column("position")?
+            .u64()?
+            .get(0)
+            .expect("could not get position");
+        let key: (String, Strand, Context) = {
             let chr_col = df.column("chr")?.categorical()?;
             (
-                chr_col.get_rev_map().get(chr_col.physical().get(0).unwrap()).to_owned(),
-                Strand::decode(df.column("strand")?.bool()?.get(0)),
-                Context::decode(df.column("context")?.bool()?.get(0))
+                chr_col
+                    .get_rev_map()
+                    .get(chr_col.physical().get(0).unwrap())
+                    .to_owned(),
+                Strand::from_bool(df.column("strand")?.bool()?.get(0)),
+                Context::from_bool(df.column("context")?.bool()?.get(0)),
             )
         };
-        
+
         match index.get_mut(&key) {
-            Some(btree) => { btree.insert(pos, num_batch); },
+            Some(btree) => {
+                btree.insert(pos, num_batch);
+            }
             None => {
                 let mut btree: BTreeMap<u64, usize> = BTreeMap::new();
                 btree.insert(pos, num_batch);
@@ -366,11 +390,158 @@ fn index_ipc_file(path: &str) -> Result<IpcIndex, PolarsError>
             }
         };
         num_batch += 1;
-    };
+    }
     Ok(index)
 }
 
+fn add_index(annotation: Annotation, index: IpcIndex, context: Option<Context>) -> DataFrame {
+    let df = annotation
+        .finish()
+        .expect("could not make annotation DataFrame");
+    let context = context.unwrap_or(Context::CG);
+    df.lazy()
+        .with_column(
+            as_struct(vec![col("chr"), col("strand"), col("start"), col("end")])
+                .apply(
+                    move |ser| series_to_index(ser, context, &index),
+                    GetOutput::from_type(DataType::List(Box::new(DataType::UInt32))),
+                )
+                .alias("index"),
+        )
+        .collect()
+        .expect("could not make index col")
+}
+
+fn series_to_index(
+    series: Series,
+    context: Context,
+    index_map: &IpcIndex,
+) -> Result<Option<Series>, PolarsError> {
+    let s = series.struct_()?;
+    // Bindings
+    let chr_col = &s.field_by_name("chr")?;
+    let strand_col = &s.field_by_name("strand")?;
+    let start_col = &s.field_by_name("start")?;
+    let end_col = &s.field_by_name("end")?;
+    // Series
+    let chr_arr = chr_col.str()?;
+    let strand_arr = strand_col.str()?;
+    let start_arr = start_col.u64()?;
+    let end_arr = end_col.u64()?;
+
+    let out: ChunkedArray<ListType> = itertools::izip!(
+        chr_arr.into_iter(),
+        strand_arr.into_iter(),
+        start_arr.into_iter(),
+        end_arr.into_iter()
+    )
+    .map(|(opt_chr, opt_strand, opt_start, opt_end)| {
+        find_indices(opt_chr, opt_strand, opt_start, opt_end, context, &index_map)
+    })
+    .collect();
+    Ok(Some(Series::from(out)))
+}
+
+fn find_indices(
+    opt_chr: Option<&str>,
+    opt_strand: Option<&str>,
+    opt_start: Option<u64>,
+    opt_end: Option<u64>,
+    context: Context,
+    index_map: &IpcIndex,
+) -> Option<Series> {
+    match (opt_chr, opt_strand, opt_start, opt_end) {
+        (Some(chr), Some(strand), Some(start), Some(end)) => {
+            let btree = index_map.get(&(chr.to_string(), Strand::from_str(strand), context));
+            if let Some(btree) = btree {
+                let mut root = btree.lower_bound(Excluded(&start));
+                let mut batches = vec![root.peek_prev()];
+                while let Some(new_batch) = root.next() {
+                    if *new_batch.0 <= end {
+                        batches.push(Some(new_batch));
+                    } else {
+                        break;
+                    }
+                }
+                let idxs = batches
+                    .iter()
+                    .flatten()
+                    .map(|x| *x.1 as u32)
+                    .collect::<Vec<u32>>();
+
+                let arr = UInt32Chunked::from_vec("index".into(), idxs);
+                Some(arr.into_series())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn series_to_offsets(series: Series, mut ipc_reader: IPCFileReader<File>) -> Result<Option<Series>, PolarsError> {
+    let s = series.struct_()?;
+    // Bindings
+    let start_col = &s.field_by_name("start")?;
+    let end_col = &s.field_by_name("end")?;
+    let index_col = &s.field_by_name("index")?;
+    // Series
+    let start_arr = start_col.u64()?;
+    let end_arr = end_col.u64()?;
+    let index_arr = index_col.u32()?;
+    
+    let metadata = ipc_reader.metadata().clone();
+
+    let offsets: ChunkedArray<ListType> = itertools::izip!(start_arr.into_iter(), end_arr.into_iter(), index_arr.into_iter())
+        .map(|(opt_start, opt_end, opt_index)| 
+            find_offsets(&mut ipc_reader, &metadata, opt_start, opt_end, opt_index)
+        ).collect();
+    Ok(Some(Series::from(offsets)))
+}
+
+fn find_offsets(
+    ipc_reader: &mut IPCFileReader<File>,
+    metadata: &FileMetadata,
+    opt_start: Option<u64>,
+    opt_end: Option<u64>,
+    opt_index: Option<u32>,
+) -> Option<Series> {
+    match (opt_start, opt_end, opt_index) {
+        (Some(start), Some(end), Some(index)) => {
+            if let Some(block) = ipc_reader.read_at(index as usize) {
+                let block = block.expect("could not read block");
+                let df = DataFrame::try_from((block, metadata.schema.as_ref()))
+                    .expect("could not create dataframe");
+
+                let pos = df.column("position").unwrap();
+                let bin_range = pos.lt(start).unwrap()
+                    .bitor(pos.gt(end).unwrap())
+                    .not();
+                let (mut start_pos, mut end_pos) = (None, None);
+                for (idx, val) in bin_range.into_iter().enumerate() {
+                    if val.is_none() { continue; };
+                    match val.unwrap() {
+                        true => if start_pos.is_none() { start_pos = Some(idx); }
+                        false => if start_pos.is_some() && end_pos.is_none() { end_pos = Some(idx); break; }
+                    }
+                }
+
+                let offsets = vec![
+                    start_pos.unwrap_or(0) as u32,
+                    end_pos.unwrap_or(bin_range.len()) as u32,
+                ];
+                let arr = UInt32Chunked::from_vec("offset".into(), offsets);
+                Some(arr.into_series())
+            } else {
+                None
+            }
+        }
+        _ => None
+    }
+}
+
 fn main() {
+    // let start = Instant::now();
     // ReportType::BISMARK.convert_report(
     //     "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt",
     //     "/Users/shitohana/Desktop/RustProjects/bsxplorer2/res.ipc",
@@ -379,12 +550,87 @@ fn main() {
     //     Some(false),
     //     None,
     // );
+    // let duration = start.elapsed();
+    // println!("{:?}", duration);
+    let annot =
+        Annotation::from_gff("/Users/shitohana/Documents/CX_reports/old/A_thaliana_genomic.gff");
+    let index_map = get_index("/Users/shitohana/Desktop/RustProjects/bsxplorer2/res.ipc").unwrap();
     let start = Instant::now();
-    // bio::io::gff::Reader::from_file("/Users/shitohana/Documents/CX_reports/old/A_thaliana_genomic.gff", bio::io::gff::GffType::GFF3).unwrap().records().count();
+    let df_w_index = add_index(
+        annot.filter(col("type").eq(lit("gene"))),
+        index_map,
+        Some(Context::CG),
+    );
     let duration = start.elapsed();
-    println!("Total execution time: {:?}", duration);
-    let start = Instant::now();
-    index_ipc_file("/Users/shitohana/Desktop/RustProjects/bsxplorer2/res.ipc").unwrap();
-    let duration = start.elapsed();
-    println!("Total execution time: {:?}", duration);
+
+    let ipc_path = "/Users/shitohana/Desktop/RustProjects/bsxplorer2/res.ipc";
+    let mut file = File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2/res.ipc").expect("could not open ipc path");
+    let metadata = read_file_metadata(&mut file).expect("could not read ipc metadata");
+
+
+    let df_w_offsets = df_w_index
+        .lazy()
+        .explode(["index"])
+        .with_column(
+        as_struct(vec![col("start"), col("end"), col("index")])
+            .apply(move |series: Series| {
+                let s = series.struct_()?;
+                let mut file = File::open(ipc_path).expect("could not open ipc path");
+                let metadata = read_file_metadata(&mut file).expect("could not read ipc metadata");
+                let mut ipc_reader = IPCFileReader::new(file, metadata.clone(), None, None);
+
+                // Bindings
+                let start_col = &s.field_by_name("start")?;
+                let end_col = &s.field_by_name("end")?;
+                let index_col = &s.field_by_name("index")?;
+                // Series
+                let start_arr = start_col.u64()?;
+                let end_arr = end_col.u64()?;
+                let index_arr = index_col.u32()?;
+
+                let offsets: ChunkedArray<ListType> = itertools::izip!(start_arr.into_iter(), end_arr.into_iter(), index_arr.into_iter())
+                        .map(|(opt_start, opt_end, opt_index)|
+                            match (opt_start, opt_end, opt_index) {
+                            (Some(start), Some(end), Some(index)) => {
+                                if let Some(block) = ipc_reader.read_at(index as usize) {
+                                    let block = block.expect("could not read block");
+                                    let df = DataFrame::try_from((block, metadata.schema.as_ref()))
+                                        .expect("could not create dataframe");
+
+                                    let pos = df.column("position").unwrap();
+                                    let bin_range = pos.lt(start).unwrap()
+                                        .bitor(pos.gt(end).unwrap())
+                                        .not();
+                                    let (mut start_pos, mut end_pos) = (None, None);
+                                    for (idx, val) in bin_range.into_iter().enumerate() {
+                                        if val.is_none() { continue; };
+                                        match val.unwrap() {
+                                            true => if start_pos.is_none() { start_pos = Some(idx); }
+                                            false => if start_pos.is_some() && end_pos.is_none() { end_pos = Some(idx); break; }
+                                        }
+                                    }
+
+                                    let offsets = vec![
+                                        start_pos.unwrap_or(0) as u32,
+                                        end_pos.unwrap_or(bin_range.len()) as u32,
+                                    ];
+                                    let arr = UInt32Chunked::from_vec("offset".into(), offsets);
+                                    Some(arr.into_series())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None
+                        }).collect();
+                Ok(Some(Series::from(offsets)))
+
+                },
+                GetOutput::from_type(DataType::Array(Box::new(DataType::UInt32), 2))
+            ).alias("offset")
+        ).collect().unwrap();
+
+    // println!("{:?}", df_w_offsets);
+    let test_csv = File::create("/Users/shitohana/Desktop/RustProjects/bsxplorer2/test.csv").unwrap();
+    CsvWriter::new(test_csv).with_separator(b'\t').finish(&mut df_w_offsets.lazy().with_column(col("offset").cast(DataType::List(Box::new(DataType::String))).list().join(lit(", "), true)).select([col("chr"), col("start"), col("end"), col("index"), col("offset")]).collect().unwrap()).unwrap();
+    println!("{:?}", duration);
 }
