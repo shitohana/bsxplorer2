@@ -1,16 +1,16 @@
 // Copyright (c) 2020 Ritchie Vink
 // Some portions Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -23,12 +23,14 @@
 // with method to select specified RecordBatch of an IPC file.
 // GitHub: shitohana
 
-use std::io::{Read, Seek};
-use polars::export::arrow::io::ipc::read::{read_batch, read_file_dictionaries, FileMetadata, Dictionaries};
-use polars::export::arrow::record_batch::RecordBatchT;
-use polars::prelude::{PolarsResult, PlHashMap, ArrowSchema};
 use polars::export::arrow::array::Array;
-
+use polars::export::arrow::io::ipc::read::{
+    read_batch, read_file_dictionaries, read_file_metadata, Dictionaries, FileMetadata,
+};
+use polars::export::arrow::record_batch::RecordBatchT;
+use polars::prelude::{ArrowSchema, PlHashMap, PolarsError, PolarsResult};
+use polars_core::frame::DataFrame;
+use std::io::{Read, Seek};
 
 fn apply_projection(
     chunk: RecordBatchT<Box<dyn Array>>,
@@ -58,13 +60,14 @@ pub fn prepare_projection(
 
     let mut indices = (0..projection.len()).collect::<Vec<_>>();
     indices.sort_unstable_by_key(|&i| &projection[i]);
-    let map = indices.iter().copied().enumerate().fold(
-        PlHashMap::default(),
-        |mut acc, (index, new_index)| {
+    let map = indices
+        .iter()
+        .copied()
+        .enumerate()
+        .fold(PlHashMap::default(), |mut acc, (index, new_index)| {
             acc.insert(index, new_index);
             acc
-        },
-    );
+        });
     projection.sort_unstable();
 
     // check unique
@@ -100,12 +103,8 @@ impl<R: Read + Seek> FileReader<R> {
     /// Creates a new [`FileReader`]. Use `projection` to only take certain columns.
     /// # Panic
     /// Panics iff the projection is not in increasing order (e.g. `[1, 0]` nor `[0, 1, 1]` are valid)
-    pub fn new(
-        reader: R,
-        metadata: FileMetadata,
-        projection: Option<Vec<usize>>,
-        limit: Option<usize>,
-    ) -> Self {
+    pub fn new(mut reader: R, projection: Option<Vec<usize>>, limit: Option<usize>) -> Self {
+        let metadata = read_file_metadata(&mut reader).expect("could not read ipc metadata");
         let projection = projection.map(|projection| {
             let (p, h, schema) = prepare_projection(&metadata.schema, projection);
             (p, h, schema)
@@ -165,33 +164,47 @@ impl<R: Read + Seek> FileReader<R> {
         };
         Ok(())
     }
-    
+
     pub fn read_at(&mut self, num: usize) -> Option<PolarsResult<RecordBatchT<Box<dyn Array>>>> {
         if num >= self.metadata.blocks.len() {
             return None;
         }
         match self.read_dictionaries() {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => return Some(Err(e)),
         };
         let chunk = read_batch(
             &mut self.reader,
             self.dictionaries.as_ref().unwrap(),
             &self.metadata,
-            self.projection.as_ref().map(|x| x.0.as_ref()),
+            self.projection
+                .as_ref()
+                .map(|x| x.0.as_ref()),
             Some(self.remaining),
             num,
             &mut self.message_scratch,
             &mut self.data_scratch,
         );
-        self.remaining -= chunk.as_ref().map(|x| x.len()).unwrap_or_default();
+        self.remaining -= chunk
+            .as_ref()
+            .map(|x| x.len())
+            .unwrap_or_default();
         let chunk = if let Some((_, map, _)) = &self.projection {
             // re-order according to projection
             chunk.map(|chunk| apply_projection(chunk, map))
-        } else {
+        }
+        else {
             chunk
         };
         Some(chunk)
+    }
+
+    pub fn read_df_at(&mut self, num: usize) -> Result<DataFrame, PolarsError> {
+        let batch = self
+            .read_at(num)
+            .expect("Failed to read");
+        let result = DataFrame::try_from((batch.unwrap(), self.metadata.schema.as_ref()));
+        result
     }
 }
 
@@ -205,7 +218,7 @@ impl<R: Read + Seek> Iterator for FileReader<R> {
         }
 
         match self.read_dictionaries() {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => return Some(Err(e)),
         };
 
@@ -216,18 +229,24 @@ impl<R: Read + Seek> Iterator for FileReader<R> {
             &mut self.reader,
             self.dictionaries.as_ref().unwrap(),
             &self.metadata,
-            self.projection.as_ref().map(|x| x.0.as_ref()),
+            self.projection
+                .as_ref()
+                .map(|x| x.0.as_ref()),
             Some(self.remaining),
             block,
             &mut self.message_scratch,
             &mut self.data_scratch,
         );
-        self.remaining -= chunk.as_ref().map(|x| x.len()).unwrap_or_default();
+        self.remaining -= chunk
+            .as_ref()
+            .map(|x| x.len())
+            .unwrap_or_default();
 
         let chunk = if let Some((_, map, _)) = &self.projection {
             // re-order according to projection
             chunk.map(|chunk| apply_projection(chunk, map))
-        } else {
+        }
+        else {
             chunk
         };
         Some(chunk)
