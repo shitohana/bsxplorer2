@@ -3,7 +3,7 @@ use polars::export::arrow::datatypes::IntegerType;
 use polars::io::ipc::BatchedWriter;
 use polars::prelude::{
     col, lit, when, BatchedCsvReader, CsvParseOptions, CsvReadOptions, CsvReader, Expr, IntoLazy,
-    IpcWriterOptions, SerWriter, NULL,
+    IpcWriterOptions, NULL,
 };
 use polars_core::prelude::*;
 use std::fs::File;

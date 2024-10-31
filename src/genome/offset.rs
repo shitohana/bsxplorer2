@@ -1,4 +1,4 @@
-use crate::utils::ipc_reader::FileReader as IPCFileReader;
+use crate::utils::ipc_reader::IpcFileReader as IPCFileReader;
 use polars::prelude::*;
 use polars_core::prelude::{ChunkedArray, DataFrame, ListType, Series};
 use std::fs::File;

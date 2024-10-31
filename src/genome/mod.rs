@@ -1,8 +1,5 @@
 mod index;
 
-pub use self::index::get_index;
-use self::index::series_to_index;
-use self::offset::series_to_offsets;
 mod offset;
 use crate::utils::types::Context;
 use polars::prelude::{
@@ -10,12 +7,12 @@ use polars::prelude::{
 };
 use polars_core::prelude::*;
 use std::path::Path;
-use std::str::FromStr;
 
 pub struct Annotation {
     raw: LazyFrame,
 }
 
+/// Struct of settings for annotation file reading.
 #[derive(Default)]
 pub struct AnnotationFileConf {
     chr_col: usize,
@@ -31,6 +28,7 @@ pub struct AnnotationFileConf {
 }
 
 impl AnnotationFileConf {
+    /// Filter non specified column indices and create a vector
     pub fn col_indices(&self) -> Vec<usize> {
         [
             Some(self.chr_col),
@@ -45,6 +43,7 @@ impl AnnotationFileConf {
         .cloned()
         .collect::<Vec<_>>()
     }
+    /// Filter unspecified columns and get their names vector
     pub fn col_names(&self) -> Vec<String> {
         [
             Some("chr"),
@@ -77,6 +76,7 @@ impl AnnotationFileConf {
 }
 
 impl Annotation {
+    /// Schema of internal representation of annotation file
     pub fn schema() -> Schema {
         let mut schema = Schema::default();
         schema.insert("chr".into(), DataType::String);
@@ -100,36 +100,10 @@ impl Annotation {
         };
         Annotation { raw }
     }
-
+    
+    /// Finish mutating LazyFrame. Consumes self and collects DataFrame.
     pub fn finish(self) -> PolarsResult<DataFrame> {
         self.raw.collect()
-    }
-
-    pub fn align(mut self, ipc_path: &str, context: Context) -> Annotation {
-        let ipc_index = get_index(ipc_path).expect("could not read ipc file");
-        let ipc_path_copy = ipc_path.to_owned();
-        self.raw = self
-            .raw
-            .with_column(
-                as_struct(vec![col("chr"), col("strand"), col("start"), col("end")])
-                    .apply(
-                        move |ser| series_to_index(ser, context, &ipc_index),
-                        GetOutput::from_type(DataType::List(Box::new(DataType::UInt32))),
-                    )
-                    .alias("index"),
-            )
-            .explode(["index"])
-            .sort(["index"], SortMultipleOptions::default())
-            .with_column(
-                as_struct(vec![col("start"), col("end"), col("index")])
-                    .apply(
-                        move |series| series_to_offsets(series, &*ipc_path_copy),
-                        GetOutput::from_type(DataType::Array(Box::new(DataType::Int32), 2)),
-                    )
-                    .alias("offset"),
-            )
-            .drop_nulls(Some(vec![col("offset")]));
-        self
     }
 
     pub fn filter(mut self, predicate: Expr) -> Annotation {
@@ -141,7 +115,9 @@ impl Annotation {
         self.raw = self.raw.with_columns(exprs);
         self
     }
-
+    
+    /// Read annotation from custom annotation format.
+    //  TODO: add regex for ID col.
     pub fn from_custom(file: &str, configuration: AnnotationFileConf) -> Self {
         assert!(Path::new(file).exists());
         let self_schema = Annotation::schema();

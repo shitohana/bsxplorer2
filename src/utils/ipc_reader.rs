@@ -87,7 +87,8 @@ pub fn prepare_projection(
 }
 
 /// An iterator of [`RecordBatchT`]s from an Arrow IPC file.
-pub struct FileReader<R: Read + Seek> {
+#[derive(Clone)]
+pub struct IpcFileReader<R: Read + Seek> {
     reader: R,
     metadata: FileMetadata,
     // the dictionaries are going to be read
@@ -99,8 +100,8 @@ pub struct FileReader<R: Read + Seek> {
     message_scratch: Vec<u8>,
 }
 
-impl<R: Read + Seek> FileReader<R> {
-    /// Creates a new [`FileReader`]. Use `projection` to only take certain columns.
+impl<R: Read + Seek> IpcFileReader<R> {
+    /// Creates a new [`IpcFileReader`]. Use `projection` to only take certain columns.
     /// # Panic
     /// Panics iff the projection is not in increasing order (e.g. `[1, 0]` nor `[0, 1, 1]` are valid)
     pub fn new(mut reader: R, projection: Option<Vec<usize>>, limit: Option<usize>) -> Self {
@@ -208,7 +209,7 @@ impl<R: Read + Seek> FileReader<R> {
     }
 }
 
-impl<R: Read + Seek> Iterator for FileReader<R> {
+impl<R: Read + Seek> Iterator for IpcFileReader<R> {
     type Item = PolarsResult<RecordBatchT<Box<dyn Array>>>;
 
     fn next(&mut self) -> Option<Self::Item> {
