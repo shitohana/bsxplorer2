@@ -7,6 +7,7 @@ use polars::prelude::{
 };
 use polars_core::prelude::*;
 use std::fs::File;
+use pyo3::prelude::*;
 
 /// Get schema of BSXplorer internal format
 pub fn get_universal_schema(chr_names: Vec<&str>) -> Schema {
@@ -40,6 +41,7 @@ pub fn get_universal_schema(chr_names: Vec<&str>) -> Schema {
 }
 
 /// Type of methylation report
+#[pyclass]
 pub enum ReportType {
     BEDGRAPH,
     COVERAGE,
@@ -191,7 +193,10 @@ impl ReportType {
         ])
         .collect()
     }
+}
 
+#[pymethods]
+impl ReportType {
     /// Master function to convert report into BSX schema
     pub fn convert_report(
         &self,

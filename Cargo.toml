@@ -16,6 +16,13 @@ bio = "2.0.3"
 zip = "=2.2.0"
 itertools = "0.13.0"
 rayon = "1.10"
+pyo3 = { version = "0.21.2", features = ["extension-module"] }
+pyo3-polars = "0.18.0"
+
+
+[lib]
+name="bsx_rs"
+crate-type = ["cdylib"]
 
 [dependencies.polars]
 version = "0.43.1"

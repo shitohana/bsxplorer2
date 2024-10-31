@@ -1,9 +1,5 @@
-mod index;
-
-mod offset;
-use crate::utils::types::Context;
 use polars::prelude::{
-    as_struct, col, lit, Expr, GetOutput, LazyCsvReader, LazyFileListReader, LazyFrame,
+    col, lit, Expr, LazyCsvReader, LazyFileListReader, LazyFrame,
 };
 use polars_core::prelude::*;
 use std::path::Path;
@@ -38,10 +34,10 @@ impl AnnotationFileConf {
             self.type_col,
             self.id_col,
         ]
-        .iter()
-        .flatten()
-        .cloned()
-        .collect::<Vec<_>>()
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>()
     }
     /// Filter unspecified columns and get their names vector
     pub fn col_names(&self) -> Vec<String> {
@@ -68,10 +64,10 @@ impl AnnotationFileConf {
                 None
             },
         ]
-        .iter()
-        .flatten()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
+            .iter()
+            .flatten()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
     }
 }
 
@@ -100,7 +96,7 @@ impl Annotation {
         };
         Annotation { raw }
     }
-    
+
     /// Finish mutating LazyFrame. Consumes self and collects DataFrame.
     pub fn finish(self) -> PolarsResult<DataFrame> {
         self.raw.collect()
@@ -115,7 +111,7 @@ impl Annotation {
         self.raw = self.raw.with_columns(exprs);
         self
     }
-    
+
     /// Read annotation from custom annotation format.
     //  TODO: add regex for ID col.
     pub fn from_custom(file: &str, configuration: AnnotationFileConf) -> Self {
