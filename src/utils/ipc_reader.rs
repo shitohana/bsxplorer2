@@ -28,8 +28,7 @@ use polars::export::arrow::io::ipc::read::{
     read_batch, read_file_dictionaries, read_file_metadata, Dictionaries, FileMetadata,
 };
 use polars::export::arrow::record_batch::RecordBatchT;
-use polars::prelude::{ArrowSchema, PlHashMap, PolarsError, PolarsResult};
-use polars_core::frame::DataFrame;
+use polars::prelude::{ArrowSchema, DataFrame, PlHashMap, PolarsError, PolarsResult};
 use std::io::{Read, Seek};
 
 fn apply_projection(
@@ -43,7 +42,7 @@ fn apply_projection(
     map.iter()
         .for_each(|(old, new)| new_arrays[*new] = arrays[*old].clone());
 
-    RecordBatchT::new(new_arrays)
+    RecordBatchT::new(Default::default(), new_arrays)
 }
 
 pub fn prepare_projection(
@@ -204,7 +203,7 @@ impl<R: Read + Seek> IpcFileReader<R> {
         let batch = self
             .read_at(num)
             .expect("Failed to read");
-        let result = DataFrame::try_from((batch.unwrap(), self.metadata.schema.as_ref()));
+        let result = DataFrame::try_from((batch?, self.metadata.schema.as_ref()));
         result
     }
 }

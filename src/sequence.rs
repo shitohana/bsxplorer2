@@ -1,5 +1,4 @@
 use polars::prelude::SerWriter;
-use polars_core::prelude::*;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
 

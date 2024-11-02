@@ -1,28 +1,25 @@
-use rayon::iter::ParallelIterator;
-use std::io::{Read, Seek};
-use std::collections::{BTreeMap, HashMap};
-use std::collections::Bound::Excluded;
-use itertools::Itertools;
-use polars::prelude::*;
-use polars_core::utils::concat_df;
-use pyo3::pyfunction;
-use rayon::prelude::*;
 use crate::utils::ipc_reader::IpcFileReader;
 use crate::utils::types::{Context, Strand};
+use itertools::Itertools;
+use polars::prelude::*;
+use rayon::iter::ParallelIterator;
+use rayon::prelude::*;
+use std::collections::Bound::Excluded;
+use std::collections::{BTreeMap, HashMap};
+use std::io::{Read, Seek};
 
-#[derive(Eq, Hash, PartialEq)]
-#[derive(Clone)]
-struct BSXKey(String, Strand, Context);
+#[derive(Eq, Hash, PartialEq, Clone)]
+pub struct BSXKey(String, Strand, Context);
 
-type BSXIndex = HashMap<BSXKey, BTreeMap<u64, usize>>;
+pub type BSXIndex = HashMap<BSXKey, BTreeMap<u64, usize>>;
 
 pub struct BSXFile<R: Read + Seek> {
     reader: IpcFileReader<R>,
-    index: BSXIndex
+    index: BSXIndex,
 }
 
 impl<R: Read + Seek> BSXFile<R> {
-    pub(crate) fn new(handle: R, projection: Option<Vec<usize>>) -> Result<Self, PolarsError> {
+    pub fn new(handle: R, projection: Option<Vec<usize>>) -> Result<Self, PolarsError> {
         let mut reader = IpcFileReader::new(handle, projection, None);
         let mut index: HashMap<BSXKey, BTreeMap<u64, usize>> = HashMap::new();
         for batch_num in 0..reader.metadata().blocks.len() {
@@ -57,18 +54,20 @@ impl<R: Read + Seek> BSXFile<R> {
                             index.insert(key, btree);
                         }
                     };
-                },
-                Err(e) => return Err(e)
+                }
+                Err(e) => return Err(e),
             };
-        };
+        }
         Ok(Self { reader, index })
     }
 
-    pub(crate) fn find_index(&self, key: BSXKey, range: (Option<u64>, Option<u64>)) -> Option<Vec<u32>> {
+    pub fn find_index(&self, key: BSXKey, range: (Option<u64>, Option<u64>)) -> Option<Vec<u32>> {
         if let Some(btree) = self.index.get(&key) {
             let (start, end) = (
                 range.0.unwrap_or(0),
-                range.1.unwrap_or(*btree.iter().max().unwrap().0)
+                range
+                    .1
+                    .unwrap_or(*btree.iter().max().unwrap().0),
             );
 
             let mut root = btree.lower_bound(Excluded(&start));
@@ -79,21 +78,110 @@ impl<R: Read + Seek> BSXFile<R> {
             while let Some(new_batch) = root.next() {
                 if *new_batch.0 <= end {
                     out.push(*new_batch.1 as u32);
-                } else { break; };
-            };
+                }
+                else {
+                    break;
+                };
+            }
             Some(out)
-        } else {
+        }
+        else {
             None
         }
     }
 
-    pub(crate) fn into_iter(self) -> BSXIterator<R> {
+    pub fn add_index(
+        &self,
+        annotation: &mut DataFrame,
+        context: Option<Context>,
+    ) -> Result<DataFrame, PolarsError> {
+        let mut annotation_colnames = annotation.schema().iter_names();
+        for colname in ["chr", "strand", "start", "end"] {
+            if !annotation_colnames.contains(colname) {
+                return Err(PolarsError::ColumnNotFound(colname.into()));
+            }
+        }
+
+        let (chr, strand, start, end) = {
+            let chr_s = annotation.column("chr")?;
+            let strand_s = annotation.column("strand")?;
+            let start_s = annotation.column("start")?;
+            let end_s = annotation.column("end")?;
+
+            assert_eq!(
+                [chr_s, strand_s, start_s, end_s]
+                    .iter()
+                    .map(|x| { x.null_count() })
+                    .all_equal_value()
+                    .unwrap(),
+                0,
+                "Null values in annotation!"
+            );
+            (
+                chr_s
+                    .str()?
+                    .into_iter()
+                    .map(|x| x.unwrap().to_owned())
+                    .collect::<Vec<String>>(),
+                strand_s
+                    .str()?
+                    .into_iter()
+                    .map(|x| x.unwrap().to_owned())
+                    .collect::<Vec<String>>(),
+                start_s
+                    .u64()?
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<u64>>(),
+                end_s
+                    .u64()?
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<u64>>(),
+            )
+        };
+        assert!(
+            [chr.len(), strand.len(), start.len(), end.len()]
+                .iter()
+                .all_equal(),
+            "Number of elements in non-null arrays differ!"
+        );
+
+        let result: ChunkedArray<ListType> = (&chr, &strand, &start, &end)
+            .into_par_iter()
+            .map(|(chr_val, strand_val, start_val, end_val)| {
+                let key = BSXKey(
+                    chr_val.to_owned(),
+                    Strand::from_str(strand_val),
+                    context.unwrap_or(Context::CG),
+                );
+                let indices = self._find_index(key, (Some(*start_val), Some(*end_val)));
+                indices
+                    .map(|indices| UInt32Chunked::from_vec("index".into(), indices).into_series())
+            })
+            .collect();
+        let df = annotation.with_column(result.with_name("index"))?;
+        Ok(df)
+    }
+
+    pub fn into_iter(self) -> BSXIterator<R> {
         BSXIterator::new(self.reader, self.index)
+    }
+
+    pub fn get_batch_num(&self) -> usize {
+        self.reader.metadata().blocks.len()
+    }
+    pub fn get_arrow_schema(&self) -> ArrowSchema {
+        self.reader.schema().clone()
+    }
+    pub fn get_polars_schema(&self) -> Schema {
+        let schema = self.get_arrow_schema();
+        Schema::from_arrow_schema(&schema)
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct BSXIterator<R: Read + Seek> {
+pub struct BSXIterator<R: Read + Seek> {
     reader: IpcFileReader<R>,
     index: BSXIndex,
     last_batch: DataFrame,
@@ -101,12 +189,21 @@ pub(crate) struct BSXIterator<R: Read + Seek> {
 }
 
 impl<R: Read + Seek> BSXIterator<R> {
-    pub(crate) fn new(reader: IpcFileReader<R>, index: BSXIndex) -> BSXIterator<R> {
-        Self { reader, index, last_batch: DataFrame::default(), last_batch_num: None }
+    pub fn new(reader: IpcFileReader<R>, index: BSXIndex) -> BSXIterator<R> {
+        Self {
+            reader,
+            index,
+            last_batch: DataFrame::default(),
+            last_batch_num: None,
+        }
     }
-    fn get_last_batch(&mut self) -> DataFrame {self.last_batch.clone()}
-    fn get_last_batch_num(&mut self) -> Option<u32> {self.last_batch_num}
-    pub(crate) fn get_batch(&mut self, index: u32) -> Result<DataFrame, PolarsError> {
+    fn get_last_batch(&mut self) -> DataFrame {
+        self.last_batch.clone()
+    }
+    fn get_last_batch_num(&mut self) -> Option<u32> {
+        self.last_batch_num
+    }
+    pub fn get_batch(&mut self, index: u32) -> Result<DataFrame, PolarsError> {
         if let Some(last_batch_num) = self.get_last_batch_num() {
             if last_batch_num == index {
                 return Ok(self.get_last_batch());
@@ -117,49 +214,70 @@ impl<R: Read + Seek> BSXIterator<R> {
             Ok(df) => {
                 self.last_batch = df;
                 self.get_batch(index)
-            },
-            Err(e) => Err(e)
+            }
+            Err(e) => Err(e),
         }
     }
-    pub(crate) fn get_region(&mut self, indices: &[u32], start: u64, end: u64) -> Result<DataFrame, PolarsError> {
-        let dfs: Vec<DataFrame> = indices.iter()
+    pub fn get_region(
+        &mut self,
+        indices: &[u32],
+        start: u64,
+        end: u64,
+    ) -> Result<DataFrame, PolarsError> {
+        let dfs: Vec<LazyFrame> = indices
+            .iter()
             .map(|i| self.get_batch(i.clone()).unwrap())
-            .map(|df| { 
-                df.lazy()
-                    .filter(
-                        col("position").gt_eq(lit(start)).and(col("position").lt_eq(lit(end)))
-                    ) 
-                    .collect()
-                    .unwrap()
-            }).collect();
-        let out = concat_df(dfs.iter())?;
-        Ok(out)
+            .map(|df| {
+                df.lazy().filter(
+                    col("position")
+                        .gt_eq(lit(start))
+                        .and(col("position").lt_eq(lit(end))),
+                )
+            })
+            .collect();
+        concat(dfs, UnionArgs::default())?.collect()
     }
-}
-
-pub fn get_index<R: Read + Seek + Sync>(annotation: &DataFrame, bsxfile: &BSXFile<R>) -> Result<Series, PolarsError> {
-    let chr_s = annotation.column("chr")?;
-    let strand_s = annotation.column("strand")?;
-    let start_s = annotation.column("start")?;
-    let end_s = annotation.column("end")?;
-    
-    assert_eq!(vec![chr_s, strand_s, start_s, end_s].iter().map(|x| {x.null_count()}).all_equal_value().unwrap(), 0, "Null values in annotation!");
-    
-    let chr = chr_s.str()?.into_iter().map(|x| {x.unwrap().to_owned()}).collect::<Vec<String>>();
-    let strand = strand_s.str()?.into_iter().map(|x| {x.unwrap().to_owned()}).collect::<Vec<String>>();
-    let start = start_s.u64()?.into_iter().flatten().collect::<Vec<u64>>();
-    let end = end_s.u64()?.into_iter().flatten().collect::<Vec<u64>>();
-    
-    assert!(vec![chr.len(), strand.len(), start.len(), end.len()].iter().all_equal(), "Number of elements in non-null arrays differ!");
-
-    let result: ChunkedArray<ListType> = (&chr, &strand, &start, &end).into_par_iter().map(
-        |(chr_val, strand_val, start_val, end_val)| {
-            let key = BSXKey(chr_val.to_owned(), Strand::from_str(strand_val), Context::CG);
-            let indices = bsxfile.find_index(key, (Some(*start_val), Some(*end_val)));
-            if let Some(indices) = indices {
-                Some(UInt32Chunked::from_vec("index".into(), indices).into_series())
-            } else { None }
+    pub fn iter_regions(
+        &mut self,
+        indexed_annotation: &DataFrame,
+    ) -> impl Iterator<Item = Result<DataFrame, PolarsError>> {
+        let mut schema_cols = indexed_annotation.schema().iter_names();
+        for col in ["start", "end", "index"] {
+            if !schema_cols.contains(&col.into()) {
+                return Err(PolarsError::ColumnNotFound(col.into()));
+            }
         }
-    ).collect();
-    Ok(result.into_series())
+        let annotation = indexed_annotation.clone();
+        let index = annotation
+            .column("index")?
+            .list()?
+            .into_iter()
+            .filter_map(|s| match s {
+                Some(series) => {
+                    let arr: ChunkedArray<UInt32Type> = series.u32()?.to_owned();
+                    Some(
+                        arr.into_iter()
+                            .flatten()
+                            .collect::<Vec<u32>>(),
+                    )
+                }
+                _ => None,
+            })
+            .collect::<Vec<Vec<u32>>>();
+        let start = annotation
+            .column("start")?
+            .u64()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<u64>>();
+        let end = annotation
+            .column("end")?
+            .u64()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<u64>>();
+
+        itertools::izip!(&index, &start, &end)
+            .map(|(index_val, start_val, end_val)| self.get_region(index_val, start_val, end_val))
+    }
 }

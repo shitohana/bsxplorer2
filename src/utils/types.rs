@@ -14,6 +14,16 @@ impl Context {
             None => Context::CHH,
         }
     }
+
+    pub fn from_str(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "all" => Context::ALL,
+            "cg" => Context::CG,
+            "chg" => Context::CHG,
+            "chh" => Context::CHH,
+            _ => Context::ALL,
+        }
+    }
 }
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]

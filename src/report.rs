@@ -1,13 +1,9 @@
-use super::sequence::{scan_fasta, SeqData};
+use crate::sequence::{scan_fasta, SeqData};
 use polars::export::arrow::datatypes::IntegerType;
 use polars::io::ipc::BatchedWriter;
-use polars::prelude::{
-    col, lit, when, BatchedCsvReader, CsvParseOptions, CsvReadOptions, CsvReader, Expr, IntoLazy,
-    IpcWriterOptions, NULL,
-};
-use polars_core::prelude::*;
-use std::fs::File;
+use polars::prelude::*;
 use pyo3::prelude::*;
+use std::fs::File;
 
 /// Get schema of BSXplorer internal format
 pub fn get_universal_schema(chr_names: Vec<&str>) -> Schema {
@@ -195,7 +191,6 @@ impl ReportType {
     }
 }
 
-#[pymethods]
 impl ReportType {
     /// Master function to convert report into BSX schema
     pub fn convert_report(
