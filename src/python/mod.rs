@@ -1,15 +1,16 @@
 #[cfg(feature = "python")]
-mod python {
+pub mod python {
     use crate::bsxipc::{BSXFile, BSXIterator, BSXKey};
     use crate::report::ReportType;
     use crate::utils::types::{Context, Strand};
     use polars::frame::DataFrame;
     use polars::prelude::SchemaRef;
-    use pyo3::exceptions::PyRuntimeError;
+    use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError};
     use pyo3::prelude::*;
     use pyo3_polars::{PyDataFrame, PySchema};
     use std::fs::File;
-
+    
+    
     #[pyclass]
     pub struct BSXFilePy {
         inner: BSXFile<File>,
@@ -69,7 +70,7 @@ mod python {
     }
 
     #[pyclass]
-    struct BSXIteratorPy {
+    pub struct BSXIteratorPy {
         inner: BSXIterator<File>,
     }
 
@@ -122,25 +123,23 @@ mod python {
         }
     }
 
-    #[pymethods]
-    impl ReportType {
-        #[getter]
-        pub fn polars_schema(&self) -> PyResult<PySchema> {
-            let schema = self.schema().clone();
-            PySchema(SchemaRef::new(schema)).into()
-        }
-    }
-
     #[pyfunction]
     fn convert_report(
         input_path: String,
-        report_type: ReportType,
+        report_type: String,
         output_path: String,
         fasta_path: String,
         chunk_size: Option<usize>,
         low_memory: Option<bool>,
         n_threads: Option<usize>,
     ) -> PyResult<String> {
+        let report_type = match report_type.to_lowercase().as_str() {
+            "bismark" => ReportType::BISMARK,
+            "bedgraph" => ReportType::BEDGRAPH,
+            "coverage" => ReportType::COVERAGE,
+            "cgmap" => ReportType::CGMAP,
+            _ => {return Err(PyNotImplementedError::new_err("{report_type} is not yet implemented"))}
+        };
         report_type.convert_report(
             input_path.as_str(),
             output_path.as_str(),

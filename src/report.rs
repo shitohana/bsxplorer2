@@ -2,7 +2,6 @@ use crate::sequence::{scan_fasta, SeqData};
 use polars::export::arrow::datatypes::IntegerType;
 use polars::io::ipc::BatchedWriter;
 use polars::prelude::*;
-use pyo3::prelude::*;
 use std::fs::File;
 
 /// Get schema of BSXplorer internal format
@@ -37,7 +36,6 @@ pub fn get_universal_schema(chr_names: Vec<&str>) -> Schema {
 }
 
 /// Type of methylation report
-#[pyclass]
 pub enum ReportType {
     BEDGRAPH,
     COVERAGE,

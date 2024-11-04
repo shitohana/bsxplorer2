@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use std::collections::Bound::Excluded;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Seek};
+use polars::error::ErrString;
 
 #[derive(Eq, Hash, PartialEq, Clone)]
 pub struct BSXKey(String, Strand, Context);
@@ -18,7 +19,7 @@ pub struct BSXFile<R: Read + Seek> {
     index: BSXIndex,
 }
 
-impl<R: Read + Seek> BSXFile<R> {
+impl<R: Read + Seek + Sync> BSXFile<R> {
     pub fn new(handle: R, projection: Option<Vec<usize>>) -> Result<Self, PolarsError> {
         let mut reader = IpcFileReader::new(handle, projection, None);
         let mut index: HashMap<BSXKey, BTreeMap<u64, usize>> = HashMap::new();
@@ -95,10 +96,12 @@ impl<R: Read + Seek> BSXFile<R> {
         annotation: &mut DataFrame,
         context: Option<Context>,
     ) -> Result<DataFrame, PolarsError> {
-        let mut annotation_colnames = annotation.schema().iter_names();
-        for colname in ["chr", "strand", "start", "end"] {
-            if !annotation_colnames.contains(colname) {
-                return Err(PolarsError::ColumnNotFound(colname.into()));
+        let binding = annotation.schema();
+        let mut annotation_colnames = binding.iter_names();
+        let musthave_colnames: Vec<PlSmallStr> = vec!["chr".into(), "strand".into(), "start".into(), "end".into()];
+        for colname in musthave_colnames {
+            if !annotation_colnames.contains(&colname) {
+                return Err(PolarsError::ColumnNotFound(ErrString::from(colname.to_string())));
             }
         }
 
@@ -155,13 +158,13 @@ impl<R: Read + Seek> BSXFile<R> {
                     Strand::from_str(strand_val),
                     context.unwrap_or(Context::CG),
                 );
-                let indices = self._find_index(key, (Some(*start_val), Some(*end_val)));
+                let indices = self.find_index(key, (Some(*start_val), Some(*end_val)));
                 indices
                     .map(|indices| UInt32Chunked::from_vec("index".into(), indices).into_series())
             })
             .collect();
-        let df = annotation.with_column(result.with_name("index"))?;
-        Ok(df)
+        let df = annotation.with_column(result.with_name("index".into()))?;
+        Ok(df.clone())
     }
 
     pub fn into_iter(self) -> BSXIterator<R> {
@@ -237,24 +240,22 @@ impl<R: Read + Seek> BSXIterator<R> {
             .collect();
         concat(dfs, UnionArgs::default())?.collect()
     }
-    pub fn iter_regions(
-        &mut self,
-        indexed_annotation: &DataFrame,
-    ) -> impl Iterator<Item = Result<DataFrame, PolarsError>> {
-        let mut schema_cols = indexed_annotation.schema().iter_names();
-        for col in ["start", "end", "index"] {
-            if !schema_cols.contains(&col.into()) {
-                return Err(PolarsError::ColumnNotFound(col.into()));
-            }
-        }
-        let annotation = indexed_annotation.clone();
-        let index = annotation
+}
+
+struct BSXRegionsIterator<R: Read + Seek> {
+    bsx_handle: BSXIterator<R>,
+    regions_iter: Box<dyn Iterator<Item=(Vec<u32>, u64, u64)>>,
+}
+
+impl<R: Read + Seek> BSXRegionsIterator<R> {
+    fn new(bsx_handle: BSXIterator<R>, annotation_indexed: &DataFrame) -> Result<Box<Self>, PolarsError> {
+        let index = annotation_indexed
             .column("index")?
             .list()?
             .into_iter()
             .filter_map(|s| match s {
                 Some(series) => {
-                    let arr: ChunkedArray<UInt32Type> = series.u32()?.to_owned();
+                    let arr: ChunkedArray<UInt32Type> = series.u32().unwrap().to_owned();
                     Some(
                         arr.into_iter()
                             .flatten()
@@ -264,20 +265,30 @@ impl<R: Read + Seek> BSXIterator<R> {
                 _ => None,
             })
             .collect::<Vec<Vec<u32>>>();
-        let start = annotation
+        let start = annotation_indexed
             .column("start")?
             .u64()?
             .into_iter()
             .flatten()
             .collect::<Vec<u64>>();
-        let end = annotation
+        let end = annotation_indexed
             .column("end")?
             .u64()?
             .into_iter()
             .flatten()
             .collect::<Vec<u64>>();
+        let regions_iter = itertools::izip!(index, start, end);
+        Ok(Box::new(
+            Self {bsx_handle, regions_iter: Box::new(regions_iter.into_iter())}
+        ))
+    }
+}
 
-        itertools::izip!(&index, &start, &end)
-            .map(|(index_val, start_val, end_val)| self.get_region(index_val, start_val, end_val))
+impl<R: Read + Seek> Iterator for BSXRegionsIterator<R> {
+    type Item = Result<DataFrame, PolarsError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (index, start, end) = self.regions_iter.next()?;
+        Option::from(self.bsx_handle.get_region(&index, start, end))
     }
 }
