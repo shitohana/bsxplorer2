@@ -1,12 +1,20 @@
+use std::collections::HashMap;
+use std::convert::Into;
 use polars::prelude::*;
 use std::path::Path;
+use itertools::Itertools;
 
-pub struct Annotation {
-    raw: LazyFrame,
-}
+const ANNOTATION_SCHEMA: [(&str, DataType);6] = [
+    ("str", DataType::String),
+    ("strand", DataType::String),
+    ("start", DataType::UInt64),
+    ("end", DataType::UInt64),
+    ("type", DataType::String),
+    ("id", DataType::String)
+];
 
 /// Struct of settings for annotation file reading.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AnnotationFileConf {
     chr_col: usize,
     start_col: usize,
@@ -18,11 +26,17 @@ pub struct AnnotationFileConf {
     separator: Option<u8>,
     has_header: Option<bool>,
     read_filters: Option<Expr>,
+    regex: Option<Expr>,
 }
 
 impl AnnotationFileConf {
-    /// Filter non specified column indices and create a vector
-    pub fn col_indices(&self) -> Vec<usize> {
+    fn all_colnames() -> Vec<String> {
+        AnnotationBuilder::schema().iter_names()
+            .map(|name| name.to_owned().into_string())
+            .collect()
+    }
+    
+    fn indexes(&self) -> [Option<usize>; 6] {
         [
             Some(self.chr_col),
             self.strand_col,
@@ -31,6 +45,11 @@ impl AnnotationFileConf {
             self.type_col,
             self.id_col,
         ]
+    }
+    
+    /// Filter non specified column indices and create a vector
+    pub fn col_indices(&self) -> Vec<usize> {
+        self.indexes()
         .iter()
         .flatten()
         .cloned()
@@ -38,50 +57,43 @@ impl AnnotationFileConf {
     }
     /// Filter unspecified columns and get their names vector
     pub fn col_names(&self) -> Vec<String> {
-        [
-            Some("chr"),
-            if self.strand_col.is_some() {
-                Some("strand")
-            }
-            else {
-                None
-            },
-            Some("start"),
-            Some("end"),
-            if self.type_col.is_some() {
-                Some("type")
-            }
-            else {
-                None
-            },
-            if self.id_col.is_some() {
-                Some("id")
-            }
-            else {
-                None
-            },
-        ]
-        .iter()
-        .flatten()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
+        let all = Self::all_colnames();
+        self.indexes().iter()
+            .positions(|val| val.is_some())
+            .map(|i| all[i].clone()).collect()
+    }
+    
+    pub fn into_reader(self, file: String) -> LazyCsvReader {
+        LazyCsvReader::new(file)
+            .with_separator(self.separator.unwrap_or(b'\t'))
+            .with_comment_prefix(Some(PlSmallStr::from(
+                self
+                    .comment_prefix
+                    .clone()
+                    .unwrap_or("#".to_string()),
+            )))
+            .with_try_parse_dates(false)
+            .with_has_header(
+                self
+                    .has_header
+                    .unwrap_or(false),
+            )
     }
 }
 
-impl Annotation {
+pub struct AnnotationBuilder {
+    raw: LazyFrame,
+}
+
+impl AnnotationBuilder {
     /// Schema of internal representation of annotation file
     pub fn schema() -> Schema {
-        let mut schema = Schema::default();
-        schema.insert("chr".into(), DataType::String);
-        schema.insert("strand".into(), DataType::String);
-        schema.insert("start".into(), DataType::UInt64);
-        schema.insert("end".into(), DataType::UInt64);
-        schema.insert("type".into(), DataType::String);
-        schema.insert("id".into(), DataType::String);
-        schema
+        Schema::from(PlIndexMap::from_iter(
+            ANNOTATION_SCHEMA.iter().cloned().map(|(k, v)| (PlSmallStr::from(k), v)),
+        ))
     }
 
-    pub fn new(mut raw: LazyFrame) -> Annotation {
+    pub fn new(mut raw: LazyFrame) -> AnnotationBuilder {
         let schema = raw
             .collect_schema()
             .expect("schema generation failed");
@@ -91,7 +103,7 @@ impl Annotation {
         {
             panic!("schema doesn't have chr, start or end field");
         };
-        Annotation { raw }
+        AnnotationBuilder { raw }
     }
 
     /// Finish mutating LazyFrame. Consumes self and collects DataFrame.
@@ -99,66 +111,67 @@ impl Annotation {
         self.raw.collect()
     }
 
-    pub fn filter(mut self, predicate: Expr) -> Annotation {
+    pub fn filter(mut self, predicate: Expr) -> AnnotationBuilder {
         self.raw = self.raw.filter(predicate);
         self
     }
 
-    pub fn with_columns<E: AsRef<[Expr]>>(mut self, exprs: E) -> Annotation {
+    pub fn with_columns<E: AsRef<[Expr]>>(mut self, exprs: E) -> AnnotationBuilder {
         self.raw = self.raw.with_columns(exprs);
         self
     }
 
     /// Read annotation from custom annotation format.
-    //  TODO: add regex for ID col.
     pub fn from_custom(file: &str, configuration: AnnotationFileConf) -> Self {
         assert!(Path::new(file).exists());
-        let self_schema = Annotation::schema();
-        let mut data = LazyCsvReader::new(file)
-            .with_separator(configuration.separator.unwrap_or(b'\t'))
-            .with_comment_prefix(Some(PlSmallStr::from(
-                configuration
-                    .comment_prefix
-                    .clone()
-                    .unwrap_or("#".to_string()),
-            )))
-            .with_try_parse_dates(false)
-            .with_has_header(
-                configuration
-                    .has_header
-                    .unwrap_or(false),
-            )
-            .finish()
-            .expect("could not open file");
-
-        let schema_cols = data
+        let self_schema = Self::schema();
+        
+        let mut raw = configuration.clone()
+            .into_reader(file.to_string())
+            .finish().expect("could not open file");
+        
+        let schema_cols = raw
             .collect_schema()
-            .expect("schema generation failed");
-        let selector = configuration
-            .col_indices()
-            .iter()
-            .zip(configuration.col_names())
-            .map(|(idx, name)| -> Expr {
-                let old_name = schema_cols
-                    .get_at_index(*idx)
-                    .unwrap()
-                    .0
-                    .to_owned();
-                col(old_name)
-                    .cast(
-                        self_schema
-                            .get_field(&name)
-                            .unwrap()
-                            .dtype,
-                    )
-                    .alias(name)
-            })
+            .expect("schema generation failed")
+            .iter_names().cloned().map(|x| x.into_string())
             .collect::<Vec<_>>();
-        let raw = data.select(&selector).filter(
-            configuration
-                .read_filters
-                .unwrap_or(lit(true)),
-        );
+        
+        let raw = {
+            // Rearrange columns
+            let mut df = raw
+                .select({
+                    itertools::izip!(
+                        &configuration.col_indices(), 
+                        &configuration.col_names()
+                    ).map(
+                        |(idx, name)| -> Expr {
+                            let old_name = schema_cols.get(*idx).unwrap().clone();
+                            let target_type = {
+                                self_schema.get_field(name).unwrap().dtype
+                            };
+                            let expr = col(old_name).cast(target_type).alias(name);
+                            expr
+                        }
+                    ).collect::<Vec<_>>()
+                });
+            
+            if configuration.read_filters.is_some() {
+                // Apply filters if present
+                df = df.filter(configuration.read_filters.unwrap_or(lit(true)))
+            }
+            
+            if configuration.regex.is_some() {
+                df = df.with_column(
+                    col("id").str().extract(
+                        configuration.regex.unwrap(),
+                        1
+                    )
+                )
+            }
+            
+            df
+        };
+        
         Self { raw }
     }
 
@@ -176,6 +189,7 @@ impl Annotation {
                 separator: Some(b'\t'),
                 has_header: Some(false),
                 read_filters: None,
+                regex: Some(lit("^ID=([^;]+)")),
             },
         )
     }

@@ -1,7 +1,7 @@
 #[cfg(feature = "python")]
 pub mod python {
     use crate::bsxipc::{BSXFile, BSXIterator, BSXKey};
-    use crate::report::ReportType;
+    use crate::read::ReportType;
     use crate::utils::types::{Context, Strand};
     use polars::frame::DataFrame;
     use polars::prelude::SchemaRef;

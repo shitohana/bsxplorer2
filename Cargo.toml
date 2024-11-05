@@ -55,6 +55,7 @@ features = [
     "partition_by",
     "asof_join",
     # Expressions
+    "strings",
     "is_in",
     "concat_str",
     "rank",
