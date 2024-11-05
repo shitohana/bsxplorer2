@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::num::NonZeroUsize;
+use std::num::NonZero;
 use polars::prelude::*;
 use polars::datatypes::{DataType, PlIndexMap, PlSmallStr};
 use polars::io::csv::write::BatchedWriter;
@@ -101,7 +101,7 @@ impl ReportType {
             ReportType::BISMARK | 
             ReportType::CGMAP => CsvWriter::new(sink)
                 .with_separator(b'\t')
-                .with_batch_size(NonZeroUsize::try_from(batch_size.unwrap_or_default()).unwrap())
+                .with_batch_size(NonZero::new(batch_size.unwrap_or_default()).unwrap())
                 .include_header(false)
                 .n_threads(n_threads.unwrap_or_default())
                 .batched(&self.get_schema())
