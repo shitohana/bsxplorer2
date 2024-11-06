@@ -3,7 +3,7 @@ use std::path::Path;
 use itertools::Itertools;
 
 const ANNOTATION_SCHEMA: [(&str, DataType);6] = [
-    ("str", DataType::String),
+    ("chr", DataType::String),
     ("strand", DataType::String),
     ("start", DataType::UInt64),
     ("end", DataType::UInt64),

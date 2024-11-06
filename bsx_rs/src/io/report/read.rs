@@ -101,8 +101,8 @@ impl ReportReader {
         mut reader: CsvReader<Box<dyn MmapBytesReader>>,
         batch_per_read: Option<usize>,
         batch_size: Option<usize>,
-        fa_path: Option<&str>,
-        fai_path: Option<&str>,
+        fa_path: Option<String>,
+        fai_path: Option<String>,
     ) -> Self {
         let fasta_reader = match (fa_path, fai_path) {
             (Some(fa_path), Some(fai_path)) => {
@@ -154,7 +154,6 @@ impl ReportReader {
             self.batch_per_read
         ).expect("Failed to read batches");
         if read_res.is_none() { return None; };
-
         let mut batches = read_res.unwrap().iter()
             // Partition by chromosomes to allow direct sequence reading
             .map(|batch| {
@@ -260,6 +259,19 @@ impl ReportReader {
             self.batch_queue.push_back(batch.to_owned());
         }
         Some(())
+    }
+    
+    pub fn get_chr_names(&mut self) -> Option<Vec<String>> {
+        if self.fasta_reader.is_some() {
+            let fasta_reader = self.fasta_reader.as_mut().unwrap();
+            let names = fasta_reader
+                .index.sequences().iter()
+                .map(|seq| {seq.name.clone()})
+                .collect::<Vec<_>>();
+            Some(names)
+        } else {
+            None
+        }
     }
 }
 

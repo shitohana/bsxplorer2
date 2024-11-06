@@ -16,4 +16,3 @@ members = [
 
 [dependencies]
 bsx_rs = { path = "./bsx_rs"}
-bsxplorer2 = { path = "./bsxplorer2"}

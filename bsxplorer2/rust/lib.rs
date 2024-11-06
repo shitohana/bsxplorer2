@@ -1,9 +1,11 @@
 #![feature(btree_cursors)]
 #![feature(ascii_char)]
 
-mod python;
+mod reader;
+mod writer;
+
 use pyo3::prelude::*;
-use python::python::{
+use reader::{
     ReportReader, ReportType
 };
 
@@ -12,5 +14,6 @@ use python::python::{
 fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ReportReader>()?;
     m.add_class::<ReportType>()?;
+    m.add_function(wrap_pyfunction!(writer::convert_report, m)?);
     Ok(())
 }
