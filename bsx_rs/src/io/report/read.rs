@@ -1,12 +1,29 @@
 use polars::frame::DataFrame;
-use polars::prelude::{col, concat, lit, BatchedCsvReader, Column, IntoLazy, JoinArgs, JoinType, LazyFrame, UnionArgs};
+use polars::prelude::*;
 use std::fs::File;
 use std::collections::VecDeque;
 use polars::datatypes::DataType;
 use std::ops::{Div, Sub};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use itertools::Itertools;
+use polars::error::PolarsResult;
+use polars::io::mmap::MmapBytesReader;
 use crate::io::report::types::ReportType;
+
+pub(crate) struct OwnedBatchedCsvReader {
+    #[allow(dead_code)]
+    // this exists because we need to keep ownership
+    schema: SchemaRef,
+    batched_reader: BatchedCsvReader<'static>,
+    // keep ownership
+    _reader: CsvReader<Box<dyn MmapBytesReader>>,
+}
+
+impl OwnedBatchedCsvReader {
+    pub(crate) fn next_batches(&mut self, n: usize) -> PolarsResult<Option<Vec<DataFrame>>> {
+        self.batched_reader.next_batches(n)
+    }
+}
 
 /// Parse cytosine sequence and extract cytosine methylation contexts and positions.
 /// # Returns
@@ -50,13 +67,16 @@ fn parse_cytosines(seq: String, start_pos: u64) -> (Vec<u64>, Vec<Option<bool>>,
 /// Tuple of (chromosome name, min position, max position)
 pub struct BatchStats(String, u64, u64);
 
-/// Iterator over methylation report data
-pub struct ReportReader<'a> {
+/// Iterator over methylation report data. Output batches
+/// are sorted by genomic position. 
+/// 
+/// **Input** data is expected to be **sorted**.
+pub struct ReportReader {
     /// [ReportType] of the report
     report_type: ReportType,
     /// Initialized [BatchedCsvReader]. Use [ReportType::get_reader] to create binding for
     /// reader and [CsvReader::batched_borrowed] to create Batched reader.
-    batched_reader: BatchedCsvReader<'a>,
+    batched_reader: OwnedBatchedCsvReader,
     /// How many batches will be read into memory. Should be >= num cores.
     batch_per_read: usize,
     /// Number of rows in the output batches. All batches will be same specified
@@ -70,10 +90,15 @@ pub struct ReportReader<'a> {
     batch_queue: VecDeque<DataFrame>,
 }
 
-impl<'a> ReportReader<'a> {
+impl ReportReader {
+    pub fn get_report_type(&self) -> &ReportType {
+        &self.report_type
+    
+    }
+    
     pub fn new(
         report_type: ReportType,
-        batched_csv_reader: BatchedCsvReader<'a>,
+        mut reader: CsvReader<Box<dyn MmapBytesReader>>,
         batch_per_read: Option<usize>,
         batch_size: Option<usize>,
         fa_path: Option<&str>,
@@ -103,9 +128,20 @@ impl<'a> ReportReader<'a> {
         );
         let batch_queue = VecDeque::new();
         let batch_size = batch_size.unwrap_or(10_000);
+        
+        let schema = SchemaRef::from(report_type.get_schema());
+        let batched_reader = reader.batched_borrowed().unwrap();
+        let batched_reader: BatchedCsvReader<'static> = unsafe { std::mem::transmute(batched_reader) };
+        
+        let batched_owned = OwnedBatchedCsvReader {
+            schema,
+            batched_reader,
+            _reader: reader,
+        };
+        
         Self {
             report_type,
-            batched_reader: batched_csv_reader,
+            batched_reader: batched_owned,
             batch_per_read,
             batch_size,
             fasta_reader,
@@ -227,7 +263,7 @@ impl<'a> ReportReader<'a> {
     }
 }
 
-impl<'a> Iterator for ReportReader<'a> {
+impl Iterator for ReportReader {
     type Item = DataFrame;
 
     fn next(&mut self) -> Option<Self::Item> {

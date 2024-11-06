@@ -5,6 +5,8 @@ use polars::prelude::*;
 use crate::utils::ipc_reader::IpcFileReader;
 use crate::utils::types::{Context, Strand};
 
+// TODO: REWRITE FOR NON PARTITIONED BATCHES
+
 #[derive(Eq, Hash, PartialEq, Clone)]
 pub struct BSXKey(String, Strand, Context);
 

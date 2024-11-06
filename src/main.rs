@@ -1,16 +1,4 @@
-#![feature(btree_cursors)]
-#![feature(ascii_char)]
-
-mod bsxipc;
-mod genome;
-mod python;
-mod io;
-mod utils;
-mod bsx_reader;
-mod bsx_writer;
-
-use polars::prelude::*;
-use rayon::prelude::*;
+use bsx_rs::genome;
 
 fn main() {
     let annotation = genome::AnnotationBuilder::from_gff(

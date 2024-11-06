@@ -1,0 +1,62 @@
+[package]
+name = "bsx_rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["shitohana"]
+
+[lib]
+name="bsx_rs"
+path = "src/lib.rs"
+#crate-type = ["cdylib"]
+
+[dependencies]
+arrow = "53.1.0"
+bzip2 = "0.4.4"
+flate2 = "^1.0"
+tar = "0.4.42"
+xz2 = "0.1.7"
+zstd = "0.13.2"
+hashbrown = { version = "=0.14.5", features = ["raw"] }
+bio = "2.0.3"
+zip = "=2.2.0"
+itertools = "0.13.0"
+rayon = "1.10"
+rust-htslib = "0.47.0"
+bam = "0.1.4"
+memmap2 = "0.9.5"
+polars-arrow = {version = "0.44.2", features = ["io_ipc"]}
+
+[dependencies.polars]
+version = "0.44.2"
+features = [
+    # Performance
+    "performant",
+    # Data types
+    "dtype-categorical",
+    "dtype-struct",
+    "dtype-array",
+    # Lazy
+    "lazy",
+    # IO
+    "csv",
+    "decompress",
+    "ipc",
+    "ipc_streaming",
+    "streaming",
+    # DataFrame operations
+    "dataframe_arithmetic",
+    "partition_by",
+    "asof_join",
+    # Expressions
+    "strings",
+    "is_in",
+    "concat_str",
+    "rank",
+    "list_eval",
+    "list_count",
+    "list_any_all",
+    "search_sorted",
+    # Misc
+    "fmt",
+]
+
