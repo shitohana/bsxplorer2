@@ -174,9 +174,9 @@ impl Iterator for BSXReader {
 #[derive(Clone)]
 pub struct ReadFilters {
     /// Which [Context] to filter
-    context: Option<Context>,
+    pub(crate) context: Option<Context>,
     /// Which [Strand] to filter
-    strand: Option<Strand>,
+    pub(crate) strand: Option<Strand>,
 }
 
 impl ReadFilters {

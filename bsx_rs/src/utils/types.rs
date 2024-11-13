@@ -1,4 +1,4 @@
-#[derive(Eq, Hash, PartialEq, Copy, Clone)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
 pub enum Context {
     CG,
     CHG,
@@ -26,7 +26,7 @@ impl Context {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
 pub enum Strand {
     Forward,
     Reverse,

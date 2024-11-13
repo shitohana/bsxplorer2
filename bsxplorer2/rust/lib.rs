@@ -1,8 +1,12 @@
 #![feature(btree_cursors)]
 #![feature(ascii_char)]
+#![feature(variant_count)]
 
 mod reader;
 mod writer;
+mod bsx_reader;
+mod region;
+mod utils;
 
 use pyo3::prelude::*;
 use reader::{ReportReader, ReportType};

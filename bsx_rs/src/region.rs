@@ -72,16 +72,16 @@ impl NullHandleStrategy {
 }
 
 pub struct RegionData {
-    data: DataFrame,
-    coordinates: RegionCoordinates,
+    pub data: DataFrame,
+    pub coordinates: RegionCoordinates,
 }
 
 impl RegionData {
-    pub(crate) fn new(data: DataFrame, coordinates: RegionCoordinates) -> Self {
+    pub fn new(data: DataFrame, coordinates: RegionCoordinates) -> Self {
         Self { data, coordinates }
     }
 
-    pub fn drop_null(mut self, null_strategy: NullHandleStrategy) -> Option<Self> {
+    pub fn drop_null(&mut self, null_strategy: NullHandleStrategy) -> Option<()> {
         for col in ["density", "count_m", "count_total"] {
             if self
                 .data
@@ -100,7 +100,7 @@ impl RegionData {
                     .unwrap();
             }
         }
-        Some(self)
+        Some(())
     }
 
     pub fn get_coordinates(&self) -> &RegionCoordinates {
@@ -145,7 +145,8 @@ impl RegionData {
                     .sub(lit(self.coordinates.start()))
                     .mul(lit(resolution as f64))
                     .floor_div(lit(self.coordinates.length() as f64 + 0.5))
-                    .cast(DataType::UInt32),
+                    .cast(DataType::UInt32)
+                    .alias("fragment"),
             )
             .collect()
             .unwrap()
@@ -173,7 +174,7 @@ pub struct RegionCoordinates {
 }
 
 impl RegionCoordinates {
-    pub(crate) fn new(chr: String, start: u32, end: u32) -> Self {
+    pub fn new(chr: String, start: u32, end: u32) -> Self {
         Self { chr, start, end }
     }
     pub fn chr(&self) -> &str {

@@ -4,5 +4,7 @@
 
 pub mod genome;
 pub mod io;
-mod region;
+pub mod region;
 pub mod utils;
+mod ubatch;
+

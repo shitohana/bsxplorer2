@@ -1,6 +1,7 @@
 use crate::reader::ReportType;
 use bsx_rs::io::bsx::write::ConvertReportOptions;
 use pyo3::prelude::*;
+use pyo3_polars::error::PyPolarsErr;
 
 #[pyfunction]
 pub fn convert_report(
@@ -26,6 +27,6 @@ pub fn convert_report(
         .with_chunk_size(chunk_size.unwrap_or_default());
     match convert_options.finish(report_type, report_path, output_path, fa_path, fai_path) {
         Ok(_) => Ok(()),
-        Err(e) => Err(PyErr::from(e)),
+        Err(e) => Err(PyErr::from(PyPolarsErr::from(e))),
     }
 }
