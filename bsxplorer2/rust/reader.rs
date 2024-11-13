@@ -1,13 +1,9 @@
-use std::fs::File;
+use bsx_rs::io::report::read::ReportReader as ReportReaderRust;
+use bsx_rs::io::report::types::ReportType as ReportTypeRust;
 use polars::io::mmap::MmapBytesReader;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
-use bsx_rs::io::report::read::{
-    ReportReader as ReportReaderRust,
-};
-use bsx_rs::io::report::types::{
-    ReportType as ReportTypeRust,
-};
+use std::fs::File;
 
 #[pyclass]
 #[derive(Clone)]
@@ -15,7 +11,7 @@ pub enum ReportType {
     BISMARK,
     CGMAP,
     BEDGRAPH,
-    COVERAGE
+    COVERAGE,
 }
 
 impl ReportType {
@@ -40,7 +36,7 @@ impl ReportType {
 
 #[pyclass]
 pub struct ReportReader {
-    inner: ReportReaderRust
+    inner: ReportReaderRust,
 }
 
 #[pymethods]
@@ -59,21 +55,17 @@ impl ReportReader {
     ) -> PyResult<Self> {
         let report_type = report_type.into_rust();
         let handle: Box<dyn MmapBytesReader> = Box::new(File::open(&report_path)?);
-        let reader = report_type.get_reader(
-            handle,
-            chunk_size,
-            low_memory,
-            n_threads,
-            Some(true)
-        );
+        let reader = report_type.get_reader(handle, chunk_size, low_memory, n_threads, Some(true));
 
         let inner = ReportReaderRust::new(
             report_type,
             reader,
-            batch_per_read, batch_size,
-            fa_path, fai_path
+            batch_per_read,
+            batch_size,
+            fa_path,
+            fai_path,
         );
-        Ok(Self {inner})
+        Ok(Self { inner })
     }
 
     #[getter]
@@ -87,7 +79,7 @@ impl ReportReader {
     pub fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyDataFrame> {
         match slf.inner.next() {
             Some(data) => Some(PyDataFrame(data)),
-            None => None
+            None => None,
         }
     }
 }

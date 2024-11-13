@@ -1,6 +1,6 @@
-use pyo3::prelude::*;
-use bsx_rs::io::bsx::write::ConvertReportOptions;
 use crate::reader::ReportType;
+use bsx_rs::io::bsx::write::ConvertReportOptions;
+use pyo3::prelude::*;
 
 #[pyfunction]
 pub fn convert_report(
@@ -24,10 +24,7 @@ pub fn convert_report(
         .with_rechunk(rechunk.unwrap_or_default())
         .with_batch_per_read(batch_per_read.unwrap_or_default())
         .with_chunk_size(chunk_size.unwrap_or_default());
-    match convert_options.finish(
-        report_type, report_path, output_path,
-        fa_path, fai_path
-    ) {
+    match convert_options.finish(report_type, report_path, output_path, fa_path, fai_path) {
         Ok(_) => Ok(()),
         Err(e) => Err(PyErr::from(e)),
     }

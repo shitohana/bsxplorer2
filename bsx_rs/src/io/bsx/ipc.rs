@@ -130,7 +130,7 @@ impl<R: Read + Seek> IpcFileReader<R> {
             .map(|x| &x.2)
             .unwrap_or(&self.metadata.schema)
     }
-    
+
     pub fn blocks_total(&self) -> usize {
         self.blocks_total
     }

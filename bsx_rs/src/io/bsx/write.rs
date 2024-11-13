@@ -1,10 +1,10 @@
-use std::fs::File;
 use crate::io::report::read::ReportReader;
-use polars::prelude::*;
-use polars::io::ipc::BatchedWriter;
-use std::io::{Write};
-use polars::io::mmap::MmapBytesReader;
 use crate::io::report::types::ReportType;
+use polars::io::ipc::BatchedWriter;
+use polars::io::mmap::MmapBytesReader;
+use polars::prelude::*;
+use std::fs::File;
+use std::io::Write;
 
 pub struct BSXWriter<W: Write> {
     writer: BatchedWriter<W>,
@@ -49,17 +49,18 @@ impl<W: Write> BSXWriter<W> {
             .with_compression(None)
             .batched(&schema)
             .unwrap();
-        Self {writer, schema}
+        Self { writer, schema }
     }
-    
+
     pub fn write_batch(&mut self, batch: &mut DataFrame) -> Result<(), PolarsError> {
-        self.writer.write_batch(batch.align_chunks())
+        self.writer
+            .write_batch(batch.align_chunks())
     }
-    
+
     pub fn finish(mut self) -> Result<(), PolarsError> {
         self.writer.finish()
     }
-    
+
     pub fn get_schema(&self) -> &Schema {
         &self.schema
     }
@@ -131,7 +132,7 @@ impl ConvertReportOptions {
                 self.rechunk,
             )
         };
-        
+
         let mut reader = ReportReader::new(
             report_type,
             csv_reader,
@@ -140,22 +141,39 @@ impl ConvertReportOptions {
             Some(fa_path.to_owned()),
             Some(fai_path.to_owned()),
         );
-        
+
         let sink = File::create(output_path).expect("could not create output file");
         let mut writer = BSXWriter::new(sink, reader.get_chr_names().unwrap());
         let schema = writer.get_schema().clone();
-        let schema_cast = PlHashMap::from_iter(schema.iter().map(|(k, v)| (k.as_str(), v.clone())));
-        let schema_names = schema.iter_names().map(|x| {x.clone()}).collect::<Vec<_>>();
-        
+        let schema_cast = PlHashMap::from_iter(
+            schema
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.clone())),
+        );
+        let schema_names = schema
+            .iter_names()
+            .map(|x| x.clone())
+            .collect::<Vec<_>>();
+
         for mut batch in reader {
-            batch = batch.lazy()
+            batch = batch
+                .lazy()
                 .cast(schema_cast.clone(), true)
-                .sort(["position"], SortMultipleOptions::default().with_order_descending(false).with_multithreaded(true))
+                .sort(
+                    ["position"],
+                    SortMultipleOptions::default()
+                        .with_order_descending(false)
+                        .with_multithreaded(true),
+                )
                 .collect()?
                 .select(schema_names.clone())?;
-            writer.write_batch(&mut batch).expect("could not write batch");
+            writer
+                .write_batch(&mut batch)
+                .expect("could not write batch");
         }
-        writer.finish().expect("could not finish write");
+        writer
+            .finish()
+            .expect("could not finish write");
         Ok(())
     }
 }

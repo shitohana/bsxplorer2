@@ -2,7 +2,7 @@
 #![feature(ascii_char)]
 #![feature(is_sorted)]
 
-pub mod io;
 pub mod genome;
-pub mod utils;
+pub mod io;
 mod region;
+pub mod utils;

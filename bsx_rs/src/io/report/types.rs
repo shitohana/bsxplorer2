@@ -1,16 +1,16 @@
-use std::io::Write;
-use std::num::NonZero;
-use polars::prelude::*;
 use polars::datatypes::{DataType, PlIndexMap, PlSmallStr};
 use polars::io::csv::write::BatchedWriter;
 use polars::io::mmap::MmapBytesReader;
+use polars::prelude::*;
+use std::io::Write;
+use std::num::NonZero;
 use std::ops::Div;
 
 pub enum ReportType {
     BISMARK,
     CGMAP,
     BEDGRAPH,
-    COVERAGE
+    COVERAGE,
 }
 
 impl ReportType {
@@ -39,7 +39,7 @@ impl ReportType {
                 (PlSmallStr::from("chr"), DataType::String),
                 (PlSmallStr::from("start"), DataType::UInt64),
                 (PlSmallStr::from("end"), DataType::UInt64),
-                (PlSmallStr::from("density"), DataType::Float64)
+                (PlSmallStr::from("density"), DataType::Float64),
             ])),
             ReportType::COVERAGE => Schema::from(PlIndexMap::from_iter([
                 (PlSmallStr::from("chr"), DataType::String),
@@ -47,8 +47,8 @@ impl ReportType {
                 (PlSmallStr::from("end"), DataType::UInt64),
                 (PlSmallStr::from("density"), DataType::Float64),
                 (PlSmallStr::from("count_m"), DataType::UInt32),
-                (PlSmallStr::from("count_um"), DataType::UInt32)
-            ]))
+                (PlSmallStr::from("count_um"), DataType::UInt32),
+            ])),
         }
     }
 
@@ -83,29 +83,29 @@ impl ReportType {
         match self {
             ReportType::BEDGRAPH => {
                 read_options = read_options.with_skip_rows(1);
-            },
+            }
             _ => {}
         };
         read_options.into_reader_with_file_handle(handle)
     }
-    
-    pub fn get_writer<W: Write> (
+
+    pub fn get_writer<W: Write>(
         &self,
-        sink: W, 
+        sink: W,
         batch_size: Option<usize>,
         n_threads: Option<usize>,
     ) -> BatchedWriter<W> {
         let writer = match self {
-            ReportType::COVERAGE |
-            ReportType::BEDGRAPH | 
-            ReportType::BISMARK | 
-            ReportType::CGMAP => CsvWriter::new(sink)
+            ReportType::COVERAGE
+            | ReportType::BEDGRAPH
+            | ReportType::BISMARK
+            | ReportType::CGMAP => CsvWriter::new(sink)
                 .with_separator(b'\t')
                 .with_batch_size(NonZero::new(batch_size.unwrap_or_default()).unwrap())
                 .include_header(false)
                 .n_threads(n_threads.unwrap_or_default())
                 .batched(&self.get_schema())
-                .expect("could not create the csv writer")
+                .expect("could not create the csv writer"),
         };
         writer
     }
@@ -124,38 +124,32 @@ impl ReportType {
             .cast(DataType::Boolean);
 
         match self {
-            ReportType::BISMARK => {
-                lazy_frame
-                    .with_column((col("count_m") + col("count_um")).alias("count_total"))
-                    .with_columns([
-                        (col("count_m") / col("count_total")).alias("density"),
-                        col("strand").eq(lit("+")).alias("strand"),
-                        col("count_m") / col("count_total").alias("context")
-                    ])
-            },
-            ReportType::CGMAP => {
-                lazy_frame
-                    .with_columns([
-                        col("nuc").eq(lit("C")).alias("strand"),
-                        context_encoder.alias("context")
-                    ])
-            },
-            ReportType::BEDGRAPH => {
-                lazy_frame
-                    .rename(["start"], ["position"], true)
-                    .drop(["end"])
-                    .with_columns([
-                        lit(NULL).alias("count_m"),
-                        lit(NULL).alias("count_total"),
-                        col("density").div(lit(100)).alias("density"),
-                ])
-            },
-            ReportType::COVERAGE => {
-                lazy_frame
-                    .rename(["start"], ["position"], true)
-                    .drop(["end"])
-            },
+            ReportType::BISMARK => lazy_frame
+                .with_column((col("count_m") + col("count_um")).alias("count_total"))
+                .with_columns([
+                    (col("count_m") / col("count_total")).alias("density"),
+                    col("strand")
+                        .eq(lit("+"))
+                        .alias("strand"),
+                    col("count_m") / col("count_total").alias("context"),
+                ]),
+            ReportType::CGMAP => lazy_frame.with_columns([
+                col("nuc").eq(lit("C")).alias("strand"),
+                context_encoder.alias("context"),
+            ]),
+            ReportType::BEDGRAPH => lazy_frame
+                .rename(["start"], ["position"], true)
+                .drop(["end"])
+                .with_columns([
+                    lit(NULL).alias("count_m"),
+                    lit(NULL).alias("count_total"),
+                    col("density")
+                        .div(lit(100))
+                        .alias("density"),
+                ]),
+            ReportType::COVERAGE => lazy_frame
+                .rename(["start"], ["position"], true)
+                .drop(["end"]),
         }
-
     }
 }

@@ -5,9 +5,7 @@ mod reader;
 mod writer;
 
 use pyo3::prelude::*;
-use reader::{
-    ReportReader, ReportType
-};
+use reader::{ReportReader, ReportType};
 
 #[allow(dead_code)]
 #[pymodule]

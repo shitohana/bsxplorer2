@@ -1,15 +1,15 @@
+use crate::utils::array_to_schema;
+use itertools::Itertools;
 use polars::prelude::*;
 use std::path::Path;
-use itertools::Itertools;
-use crate::utils::array_to_schema;
 
-pub const ANNOTATION_SCHEMA: [(&str, DataType);6] = [
+pub const ANNOTATION_SCHEMA: [(&str, DataType); 6] = [
     ("chr", DataType::String),
     ("strand", DataType::String),
     ("start", DataType::UInt64),
     ("end", DataType::UInt64),
     ("type", DataType::String),
-    ("id", DataType::String)
+    ("id", DataType::String),
 ];
 
 /// Struct of settings for annotation file reading.
@@ -30,11 +30,12 @@ pub struct AnnotationFileConf {
 
 impl AnnotationFileConf {
     fn all_colnames() -> Vec<String> {
-        AnnotationBuilder::schema().iter_names()
+        AnnotationBuilder::schema()
+            .iter_names()
             .map(|name| name.to_owned().into_string())
             .collect()
     }
-    
+
     fn indexes(&self) -> [Option<usize>; 6] {
         [
             Some(self.chr_col),
@@ -45,38 +46,35 @@ impl AnnotationFileConf {
             self.id_col,
         ]
     }
-    
+
     /// Filter non specified column indices and create a vector
     pub fn col_indices(&self) -> Vec<usize> {
         self.indexes()
-        .iter()
-        .flatten()
-        .cloned()
-        .collect::<Vec<_>>()
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>()
     }
     /// Filter unspecified columns and get their names vector
     pub fn col_names(&self) -> Vec<String> {
         let all = Self::all_colnames();
-        self.indexes().iter()
+        self.indexes()
+            .iter()
             .positions(|val| val.is_some())
-            .map(|i| all[i].clone()).collect()
+            .map(|i| all[i].clone())
+            .collect()
     }
-    
+
     pub fn into_reader(self, file: String) -> LazyCsvReader {
         LazyCsvReader::new(file)
             .with_separator(self.separator.unwrap_or(b'\t'))
             .with_comment_prefix(Some(PlSmallStr::from(
-                self
-                    .comment_prefix
+                self.comment_prefix
                     .clone()
                     .unwrap_or("#".to_string()),
             )))
             .with_try_parse_dates(false)
-            .with_has_header(
-                self
-                    .has_header
-                    .unwrap_or(false),
-            )
+            .with_has_header(self.has_header.unwrap_or(false))
     }
 }
 
@@ -122,53 +120,61 @@ impl AnnotationBuilder {
     pub fn from_custom(file: &str, configuration: AnnotationFileConf) -> Self {
         assert!(Path::new(file).exists());
         let self_schema = Self::schema();
-        
-        let mut raw = configuration.clone()
+
+        let mut raw = configuration
+            .clone()
             .into_reader(file.to_string())
-            .finish().expect("could not open file");
-        
+            .finish()
+            .expect("could not open file");
+
         let schema_cols = raw
             .collect_schema()
             .expect("schema generation failed")
-            .iter_names().cloned().map(|x| x.into_string())
+            .iter_names()
+            .cloned()
+            .map(|x| x.into_string())
             .collect::<Vec<_>>();
-        
+
         let raw = {
             // Rearrange columns
-            let mut df = raw
-                .select({
-                    itertools::izip!(
-                        &configuration.col_indices(), 
-                        &configuration.col_names()
-                    ).map(
-                        |(idx, name)| -> Expr {
-                            let old_name = schema_cols.get(*idx).unwrap().clone();
-                            let target_type = {
-                                self_schema.get_field(name).unwrap().dtype
-                            };
-                            let expr = col(old_name).cast(target_type).alias(name);
-                            expr
-                        }
-                    ).collect::<Vec<_>>()
-                });
-            
+            let mut df = raw.select({
+                itertools::izip!(&configuration.col_indices(), &configuration.col_names())
+                    .map(|(idx, name)| -> Expr {
+                        let old_name = schema_cols.get(*idx).unwrap().clone();
+                        let target_type = {
+                            self_schema
+                                .get_field(name)
+                                .unwrap()
+                                .dtype
+                        };
+                        let expr = col(old_name)
+                            .cast(target_type)
+                            .alias(name);
+                        expr
+                    })
+                    .collect::<Vec<_>>()
+            });
+
             if configuration.read_filters.is_some() {
                 // Apply filters if present
-                df = df.filter(configuration.read_filters.unwrap_or(lit(true)))
-            }
-            
-            if configuration.regex.is_some() {
-                df = df.with_column(
-                    col("id").str().extract(
-                        configuration.regex.unwrap(),
-                        1
-                    )
+                df = df.filter(
+                    configuration
+                        .read_filters
+                        .unwrap_or(lit(true)),
                 )
             }
-            
+
+            if configuration.regex.is_some() {
+                df = df.with_column(
+                    col("id")
+                        .str()
+                        .extract(configuration.regex.unwrap(), 1),
+                )
+            }
+
             df
         };
-        
+
         Self { raw }
     }
 

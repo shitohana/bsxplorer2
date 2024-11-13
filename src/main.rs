@@ -22,19 +22,23 @@ fn main() {
     //     ).unwrap();
     // println!("Report written");
 
-    let reader =  BSXReader::new(
+    let reader = BSXReader::new(
         File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc").unwrap(),
-        None
+        None,
     );
-    let annotation = AnnotationBuilder::from_gff("/Users/shitohana/Documents/CX_reports/old/A_thaliana_genomic.gff")
-        .filter(col("type").eq(lit("gene")))
-        .finish().unwrap();
+    let annotation = AnnotationBuilder::from_gff(
+        "/Users/shitohana/Documents/CX_reports/old/A_thaliana_genomic.gff",
+    )
+    .filter(col("type").eq(lit("gene")))
+    .finish()
+    .unwrap();
     let region_reader = RegionsDataReader::new(reader, annotation);
 
     let start = Instant::now();
 
     for reg_data in {
-        region_reader.into_iter()
+        region_reader
+            .into_iter()
             .with_batch_per_read(16)
             .with_filters(ReadFilters::new(Some(Context::CG), Some(Strand::None)))
     } {

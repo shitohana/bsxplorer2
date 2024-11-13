@@ -1,8 +1,7 @@
-use std::fmt::Display;
-use std::ops::{Mul, Sub};
 use itertools::Itertools;
 use polars::prelude::*;
-use crate::io::bsx::read::RegionCoordinates;
+use std::fmt::Display;
+use std::ops::{Mul, Sub};
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub enum FillNullStrategy {
@@ -52,66 +51,101 @@ impl NullHandleStrategy {
     fn to_polars(&self) -> Option<polars::chunked_array::ops::FillNullStrategy> {
         if !self.skip {
             None
-        } else {
+        }
+        else {
             let strategy = match self.fill {
                 FillNullStrategy::Zero => polars::chunked_array::ops::FillNullStrategy::Zero,
                 FillNullStrategy::One => polars::chunked_array::ops::FillNullStrategy::One,
                 FillNullStrategy::Max => polars::chunked_array::ops::FillNullStrategy::Max,
                 FillNullStrategy::Min => polars::chunked_array::ops::FillNullStrategy::Min,
                 FillNullStrategy::Mean => polars::chunked_array::ops::FillNullStrategy::Mean,
-                FillNullStrategy::MaxBound => polars::chunked_array::ops::FillNullStrategy::MaxBound,
-                FillNullStrategy::MinBound => polars::chunked_array::ops::FillNullStrategy::MinBound,
+                FillNullStrategy::MaxBound => {
+                    polars::chunked_array::ops::FillNullStrategy::MaxBound
+                }
+                FillNullStrategy::MinBound => {
+                    polars::chunked_array::ops::FillNullStrategy::MinBound
+                }
             };
             Some(strategy)
         }
     }
 }
 
-pub struct RegionData{
+pub struct RegionData {
     data: DataFrame,
-    coordinates: RegionCoordinates
+    coordinates: RegionCoordinates,
 }
 
 impl RegionData {
     pub(crate) fn new(data: DataFrame, coordinates: RegionCoordinates) -> Self {
-        Self {data, coordinates}
+        Self { data, coordinates }
     }
-    
+
     pub fn drop_null(mut self, null_strategy: NullHandleStrategy) -> Option<Self> {
         for col in ["density", "count_m", "count_total"] {
-            if self.data.column(col).unwrap().null_count() > 0 && null_strategy.skip {
+            if self
+                .data
+                .column(col)
+                .unwrap()
+                .null_count()
+                > 0
+                && null_strategy.skip
+            {
                 return None;
-            } else if !null_strategy.skip {
-                self.data = self.data.fill_null(null_strategy.to_polars()?).unwrap();
+            }
+            else if !null_strategy.skip {
+                self.data = self
+                    .data
+                    .fill_null(null_strategy.to_polars()?)
+                    .unwrap();
             }
         }
         Some(self)
     }
-    
-    pub(crate) fn from_parts(parts: Vec<DataFrame>, coordinates: RegionCoordinates) -> Option<Self> {
-        let mut sorted_iter = parts.iter()
+
+    pub fn get_coordinates(&self) -> &RegionCoordinates {
+        &self.coordinates
+    }
+
+    pub(crate) fn from_parts(
+        parts: Vec<DataFrame>,
+        coordinates: RegionCoordinates,
+    ) -> Option<Self> {
+        let mut sorted_iter = parts
+            .iter()
             .filter(|df| df.height() > 0)
-            .sorted_by_key(|df| df.column("position").unwrap().u32().unwrap().first().unwrap());
+            .sorted_by_key(|df| {
+                df.column("position")
+                    .unwrap()
+                    .u32()
+                    .unwrap()
+                    .first()
+                    .unwrap()
+            });
         let mut res = match sorted_iter.next() {
             Some(df) => df.clone(),
-            None => return None
+            None => return None,
         };
         for df in sorted_iter {
             res.extend(df).unwrap();
         }
         res.align_chunks_par();
-        Some(Self {data: res, coordinates})
+        Some(Self {
+            data: res,
+            coordinates,
+        })
     }
-    
+
     pub fn discretize(&self, resolution: usize) -> DataFrame {
-        self.data.clone()
+        self.data
+            .clone()
             .lazy()
             .with_column(
                 col("position")
                     .sub(lit(self.coordinates.start()))
                     .mul(lit(resolution as f64))
                     .floor_div(lit(self.coordinates.length() as f64 + 0.5))
-                    .cast(DataType::UInt32)
+                    .cast(DataType::UInt32),
             )
             .collect()
             .unwrap()
@@ -120,6 +154,38 @@ impl RegionData {
 
 impl Display for RegionData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Region {}:{}-{} data with {} rows.", self.coordinates.chr(), self.coordinates.start(), self.coordinates.length(), self.data.height())
+        write!(
+            f,
+            "Region {}:{}-{} data with {} rows.",
+            self.coordinates.chr(),
+            self.coordinates.start(),
+            self.coordinates.length(),
+            self.data.height()
+        )
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct RegionCoordinates {
+    pub(crate) chr: String,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+}
+
+impl RegionCoordinates {
+    pub(crate) fn new(chr: String, start: u32, end: u32) -> Self {
+        Self { chr, start, end }
+    }
+    pub fn chr(&self) -> &str {
+        self.chr.as_str()
+    }
+    pub fn start(&self) -> u32 {
+        self.start
+    }
+    pub fn end(&self) -> u32 {
+        self.end
+    }
+    pub fn length(&self) -> u32 {
+        self.end - self.start
     }
 }
