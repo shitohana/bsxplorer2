@@ -1,4 +1,4 @@
-use crate::io::bsx::read::ReadFilters;
+use crate::io::bsx::region_reader::ReadFilters;
 use crate::io::report::types::ReportType;
 use crate::region::{RegionCoordinates, RegionData};
 use crate::utils::types::{Context, Strand};
@@ -7,7 +7,7 @@ use polars::prelude::*;
 use std::fmt::Display;
 use std::ops::Not;
 
-struct UniversalBatch {
+pub struct UniversalBatch {
     data: DataFrame,
 }
 
@@ -129,7 +129,7 @@ impl UniversalBatch {
             .unwrap();
         new_data
     }
-
+    
     /// Get reference to inner DataFrame
     pub fn get_data(&self) -> &DataFrame {
         &self.data
@@ -171,7 +171,7 @@ impl UniversalBatch {
             == 1
     }
     /// Filter self by [ReadFilters]
-    pub fn filter(mut self, filter: ReadFilters) -> Self {
+    pub fn filter(mut self, filter: &ReadFilters) -> Self {
         if let Some(context) = filter.context {
             self = self.filter_context(context)
         }
@@ -181,7 +181,7 @@ impl UniversalBatch {
         self
     }
     /// Create new [UniversalBatch] by [RegionCoordinates] slice.
-    pub fn slice(&mut self, coordinates: RegionCoordinates) -> RegionData {
+    pub fn slice(&self, coordinates: &RegionCoordinates) -> RegionData {
         let positions = self.data.column("position").unwrap().u32().unwrap();
         let start = positions
             .iter()
@@ -194,7 +194,7 @@ impl UniversalBatch {
             .unwrap_or(positions.len() - start - 1);
 
         let new_data = self.data.slice(start as i64, slice_length);
-        RegionData::new(new_data, coordinates)
+        RegionData::new(new_data, coordinates.clone())
     }
     /// Filter self by [Context]
     pub fn filter_context(mut self, context: Context) -> Self {
@@ -240,5 +240,17 @@ impl UniversalBatch {
 impl Display for UniversalBatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.data)
+    }
+}
+
+impl From<DataFrame> for UniversalBatch {
+    fn from(data_frame: DataFrame) -> Self {
+        UniversalBatch::new(data_frame)
+    }
+}
+
+impl From<UniversalBatch> for DataFrame {
+    fn from(data_frame: UniversalBatch) -> Self {
+        data_frame.data
     }
 }

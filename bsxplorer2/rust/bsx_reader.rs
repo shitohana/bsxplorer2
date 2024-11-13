@@ -1,15 +1,8 @@
 use std::fs::File;
-use polars::frame::DataFrame;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
-use bsx_rs::io::bsx::read::{
-    BSXReader as BSXReaderRust,
-    RegionsDataReader as RegionsDataReaderRust,
-    RegionsDataIterator as RegionsDataIteratorRust,
-    ReadFilters as ReadFiltersRust,
-};
-use bsx_rs::region::RegionData as RegionDataRust;
-use crate::region::RegionData;
+use bsx_rs::io::bsx::bsx_reader::BSXReader as BSXReaderRust;
+use bsx_rs::io::bsx::region_reader::ReadFilters as ReadFiltersRust;
 use crate::utils::{Context, Strand};
 
 #[pyclass]

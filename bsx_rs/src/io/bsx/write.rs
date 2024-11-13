@@ -155,8 +155,10 @@ impl ConvertReportOptions {
             .map(|x| x.clone())
             .collect::<Vec<_>>();
 
-        for mut batch in reader {
-            batch = batch
+        for batch in reader {
+            let mut batch_data: DataFrame = batch.into();
+            
+            batch_data = batch_data
                 .lazy()
                 .cast(schema_cast.clone(), true)
                 .sort(
@@ -168,7 +170,7 @@ impl ConvertReportOptions {
                 .collect()?
                 .select(schema_names.clone())?;
             writer
-                .write_batch(&mut batch)
+                .write_batch(&mut batch_data)
                 .expect("could not write batch");
         }
         writer

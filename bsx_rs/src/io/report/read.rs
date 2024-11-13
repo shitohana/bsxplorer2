@@ -8,7 +8,7 @@ use polars::prelude::*;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::VecDeque;
 use std::fs::File;
-use std::ops::{Add, Div, Sub};
+use crate::ubatch::UniversalBatch;
 
 pub(crate) struct OwnedBatchedCsvReader {
     #[allow(dead_code)]
@@ -104,7 +104,7 @@ pub struct ReportReader {
     /// it is optional to apply additional alignment to reference cytosines.
     fasta_reader: Option<bio::io::fasta::IndexedReader<File>>,
     /// Queue of computed batches.
-    batch_queue: VecDeque<DataFrame>,
+    batch_queue: VecDeque<UniversalBatch>,
 }
 
 impl ReportReader {
@@ -338,7 +338,7 @@ impl ReportReader {
                 .collect::<Vec<_>>()
         } {
             self.batch_queue
-                .push_back(batch.to_owned());
+                .push_back(UniversalBatch::new(batch.to_owned()));
         }
         Some(())
     }
@@ -361,7 +361,7 @@ impl ReportReader {
 }
 
 impl Iterator for ReportReader {
-    type Item = DataFrame;
+    type Item = UniversalBatch;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.batch_queue.is_empty() {

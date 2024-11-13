@@ -2,11 +2,13 @@
 extern crate core;
 
 use bsx_rs::genome::AnnotationBuilder;
-use bsx_rs::io::bsx::read::{BSXReader, ReadFilters, RegionsDataReader};
+use bsx_rs::io::bsx::bsx_reader::BSXReader;
 use bsx_rs::utils::types::{Context, Strand};
 use polars::prelude::*;
 use std::fs::File;
 use std::time::Instant;
+use bsx_rs::io::bsx::region_reader::{ReadFilters, RegionsDataReader};
+
 extern crate pretty_env_logger;
 
 fn main() {
