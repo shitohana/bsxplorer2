@@ -1,15 +1,45 @@
-use bsx_rs::genome;
-use bsx_rs::io::bsx::write::ConvertReportOptions;
-use bsx_rs::io::report::types::ReportType;
+#![feature(is_sorted)]
+extern crate core;
+
+use bsx_rs::genome::AnnotationBuilder;
+use bsx_rs::io::bsx::read::{BSXReader, ReadFilters, RegionsDataReader};
+use bsx_rs::utils::types::{Context, Strand};
+use polars::prelude::*;
+use std::fs::File;
+use std::time::Instant;
+extern crate pretty_env_logger;
 
 fn main() {
-    let res = ConvertReportOptions::default()
-        .finish(
-            ReportType::BEDGRAPH,
-            "/Users/shitohana/Documents/CX_reports/A_thaliana.bedGraph",
-            "/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bedgraph_test.ipc",
-            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa",
-            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
-        );
-    res.unwrap();
+    pretty_env_logger::init_timed();
+    // ConvertReportOptions::default()
+    //     .with_chunk_size(500)
+    //     .finish(
+    //         ReportType::BISMARK,
+    //         "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt",
+    //         "/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc",
+    //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa",
+    //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
+    //     ).unwrap();
+    // println!("Report written");
+
+    let reader =  BSXReader::new(
+        File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc").unwrap(),
+        None
+    );
+    let annotation = AnnotationBuilder::from_gff("/Users/shitohana/Documents/CX_reports/old/A_thaliana_genomic.gff")
+        .filter(col("type").eq(lit("gene")))
+        .finish().unwrap();
+    let region_reader = RegionsDataReader::new(reader, annotation);
+
+    let start = Instant::now();
+
+    for reg_data in {
+        region_reader.into_iter()
+            .with_batch_per_read(16)
+            .with_filters(ReadFilters::new(Some(Context::CG), Some(Strand::None)))
+    } {
+        // println!("{}", reg_data);
+    }
+    let duration = start.elapsed();
+    println!("Time elapsed is: {:?}", duration);
 }

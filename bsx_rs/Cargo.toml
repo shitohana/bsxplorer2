@@ -25,6 +25,8 @@ rust-htslib = "0.47.0"
 bam = "0.1.4"
 memmap2 = "0.9.5"
 polars-arrow = {version = "0.44.2", features = ["io_ipc"]}
+log = "0.4.22"
+
 
 [dependencies.polars]
 version = "0.44.2"
@@ -47,6 +49,7 @@ features = [
     "dataframe_arithmetic",
     "partition_by",
     "asof_join",
+    "polars-ops",
     # Expressions
     "strings",
     "is_in",

@@ -1,8 +1,9 @@
 use polars::prelude::*;
 use std::path::Path;
 use itertools::Itertools;
+use crate::utils::array_to_schema;
 
-const ANNOTATION_SCHEMA: [(&str, DataType);6] = [
+pub const ANNOTATION_SCHEMA: [(&str, DataType);6] = [
     ("chr", DataType::String),
     ("strand", DataType::String),
     ("start", DataType::UInt64),
@@ -86,9 +87,7 @@ pub struct AnnotationBuilder {
 impl AnnotationBuilder {
     /// Schema of internal representation of annotation file
     pub fn schema() -> Schema {
-        Schema::from(PlIndexMap::from_iter(
-            ANNOTATION_SCHEMA.iter().cloned().map(|(k, v)| (PlSmallStr::from(k), v)),
-        ))
+        array_to_schema(&ANNOTATION_SCHEMA)
     }
 
     pub fn new(mut raw: LazyFrame) -> AnnotationBuilder {

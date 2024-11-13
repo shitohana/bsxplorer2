@@ -3,7 +3,7 @@ use polars::prelude::*;
 use std::fs::File;
 use std::collections::VecDeque;
 use polars::datatypes::DataType;
-use std::ops::{Div, Sub};
+use std::ops::{Add, Div, Sub};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use itertools::Itertools;
 use polars::error::PolarsResult;
@@ -183,11 +183,22 @@ impl ReportReader {
             // Read sequences, as bio::io::fasta does not implement synchronized reading
             let sequences: Vec<(Vec<u8>, u64)> = batch_stats.iter().map(|stats| {
                 let mut seq = Vec::new();
-                fasta_reader.fetch(stats.0.as_str(), stats.1 - 2, stats.2 + 2)
-                    .expect(
-                        format!("Failed to fetch region ({}, {}, {})", stats.0, stats.1 - 2, stats.2 + 2).as_str(),
-                    );
-                fasta_reader.read(&mut seq).expect("Failed to read fasta sequence");
+                {
+                    let chr = stats.0.as_str();
+                    let chr_len = fasta_reader.index.sequences().iter().find(|s| s.name == chr)
+                        .expect(format!("Sequence {chr} not found in FASTA file").as_str()).len;
+                    let start = if stats.1 >= 2 { stats.1 - 2 } else { stats.1 };
+                    let stop = if stats.2 + 2 <= chr_len { stats.2 + 2 } else { chr_len };
+                    fasta_reader.fetch(
+                        chr,
+                        start,
+                        stop
+                    )
+                        .expect(
+                            format!("Failed to fetch region ({}, {}, {})", chr, start, stop).as_str(),
+                        );
+                    fasta_reader.read(&mut seq).expect("Failed to read fasta sequence");
+                }
                 (seq, stats.1)
             }).collect();
 
@@ -236,18 +247,6 @@ impl ReportReader {
             full
                 .partition_by(["chr"], true)
                 .unwrap()
-                .iter().map(
-                    |batch| {
-                        batch
-                            .with_row_index("batch".into(), None).unwrap()
-                            .lazy()
-                            .with_column(col("batch").div(lit(self.batch_size as u32)).sub(lit(0.5)).cast(DataType::UInt32))
-                            .collect().unwrap()
-                            .partition_by(["batch"], false).unwrap()
-                    }
-                )
-                .flatten()
-                .collect()
         } else {batches};
 
         for batch in {

@@ -86,13 +86,13 @@ pub fn prepare_projection(
 }
 
 /// An iterator of [`RecordBatchT`]s from an Arrow IPC file.
-#[derive(Clone)]
 pub struct IpcFileReader<R: Read + Seek> {
     reader: R,
     metadata: FileMetadata,
     // the dictionaries are going to be read
     dictionaries: Option<Dictionaries>,
     current_block: usize,
+    blocks_total: usize,
     projection: Option<(Vec<usize>, PlHashMap<usize, usize>, ArrowSchema)>,
     remaining: usize,
     data_scratch: Vec<u8>,
@@ -109,6 +109,7 @@ impl<R: Read + Seek> IpcFileReader<R> {
             let (p, h, schema) = prepare_projection(&metadata.schema, projection);
             (p, h, schema)
         });
+        let blocks_total = metadata.blocks.len();
         Self {
             reader,
             metadata,
@@ -116,6 +117,7 @@ impl<R: Read + Seek> IpcFileReader<R> {
             projection,
             remaining: limit.unwrap_or(usize::MAX),
             current_block: 0,
+            blocks_total,
             data_scratch: Default::default(),
             message_scratch: Default::default(),
         }
@@ -127,6 +129,10 @@ impl<R: Read + Seek> IpcFileReader<R> {
             .as_ref()
             .map(|x| &x.2)
             .unwrap_or(&self.metadata.schema)
+    }
+    
+    pub fn blocks_total(&self) -> usize {
+        self.blocks_total
     }
 
     /// Returns the [`FileMetadata`]

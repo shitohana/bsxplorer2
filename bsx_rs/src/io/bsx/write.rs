@@ -31,12 +31,12 @@ pub fn get_universal_schema(chr_names: Vec<String>) -> Schema {
 
     let mut schema = Schema::default();
     schema.insert(PlSmallStr::from_str("chr"), categories);
-    schema.insert(PlSmallStr::from_str("position"), DataType::UInt64);
+    schema.insert(PlSmallStr::from_str("position"), DataType::UInt32);
     schema.insert(PlSmallStr::from_str("strand"), DataType::Boolean);
     schema.insert(PlSmallStr::from_str("context"), DataType::Boolean);
     schema.insert(PlSmallStr::from_str("count_m"), DataType::UInt16);
     schema.insert(PlSmallStr::from_str("count_total"), DataType::UInt16);
-    schema.insert(PlSmallStr::from_str("density"), DataType::Float32);
+    schema.insert(PlSmallStr::from_str("density"), DataType::Float64);
 
     schema
 }
@@ -150,9 +150,9 @@ impl ConvertReportOptions {
         for mut batch in reader {
             batch = batch.lazy()
                 .cast(schema_cast.clone(), true)
+                .sort(["position"], SortMultipleOptions::default().with_order_descending(false).with_multithreaded(true))
                 .collect()?
                 .select(schema_names.clone())?;
-            println!("{:?}", batch.get(0).unwrap());
             writer.write_batch(&mut batch).expect("could not write batch");
         }
         writer.finish().expect("could not finish write");

@@ -16,3 +16,40 @@ members = [
 
 [dependencies]
 bsx_rs = { path = "./bsx_rs"}
+log = "0.4.22"
+pretty_env_logger = "0.5.0"
+
+polars = {version = "0.44.2", features = [
+    # Performance
+    "performant",
+    # Data types
+    "dtype-categorical",
+    "dtype-struct",
+    "dtype-array",
+    # Lazy
+    "lazy",
+    # IO
+    "csv",
+    "decompress",
+    "ipc",
+    "ipc_streaming",
+    "streaming",
+    # DataFrame operations
+    "dataframe_arithmetic",
+    "partition_by",
+    "asof_join",
+    "polars-ops",
+    "cumulative_eval",
+    "cum_agg",
+    # Expressions
+    "strings",
+    "is_in",
+    "concat_str",
+    "rank",
+    "list_eval",
+    "list_count",
+    "list_any_all",
+    "search_sorted",
+    # Misc
+    "fmt",
+]}
