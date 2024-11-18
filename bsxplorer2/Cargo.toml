@@ -36,6 +36,7 @@ features = [
     "asof_join",
     # Expressions
     "strings",
+    "round_series",
     "is_in",
     "concat_str",
     "rank",

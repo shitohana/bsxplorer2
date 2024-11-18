@@ -24,23 +24,23 @@ pub enum FillNullStrategy {
 #[derive(Clone)]
 pub struct NullHandleStrategy {
     skip: bool,
-    fill: self::FillNullStrategy,
+    fill: FillNullStrategy,
 }
 
 impl Default for NullHandleStrategy {
     fn default() -> Self {
         Self {
             skip: false,
-            fill: self::FillNullStrategy::Zero,
+            fill: FillNullStrategy::Zero,
         }
     }
 }
 
 impl NullHandleStrategy {
-    pub fn new(skip: bool, fill: self::FillNullStrategy) -> Self {
+    pub fn new(skip: bool, fill: FillNullStrategy) -> Self {
         Self { skip, fill }
     }
-    pub fn with_fill(mut self, fill: self::FillNullStrategy) -> Self {
+    pub fn with_fill(mut self, fill: FillNullStrategy) -> Self {
         self.fill = fill;
         self
     }
@@ -51,8 +51,7 @@ impl NullHandleStrategy {
     fn to_polars(&self) -> Option<polars::chunked_array::ops::FillNullStrategy> {
         if !self.skip {
             None
-        }
-        else {
+        } else {
             let strategy = match self.fill {
                 FillNullStrategy::Zero => polars::chunked_array::ops::FillNullStrategy::Zero,
                 FillNullStrategy::One => polars::chunked_array::ops::FillNullStrategy::One,
@@ -83,21 +82,10 @@ impl RegionData {
 
     pub fn drop_null(&mut self, null_strategy: NullHandleStrategy) -> Option<()> {
         for col in ["density", "count_m", "count_total"] {
-            if self
-                .data
-                .column(col)
-                .unwrap()
-                .null_count()
-                > 0
-                && null_strategy.skip
-            {
+            if self.data.column(col).unwrap().null_count() > 0 && null_strategy.skip {
                 return None;
-            }
-            else if !null_strategy.skip {
-                self.data = self
-                    .data
-                    .fill_null(null_strategy.to_polars()?)
-                    .unwrap();
+            } else if !null_strategy.skip {
+                self.data = self.data.fill_null(null_strategy.to_polars()?).unwrap();
             }
         }
         Some(())

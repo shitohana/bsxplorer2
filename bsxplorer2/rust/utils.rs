@@ -1,8 +1,5 @@
+use bsx_rs::utils::types::{Context as ContextRust, Strand as StrandRust};
 use pyo3::prelude::*;
-use bsx_rs::utils::types::{
-    Context as ContextRust,
-    Strand as StrandRust
-};
 
 #[pyclass]
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]

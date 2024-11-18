@@ -1,3 +1,5 @@
+use std::ops::Div;
+use std::cmp::Ordering;
 use crate::io::bsx::region_reader::ReadFilters;
 use crate::io::report::types::ReportType;
 use crate::region::{RegionCoordinates, RegionData};
@@ -6,7 +8,10 @@ use itertools::Itertools;
 use polars::prelude::*;
 use std::fmt::Display;
 use std::ops::Not;
+use polars::export::num::WrappingNeg;
+use crate::io::report::read::BatchStats;
 
+#[derive(Debug, Clone)]
 pub struct UniversalBatch {
     data: DataFrame,
 }
@@ -26,20 +31,15 @@ impl UniversalBatch {
 
     pub fn new(mut data: DataFrame) -> Self {
         let mut data_schema = data.schema();
-        assert_eq!(
-            Self::colnames()
-                .iter()
-                .map(|&name| name.to_string())
-                .collect_vec(),
-            data.schema()
-                .iter_names()
-                .map(|val| val.to_string())
-                .collect_vec(),
+        
+        assert!(
+            Self::colnames().into_iter().all(|name| data_schema.get(name).is_some()),
             "DataFrame columns does not match schema"
         );
+        
         // Schema consistency check
         assert!(
-            data_schema.get("chr").unwrap().is_categorical(),
+            data_schema.get("chr").unwrap().is_string(),
             "DataFrame column 'chr' must be categorical"
         );
         assert!(
@@ -69,7 +69,7 @@ impl UniversalBatch {
             let orig_dtype = data_schema.get("density").unwrap().clone();
             assert!(
                 orig_dtype.is_float(),
-                "DataFrame column 'density' must be float"
+                "DataFrame column 'density' must be float {orig_dtype}"
             );
             if orig_dtype != DataType::Float64 {
                 data_schema.set_dtype("density", DataType::Float64);
@@ -84,15 +84,54 @@ impl UniversalBatch {
                 "DataFrame column '{col}' cannot be null"
             );
         }
-
-        data = data
-            .select_with_schema(
-                data_schema.iter_names().map(|x| x.clone()),
-                &SchemaRef::from(data_schema.clone()),
-            )
-            .unwrap();
+        let data = data.lazy()
+            .cast(
+                PlHashMap::from_iter(
+                    data_schema.iter()
+                        .map(|(x, _dtype)| (x.as_str(), _dtype.clone()))
+                ), 
+                true
+            ).collect().unwrap();
 
         Self { data }
+    }
+    
+    pub fn from_report_type(data: DataFrame, report_type: ReportType) -> Result<Self, PolarsError> {
+        let lazy_frame = data.lazy();
+
+        let context_encoder = when(col("context").eq(lit("CG")))
+            .then(lit(true))
+            .when(col("context").eq(lit("CHG")))
+            .then(lit(false))
+            .otherwise(lit(NULL))
+            .cast(DataType::Boolean);
+        
+        let res = match report_type {
+            ReportType::BISMARK => lazy_frame
+                .with_column((col("count_m") + col("count_um")).alias("count_total"))
+                .with_columns([
+                    (col("count_m") / col("count_total").cast(DataType::Float64)).cast(DataType::Float64).alias("density"),
+                    col("strand").eq(lit("+")).alias("strand"),
+                    col("count_m") / col("count_total").alias("context"),
+                ]),
+            ReportType::CGMAP => lazy_frame.with_columns([
+                col("nuc").eq(lit("C")).alias("strand"),
+                context_encoder.alias("context"),
+            ]),
+            ReportType::BEDGRAPH => lazy_frame
+                .rename(["start"], ["position"], true)
+                .drop(["end"])
+                .with_columns([
+                    lit(NULL).alias("count_m"),
+                    lit(NULL).alias("count_total"),
+                    col("density").div(lit(100)).alias("density"),
+                ]),
+            ReportType::COVERAGE => lazy_frame
+                .rename(["start"], ["position"], true)
+                .drop(["end"]),
+        }.collect();
+        
+        Ok(Self::new(res?))
     }
 
     pub fn into_report_type(self, report_type: ReportType) -> DataFrame {
@@ -129,7 +168,7 @@ impl UniversalBatch {
             .unwrap();
         new_data
     }
-    
+
     /// Get reference to inner DataFrame
     pub fn get_data(&self) -> &DataFrame {
         &self.data
@@ -163,13 +202,16 @@ impl UniversalBatch {
         self.data
             .column("chr")
             .unwrap()
-            .categorical()
+            .str()
             .unwrap()
-            .physical()
             .n_unique()
             .unwrap()
             == 1
     }
+    pub fn get_chr(&self) -> String {
+        self.data.column("chr").unwrap().str().unwrap().first().unwrap().to_string()
+    }
+    
     /// Filter self by [ReadFilters]
     pub fn filter(mut self, filter: &ReadFilters) -> Self {
         if let Some(context) = filter.context {
@@ -252,5 +294,27 @@ impl From<DataFrame> for UniversalBatch {
 impl From<UniversalBatch> for DataFrame {
     fn from(data_frame: UniversalBatch) -> Self {
         data_frame.data
+    }
+}
+
+impl Eq for UniversalBatch {}
+
+impl PartialEq<Self> for UniversalBatch {
+    fn eq(&self, other: &Self) -> bool {
+        self.first_position() == other.first_position()
+    }
+}
+
+impl PartialOrd<Self> for UniversalBatch {
+    /// Order implemented as reversed for correct ordering in Max-heap
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        ((self.first_position() as i32).wrapping_neg()).partial_cmp(&(other.first_position() as i32).wrapping_neg())
+    }
+}
+
+impl Ord for UniversalBatch {
+    /// Order implemented as reversed for correct ordering in Max-heap
+    fn cmp(&self, other: &Self) -> Ordering {
+        ((self.first_position() as i32).wrapping_neg()).cmp(&(other.first_position() as i32).wrapping_neg())
     }
 }

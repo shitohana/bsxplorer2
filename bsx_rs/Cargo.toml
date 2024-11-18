@@ -21,7 +21,7 @@ bio = "2.0.3"
 zip = "=2.2.0"
 itertools = "0.13.0"
 rayon = "1.10"
-rust-htslib = "0.47.0"
+rust-htslib = "0.48.0"
 bam = "0.1.4"
 memmap2 = "0.9.5"
 polars-arrow = {version = "0.44.2", features = ["io_ipc"]}
@@ -53,6 +53,7 @@ features = [
     # Expressions
     "strings",
     "is_in",
+    "round_series",
     "concat_str",
     "rank",
     "list_eval",

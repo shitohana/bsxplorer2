@@ -49,11 +49,7 @@ impl AnnotationFileConf {
 
     /// Filter non specified column indices and create a vector
     pub fn col_indices(&self) -> Vec<usize> {
-        self.indexes()
-            .iter()
-            .flatten()
-            .cloned()
-            .collect::<Vec<_>>()
+        self.indexes().iter().flatten().cloned().collect::<Vec<_>>()
     }
     /// Filter unspecified columns and get their names vector
     pub fn col_names(&self) -> Vec<String> {
@@ -69,9 +65,7 @@ impl AnnotationFileConf {
         LazyCsvReader::new(file)
             .with_separator(self.separator.unwrap_or(b'\t'))
             .with_comment_prefix(Some(PlSmallStr::from(
-                self.comment_prefix
-                    .clone()
-                    .unwrap_or("#".to_string()),
+                self.comment_prefix.clone().unwrap_or("#".to_string()),
             )))
             .with_try_parse_dates(false)
             .with_has_header(self.has_header.unwrap_or(false))
@@ -89,9 +83,7 @@ impl AnnotationBuilder {
     }
 
     pub fn new(mut raw: LazyFrame) -> AnnotationBuilder {
-        let schema = raw
-            .collect_schema()
-            .expect("schema generation failed");
+        let schema = raw.collect_schema().expect("schema generation failed");
         if schema.get("chr").is_none()
             || schema.get("start").is_none()
             || schema.get("end").is_none()
@@ -141,15 +133,8 @@ impl AnnotationBuilder {
                 itertools::izip!(&configuration.col_indices(), &configuration.col_names())
                     .map(|(idx, name)| -> Expr {
                         let old_name = schema_cols.get(*idx).unwrap().clone();
-                        let target_type = {
-                            self_schema
-                                .get_field(name)
-                                .unwrap()
-                                .dtype
-                        };
-                        let expr = col(old_name)
-                            .cast(target_type)
-                            .alias(name);
+                        let target_type = { self_schema.get_field(name).unwrap().dtype };
+                        let expr = col(old_name).cast(target_type).alias(name);
                         expr
                     })
                     .collect::<Vec<_>>()
@@ -157,19 +142,11 @@ impl AnnotationBuilder {
 
             if configuration.read_filters.is_some() {
                 // Apply filters if present
-                df = df.filter(
-                    configuration
-                        .read_filters
-                        .unwrap_or(lit(true)),
-                )
+                df = df.filter(configuration.read_filters.unwrap_or(lit(true)))
             }
 
             if configuration.regex.is_some() {
-                df = df.with_column(
-                    col("id")
-                        .str()
-                        .extract(configuration.regex.unwrap(), 1),
-                )
+                df = df.with_column(col("id").str().extract(configuration.regex.unwrap(), 1))
             }
 
             df

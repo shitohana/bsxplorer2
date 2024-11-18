@@ -5,6 +5,7 @@ use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use std::fs::File;
 use std::io::Write;
+use log::{debug, info};
 
 pub struct BSXWriter<W: Write> {
     writer: BatchedWriter<W>,
@@ -19,10 +20,7 @@ pub fn get_universal_schema(chr_names: Vec<String>) -> Schema {
             for chr_name in chr_names {
                 let _ = &cat_builder.append(Some(chr_name.as_str()));
             }
-            cat_builder
-                .finish()
-                .get_rev_map()
-                .clone()
+            cat_builder.finish().get_rev_map().clone()
         }),
         CategoricalOrdering::Physical,
     );
@@ -53,8 +51,7 @@ impl<W: Write> BSXWriter<W> {
     }
 
     pub fn write_batch(&mut self, batch: &mut DataFrame) -> Result<(), PolarsError> {
-        self.writer
-            .write_batch(batch.align_chunks())
+        self.writer.write_batch(batch.align_chunks())
     }
 
     pub fn finish(mut self) -> Result<(), PolarsError> {
@@ -65,7 +62,6 @@ impl<W: Write> BSXWriter<W> {
         &self.schema
     }
 }
-
 
 pub struct ConvertReportOptions {
     batch_per_read: Option<usize>,
@@ -123,6 +119,7 @@ impl ConvertReportOptions {
         fai_path: &str,
     ) -> Result<(), PolarsError> {
         let file = File::open(report_path).expect("could not open file");
+        info!("Opened CSV file:\n{:?}\n", file);
         let csv_reader: CsvReader<Box<dyn MmapBytesReader>> = {
             report_type.get_reader(
                 Box::new(file),
@@ -138,26 +135,22 @@ impl ConvertReportOptions {
             csv_reader,
             self.batch_per_read,
             self.batch_size,
-            Some(fa_path.to_owned()),
-            Some(fai_path.to_owned()),
+            fa_path.to_owned(),
+            fai_path.to_owned(),
         );
+        info!("Initialized ReportReader");
 
         let sink = File::create(output_path).expect("could not create output file");
-        let mut writer = BSXWriter::new(sink, reader.get_chr_names().unwrap());
+        let mut writer = BSXWriter::new(sink, reader.get_chr_order().iter().cloned().collect());
         let schema = writer.get_schema().clone();
-        let schema_cast = PlHashMap::from_iter(
-            schema
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.clone())),
-        );
-        let schema_names = schema
-            .iter_names()
-            .map(|x| x.clone())
-            .collect::<Vec<_>>();
+        let schema_cast = PlHashMap::from_iter(schema.iter().map(|(k, v)| (k.as_str(), v.clone())));
+        let schema_names = schema.iter_names().map(|x| x.clone()).collect::<Vec<_>>();
 
         for batch in reader {
+            let chr = batch.get_chr();
+            let (start, end) = (batch.first_position(), batch.last_position());
             let mut batch_data: DataFrame = batch.into();
-            
+
             batch_data = batch_data
                 .lazy()
                 .cast(schema_cast.clone(), true)
@@ -172,10 +165,13 @@ impl ConvertReportOptions {
             writer
                 .write_batch(&mut batch_data)
                 .expect("could not write batch");
+            debug!("written batch with {} rows - {chr}:{start}-{end}", batch_data.height())
         }
-        writer
-            .finish()
-            .expect("could not finish write");
+        // writer
+        //     .write_batch(reader.get_leftover().unwrap().into())
+        //     .expect("could not write batch");
+        writer.finish().expect("could not finish write");
+        info!("Finished converting CSV file");
         Ok(())
     }
 }

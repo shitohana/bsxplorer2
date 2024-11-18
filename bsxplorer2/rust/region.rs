@@ -1,3 +1,8 @@
+use bsx_rs::region::{
+    FillNullStrategy as FillNullStrategyRust, NullHandleStrategy as NullHandleStrategyRust,
+    RegionCoordinates as RegionCoordinatesRust, RegionData as RegionDataRust,
+};
+use polars::prelude::*;
 /// Python port of bsx_rs::region. Implemented objects:
 /// -   [RegionCoordinates] ([bsx_rs::region::RegionCoordinates])
 ///     - Initializer
@@ -11,16 +16,8 @@
 ///     - drop_null
 ///     - [RegionCoordinates] getter
 ///     - discretize
-
 use pyo3::prelude::*;
 use pyo3_polars::*;
-use polars::prelude::*;
-use bsx_rs::region::{
-    FillNullStrategy as FillNullStrategyRust,
-    NullHandleStrategy as NullHandleStrategyRust,
-    RegionData as RegionDataRust,
-    RegionCoordinates as RegionCoordinatesRust
-};
 
 #[pyclass]
 pub struct RegionCoordinates {
@@ -160,27 +157,45 @@ impl NullHandleStrategy {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{
-        FillNullStrategyRust,
-        FillNullStrategy as FillNullStrategyPython,
+        FillNullStrategy as FillNullStrategyPython, FillNullStrategyRust, NullHandleStrategy,
         RegionCoordinates, RegionData,
-        NullHandleStrategy,
     };
     use polars::prelude::*;
 
     #[test]
     fn test_python_to_rust_enum_consistency() {
         // Verify each variant in the Python enum maps to the corresponding variant in the Rust enum.
-        assert_eq!(FillNullStrategyPython::Mean.to_rust(), FillNullStrategyRust::Mean);
-        assert_eq!(FillNullStrategyPython::Min.to_rust(), FillNullStrategyRust::Min);
-        assert_eq!(FillNullStrategyPython::Max.to_rust(), FillNullStrategyRust::Max);
-        assert_eq!(FillNullStrategyPython::Zero.to_rust(), FillNullStrategyRust::Zero);
-        assert_eq!(FillNullStrategyPython::One.to_rust(), FillNullStrategyRust::One);
-        assert_eq!(FillNullStrategyPython::MaxBound.to_rust(), FillNullStrategyRust::MaxBound);
-        assert_eq!(FillNullStrategyPython::MinBound.to_rust(), FillNullStrategyRust::MinBound);
+        assert_eq!(
+            FillNullStrategyPython::Mean.to_rust(),
+            FillNullStrategyRust::Mean
+        );
+        assert_eq!(
+            FillNullStrategyPython::Min.to_rust(),
+            FillNullStrategyRust::Min
+        );
+        assert_eq!(
+            FillNullStrategyPython::Max.to_rust(),
+            FillNullStrategyRust::Max
+        );
+        assert_eq!(
+            FillNullStrategyPython::Zero.to_rust(),
+            FillNullStrategyRust::Zero
+        );
+        assert_eq!(
+            FillNullStrategyPython::One.to_rust(),
+            FillNullStrategyRust::One
+        );
+        assert_eq!(
+            FillNullStrategyPython::MaxBound.to_rust(),
+            FillNullStrategyRust::MaxBound
+        );
+        assert_eq!(
+            FillNullStrategyPython::MinBound.to_rust(),
+            FillNullStrategyRust::MinBound
+        );
     }
 
     #[test]

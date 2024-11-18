@@ -1,15 +1,15 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-use log::{debug, info};
-use polars::frame::DataFrame;
-use polars::datatypes::{DataType, PlHashMap};
-use polars::error::PolarsError;
-use polars::prelude::IntoLazy;
-use itertools::Itertools;
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use crate::io::bsx::bsx_reader::BSXReader;
 use crate::region::{RegionCoordinates, RegionData};
 use crate::ubatch::UniversalBatch;
 use crate::utils::types::{Context, Strand};
+use itertools::Itertools;
+use log::{debug, info};
+use polars::datatypes::{DataType, PlHashMap};
+use polars::error::PolarsError;
+use polars::frame::DataFrame;
+use polars::prelude::IntoLazy;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Configuration for [RegionsDataReader]
 #[derive(Clone)]
@@ -24,14 +24,14 @@ impl ReadFilters {
     pub fn new(context: Option<Context>, strand: Option<Strand>) -> Self {
         Self { context, strand }
     }
-    
+
     /// Constructor for no filtering
     pub fn empty() -> Self {
         Self::new(None, None)
     }
 }
 
-/// High-level interface for reading BSXplorer IPC file, which 
+/// High-level interface for reading BSXplorer IPC file, which
 /// iterates over regions
 pub struct RegionsDataReader {
     reader: BSXReader,
@@ -195,11 +195,8 @@ impl RegionsDataIterator {
             plan,
             incomplete,
             assembled_queue,
-            batch_per_read: batch_per_read.unwrap_or(
-                std::thread::available_parallelism()
-                    .unwrap()
-                    .into(),
-            ),
+            batch_per_read: batch_per_read
+                .unwrap_or(std::thread::available_parallelism().unwrap().into()),
             read_filters,
         }
     }
@@ -248,16 +245,11 @@ impl RegionsDataIterator {
                 .map(|set| set.into_iter().collect::<Vec<_>>())
                 .flatten(),
         );
-        let region_coordinates: HashMap<usize, RegionCoordinates> =
-            HashMap::from_iter(regions_set.iter().map(|reg_id| {
-                (
-                    *reg_id,
-                    self.region_mapping
-                        .get(reg_id)
-                        .unwrap()
-                        .clone(),
-                )
-            }));
+        let region_coordinates: HashMap<usize, RegionCoordinates> = HashMap::from_iter(
+            regions_set
+                .iter()
+                .map(|reg_id| (*reg_id, self.region_mapping.get(reg_id).unwrap().clone())),
+        );
         let filters_copy = self.read_filters.clone();
 
         // Trim dataframes
@@ -272,9 +264,7 @@ impl RegionsDataIterator {
             .map(|((_, batch), region_indexes)| {
                 let mut res = Vec::new();
                 for reg_index in region_indexes {
-                    let coordinates = region_coordinates
-                        .get(&reg_index)
-                        .unwrap();
+                    let coordinates = region_coordinates.get(&reg_index).unwrap();
                     let region_data = batch.slice(coordinates).data;
                     res.push((reg_index, region_data))
                 }
@@ -287,20 +277,14 @@ impl RegionsDataIterator {
             match self.incomplete.get_mut(&reg_idx) {
                 Some(vec) => vec.push(reg_df),
                 None => {
-                    self.incomplete
-                        .insert(reg_idx, vec![reg_df]);
+                    self.incomplete.insert(reg_idx, vec![reg_df]);
                 }
             }
         }
         // Check if any of affected regions are all completed and can
         // be outputted
         for region_id in regions_set {
-            if self
-                .regions_remaining
-                .get(&region_id)
-                .unwrap()
-                .is_empty()
-            {
+            if self.regions_remaining.get(&region_id).unwrap().is_empty() {
                 let region_data = match self.incomplete.remove(&region_id) {
                     Some(vec) => vec,
                     None => {
@@ -311,10 +295,7 @@ impl RegionsDataIterator {
 
                 match RegionData::from_parts(
                     region_data,
-                    self.region_mapping
-                        .get(&region_id)
-                        .unwrap()
-                        .clone(),
+                    self.region_mapping.get(&region_id).unwrap().clone(),
                 ) {
                     Some(data) => {
                         debug!(
@@ -329,9 +310,7 @@ impl RegionsDataIterator {
                     None => {
                         debug!(
                             "Could not assemble region {:?}. Empty DataFrame",
-                            self.region_mapping
-                                .get(&region_id)
-                                .unwrap()
+                            self.region_mapping.get(&region_id).unwrap()
                         );
                     }
                 }
@@ -363,10 +342,7 @@ impl Iterator for RegionsDataIterator {
 
             self.process_batches(required_batches);
         }
-        let data = self
-            .assembled_queue
-            .pop_front()
-            .unwrap();
+        let data = self.assembled_queue.pop_front().unwrap();
         Some(data)
     }
 }

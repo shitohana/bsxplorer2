@@ -1,19 +1,14 @@
+use log::info;
+use polars::prelude::*;
+use polars_arrow::io::ipc::read::FileMetadata;
 use std::collections::btree_map::Cursor;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::ops::Bound::Included;
-use std::ops::Not;
-use itertools::Itertools;
-use polars::prelude::*;
-use rayon::prelude::*;
-use polars_arrow::io::ipc::read::FileMetadata;
-use log::{debug, info};
 
 use crate::io::bsx::ipc::IpcFileReader;
-use crate::region::{RegionCoordinates, RegionData};
 use crate::ubatch::UniversalBatch;
-use crate::utils::types::{Context, Strand};
 
 type BSXIndex = HashMap<String, BTreeMap<u32, usize>>;
 
@@ -26,7 +21,7 @@ impl BSXBTree {
     pub(crate) fn new() -> Self {
         Self(HashMap::new())
     }
-    
+
     /// Insert node to a [BTreeMap].
     pub(crate) fn insert(&mut self, chr: String, start: u32, idx: usize) {
         match self.0.get_mut(&chr) {
@@ -46,11 +41,7 @@ impl BSXBTree {
     }
     /// Get cursor to the first batch, which has lower start position.
     pub fn get_lower_bound(&self, chr: String, start: u32) -> Option<Cursor<'_, u32, usize>> {
-        Some(
-            self.0
-                .get(&chr)?
-                .lower_bound(Included(&start)),
-        )
+        Some(self.0.get(&chr)?.lower_bound(Included(&start)))
     }
     /// Get all batch indexes, which contain data about specified region
     pub fn get_region(&self, chr: &str, start: u32, end: u32) -> Option<Vec<usize>> {
@@ -59,8 +50,7 @@ impl BSXBTree {
         while let Some((start_val, index)) = lower_bound.next() {
             if start_val > &end {
                 break;
-            }
-            else {
+            } else {
                 batches.push(Some((start_val, index)));
             }
         }
@@ -87,7 +77,7 @@ impl BSXReader {
         let mut temp_reader = IpcFileReader::new(temp_handle, projection.clone(), None);
         info!("Opened BSX file");
         let mut index = BSXBTree::new();
-        
+
         // Create index
         for (num, df) in {
             (0..temp_reader.blocks_total())
@@ -104,11 +94,7 @@ impl BSXReader {
                 .first()
                 .unwrap();
 
-            let chr_col = df
-                .column("chr")
-                .unwrap()
-                .categorical()
-                .unwrap();
+            let chr_col = df.column("chr").unwrap().categorical().unwrap();
             let chr_mapping = chr_col.get_rev_map();
 
             let chr = chr_mapping
@@ -121,7 +107,7 @@ impl BSXReader {
             "Indexed BSX file with {} batches",
             temp_reader.blocks_total()
         );
-        
+
         // Reinitialize reader
         handle.seek(SeekFrom::Start(0)).unwrap();
         let reader = IpcFileReader::new(handle, projection, None);
@@ -152,22 +138,19 @@ impl Iterator for BSXReader {
 
     fn count(self) -> usize
     where
-        Self: Sized, {
+        Self: Sized,
+    {
         self.reader.blocks_total()
     }
 
     fn last(mut self) -> Option<Self::Item>
     where
-        Self: Sized, {
+        Self: Sized,
+    {
         self.nth(self.reader.blocks_total() - 1)
     }
 
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        Some(
-            self.reader
-                .read_df_at(n)
-                .expect("Could not read df")
-                .into(),
-        )
+        Some(self.reader.read_df_at(n).expect("Could not read df").into())
     }
 }

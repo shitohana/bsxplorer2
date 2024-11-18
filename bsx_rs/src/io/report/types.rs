@@ -1,3 +1,4 @@
+use log::info;
 use polars::datatypes::{DataType, PlIndexMap, PlSmallStr};
 use polars::io::csv::write::BatchedWriter;
 use polars::io::mmap::MmapBytesReader;
@@ -6,6 +7,7 @@ use std::io::Write;
 use std::num::NonZero;
 use std::ops::Div;
 
+#[derive(Debug)]
 pub enum ReportType {
     BISMARK,
     CGMAP,
@@ -107,6 +109,7 @@ impl ReportType {
                 .batched(&self.get_schema())
                 .expect("could not create the csv writer"),
         };
+        info!("Opened writer with {self:?} with batch_size {batch_size:?} with n_threads {n_threads:?}");
         writer
     }
 
@@ -127,10 +130,8 @@ impl ReportType {
             ReportType::BISMARK => lazy_frame
                 .with_column((col("count_m") + col("count_um")).alias("count_total"))
                 .with_columns([
-                    (col("count_m") / col("count_total")).alias("density"),
-                    col("strand")
-                        .eq(lit("+"))
-                        .alias("strand"),
+                    (col("count_m") / col("count_total").cast(DataType::Float64)).cast(DataType::Float64).alias("density"),
+                    col("strand").eq(lit("+")).alias("strand"),
                     col("count_m") / col("count_total").alias("context"),
                 ]),
             ReportType::CGMAP => lazy_frame.with_columns([
@@ -143,9 +144,7 @@ impl ReportType {
                 .with_columns([
                     lit(NULL).alias("count_m"),
                     lit(NULL).alias("count_total"),
-                    col("density")
-                        .div(lit(100))
-                        .alias("density"),
+                    col("density").div(lit(100)).alias("density"),
                 ]),
             ReportType::COVERAGE => lazy_frame
                 .rename(["start"], ["position"], true)
