@@ -17,6 +17,7 @@ fn main() {
     ConvertReportOptions::default()
         .with_chunk_size(10_000)
         .with_batch_size(10_000)
+        .with_batch_per_read(50)
         .finish(
             ReportType::BISMARK,
             "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt",

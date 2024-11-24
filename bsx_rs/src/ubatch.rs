@@ -31,10 +31,9 @@ impl UniversalBatch {
 
     pub fn new(mut data: DataFrame) -> Self {
         let mut data_schema = data.schema();
-        
         assert!(
             Self::colnames().into_iter().all(|name| data_schema.get(name).is_some()),
-            "DataFrame columns does not match schema"
+            "DataFrame columns does not match schema ({:?})", data_schema
         );
         
         // Schema consistency check
@@ -96,41 +95,57 @@ impl UniversalBatch {
         Self { data }
     }
     
-    pub fn from_report_type(data: DataFrame, report_type: ReportType) -> Result<Self, PolarsError> {
-        let lazy_frame = data.lazy();
-
-        let context_encoder = when(col("context").eq(lit("CG")))
+    fn _strand_expr() -> Expr {
+        when(col("strand").eq(lit("+"))).then(true).when(col("strand").eq(lit("-"))).then(false).otherwise(lit(NULL)).cast(DataType::Boolean)
+    }
+    fn _context_expr() -> Expr {
+        when(col("context").eq(lit("CG")))
             .then(lit(true))
             .when(col("context").eq(lit("CHG")))
             .then(lit(false))
             .otherwise(lit(NULL))
-            .cast(DataType::Boolean);
+            .cast(DataType::Boolean)
+    }
+    fn _nuc_expr() -> Expr {
+        when(col("nuc").eq(lit("C"))).then(true).when(col("strand").eq(lit("G"))).then(false).otherwise(lit(NULL)).cast(DataType::Boolean)
+    }
+
+    pub fn from_report_type(data: DataFrame, report_type: &ReportType) -> Result<Self, PolarsError> {
+        let lazy_frame = data.lazy();
         
         let res = match report_type {
             ReportType::BISMARK => lazy_frame
                 .with_column((col("count_m") + col("count_um")).alias("count_total"))
                 .with_columns([
                     (col("count_m") / col("count_total").cast(DataType::Float64)).cast(DataType::Float64).alias("density"),
-                    col("strand").eq(lit("+")).alias("strand"),
-                    col("count_m") / col("count_total").alias("context"),
+                    Self::_strand_expr().alias("strand"),
+                    Self::_context_expr().alias("context"),
                 ]),
             ReportType::CGMAP => lazy_frame.with_columns([
-                col("nuc").eq(lit("C")).alias("strand"),
-                context_encoder.alias("context"),
+                Self::_nuc_expr().alias("strand"),
+                Self::_context_expr().alias("context"),
             ]),
             ReportType::BEDGRAPH => lazy_frame
                 .rename(["start"], ["position"], true)
                 .drop(["end"])
                 .with_columns([
+                    lit(NULL).alias("strand"),
+                    lit(NULL).alias("context"),
                     lit(NULL).alias("count_m"),
                     lit(NULL).alias("count_total"),
                     col("density").div(lit(100)).alias("density"),
                 ]),
             ReportType::COVERAGE => lazy_frame
                 .rename(["start"], ["position"], true)
-                .drop(["end"]),
+                .drop(["end"])
+                .with_column((col("count_m") + col("count_um")).alias("count_total"))
+                .with_columns([
+                    lit(NULL).alias("strand"),
+                    lit(NULL).alias("context"),
+                    col("density").div(lit(100)).alias("density"),
+                ]),
         }.collect();
-        
+
         Ok(Self::new(res?))
     }
 
@@ -211,6 +226,25 @@ impl UniversalBatch {
     pub fn get_chr(&self) -> String {
         self.data.column("chr").unwrap().str().unwrap().first().unwrap().to_string()
     }
+    pub fn partition_chr(self) -> Vec<UniversalBatch> {
+        self.data
+            .partition_by(["chr"], true).unwrap()
+            .into_iter()
+            .map(|d| UniversalBatch::new(d))
+            .collect()
+    }
+    pub fn partition_by_chunks(self, chunk_size: usize) -> Vec<UniversalBatch> {
+        self.data
+            .lazy()
+            .with_row_index("index", None)
+            .with_column(col("index").floor_div(lit(chunk_size as u32)))
+            .collect().unwrap()
+            .partition_by(["index"], false)
+            .unwrap()
+            .into_iter()
+            .map(|d| UniversalBatch::new(d))
+            .collect()
+    }
     
     /// Filter self by [ReadFilters]
     pub fn filter(mut self, filter: &ReadFilters) -> Self {
@@ -222,6 +256,20 @@ impl UniversalBatch {
         }
         self
     }
+    
+    pub fn vstack(mut self, batch: &UniversalBatch) -> UniversalBatch {
+        self.data = self.data.vstack(&batch.data).unwrap();
+        self
+    }
+    
+    pub fn extend(&mut self, batch: &UniversalBatch, to_end: bool) {
+        if to_end {
+            self.data.extend(&batch.data).unwrap()
+        } else {
+            self.data = batch.get_data().clone().vstack(&self.data).unwrap()
+        }
+    }
+    
     /// Create new [UniversalBatch] by [RegionCoordinates] slice.
     pub fn slice(&self, coordinates: &RegionCoordinates) -> RegionData {
         let positions = self.data.column("position").unwrap().u32().unwrap();

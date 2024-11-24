@@ -24,7 +24,7 @@ impl BSXReader {
     }
     pub fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyDataFrame> {
         match slf.inner.next() {
-            Some(data) => Some(PyDataFrame(data)),
+            Some(data) => Some(PyDataFrame(data.into())),
             None => None,
         }
     }

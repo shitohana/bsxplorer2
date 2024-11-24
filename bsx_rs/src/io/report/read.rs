@@ -1,3 +1,4 @@
+use std::cmp::{Ordering, Reverse};
 use crate::io::report::types::ReportType;
 use crate::ubatch::UniversalBatch;
 use itertools::Itertools;
@@ -5,9 +6,10 @@ use log::{debug, info};
 use polars::error::PolarsResult;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fs::File;
+use rayon::prelude::*;
+
 
 pub(crate) struct OwnedBatchedCsvReader {
     #[allow(dead_code)]
@@ -27,12 +29,12 @@ impl OwnedBatchedCsvReader {
 /// Parse cytosine sequence and extract cytosine methylation contexts and positions.
 /// # Returns
 /// Vector of \[position, context, strand\]
-fn parse_cytosines(seq: String, start_pos: u64) -> (Vec<u64>, Vec<Option<bool>>, Vec<bool>) {
+fn parse_cytosines(seq: String, start_pos: u32) -> (Vec<u32>, Vec<Option<bool>>, Vec<bool>) {
     let start_pos = start_pos - 1;
     let fw_bound: usize = seq.len() - 2;
     let rv_bound: usize = 2;
 
-    let mut positions: Vec<u64> = Vec::new();
+    let mut positions: Vec<u32> = Vec::new();
     let mut contexts: Vec<Option<bool>> = Vec::new();
     let mut strands: Vec<bool> = Vec::new();
     let uppercased = seq.to_uppercase();
@@ -67,7 +69,7 @@ fn parse_cytosines(seq: String, start_pos: u64) -> (Vec<u64>, Vec<Option<bool>>,
                 None
             }
         };
-        positions.push(start_pos + index as u64);
+        positions.push(start_pos + index as u32);
         contexts.push(context);
         strands.push(forward);
     }
@@ -86,6 +88,7 @@ impl BatchStats {
 /// are sorted by genomic position.
 ///
 /// **Input** data is expected to be **sorted**.
+
 pub struct ReportReader {
     /// [ReportType] of the report
     report_type: ReportType,
@@ -98,19 +101,24 @@ pub struct ReportReader {
     /// Number of rows in the output batches. All batches will be same specified
     /// length if possible.
     batch_size: usize,
-    leftover_batch: Option<UniversalBatch>,
-    chr_order: Vec<String>,
     /// If [ReportType] is [ReportType::COVERAGE] or [ReportType::BEDGRAPH], this option
     /// should be specified with initialized FASTA reader. If other report types -
     /// it is optional to apply additional alignment to reference cytosines.
     fasta_reader: bio::io::fasta::IndexedReader<File>,
     /// Queue of computed batches.
-    batch_queue: HashMap<String, BinaryHeap<UniversalBatch>>,
+    read_queue: ReadQueue,
 }
 
 impl ReportReader {
     pub fn get_report_type(&self) -> &ReportType {
         &self.report_type
+    }
+
+    pub fn get_chr_order(&mut self) -> Vec<String> {
+        self.fasta_reader.index
+            .sequences().iter()
+            .map(|s| s.name.clone())
+            .collect_vec()
     }
 
     pub fn new(
@@ -129,8 +137,12 @@ impl ReportReader {
 
         let batch_per_read =
             batch_per_read.unwrap_or(std::thread::available_parallelism().unwrap().get());
-        let batch_queue = HashMap::new();
         let batch_size = batch_size.unwrap_or(10_000);
+        let chr_order = fasta_reader.index
+            .sequences().iter()
+            .map(|s| s.name.clone())
+            .collect_vec();
+        let read_queue = ReadQueue::new(batch_size, chr_order);
 
         let schema = SchemaRef::from(report_type.get_schema());
         let batched_reader = reader.batched_borrowed().unwrap();
@@ -142,11 +154,7 @@ impl ReportReader {
             batched_reader,
             _reader: reader,
         };
-        
-        let chr_order = fasta_reader.index
-            .sequences().iter()
-            .map(|s| s.name.clone())
-            .collect_vec();
+
         
         Self {
             report_type,
@@ -154,171 +162,81 @@ impl ReportReader {
             batch_per_read,
             batch_size,
             fasta_reader,
-            batch_queue,
-            leftover_batch: None,
-            chr_order
+            read_queue
         }
-    }
-    
-    pub fn get_chr_order(&self) -> &[String] {
-        &self.chr_order
     }
 
     fn fill_queue(&mut self) -> Option<()> {
-        let read_res = self
-            .batched_reader
-            .next_batches(self.batch_per_read)
-            .expect("Failed to read batches");
-        if read_res.is_none() {
-            return None;
-        };
-        let mut batches = read_res
-            .unwrap()
-            .into_iter()
-            // Partition by chromosomes to allow direct sequence reading
-            .map(|df| df.partition_by(["chr"], true).unwrap())
-            .flatten()
-            .map(|batch| {
-                self.report_type
-                    .to_universal_mutate(batch.lazy())
-                    .collect()
-                    .unwrap()
-            })
-            .collect::<Vec<_>>();
-        
-        batches = {
-            let fasta_reader = &mut self.fasta_reader;
-            // Collect stats about batches to prepare fetch args
-            let batch_stats: Vec<BatchStats> = batches
+        if let Some(batches) = self.batched_reader.next_batches(self.batch_per_read).unwrap() {
+            let report_type = self.report_type.clone();
+            let mut join_args = JoinArgs::new(JoinType::Left);
+            join_args.validation = JoinValidation::OneToOne;
+            
+            let chrom_batches = batches.into_iter()
+                // Split all batches by chromosome
+                .map(
+                    |batch| UniversalBatch::from_report_type(batch, &report_type).unwrap().partition_chr()
+                )
+                .flatten()
+                .into_grouping_map_by(|batch| batch.get_chr()).reduce(
+                    |acc, _chr, new| acc.vstack(&new)
+                )
+                .into_iter()
+                // Sort by chromosome name
+                .sorted_by_cached_key(|(chr, _b)| self.read_queue.get_chr_idx(chr))
+                .collect_vec();
+            let context_dfs = chrom_batches
                 .iter()
-                .map(|batch| -> BatchStats {
-                    let positions = batch.column("position").unwrap().u64().unwrap();
-                    let chr = batch.column("chr").unwrap().str().unwrap().first().unwrap();
-                    let min = positions.first().unwrap();
-                    let max = positions.last().unwrap();
-                    BatchStats(String::from(chr), min, max)
-                })
-                .collect();
-
-            // Read sequences, as bio::io::fasta does not implement synchronized reading
-            let sequences: Vec<(Vec<u8>, u64)> = batch_stats
-                .iter()
-                .map(|stats| {
-                    let mut seq = Vec::new();
-                    {
-                        let chr = stats.0.as_str();
-                        let chr_len = fasta_reader
-                            .index
-                            .sequences()
-                            .iter()
-                            .find(|s| s.name == chr)
+                .map(
+                    |(chr, batch)| {
+                        let mut seq = Vec::new();
+                        let chr_len = self.fasta_reader
+                            .index.sequences().iter()
+                            .find(|s| s.name == *chr)
                             .expect(format!("Sequence {chr} not found in FASTA file").as_str())
                             .len;
-                        let start = if stats.1 >= 2 { stats.1 - 2 } else { stats.1 };
-                        let stop = if stats.2 + 2 <= chr_len {
-                            stats.2 + 2
-                        } else {
-                            chr_len
-                        };
-                        fasta_reader.fetch(chr, start, stop).expect(
-                            format!("Failed to fetch region ({}, {}, {})", chr, start, stop)
+
+                        let mut start = batch.first_position();
+                        if start > 2 { start -= 2; }
+                        let mut end = batch.last_position();
+                        if end + 2 <= chr_len as u32 { end += 2; } else { end = chr_len as u32; }
+
+                        self.fasta_reader.fetch(chr.as_str(), start as u64, end as u64).expect(
+                            format!("Failed to fetch region ({}, {}, {})", chr, start, end)
                                 .as_str(),
                         );
-                        fasta_reader
+                        self.fasta_reader
                             .read(&mut seq)
                             .expect("Failed to read fasta sequence");
-                    }
-                    (seq, stats.1)
-                })
-                .collect();
+                        let (positions, contexts, strands) =
+                            parse_cytosines(String::from_utf8(seq.clone()).unwrap(), start.clone());
+                        let pos_col = Column::new("position".into(), positions);
+                        let ctx_col = Column::new("context".into(), contexts);
+                        let str_col = Column::new("strand".into(), strands);
+                        DataFrame::from_iter(vec![pos_col, ctx_col, str_col])
+                        }
+                ).collect_vec();
+            let res: Vec<UniversalBatch> = 
+                chrom_batches.into_par_iter()
+                    .zip(context_dfs.into_par_iter())
+                    .map(|((chr, batch), context_df)| {
+                        let joined = context_df.lazy()
+                            .join(
+                                batch.get_data().clone().lazy(),
+                                [col("position")], [col("position")],
+                                join_args.clone()
+                            )
+                            .with_column(col("chr").fill_null(lit(chr.clone())));
 
-            // Process sequences and extract cytosine contexts.
-            // Convert them into a DataFrame
-            let context_df_cols = vec![String::from("context"), String::from("strand")];
-            let context_dfs = sequences
-                .par_iter()
-                .map(|(seq, start)| {
-                    let (positions, contexts, strands) =
-                        parse_cytosines(String::from_utf8(seq.clone()).unwrap(), start.clone());
-                    let pos_col = Column::new("position".into(), positions);
-                    let ctx_col = Column::new("context".into(), contexts);
-                    let str_col = Column::new("strand".into(), strands);
-                    DataFrame::from_iter(vec![pos_col, ctx_col, str_col])
-                })
-                .collect::<Vec<_>>();
-            let keep_cols = batches
-                .get(0)
-                .unwrap()
-                .schema()
-                .iter_names()
-                .filter_map(|name| {
-                    if !context_df_cols.contains(&name.to_string().into()) {
-                        Some(name.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
+                        let res = UniversalBatch::from(joined.collect().unwrap());
+                        res
+                    }).collect();
+            res.into_iter().for_each(|r| {self.read_queue.insert(r).unwrap()});
+            Some(())
 
-            // Join raw data to all possible cytosine contexts from reference file.
-            let joined: Vec<LazyFrame> = itertools::izip!(batches, context_dfs)
-                .map(|(raw, contexts)| {
-                    let chr = raw.column("chr").unwrap().str().unwrap().first().unwrap();
-                    let trimmed = raw.select(keep_cols.clone()).unwrap();
-                    let joined = contexts
-                        .lazy()
-                        .join(
-                            trimmed.lazy(),
-                            [col("position")],
-                            [col("position")],
-                            JoinArgs::new(JoinType::Left),
-                        )
-                        .with_columns([col("chr").fill_null(lit(chr))]);
-                    joined
-                })
-                .collect();
-            
-            // Concatenate LazyFrames before splitting into equal-size batches
-            let full = concat(joined, UnionArgs::default())
-                .unwrap()
-                .collect()
-                .expect("Could not concat joined data");
-
-            // Split into equal-size batches
-            full.partition_by(["chr"], true).unwrap()
-        };
-
-        let mut pos_batches = {
-            batches
-                .into_iter()
-                .map(|batch| {
-                    batch
-                        .lazy()
-                        .with_row_index("index", None)
-                        .with_column(col("index").floor_div(lit(self.batch_size as u32)))
-                        .collect().unwrap()
-                        .partition_by(["index"], false)
-                        .unwrap()
-                })
-                .flatten()
-                .map(|df| UniversalBatch::from(df))
-                .sorted_by_cached_key(|batch| { batch.first_position() })
-                .collect_vec()
-        };
-        self.leftover_batch = Some(UniversalBatch::from(pos_batches.pop().unwrap()));
-
-        for chr_batch in pos_batches.into_iter().map(|df| UniversalBatch::from(df)) {
-            match self.batch_queue.get_mut(&chr_batch.get_chr()) {
-                Some(values) => { 
-                    values.push(chr_batch) 
-                },
-                None => { 
-                    self.batch_queue
-                        .insert(chr_batch.get_chr(), BinaryHeap::from(vec![chr_batch])); 
-                },
-            }
+        } else {
+            None
         }
-        Some(())
     }
 }
 
@@ -326,26 +244,131 @@ impl Iterator for ReportReader {
     type Item = UniversalBatch;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.batch_queue.values().all(|x| x.is_empty()) {
-            self.fill_queue();
+        if self.read_queue.is_empty() {
+            match self.fill_queue() {
+                Some(()) => self.next(),
+                None => return self.read_queue.get_leftover()
+            };
+            debug!("filled queue.");
         }
         // Return values by chromosome order
-        for chr_name in self.chr_order.iter().cloned() {
-            match self.batch_queue.get_mut(&chr_name) {
-                Some(values) => {
-                    if values.is_empty() { continue;}
-                    else { return Option::from(values.pop().unwrap()); }
-                },
-                None => { continue; }
+        self.read_queue.pop()
+        // End
+    }
+}
+
+#[derive(Eq)]
+struct ReadQueueItem {
+    chr_idx: usize,
+    batch: UniversalBatch,
+}
+
+impl PartialEq<Self> for ReadQueueItem {
+    fn eq(&self, other: &Self) -> bool {
+        (self.chr_idx == other.chr_idx) && (self.batch.first_position() == other.batch.first_position())
+    }
+}
+
+impl PartialOrd<Self> for ReadQueueItem {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let chr_cmp = self.chr_idx.cmp(&other.chr_idx);
+        match chr_cmp {
+            Ordering::Equal => self.batch.first_position().partial_cmp(&other.batch.first_position()),
+            Ordering::Less => Some(Ordering::Less),
+            Ordering::Greater => Some(Ordering::Greater),
+        }
+    }
+}
+
+impl Ord for ReadQueueItem {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl ReadQueueItem {
+    fn new(chr_idx: usize, batch: UniversalBatch) -> ReadQueueItem {
+        // let chr_idx = Reverse(chr_idx);
+        assert!(
+            batch.unique_chr(),
+            "Batch has data from multiple chromosomes! {}. It must be single chromosome!", 
+            batch.get_data().column("chr").unwrap().unique().unwrap().as_series().unwrap()
+        );
+        ReadQueueItem { chr_idx, batch }
+    }
+}
+
+impl From<ReadQueueItem> for UniversalBatch {
+    fn from(item: ReadQueueItem) -> Self {
+        item.batch
+    }
+}
+
+struct ReadQueue {
+    heap: BinaryHeap<Reverse<ReadQueueItem>>,
+    assemble_cache: Option<UniversalBatch>,
+    chunk_size: usize,
+    chr_order: Vec<String>
+}
+
+impl ReadQueue {
+    fn get_chr_idx(&self, chr: &String) -> usize {
+        self.chr_order.iter().position(|c| c == chr).unwrap()
+    }
+    
+    fn make_item(&self, batch: UniversalBatch) -> Reverse<ReadQueueItem> {
+        let item = ReadQueueItem::new(self.get_chr_idx(&batch.get_chr()), batch);
+        Reverse(item)
+    }
+
+    fn new(chunk_size: usize, chr_order: Vec<String>) -> Self {
+        Self {
+            heap: BinaryHeap::new(),
+            assemble_cache: None,
+            chr_order, chunk_size
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.heap.is_empty()
+    }
+    
+    fn insert(&mut self, batch: UniversalBatch) -> Result<(), ()> {
+        let mut unique_chr = batch.partition_chr();
+        let chr_names: Vec<String> = unique_chr.iter().map(|b| b.get_chr()).collect();
+
+        if let Some(cache) = self.assemble_cache.take() {
+            if chr_names.contains(&cache.get_chr()) {
+                let chr_idx = chr_names.iter().position(|chr| *chr == cache.get_chr()).unwrap();
+                unique_chr.get_mut(chr_idx).unwrap().extend(&cache, false);
+            } else {
+                self.heap.push(self.make_item(cache));
             }
         }
-        // If no values in batch_queue
-        if self.leftover_batch.is_some() {
-            let out = self.leftover_batch.clone().unwrap();
-            self.leftover_batch = None;
-            return Some(out);
+
+        let mut partitioned = unique_chr.into_iter().map(|b| b.partition_by_chunks(self.chunk_size)).collect_vec();
+
+        self.assemble_cache = {
+            let max_chr_idx = chr_names.iter().position_max_by_key(|name| self.get_chr_idx(*name)).unwrap();
+            match partitioned.get(max_chr_idx).unwrap().iter().position(|b| b.get_data().height() != self.chunk_size) {
+                Some(pos) => Some(partitioned.get_mut(max_chr_idx).unwrap().remove(pos)),
+                None => None
+            }
+        };
+
+        partitioned.into_iter().flatten().for_each(|b| self.heap.push(self.make_item(b)));
+        Ok(())
+    }
+    
+    fn pop(&mut self) -> Option<UniversalBatch> {
+        if let Some(item) = self.heap.pop() {
+            Some(item.0.into())
+        } else {
+            None
         }
-        // End
-        None
+    }
+    
+    fn get_leftover(&mut self) -> Option<UniversalBatch> {
+        self.assemble_cache.take()
     }
 }
