@@ -7,6 +7,7 @@ use polars::error::PolarsResult;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::hash_map::Drain;
 use std::fs::File;
 use rayon::prelude::*;
 
@@ -183,7 +184,6 @@ impl ReportReader {
                 )
                 .into_iter()
                 // Sort by chromosome name
-                .sorted_by_cached_key(|(chr, _b)| self.read_queue.get_chr_idx(chr))
                 .collect_vec();
             let context_dfs = chrom_batches
                 .iter()
@@ -231,7 +231,7 @@ impl ReportReader {
                         let res = UniversalBatch::from(joined.collect().unwrap());
                         res
                     }).collect();
-            res.into_iter().for_each(|r| {self.read_queue.insert(r).unwrap()});
+            res.into_iter().sorted_by_cached_key(|b| self.read_queue.get_chr_idx(&b.get_chr())).for_each(|r| {self.read_queue.insert(r).unwrap()});
             Some(())
 
         } else {
@@ -246,9 +246,9 @@ impl Iterator for ReportReader {
     fn next(&mut self) -> Option<Self::Item> {
         if self.read_queue.is_empty() {
             match self.fill_queue() {
-                Some(()) => self.next(),
-                None => return self.read_queue.get_leftover()
+                _ => {},
             };
+            self.next();
             debug!("filled queue.");
         }
         // Return values by chromosome order
@@ -272,11 +272,7 @@ impl PartialEq<Self> for ReadQueueItem {
 impl PartialOrd<Self> for ReadQueueItem {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let chr_cmp = self.chr_idx.cmp(&other.chr_idx);
-        match chr_cmp {
-            Ordering::Equal => self.batch.first_position().partial_cmp(&other.batch.first_position()),
-            Ordering::Less => Some(Ordering::Less),
-            Ordering::Greater => Some(Ordering::Greater),
-        }
+        Some(chr_cmp.then(other.batch.first_position().cmp(&self.batch.first_position())))
     }
 }
 
@@ -305,10 +301,10 @@ impl From<ReadQueueItem> for UniversalBatch {
 }
 
 struct ReadQueue {
-    heap: BinaryHeap<Reverse<ReadQueueItem>>,
+    heap: Vec<ReadQueueItem>,
     assemble_cache: Option<UniversalBatch>,
     chunk_size: usize,
-    chr_order: Vec<String>
+    chr_order: Vec<String>,
 }
 
 impl ReadQueue {
@@ -316,16 +312,16 @@ impl ReadQueue {
         self.chr_order.iter().position(|c| c == chr).unwrap()
     }
     
-    fn make_item(&self, batch: UniversalBatch) -> Reverse<ReadQueueItem> {
+    fn make_item(&self, batch: UniversalBatch) -> ReadQueueItem {
         let item = ReadQueueItem::new(self.get_chr_idx(&batch.get_chr()), batch);
-        Reverse(item)
+        item
     }
 
     fn new(chunk_size: usize, chr_order: Vec<String>) -> Self {
         Self {
-            heap: BinaryHeap::new(),
+            heap: Vec::new(),
             assemble_cache: None,
-            chr_order, chunk_size
+            chr_order, chunk_size,
         }
     }
 
@@ -333,42 +329,43 @@ impl ReadQueue {
         self.heap.is_empty()
     }
     
-    fn insert(&mut self, batch: UniversalBatch) -> Result<(), ()> {
-        let mut unique_chr = batch.partition_chr();
-        let chr_names: Vec<String> = unique_chr.iter().map(|b| b.get_chr()).collect();
-
-        if let Some(cache) = self.assemble_cache.take() {
-            if chr_names.contains(&cache.get_chr()) {
-                let chr_idx = chr_names.iter().position(|chr| *chr == cache.get_chr()).unwrap();
-                unique_chr.get_mut(chr_idx).unwrap().extend(&cache, false);
-            } else {
-                self.heap.push(self.make_item(cache));
+    fn insert(&mut self, mut batch: UniversalBatch) -> Result<(), ()> {
+        let chr = batch.get_chr();
+        
+        match self.assemble_cache.take() {
+            None => {},
+            Some(cache) => {
+                if cache.get_chr() != chr {
+                    self.heap.push(self.make_item(cache))
+                } else {
+                    batch.extend(&cache, cache.first_position() > batch.first_position())
+                }
             }
         }
+        
+        let mut partitioned = batch.partition_by_chunks(self.chunk_size);
 
-        let mut partitioned = unique_chr.into_iter().map(|b| b.partition_by_chunks(self.chunk_size)).collect_vec();
-
-        self.assemble_cache = {
-            let max_chr_idx = chr_names.iter().position_max_by_key(|name| self.get_chr_idx(*name)).unwrap();
-            match partitioned.get(max_chr_idx).unwrap().iter().position(|b| b.get_data().height() != self.chunk_size) {
-                Some(pos) => Some(partitioned.get_mut(max_chr_idx).unwrap().remove(pos)),
-                None => None
-            }
-        };
-
-        partitioned.into_iter().flatten().for_each(|b| self.heap.push(self.make_item(b)));
+        if let Some(pos) = partitioned.iter().position(|b| b.get_data().height() != self.chunk_size) {
+            self.assemble_cache = Some(partitioned.remove(pos));
+        }
+        
+        partitioned.into_iter().for_each(|b| self.heap.push(self.make_item(b)));
         Ok(())
     }
     
     fn pop(&mut self) -> Option<UniversalBatch> {
-        if let Some(item) = self.heap.pop() {
-            Some(item.0.into())
-        } else {
-            None
+        if self.heap.is_empty() {
+            return None;
         }
-    }
-    
-    fn get_leftover(&mut self) -> Option<UniversalBatch> {
-        self.assemble_cache.take()
+        
+        let chr_idxs = self.heap.iter().map(|b| b.chr_idx).unique();
+        if chr_idxs.clone().count() == 1 {
+            let min_batch = self.heap.iter().position_min_by_key(|b| b.batch.first_position()).unwrap();
+            Some(self.heap.remove(min_batch).into())
+        } else {
+            let min_chr = chr_idxs.min().unwrap();
+            let min_batch = self.heap.iter().positions(|b| b.chr_idx == min_chr).into_iter().map(|i| self.heap.get(i).unwrap()).position_min_by_key(|b| b.batch.first_position()).unwrap();
+            Some(self.heap.remove(min_batch).into())
+        }
     }
 }
