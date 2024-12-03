@@ -1,4 +1,4 @@
-use std::cmp::{Ordering, Reverse};
+use std::cmp::{Ordering};
 use crate::io::report::types::ReportType;
 use crate::ubatch::UniversalBatch;
 use itertools::Itertools;
@@ -6,23 +6,21 @@ use log::{debug, info};
 use polars::error::PolarsResult;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
-use std::collections::hash_map::Drain;
 use std::fs::File;
 use rayon::prelude::*;
 
-
-pub(crate) struct OwnedBatchedCsvReader {
+// Todo change to pub(crate)
+pub struct OwnedBatchedCsvReader {
     #[allow(dead_code)]
     // this exists because we need to keep ownership
-    schema: SchemaRef,
-    batched_reader: BatchedCsvReader<'static>,
+    pub schema: SchemaRef,
+    pub batched_reader: BatchedCsvReader<'static>,
     // keep ownership
-    _reader: CsvReader<Box<dyn MmapBytesReader>>,
+    pub _reader: CsvReader<Box<dyn MmapBytesReader>>,
 }
 
 impl OwnedBatchedCsvReader {
-    pub(crate) fn next_batches(&mut self, n: usize) -> PolarsResult<Option<Vec<DataFrame>>> {
+    pub fn next_batches(&mut self, n: usize) -> PolarsResult<Option<Vec<DataFrame>>> {
         self.batched_reader.next_batches(n)
     }
 }
@@ -30,7 +28,7 @@ impl OwnedBatchedCsvReader {
 /// Parse cytosine sequence and extract cytosine methylation contexts and positions.
 /// # Returns
 /// Vector of \[position, context, strand\]
-fn parse_cytosines(seq: String, start_pos: u32) -> (Vec<u32>, Vec<Option<bool>>, Vec<bool>) {
+pub(crate) fn parse_cytosines(seq: String, start_pos: u32) -> (Vec<u32>, Vec<Option<bool>>, Vec<bool>) {
     let start_pos = start_pos - 1;
     let fw_bound: usize = seq.len() - 2;
     let rv_bound: usize = 2;
@@ -257,7 +255,6 @@ impl Iterator for ReportReader {
     }
 }
 
-#[derive(Eq)]
 struct ReadQueueItem {
     chr_idx: usize,
     batch: UniversalBatch,
@@ -274,6 +271,9 @@ impl PartialOrd<Self> for ReadQueueItem {
         let chr_cmp = self.chr_idx.cmp(&other.chr_idx);
         Some(chr_cmp.then(other.batch.first_position().cmp(&self.batch.first_position())))
     }
+}
+
+impl Eq for ReadQueueItem {
 }
 
 impl Ord for ReadQueueItem {
@@ -364,7 +364,7 @@ impl ReadQueue {
             Some(self.heap.remove(min_batch).into())
         } else {
             let min_chr = chr_idxs.min().unwrap();
-            let min_batch = self.heap.iter().positions(|b| b.chr_idx == min_chr).into_iter().map(|i| self.heap.get(i).unwrap()).position_min_by_key(|b| b.batch.first_position()).unwrap();
+            let min_batch = self.heap.iter().positions(|b| b.chr_idx == min_chr).into_iter().min_by_key(|i| self.heap.get(*i).unwrap().batch.first_position()).unwrap();
             Some(self.heap.remove(min_batch).into())
         }
     }

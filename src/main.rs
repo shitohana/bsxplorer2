@@ -1,32 +1,53 @@
 extern crate core;
-
-use bsx_rs::genome::AnnotationBuilder;
-use bsx_rs::io::bsx::bsx_reader::BSXReader;
-use bsx_rs::io::bsx::region_reader::{ReadFilters, RegionsDataReader};
-use bsx_rs::utils::types::{Context, Strand};
-use polars::prelude::*;
-use std::fs::File;
-use std::time::Instant;
-use bsx_rs::io::bsx::write::ConvertReportOptions;
+use std::thread;
+use log::info;
+use bsx_rs::io::report::readv2::*;
 use bsx_rs::io::report::types::ReportType;
 
 extern crate pretty_env_logger;
 
+struct ThreadTest {
+    read_thread: thread::JoinHandle<()>,
+}
+
+/*
+Writing
+-------
+1. Reader should read and process batches in separate threads
+2. Reader should have method for processing batch into proper format
+3. Reader should have internal cache for sorting batches (size > batches per read)
+4. Batches should be marked whether they are end of chromosome or not
+5. Alignment with reference genome should be obligatory for bedgraph or coverage
+   and optional for other
+
+Reading
+-------
+1. Reader should check consistency of batches among files
+*/
+
 fn main() {
     pretty_env_logger::init_timed();
-    ConvertReportOptions::default()
-        .with_chunk_size(10_000)
-        .with_batch_size(10_000)
-        .with_batch_per_read(50)
-        .finish(
-            ReportType::BISMARK,
-            "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt",
-            "/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc",
-            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa",
-            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
-        ).unwrap();
-    println!("Report written");
-
+    info!("Starting BSX RS Test");
+    // ConvertReportOptions::default()
+    //     .with_chunk_size(10_000)
+    //     .with_batch_size(10_000)
+    //     .with_batch_per_read(50)
+    //     .finish(
+    //         ReportType::BISMARK,
+    //         "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt",
+    //         "/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc",
+    //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa",
+    //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
+    //     ).unwrap();
+    // println!("Report written");
+    let report_path = "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt";
+    let report_reader = ReportReaderBuilder::default()
+        .with_chunk_size(20_000)
+        .finish(report_path.into(), ReportType::BISMARK).unwrap();
+    for batch in report_reader {
+        let batch = batch.unwrap();
+        println!("{:?}, rows {}", batch.get_region_coordinates(), batch.count());
+    }
     // let reader = BSXReader::new(
     //     File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc").unwrap(),
     //     None,

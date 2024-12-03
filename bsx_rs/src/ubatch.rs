@@ -9,7 +9,161 @@ use polars::prelude::*;
 use std::fmt::Display;
 use std::ops::Not;
 use polars::export::num::WrappingNeg;
-use crate::io::report::read::BatchStats;
+
+/* TODO:    Create batch cache as a continous universal batch, maybe sorted
+            maybe split by chromosome, which is extended using binary heap 
+            sorting of incoming batches.
+            Then .next() method of ReportReader should only split such batch cache 
+            table at specified index. No additional split to chunk size is needed. 
+*/
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum UBatchCol {
+    Chr,
+    Strand,
+    Position,
+    Context,
+    CountM,
+    CountUm,
+    Density
+}
+
+impl UBatchCol {
+    fn as_str(&self) -> &'static str {
+        match self { 
+            Self::Chr => "chr",
+            Self::Strand => "strand",
+            Self::Position => "position",
+            Self::Context => "context",
+            Self::CountM => "count_m",
+            Self::CountUm => "count_um",
+            Self::Density => "density"
+        }
+    }
+    
+    fn data_type(&self) -> DataType {
+        match self { 
+            Self::Chr => DataType::Categorical(None, CategoricalOrdering::Physical),
+            Self::Strand => DataType::Boolean,
+            Self::Position => DataType::UInt64,
+            Self::Context => DataType::Boolean,
+            Self::CountM => DataType::UInt16,
+            Self::CountUm => DataType::UInt16,
+            Self::Density => DataType::Float64,
+        }
+    }
+    
+    fn all_cols() -> Vec<String> {
+        vec![
+            Self::Chr.as_str().to_string(),
+            Self::Strand.as_str().to_string(),
+            Self::Position.as_str().to_string(),
+            Self::Context.as_str().to_string(),
+            Self::CountM.as_str().to_string(),
+            Self::CountUm.as_str().to_string(),
+            Self::Density.as_str().to_string(),
+        ]
+    }
+    
+    fn schema() -> Schema {
+        Schema::from_iter([
+            (Self::Chr.as_str().into(), Self::Chr.data_type()),
+            (Self::Strand.as_str().into(), Self::Strand.data_type()),
+            (Self::Position.as_str().into(), Self::Position.data_type()),
+            (Self::Context.as_str().into(), Self::Context.data_type()),
+            (Self::CountM.as_str().into(), Self::CountM.data_type()),
+            (Self::CountUm.as_str().into(), Self::CountUm.data_type()),
+            (Self::Density.as_str().into(), Self::Density.data_type()),
+        ])
+    }
+    
+    fn from_string(string: String) -> Self {
+        match string.as_str() {
+            "chr" => Self::Chr,
+            "strand" => Self::Strand,
+            "position" => Self::Position,
+            "context" => Self::Context,
+            "count_m" => Self::CountM,
+            "count_um" => Self::CountUm,
+            "density" => Self::Density,
+            _ => panic!("Unknown BSX data type {}", string)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_as_str() {
+        assert_eq!(UBatchCol::Chr.as_str(), "chr");
+        assert_eq!(UBatchCol::Strand.as_str(), "strand");
+        assert_eq!(UBatchCol::Position.as_str(), "position");
+        assert_eq!(UBatchCol::Context.as_str(), "context");
+        assert_eq!(UBatchCol::CountM.as_str(), "count_m");
+        assert_eq!(UBatchCol::CountUm.as_str(), "count_um");
+        assert_eq!(UBatchCol::Density.as_str(), "density");
+    }
+
+    #[test]
+    fn test_data_type() {
+        assert_eq!(UBatchCol::Chr.data_type(), DataType::Categorical(None, CategoricalOrdering::Physical));
+        assert_eq!(UBatchCol::Strand.data_type(), DataType::Boolean);
+        assert_eq!(UBatchCol::Position.data_type(), DataType::UInt64);
+        assert_eq!(UBatchCol::Context.data_type(), DataType::Boolean);
+        assert_eq!(UBatchCol::CountM.data_type(), DataType::UInt16);
+        assert_eq!(UBatchCol::CountUm.data_type(), DataType::UInt16);
+        assert_eq!(UBatchCol::Density.data_type(), DataType::Float64);
+    }
+
+    #[test]
+    fn test_all_cols() {
+        let expected = vec![
+            "chr".to_string(),
+            "strand".to_string(),
+            "position".to_string(),
+            "context".to_string(),
+            "count_m".to_string(),
+            "count_um".to_string(),
+            "density".to_string(),
+        ];
+        assert_eq!(UBatchCol::all_cols(), expected);
+    }
+
+    #[test]
+    fn test_schema() {
+        let schema = UBatchCol::schema();
+        let expected_schema = Schema::from_iter([
+            ("chr".into(), DataType::Categorical(None, CategoricalOrdering::Physical)),
+            ("strand".into(), DataType::Boolean),
+            ("position".into(), DataType::UInt64),
+            ("context".into(), DataType::Boolean),
+            ("count_m".into(), DataType::UInt16),
+            ("count_um".into(), DataType::UInt16),
+            ("density".into(), DataType::Float64),
+        ]);
+        assert_eq!(schema, expected_schema);
+    }
+
+    #[test]
+    fn test_from_string() {
+        assert_eq!(UBatchCol::from_string("chr".to_string()), UBatchCol::Chr);
+        assert_eq!(UBatchCol::from_string("strand".to_string()), UBatchCol::Strand);
+        assert_eq!(UBatchCol::from_string("position".to_string()), UBatchCol::Position);
+        assert_eq!(UBatchCol::from_string("context".to_string()), UBatchCol::Context);
+        assert_eq!(UBatchCol::from_string("count_m".to_string()), UBatchCol::CountM);
+        assert_eq!(UBatchCol::from_string("count_um".to_string()), UBatchCol::CountUm);
+        assert_eq!(UBatchCol::from_string("density".to_string()), UBatchCol::Density);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown BSX data type invalid")]
+    fn test_from_string_invalid() {
+        UBatchCol::from_string("invalid".to_string());
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct UniversalBatch {
@@ -27,6 +181,39 @@ impl UniversalBatch {
             "count_total",
             "density",
         ]
+    }
+    
+    pub fn count(&self) -> usize {
+        self.data.height()
+    }
+    
+    /// Creates a [RegionCoordinates] objects from [UniversalBatch] positions.
+    /// 
+    /// # Warning
+    /// This method does not perform any checks
+    pub fn get_region_coordinates(&self) -> RegionCoordinates {
+        RegionCoordinates::new(self.get_chr(), self.first_position(), self.last_position())
+    }
+    
+    pub fn partition_by_idx(&self, idx: usize) -> (UniversalBatch, UniversalBatch) {
+        let first = self.data.slice(0, idx);
+        let second = self.data.slice(idx as i64, self.data.height());
+        (first.into(), second.into())
+    }
+    
+    /// This method checks if the internal data is sorted by position and performs sorting
+    /// if data was not sorted
+    /// 
+    /// # Raises
+    /// If data has different chromosomes
+    pub fn check_sorted(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.unique_chr() { return Err(Box::from("Chromosomes differ!")) }
+        
+        let was_sorted = self.data.column("position")?.u32()?.iter().is_sorted();
+        if !was_sorted {
+            self.data.sort(["position"], SortMultipleOptions::default())?;
+        }
+        Ok(())
     }
 
     pub fn new(mut data: DataFrame) -> Self {
@@ -110,7 +297,7 @@ impl UniversalBatch {
         when(col("nuc").eq(lit("C"))).then(true).when(col("strand").eq(lit("G"))).then(false).otherwise(lit(NULL)).cast(DataType::Boolean)
     }
 
-    pub fn from_report_type(data: DataFrame, report_type: &ReportType) -> Result<Self, PolarsError> {
+    pub fn from_report_type(data: DataFrame, report_type: &ReportType) -> Result<Self, Box<dyn std::error::Error>> {
         let lazy_frame = data.lazy();
         
         let res = match report_type {
@@ -345,24 +532,3 @@ impl From<UniversalBatch> for DataFrame {
     }
 }
 
-impl Eq for UniversalBatch {}
-
-impl PartialEq<Self> for UniversalBatch {
-    fn eq(&self, other: &Self) -> bool {
-        self.first_position() == other.first_position()
-    }
-}
-
-impl PartialOrd<Self> for UniversalBatch {
-    /// Order implemented as reversed for correct ordering in Max-heap
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        ((self.first_position() as i32).wrapping_neg()).partial_cmp(&(other.first_position() as i32).wrapping_neg())
-    }
-}
-
-impl Ord for UniversalBatch {
-    /// Order implemented as reversed for correct ordering in Max-heap
-    fn cmp(&self, other: &Self) -> Ordering {
-        ((self.first_position() as i32).wrapping_neg()).cmp(&(other.first_position() as i32).wrapping_neg())
-    }
-}
