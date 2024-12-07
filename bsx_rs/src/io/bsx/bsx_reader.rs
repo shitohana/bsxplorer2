@@ -8,7 +8,7 @@ use std::io::{Seek, SeekFrom};
 use std::ops::Bound::Included;
 
 use crate::io::bsx::ipc::IpcFileReader;
-use crate::ubatch::UniversalBatch;
+use crate::ubatch::UBatch;
 
 type BSXIndex = HashMap<String, BTreeMap<u32, usize>>;
 
@@ -122,7 +122,7 @@ impl BSXReader {
 }
 
 impl Iterator for BSXReader {
-    type Item = UniversalBatch;
+    type Item = UBatch;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.reader.next() {

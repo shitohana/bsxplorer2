@@ -3,6 +3,7 @@ use std::thread;
 use log::info;
 use bsx_rs::io::report::readv2::*;
 use bsx_rs::io::report::types::ReportType;
+use bsx_rs::ubatch2::BSXBatch;
 
 extern crate pretty_env_logger;
 
@@ -43,10 +44,14 @@ fn main() {
     let report_path = "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt";
     let report_reader = ReportReaderBuilder::default()
         .with_chunk_size(20_000)
-        .finish(report_path.into(), ReportType::BISMARK).unwrap();
+        .finish(
+            report_path.into(), ReportType::BISMARK,
+            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa".into(), 
+            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai".into(),
+        ).unwrap();
     for batch in report_reader {
         let batch = batch.unwrap();
-        println!("{:?}, rows {}", batch.get_region_coordinates(), batch.count());
+        println!("{:?}, rows {}", batch.get_region_coordinates(), batch.length());
     }
     // let reader = BSXReader::new(
     //     File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc").unwrap(),

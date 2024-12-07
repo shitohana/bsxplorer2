@@ -3,22 +3,21 @@ use std::collections::BinaryHeap;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::thread::{JoinHandle};
 use bio::io::fasta::IndexedReader;
-use itertools::Itertools;
 use log::{debug, info};
 use polars::error::PolarsResult;
 use polars::frame::DataFrame;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::{*};
+use polars_arrow::array::Utf8ViewArray;
 use crate::io::report::read::parse_cytosines;
 use crate::io::report::types::ReportType;
 use crate::region::RegionCoordinates;
-use crate::ubatch::UniversalBatch;
+use crate::ubatch2::{BSXBatch, BSXCol};
 
 pub(crate) struct OwnedBatchedCsvReader {
     #[allow(dead_code)]
@@ -40,29 +39,137 @@ struct IncomingBatch {
     report_type: ReportType
 }
 
-struct ReadQueueItem {
-    data: UniversalBatch,
-    chr_idx: usize,
+impl BSXBatch for IncomingBatch {
+    fn from_df(data_frame: DataFrame) -> Self {
+        Self {
+            data: data_frame,
+            report_type: ReportType::BISMARK
+        }
+    }
+
+    fn get_data(&self) -> &DataFrame {
+        &self.data
+    }
+
+    fn get_data_mut(&mut self) -> &mut DataFrame {
+        &mut self.data
+    }
+
+    fn _set_data(&mut self, data_frame: DataFrame) {
+        debug!("Incoming batch for {}", data_frame);
+        self.data = data_frame;
+    }
 }
 
-impl PartialEq<Self> for ReadQueueItem {
+/// Unlike [UBatch], which already expects data to be casted to
+/// proper types, [IncomingBatch::new] performs casting and [DataType::Categorical]
+/// creation for [BSXCol::Chr]
+impl IncomingBatch {
+    fn new(data_frame: DataFrame, report_type: &ReportType, chr_names: &Vec<String>) -> Self {
+
+        let categories = DataType::Enum(
+            Some({
+                let mut cat_builder =
+                    CategoricalChunkedBuilder::new(Default::default(), 0, Default::default());
+                for chr_name in chr_names {
+                    let _ = &cat_builder.append(Some(chr_name.as_str()));
+                }
+                cat_builder.finish().get_rev_map().clone()
+            }),
+            CategoricalOrdering::Physical,
+        );
+
+        assert!(categories.contains_categoricals());
+        
+        let obj = Self::from_report_type(data_frame, report_type).unwrap();
+        
+        if let Err(e) = obj.check_cols() {
+            panic!("Error while checking cols: {}", e);
+        }
+        let data: DataFrame = obj.into();
+        IncomingBatch::from_cast(data.lazy(), chr_names).expect("Error casting")
+            .with_report_type(report_type.clone())
+    }
+
+    fn with_report_type(mut self, report_type: ReportType) -> Self {
+        self.report_type = report_type;
+        self
+    }
+}
+impl Into<DataFrame> for IncomingBatch {
+    fn into(self) -> DataFrame {
+        self.data
+    }
+}
+
+/// Wrapper for [DataFrame], which implements [BSXBatch].
+/// Differences from other implementation are:
+///     1. Check for single chromosome data is performed
+///     2. Check if data is sorted is performed
+///     3. Compare methods are implemented
+pub struct ReadBatch {
+    data: DataFrame,
+}
+
+impl ReadBatch {
+    pub fn new(data: DataFrame) -> Self {
+        let mut obj = Self::from_df(data);
+
+        if let Err(e) = obj.check_cols() {
+            panic!("{:?}", e)
+        }
+        if let Err(e) = obj.check_types() {
+            panic!("{:?}", e)
+        }
+        if !obj.check_chr_unique() {
+            panic!("Chromosomes differ!")
+        };
+        if !obj.check_position_sorted() {
+            obj.sort_positions();
+        }
+        obj
+    }
+}
+
+impl From<ReadBatch> for DataFrame {
+    fn from(item: ReadBatch) -> Self {
+        item.data
+    }
+}
+
+
+impl BSXBatch for ReadBatch {
+    fn from_df(data_frame: DataFrame) -> Self {
+        let obj = Self { data: data_frame };
+        obj
+    }
+    fn get_data(&self) -> &DataFrame {
+        &self.data
+    }
+    fn get_data_mut(&mut self) -> &mut DataFrame {
+        &mut self.data
+    }
+
+    fn _set_data(&mut self, data_frame: DataFrame) {
+        self.data = data_frame;
+    }
+}
+
+impl PartialEq<Self> for ReadBatch {
     fn eq(&self, other: &Self) -> bool {
-        self.chr_idx == other.chr_idx 
-            && self.data.first_position() == other.data.first_position()
-            && self.data.last_position() == other.data.last_position()
-            && self.data.count() == other.data.count()
+        self.data == other.data
     }
 }
 
-impl PartialOrd for ReadQueueItem {
+impl Eq for ReadBatch {}
+
+impl PartialOrd for ReadBatch {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.chr_idx.cmp(&other.chr_idx).then(self.data.first_position().cmp(&other.data.first_position())))
+        Some(self.get_chr_idx().cmp(&other.get_chr_idx()).then(self.get_first_pos().cmp(&other.get_last_pos())))
     }
 }
 
-impl Eq for ReadQueueItem {}
-
-impl Ord for ReadQueueItem {
+impl Ord for ReadBatch {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap()
     }
@@ -73,11 +180,10 @@ pub struct ReportReaderBuilder {
     max_cache_size: usize,
     chunk_size: usize,
     read_batch_size: usize,
-    fasta_file: Option<PathBuf>,
-    fasta_index_file: Option<PathBuf>,
     low_memory: bool,
     rechunk: bool,
     n_threads: usize,
+    align: bool
 }
 
 impl Default for ReportReaderBuilder {
@@ -87,11 +193,10 @@ impl Default for ReportReaderBuilder {
             max_cache_size: 100,
             chunk_size: 10_000,
             read_batch_size: 100 * 2 << 10,
-            fasta_file: None, 
-            fasta_index_file: None,
-            low_memory: false, 
+            low_memory: false,
             rechunk: true,
-            n_threads: usize::from(std::thread::available_parallelism().unwrap()),
+            n_threads: usize::from(thread::available_parallelism().unwrap()),
+            align: false
         }
     }
 }
@@ -109,14 +214,6 @@ impl ReportReaderBuilder {
         self.read_batch_size = n;
         self
     }
-    pub fn with_fasta_file(mut self, path: PathBuf) -> Self {
-        self.fasta_file = Some(path);
-        self
-    }
-    pub fn with_fasta_index_file(mut self, path: PathBuf) -> Self {
-        self.fasta_index_file = Some(path);
-        self
-    }
     pub fn with_low_memory(mut self, low: bool) -> Self {
         self.low_memory = low;
         self
@@ -129,17 +226,27 @@ impl ReportReaderBuilder {
         self.n_threads = n;
         self
     }
+    pub fn with_align(mut self, align: bool) -> Self {
+        self.align = align;
+        self
+    }
     
-    pub fn finish(self, report_file: PathBuf, report_type: ReportType) -> Result<ReportReader, Box<dyn Error>> {
-        let fasta_reader = if let (Some(fasta_file), Some(fasta_index)) = (self.fasta_file, self.fasta_index_file) {
-            let reader = IndexedReader::new(
-                File::open(fasta_file.clone())?,
-                File::open(fasta_index.clone())?,
-            )?;
-            info!("Opened Fasta reader from {fasta_file:?} with index {fasta_index:?}");
-            Some(reader)
-        } else {None};
-        
+    pub fn finish(
+        self,
+        report_file: PathBuf,
+        report_type: ReportType,
+        fasta_file: PathBuf,
+        fasta_index_file: PathBuf,
+    ) -> Result<ReportReader, Box<dyn Error>> {
+        let fasta_reader = IndexedReader::new(
+            File::open(fasta_file.clone())?,
+            File::open(fasta_index_file.clone())?,
+        )?;
+        info!("Opened Fasta reader from {fasta_file:?} with index {fasta_index_file:?}");
+        let chr_revmap = Arc::new(RevMapping::build_local(
+            Utf8ViewArray::arr_from_iter(fasta_reader.index.sequences().iter().map(|seq| seq.name.as_str()))
+        ));
+
         let mut reader: CsvReader<Box<dyn MmapBytesReader>> = report_type.clone().get_reader(
             Box::new(BufReader::new(File::open(report_file.clone())?)),
             Some(self.read_batch_size), Some(self.low_memory), Some(self.n_threads), Some(self.rechunk)
@@ -157,10 +264,12 @@ impl ReportReaderBuilder {
         let (sc, rc) = mpsc::sync_channel::<IncomingBatch>(self.max_cache_size);
         
         let reading_thread = thread::spawn(move || -> () {
+            let mapping_clone = chr_revmap.clone();
+            let report_type_clone = report_type.clone();
             while let Some(batches) = batched_owned.next_batches(self.batch_per_read).unwrap() {
                 info!("Read {} batches", batches.len());
                 batches.into_iter()
-                    .map(|data| IncomingBatch { data, report_type: report_type.clone() })
+                    .map(|data| IncomingBatch::new(data, &report_type_clone, &mapping_clone))
                     .for_each(|batch| sc.send(batch).unwrap());
             };
         });
@@ -171,11 +280,11 @@ impl ReportReaderBuilder {
                 reading_thread,
                 rc,
                 batch_cache: BinaryHeap::new(),
+                align: self.align,
                 fasta_reader,
                 read_batch_size: self.read_batch_size,
                 batch_per_read: self.batch_per_read,
                 chunk_size: self.chunk_size,
-                observed_chroms: vec![],
             }
         })
     }
@@ -185,114 +294,66 @@ pub struct ReportReader {
     reading_thread: JoinHandle<()>,
     
     rc: mpsc::Receiver<IncomingBatch>,
-    
-    batch_cache: BinaryHeap<Reverse<ReadQueueItem>>,
-    fasta_reader: Option<IndexedReader<File>>,
-    observed_chroms: Vec<String>,
+
+    batch_cache: BinaryHeap<Reverse<ReadBatch>>,
+    fasta_reader: IndexedReader<File>,
 
     // Config
     batch_per_read: usize,
     chunk_size: usize,
     read_batch_size: usize,
+    align: bool
 }
 
 impl ReportReader {
-    /// Formats incoming data to UniversalBatch format, performing checks and
-    /// splitting batch data by chromosome. Observed chromosomes are written into
-    /// observed_chroms field.
-    fn format_data(&mut self, data: IncomingBatch) -> Result<Vec<UniversalBatch>, Box<dyn Error>> {
+    /// Formats incoming data to [ReadBatch] format, performing checks and
+    /// splitting batch data by chromosome.
+    fn format_data(&mut self, data: IncomingBatch) -> Result<Vec<ReadBatch>, Box<dyn Error>> {
         debug!("Formatting data with {} rows", data.data.height());
-        let converted = UniversalBatch::from_report_type(data.data, &data.report_type)?;
-        let is_border = !converted.unique_chr();
-        
-        let mut universal_checked = if is_border {
-            converted.partition_chr()
+        let converted = if data.check_chr_unique() {
+            vec![ReadBatch::new(data.into())]
         } else {
-            vec![converted]
+            data.partition_by_bsx(BSXCol::Chr, true).into_iter().map(|b| ReadBatch::new(b.into())).collect()
         };
-        universal_checked.iter_mut().for_each(|batch| {batch.check_sorted().unwrap()});
-        universal_checked.iter().for_each(|batch| {self.update_observed_chroms(vec![batch.get_chr()])});
-        Ok(universal_checked)
+
+        Ok(converted)
     }
     
     /// Aligns data to reference sequence
-    fn align_with_reference(&mut self, batch: UniversalBatch) -> Result<UniversalBatch, Box<dyn Error>> {
-        let coordinates = batch.get_region_coordinates();
+    fn align_with_reference(&mut self, batch: ReadBatch) -> Result<ReadBatch, Box<dyn Error>> {
+        let coordinates = batch.get_region_coordinates().unwrap();
         debug!("Aligning data for region {coordinates:?}");
         let context_df = self.get_context_df(coordinates)?;
-        Ok({
-            context_df.lazy()
-                .join(
-                    DataFrame::from(batch).lazy(),
-                    [col("position")], [col("position")],
-                    JoinArgs::new(JoinType::Left),
-                ).collect()?.into()
-        })
+        let new = context_df.lazy()
+            .join(
+                DataFrame::from(batch).lazy(),
+                [col("position")], [col("position")],
+                JoinArgs::new(JoinType::Left),
+        ).collect()?;
+        Ok(ReadBatch::from_df(new))
     }
     
-    /// Make [ReadQueueItem] from incoming batch. Calls [ReportReader::format_data] and 
+    /// Make [ReadBatch] from incoming batch. Calls [ReportReader::format_data] and
     /// [ReportReader::align_with_reference] if FASTA reader is specified or when 
     /// report_type is [ReportType::BEDGRAPH] or [ReportType::COVERAGE].
     fn process_data(&mut self, data: IncomingBatch) -> Result<(), Box<dyn Error>> {
         let report_type = data.report_type.clone();
         let formatted = self.format_data(data)?;
         let aligned = if [ReportType::BEDGRAPH, ReportType::COVERAGE].contains(&report_type)
-            || self.fasta_reader.is_some() {
+            || self.align {
             formatted.into_iter().map(|b| self.align_with_reference(b)).collect::<Result<Vec<_>, _>>()?
-        } else if [ReportType::BEDGRAPH, ReportType::COVERAGE].contains(&report_type) && 
-            self.fasta_reader.is_none() {
-            return Err(Box::from("FASTA reader must be specified for BEDGRAPH or COVERAGE reports reading"))
         } else {
             formatted
         };
-        
-        let chunk_size = self.chunk_size.clone();
-        let items = aligned.into_iter()
-            .map(|b| b.partition_by_chunks(chunk_size))
-            .flatten()
-            .map(|b| Reverse(self.make_item(b)))
-            .collect_vec();
-        items.into_iter().for_each(|item| {self.batch_cache.push(item);});
+        aligned.into_iter().for_each(|item| {self.batch_cache.push(Reverse(item));});
         Ok(())
     }
-    
-    fn make_item(&self, batch: UniversalBatch) -> ReadQueueItem {
-        let batch_chr = batch.get_chr();
-        ReadQueueItem {
-            data: batch,
-            chr_idx: self.observed_chroms.iter().position(|chr| *chr == batch_chr).unwrap()
-        }
-    }
 
-    /// Get reference to FASTA [IndexedReader]
-    fn get_fasta_reader(&mut self) -> Option<&mut IndexedReader<File>> {
-        self.fasta_reader.as_mut()
-    }
-    
-    /// Get observed chroms
-    fn get_chroms(&self) -> &Vec<String> {
-        &self.observed_chroms
-    }
-    
-    /// Get observed chroms mutable
-    fn get_chroms_mut(&mut self) -> &mut Vec<String> {
-        self.observed_chroms.as_mut()
-    }
-
-    /// Update observed chroms with array of chromosomes
-    fn update_observed_chroms(&mut self, new_chroms: Vec<String>) {
-        let chroms = self.get_chroms_mut();
-        new_chroms.into_iter().for_each(|chrom| {if !chroms.contains(&chrom) {chroms.push(chrom);}})
-    }
-    
     /// Use FASTA [IndexedReader] to retrieve region sequence and convert it
     /// to methylation contexts table
     fn get_context_df(&mut self, region_coordinates: RegionCoordinates) -> Result<DataFrame, Box<dyn Error>> {
         // Get reader ref
-        let reader = match self.get_fasta_reader() {
-            Some(reader) => reader,
-            None => return Err(Box::<dyn Error>::from("FASTA reader should be present"))
-        };
+        let reader = &mut self.fasta_reader;
 
         // Get chromosome length from index
         let chr_len = match reader.index.sequences().iter().find(|s| s.name == *region_coordinates.chr) {
@@ -320,7 +381,7 @@ impl ReportReader {
 }
 
 impl Iterator for ReportReader {
-    type Item = Result<UniversalBatch, Box<dyn Error>>;
+    type Item = Result<ReadBatch, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.batch_cache.len() < self.batch_per_read && !self.reading_thread.is_finished() {
@@ -332,13 +393,30 @@ impl Iterator for ReportReader {
         };
         
         if !self.reading_thread.is_finished() || !self.batch_cache.is_empty() {
-            let next = self.batch_cache.pop().unwrap().0.data;
+            let current = self.batch_cache.pop().unwrap().0;
+
+            let res = match current.length() as isize - self.chunk_size as isize {
+                0 => current,
+                ..0 => {
+                    match self.batch_cache.pop() {
+                        Some(val) if val.0.get_chr_idx() == current.get_chr_idx() => {
+                            let next = val.0;
+                            let (out, back) = current.vstack(&next).split(self.chunk_size as i64);
+                            self.batch_cache.push(Reverse(back));
+                            out
+                        },
+                        _ => current
+                    }
+
+                }
+                1.. => {
+                    let (out, back) = current.split(self.chunk_size as i64);
+                    self.batch_cache.push(Reverse(back));
+                    out
+                }
+            };
             
-            if next.count() != self.chunk_size {
-                let peek = self.batch_cache.peek().unwrap();
-            } 
-            
-            Some(Ok(next))
+            Some(Ok(res))
         } else {
             None
         }

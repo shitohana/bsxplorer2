@@ -77,6 +77,18 @@ impl UBatchCol {
         ])
     }
     
+    fn can_cast(&self, data_type: DataType) -> bool {
+        match self { 
+            Self::Chr => data_type.is_categorical(),
+            Self::Strand => data_type.is_bool(),
+            Self::Position => data_type.is_unsigned_integer(),
+            Self::Context => data_type.is_bool(),
+            Self::CountM => data_type.is_unsigned_integer(),
+            Self::CountUm => data_type.is_unsigned_integer(),
+            Self::Density => data_type.is_float(),
+        }
+    }
+    
     fn from_string(string: String) -> Self {
         match string.as_str() {
             "chr" => Self::Chr,
@@ -166,63 +178,18 @@ mod tests {
 
 
 #[derive(Debug, Clone)]
-pub struct UniversalBatch {
+pub struct UBatch {
     data: DataFrame,
 }
 
-impl UniversalBatch {
-    fn colnames() -> Vec<&'static str> {
-        vec![
-            "chr",
-            "strand",
-            "position",
-            "context",
-            "count_m",
-            "count_total",
-            "density",
-        ]
-    }
-    
-    pub fn count(&self) -> usize {
-        self.data.height()
-    }
-    
-    /// Creates a [RegionCoordinates] objects from [UniversalBatch] positions.
-    /// 
-    /// # Warning
-    /// This method does not perform any checks
-    pub fn get_region_coordinates(&self) -> RegionCoordinates {
-        RegionCoordinates::new(self.get_chr(), self.first_position(), self.last_position())
-    }
-    
-    pub fn partition_by_idx(&self, idx: usize) -> (UniversalBatch, UniversalBatch) {
-        let first = self.data.slice(0, idx);
-        let second = self.data.slice(idx as i64, self.data.height());
-        (first.into(), second.into())
-    }
-    
-    /// This method checks if the internal data is sorted by position and performs sorting
-    /// if data was not sorted
-    /// 
-    /// # Raises
-    /// If data has different chromosomes
-    pub fn check_sorted(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if !self.unique_chr() { return Err(Box::from("Chromosomes differ!")) }
-        
-        let was_sorted = self.data.column("position")?.u32()?.iter().is_sorted();
-        if !was_sorted {
-            self.data.sort(["position"], SortMultipleOptions::default())?;
-        }
-        Ok(())
-    }
-
+impl UBatch {
     pub fn new(mut data: DataFrame) -> Self {
         let mut data_schema = data.schema();
         assert!(
-            Self::colnames().into_iter().all(|name| data_schema.get(name).is_some()),
+            Self::colnames().into_iter().all(|name| data_schema.get(&*name).is_some()),
             "DataFrame columns does not match schema ({:?})", data_schema
         );
-        
+
         // Schema consistency check
         assert!(
             data_schema.get("chr").unwrap().is_string(),
@@ -275,11 +242,52 @@ impl UniversalBatch {
                 PlHashMap::from_iter(
                     data_schema.iter()
                         .map(|(x, _dtype)| (x.as_str(), _dtype.clone()))
-                ), 
+                ),
                 true
             ).collect().unwrap();
 
         Self { data }
+    }
+    
+    fn colnames() -> Vec<String> {
+        UBatchCol::all_cols()
+    }
+    
+    pub fn row_count(&self) -> usize {
+        self.data.height()
+    }
+    
+    /// Creates a [RegionCoordinates] objects from [UBatch] positions.
+    /// 
+    /// # Warning
+    /// This method does not perform any checks
+    pub fn get_region_coordinates(&self) -> RegionCoordinates {
+        RegionCoordinates::new(self.get_chr(), self.first_position(), self.last_position())
+    }
+    
+    pub fn partition_by(mut self, column: UBatchCol, include_key: bool) -> Vec<UBatch> {
+        let new_data = self.data.partition_by([column.as_str()], include_key).unwrap();
+        new_data.into_iter().map(|df| UBatch::from(df)).collect()
+    }
+    
+    pub fn split(&self, offset: i64) -> (UBatch, UBatch) {
+        let (first, second) = self.data.split_at(offset);
+        (first.into(), second.into())
+    }
+    
+    /// This method checks if the internal data is sorted by position and performs sorting
+    /// if data was not sorted
+    /// 
+    /// # Raises
+    /// If data has different chromosomes
+    pub fn check_pos_sorted(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.unique_chr() { return Err(Box::from("Chromosomes differ!")) }
+        
+        let was_sorted = self.data.column("position")?.u32()?.iter().is_sorted();
+        if !was_sorted {
+            self.data.sort(["position"], SortMultipleOptions::default())?;
+        }
+        Ok(())
     }
     
     fn _strand_expr() -> Expr {
@@ -413,14 +421,14 @@ impl UniversalBatch {
     pub fn get_chr(&self) -> String {
         self.data.column("chr").unwrap().str().unwrap().first().unwrap().to_string()
     }
-    pub fn partition_chr(self) -> Vec<UniversalBatch> {
+    pub fn partition_chr(self) -> Vec<UBatch> {
         self.data
             .partition_by(["chr"], true).unwrap()
             .into_iter()
-            .map(|d| UniversalBatch::new(d))
+            .map(|d| UBatch::new(d))
             .collect()
     }
-    pub fn partition_by_chunks(self, chunk_size: usize) -> Vec<UniversalBatch> {
+    pub fn partition_by_chunks(self, chunk_size: usize) -> Vec<UBatch> {
         self.data
             .lazy()
             .with_row_index("index", None)
@@ -429,7 +437,7 @@ impl UniversalBatch {
             .partition_by(["index"], false)
             .unwrap()
             .into_iter()
-            .map(|d| UniversalBatch::new(d))
+            .map(|d| UBatch::new(d))
             .collect()
     }
     
@@ -444,12 +452,12 @@ impl UniversalBatch {
         self
     }
     
-    pub fn vstack(mut self, batch: &UniversalBatch) -> UniversalBatch {
+    pub fn vstack(mut self, batch: &UBatch) -> UBatch {
         self.data = self.data.vstack(&batch.data).unwrap();
         self
     }
     
-    pub fn extend(&mut self, batch: &UniversalBatch, to_end: bool) {
+    pub fn extend(&mut self, batch: &UBatch, to_end: bool) {
         if to_end {
             self.data.extend(&batch.data).unwrap()
         } else {
@@ -457,7 +465,7 @@ impl UniversalBatch {
         }
     }
     
-    /// Create new [UniversalBatch] by [RegionCoordinates] slice.
+    /// Create new [UBatch] by [RegionCoordinates] slice.
     pub fn slice(&self, coordinates: &RegionCoordinates) -> RegionData {
         let positions = self.data.column("position").unwrap().u32().unwrap();
         let start = positions
@@ -514,20 +522,20 @@ impl UniversalBatch {
     }
 }
 
-impl Display for UniversalBatch {
+impl Display for UBatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.data)
     }
 }
 
-impl From<DataFrame> for UniversalBatch {
+impl From<DataFrame> for UBatch {
     fn from(data_frame: DataFrame) -> Self {
-        UniversalBatch::new(data_frame)
+        UBatch::new(data_frame)
     }
 }
 
-impl From<UniversalBatch> for DataFrame {
-    fn from(data_frame: UniversalBatch) -> Self {
+impl From<UBatch> for DataFrame {
+    fn from(data_frame: UBatch) -> Self {
         data_frame.data
     }
 }

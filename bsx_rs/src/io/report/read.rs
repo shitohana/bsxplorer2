@@ -1,6 +1,6 @@
 use std::cmp::{Ordering};
 use crate::io::report::types::ReportType;
-use crate::ubatch::UniversalBatch;
+use crate::ubatch::UBatch;
 use itertools::Itertools;
 use log::{debug, info};
 use polars::error::PolarsResult;
@@ -174,7 +174,7 @@ impl ReportReader {
             let chrom_batches = batches.into_iter()
                 // Split all batches by chromosome
                 .map(
-                    |batch| UniversalBatch::from_report_type(batch, &report_type).unwrap().partition_chr()
+                    |batch| UBatch::from_report_type(batch, &report_type).unwrap().partition_chr()
                 )
                 .flatten()
                 .into_grouping_map_by(|batch| batch.get_chr()).reduce(
@@ -214,7 +214,7 @@ impl ReportReader {
                         DataFrame::from_iter(vec![pos_col, ctx_col, str_col])
                         }
                 ).collect_vec();
-            let res: Vec<UniversalBatch> = 
+            let res: Vec<UBatch> = 
                 chrom_batches.into_par_iter()
                     .zip(context_dfs.into_par_iter())
                     .map(|((chr, batch), context_df)| {
@@ -226,7 +226,7 @@ impl ReportReader {
                             )
                             .with_column(col("chr").fill_null(lit(chr.clone())));
 
-                        let res = UniversalBatch::from(joined.collect().unwrap());
+                        let res = UBatch::from(joined.collect().unwrap());
                         res
                     }).collect();
             res.into_iter().sorted_by_cached_key(|b| self.read_queue.get_chr_idx(&b.get_chr())).for_each(|r| {self.read_queue.insert(r).unwrap()});
@@ -239,7 +239,7 @@ impl ReportReader {
 }
 
 impl Iterator for ReportReader {
-    type Item = UniversalBatch;
+    type Item = UBatch;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.read_queue.is_empty() {
@@ -257,7 +257,7 @@ impl Iterator for ReportReader {
 
 struct ReadQueueItem {
     chr_idx: usize,
-    batch: UniversalBatch,
+    batch: UBatch,
 }
 
 impl PartialEq<Self> for ReadQueueItem {
@@ -283,7 +283,7 @@ impl Ord for ReadQueueItem {
 }
 
 impl ReadQueueItem {
-    fn new(chr_idx: usize, batch: UniversalBatch) -> ReadQueueItem {
+    fn new(chr_idx: usize, batch: UBatch) -> ReadQueueItem {
         // let chr_idx = Reverse(chr_idx);
         assert!(
             batch.unique_chr(),
@@ -294,7 +294,7 @@ impl ReadQueueItem {
     }
 }
 
-impl From<ReadQueueItem> for UniversalBatch {
+impl From<ReadQueueItem> for UBatch {
     fn from(item: ReadQueueItem) -> Self {
         item.batch
     }
@@ -302,7 +302,7 @@ impl From<ReadQueueItem> for UniversalBatch {
 
 struct ReadQueue {
     heap: Vec<ReadQueueItem>,
-    assemble_cache: Option<UniversalBatch>,
+    assemble_cache: Option<UBatch>,
     chunk_size: usize,
     chr_order: Vec<String>,
 }
@@ -312,7 +312,7 @@ impl ReadQueue {
         self.chr_order.iter().position(|c| c == chr).unwrap()
     }
     
-    fn make_item(&self, batch: UniversalBatch) -> ReadQueueItem {
+    fn make_item(&self, batch: UBatch) -> ReadQueueItem {
         let item = ReadQueueItem::new(self.get_chr_idx(&batch.get_chr()), batch);
         item
     }
@@ -329,7 +329,7 @@ impl ReadQueue {
         self.heap.is_empty()
     }
     
-    fn insert(&mut self, mut batch: UniversalBatch) -> Result<(), ()> {
+    fn insert(&mut self, mut batch: UBatch) -> Result<(), ()> {
         let chr = batch.get_chr();
         
         match self.assemble_cache.take() {
@@ -353,7 +353,7 @@ impl ReadQueue {
         Ok(())
     }
     
-    fn pop(&mut self) -> Option<UniversalBatch> {
+    fn pop(&mut self) -> Option<UBatch> {
         if self.heap.is_empty() {
             return None;
         }

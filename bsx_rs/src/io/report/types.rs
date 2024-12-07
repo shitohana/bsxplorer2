@@ -7,7 +7,7 @@ use std::io::Write;
 use std::num::NonZero;
 use std::ops::Div;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
 pub enum ReportType {
     BISMARK,
     CGMAP,

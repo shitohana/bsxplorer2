@@ -1,6 +1,6 @@
 use crate::io::bsx::bsx_reader::BSXReader;
 use crate::region::{RegionCoordinates, RegionData};
-use crate::ubatch::UniversalBatch;
+use crate::ubatch::UBatch;
 use crate::utils::types::{Context, Strand};
 use itertools::Itertools;
 use log::{debug, info};
@@ -214,7 +214,7 @@ impl RegionsDataIterator {
     /// Trim batches and assign them to regions
     ///
     /// batches: Vec<(batch_idx, [DataFrame])>
-    fn process_batches(&mut self, batches: Vec<(usize, UniversalBatch)>) {
+    fn process_batches(&mut self, batches: Vec<(usize, UBatch)>) {
         // Convert incoming vector into raw batch ids
         let batch_idxs = batches
             .iter()
