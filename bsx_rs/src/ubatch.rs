@@ -499,7 +499,6 @@ impl UBatch {
                 .bool()
                 .unwrap()
                 .is_null(),
-            Context::ALL => return self,
         };
         self.data = self.data.filter(&condition).unwrap();
         self

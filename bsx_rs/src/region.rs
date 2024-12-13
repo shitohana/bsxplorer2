@@ -2,6 +2,7 @@ use itertools::Itertools;
 use polars::prelude::*;
 use std::fmt::Display;
 use std::ops::{Mul, Sub};
+use crate::utils::types::BSXResult;
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub enum FillNullStrategy {
@@ -176,5 +177,23 @@ impl RegionCoordinates {
     }
     pub fn length(&self) -> u32 {
         self.end - self.start
+    }
+    
+    // TODO: Add methods to modify start and end
+    
+    /// Expands limits of the regions by specified value. If length of 
+    /// the resulting region is more than max_length, [Err] is returned.
+    /// Also, if start is less than value [Err] is returned.
+    /// Otherwise bounds of the region will be modified themselves
+    pub fn expand(mut self, value: u32, max_length: u32) -> Self {
+        if self.end + value > max_length {
+            self.end = max_length;
+        } else {
+            self.end += value
+        }
+        if self.start > value {
+            self.start -= value;
+        }
+        self
     }
 }

@@ -6,6 +6,7 @@ use std::fmt::Display;
 use arrow::datatypes::ArrowNativeType;
 use log::debug;
 use crate::region::RegionCoordinates;
+use crate::utils::types::BSXResult;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum BSXCol {
@@ -189,7 +190,7 @@ pub trait BSXBatch {
     }
     /// Get name of the first chromosome in the batch
     fn get_chr(&self) -> Option<String> {
-        if self.check_chr_unique() {
+        if self.check_chr_unique().is_ok() {
             let rev_map = self.get_chr_revmap();
             let first_idx = self.get_chr_idx();
             Some(rev_map.get(first_idx as u32).to_string())
@@ -235,11 +236,14 @@ pub trait BSXBatch {
         }
         Ok(())
     }
-    fn check_chr_unique(&self) -> bool {
-        self.get_data()
+    fn check_chr_unique(&self) -> BSXResult<()> {
+        if self.get_data()
             .column(BSXCol::Chr.as_str()).unwrap()
             .categorical().unwrap()
             .physical().unique().unwrap().len() == 1
+        {
+            Ok(())
+        } else { Err(Box::from("Chromosome not unique")) }
     }
     fn check_cols(&self) -> Result<(), Box<dyn Error>> {
         let data = self.get_data();
@@ -254,8 +258,10 @@ pub trait BSXBatch {
         }
         Ok(())
     }
-    fn check_position_sorted(&self) -> bool {
-        self.get_data().column(BSXCol::Position.as_str()).unwrap().u32().unwrap().iter().is_sorted()
+    fn check_position_sorted(&self) -> BSXResult<()> {
+        if self.get_data().column(BSXCol::Position.as_str()).unwrap().u32().unwrap().iter().is_sorted() {
+            Ok(())
+        } else { Err("Data is not sorted".into()) }
     }
     
     
