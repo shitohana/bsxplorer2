@@ -1,12 +1,12 @@
-use std::ops::Div;
-use std::error::Error;
 use crate::io::report::types::ReportType;
-use polars::prelude::*;
-use std::fmt::Display;
-use arrow::datatypes::ArrowNativeType;
-use log::debug;
 use crate::region::RegionCoordinates;
 use crate::utils::types::BSXResult;
+use arrow::datatypes::ArrowNativeType;
+use log::debug;
+use polars::prelude::*;
+use std::error::Error;
+use std::fmt::Display;
+use std::ops::Div;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum BSXCol {
@@ -15,43 +15,43 @@ pub enum BSXCol {
     Position,
     Context,
     CountM,
-    CountUm,
-    Density
+    CountTotal,
+    Density,
 }
 
 impl BSXCol {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Chr => "chr",
             Self::Strand => "strand",
             Self::Position => "position",
             Self::Context => "context",
             Self::CountM => "count_m",
-            Self::CountUm => "count_um",
-            Self::Density => "density"
+            Self::CountTotal => "count_total",
+            Self::Density => "density",
         }
     }
 
-    fn data_type(&self) -> DataType {
+    pub fn data_type(&self) -> DataType {
         match self {
             Self::Chr => DataType::Categorical(None, CategoricalOrdering::Physical),
             Self::Strand => DataType::Boolean,
-            Self::Position => DataType::UInt64,
+            Self::Position => DataType::UInt32,
             Self::Context => DataType::Boolean,
             Self::CountM => DataType::UInt16,
-            Self::CountUm => DataType::UInt16,
+            Self::CountTotal => DataType::UInt16,
             Self::Density => DataType::Float64,
         }
     }
 
-    fn all_cols() -> Vec<String> {
+    pub fn all_cols() -> Vec<String> {
         vec![
             Self::Chr.into(),
             Self::Strand.into(),
             Self::Position.into(),
             Self::Context.into(),
             Self::CountM.into(),
-            Self::CountUm.into(),
+            Self::CountTotal.into(),
             Self::Density.into(),
         ]
     }
@@ -63,8 +63,8 @@ impl BSXCol {
             BSXCol::Position,
             BSXCol::Context,
             BSXCol::CountM,
-            BSXCol::CountUm,
-            BSXCol::Density
+            BSXCol::CountTotal,
+            BSXCol::Density,
         ]
     }
 
@@ -75,19 +75,22 @@ impl BSXCol {
             (Self::Position.as_str().into(), Self::Position.data_type()),
             (Self::Context.as_str().into(), Self::Context.data_type()),
             (Self::CountM.as_str().into(), Self::CountM.data_type()),
-            (Self::CountUm.as_str().into(), Self::CountUm.data_type()),
+            (
+                Self::CountTotal.as_str().into(),
+                Self::CountTotal.data_type(),
+            ),
             (Self::Density.as_str().into(), Self::Density.data_type()),
         ])
     }
 
     fn can_cast(&self, data_type: DataType) -> bool {
         match self {
-            Self::Chr => data_type.is_categorical(),
+            Self::Chr => data_type.is_enum(),
             Self::Strand => data_type.is_bool(),
             Self::Position => data_type.is_unsigned_integer(),
             Self::Context => data_type.is_bool(),
             Self::CountM => data_type.is_unsigned_integer(),
-            Self::CountUm => data_type.is_unsigned_integer(),
+            Self::CountTotal => data_type.is_unsigned_integer(),
             Self::Density => data_type.is_float(),
         }
     }
@@ -99,7 +102,7 @@ impl BSXCol {
             Self::Position => true,
             Self::Context => false,
             Self::CountM => false,
-            Self::CountUm => false,
+            Self::CountTotal => false,
             Self::Density => false,
         }
     }
@@ -111,9 +114,9 @@ impl BSXCol {
             "position" => Self::Position,
             "context" => Self::Context,
             "count_m" => Self::CountM,
-            "count_um" => Self::CountUm,
+            "count_total" => Self::CountTotal,
             "density" => Self::Density,
-            _ => panic!("Unknown BSX data type {}", string)
+            _ => panic!("Unknown BSX data type {}", string),
         }
     }
 }
@@ -149,7 +152,7 @@ pub trait BSXBatch {
     /// Unsafely construct [BSXBatch].
     fn from_df(data_frame: DataFrame) -> Self;
     /// Get reference to inner [DataFrame].
-    
+
     /* --- Getters --- */
     fn get_data(&self) -> &DataFrame;
     /// Get mutable reference to inner [DataFrame].
@@ -177,16 +180,23 @@ pub trait BSXBatch {
     /// Get mapping of chromosomes and their categorical indices
     fn get_chr_revmap(&self) -> &Arc<RevMapping> {
         self.get_data()
-            .column(BSXCol::Chr.as_str()).unwrap()
-            .categorical().unwrap()
+            .column(BSXCol::Chr.as_str())
+            .unwrap()
+            .categorical()
+            .unwrap()
             .get_rev_map()
     }
     /// Get index of chromosome from first row of the batch
     fn get_chr_idx(&self) -> usize {
         self.get_data()
-            .column(BSXCol::Chr.as_str()).unwrap()
-            .categorical().unwrap()
-            .physical().first().unwrap().as_usize()
+            .column(BSXCol::Chr.as_str())
+            .unwrap()
+            .categorical()
+            .unwrap()
+            .physical()
+            .first()
+            .unwrap()
+            .as_usize()
     }
     /// Get name of the first chromosome in the batch
     fn get_chr(&self) -> Option<String> {
@@ -194,27 +204,26 @@ pub trait BSXBatch {
             let rev_map = self.get_chr_revmap();
             let first_idx = self.get_chr_idx();
             Some(rev_map.get(first_idx as u32).to_string())
-        } else { None }
-
+        } else {
+            None
+        }
     }
-    
+
     fn get_region_coordinates(&self) -> Option<RegionCoordinates> {
         if let Some(chr) = self.get_chr() {
-            RegionCoordinates::new(
-                chr, 
-                self.get_first_pos(), self.get_last_pos(),
-            ).into()
-        } else { None }
-        
+            RegionCoordinates::new(chr, self.get_first_pos(), self.get_last_pos()).into()
+        } else {
+            None
+        }
     }
-    
+
     /// Get row count
     fn length(&self) -> usize {
         self.get_data().height()
     }
-    
+
     fn _set_data(&mut self, data_frame: DataFrame);
-    
+
     /* --- Checks --- */
     fn check_types(&self) -> Result<(), Box<dyn Error>> {
         let data = self.get_data();
@@ -224,26 +233,35 @@ pub trait BSXBatch {
         for c in ucol_all.iter() {
             let dtype = data_schema.get(c.as_str()).unwrap().clone();
             if !c.can_cast(dtype.clone()) {
-                return Err(Box::from(format!("Can not cast {c} from {dtype} to {c}")))
+                return Err(Box::from(format!("Can not cast {c} from {dtype} to {c}")));
             }
         }
         // Check non-null
         for c in ucol_all.iter().filter(|c| c.is_non_null()) {
             let null_count = data.column(c.as_str()).unwrap().null_count();
             if null_count != 0 {
-                return Err(Box::from(format!("DataFrame column '{c}' cannot be null")))
+                return Err(Box::from(format!("DataFrame column '{c}' cannot be null")));
             }
         }
         Ok(())
     }
     fn check_chr_unique(&self) -> BSXResult<()> {
-        if self.get_data()
-            .column(BSXCol::Chr.as_str()).unwrap()
-            .categorical().unwrap()
-            .physical().unique().unwrap().len() == 1
+        if self
+            .get_data()
+            .column(BSXCol::Chr.as_str())
+            .unwrap()
+            .categorical()
+            .unwrap()
+            .physical()
+            .unique()
+            .unwrap()
+            .len()
+            == 1
         {
             Ok(())
-        } else { Err(Box::from("Chromosome not unique")) }
+        } else {
+            Err(Box::from("Chromosome not unique"))
+        }
     }
     fn check_cols(&self) -> Result<(), Box<dyn Error>> {
         let data = self.get_data();
@@ -253,19 +271,31 @@ pub trait BSXBatch {
         // Check all cols present
         for c in ucol_all.iter() {
             if !data_schema.contains(c.as_str()) {
-                return Err(Box::from(format!("Field {c} is missing")))
+                return Err(Box::from(format!("Field {c} is missing")));
             }
         }
         Ok(())
     }
     fn check_position_sorted(&self) -> BSXResult<()> {
-        if self.get_data().column(BSXCol::Position.as_str()).unwrap().u32().unwrap().iter().is_sorted() {
+        if self
+            .get_data()
+            .column(BSXCol::Position.as_str())
+            .unwrap()
+            .u32()
+            .unwrap()
+            .iter()
+            .is_sorted()
+        {
             Ok(())
-        } else { Err("Data is not sorted".into()) }
+        } else {
+            Err("Data is not sorted".into())
+        }
     }
-    
-    
-    fn from_cast(data: LazyFrame, chr_names: &Vec<String>) -> Result<Self, Box<dyn Error>> where Self: Sized {
+
+    fn from_cast(data: LazyFrame, chr_names: &Vec<String>) -> Result<Self, Box<dyn Error>>
+    where
+        Self: Sized,
+    {
         let mut bsx_schema = BSXCol::schema();
 
         let categories = DataType::Enum(
@@ -280,48 +310,67 @@ pub trait BSXBatch {
             CategoricalOrdering::Physical,
         );
         assert!(categories.contains_categoricals());
-        
+
         bsx_schema.with_column(BSXCol::Chr.into(), categories);
         debug!("New schema {bsx_schema:?}");
-        
+
         // TODO dodelat'
-        
-        let new = data.clone().lazy().cast(
-            PlHashMap::from_iter(bsx_schema.iter_names_and_dtypes().map(|(n, dtype)| (n.as_str(), dtype.clone()))), 
-            true).collect();
+
+        let new = data
+            .clone()
+            .lazy()
+            .cast(
+                PlHashMap::from_iter(
+                    bsx_schema
+                        .iter_names_and_dtypes()
+                        .map(|(n, dtype)| (n.as_str(), dtype.clone())),
+                ),
+                true,
+            )
+            .collect();
         match new {
-            Ok(df) => {
-                Ok(Self::from_df(df))
-            }, 
-            Err(e) => Err(e.into())
+            Ok(df) => Ok(Self::from_df(df)),
+            Err(e) => Err(e.into()),
         }
     }
-    
+
     fn sort_positions(&mut self) {
-        let sorted = self.get_data().sort(["position"], SortMultipleOptions::default()).unwrap();
+        let sorted = self
+            .get_data()
+            .sort(["position"], SortMultipleOptions::default())
+            .unwrap();
         self._set_data(sorted);
-    } 
-    
+    }
+
     /* --- Mutations --- */
     /// Modify [BSXBatch] inplace by inserting rows
     fn extend(&mut self, batch: &UBatch) {
         self.get_data_mut().extend(&batch.get_data()).unwrap();
     }
     /// Create new [BSXBatch] with concatenated data
-    fn vstack(&self, batch: &Self) -> Self where Self: Sized {
+    fn vstack(&self, batch: &Self) -> Self
+    where
+        Self: Sized,
+    {
         Self::from_df(self.get_data().vstack(&batch.get_data()).unwrap())
     }
-    fn filter(&self, expr: Expr) -> PolarsResult<Self> where Self: Sized {
+    fn filter(&self, expr: Expr) -> PolarsResult<Self>
+    where
+        Self: Sized,
+    {
         match self.get_data().clone().lazy().filter(expr).collect() {
             Ok(df) => Ok(Self::from_df(df)),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
-    
+
     /* --- Partitions --- */
     /// Partition batch by [BSXCol]
     fn partition_by_bsx(&self, column: BSXCol, include_key: bool) -> Vec<UBatch> {
-        let new_data = self.get_data().partition_by([column.as_str()], include_key).unwrap();
+        let new_data = self
+            .get_data()
+            .partition_by([column.as_str()], include_key)
+            .unwrap();
         new_data.into_iter().map(|df| UBatch::from(df)).collect()
     }
     /// Partition by custom column name. Name is not guarantied
@@ -332,14 +381,22 @@ pub trait BSXBatch {
             Err(e) => Err(e),
         }
     }
-    fn split(&self, offset: i64) -> (Self, Self) where Self: Sized {
+    fn split(&self, offset: i64) -> (Self, Self)
+    where
+        Self: Sized,
+    {
         let (first, second) = self.get_data().split_at(offset);
         (Self::from_df(first), Self::from_df(second))
     }
-    
+
     /* --- Conversion --- */
     fn _strand_expr() -> Expr {
-        when(col("strand").eq(lit("+"))).then(true).when(col("strand").eq(lit("-"))).then(false).otherwise(lit(NULL)).cast(DataType::Boolean)
+        when(col("strand").eq(lit("+")))
+            .then(true)
+            .when(col("strand").eq(lit("-")))
+            .then(false)
+            .otherwise(lit(NULL))
+            .cast(DataType::Boolean)
     }
     fn _context_expr() -> Expr {
         when(col("context").eq(lit("CG")))
@@ -350,46 +407,20 @@ pub trait BSXBatch {
             .cast(DataType::Boolean)
     }
     fn _nuc_expr() -> Expr {
-        when(col("nuc").eq(lit("C"))).then(true).when(col("strand").eq(lit("G"))).then(false).otherwise(lit(NULL)).cast(DataType::Boolean)
+        when(col("nuc").eq(lit("C")))
+            .then(true)
+            .when(col("strand").eq(lit("G")))
+            .then(false)
+            .otherwise(lit(NULL))
+            .cast(DataType::Boolean)
     }
 
-    fn from_report_type(data: DataFrame, report_type: &ReportType) -> Result<Self, Box<dyn Error>> where Self: Sized {
-        let lazy_frame = data.lazy();
-
-        let res = match report_type {
-            ReportType::BISMARK => lazy_frame
-                .with_column((col("count_m") + col("count_um")).alias("count_total"))
-                .with_columns([
-                    (col("count_m") / col("count_total").cast(DataType::Float64)).cast(DataType::Float64).alias("density"),
-                    Self::_strand_expr().alias("strand"),
-                    Self::_context_expr().alias("context"),
-                ]),
-            ReportType::CGMAP => lazy_frame.with_columns([
-                Self::_nuc_expr().alias("strand"),
-                Self::_context_expr().alias("context"),
-            ]),
-            ReportType::BEDGRAPH => lazy_frame
-                .rename(["start"], ["position"], true)
-                .drop(["end"])
-                .with_columns([
-                    lit(NULL).alias("strand"),
-                    lit(NULL).alias("context"),
-                    lit(NULL).alias("count_m"),
-                    lit(NULL).alias("count_total"),
-                    col("density").div(lit(100)).alias("density"),
-                ]),
-            ReportType::COVERAGE => lazy_frame
-                .rename(["start"], ["position"], true)
-                .drop(["end"])
-                .with_column((col("count_m") + col("count_um")).alias("count_total"))
-                .with_columns([
-                    lit(NULL).alias("strand"),
-                    lit(NULL).alias("context"),
-                    col("density").div(lit(100)).alias("density"),
-                ]),
-        }.collect()?;
-
-        Ok(Self::from_df(res))
+    fn from_report_type(data: DataFrame, report_type: &ReportType) -> Result<Self, Box<dyn Error>>
+    where
+        Self: Sized,
+    {
+        let df = report_type_to_bsx(report_type, data)?;
+        Ok(Self::from_df(df))
     }
 
     fn get_report_type(&self, report_type: ReportType) -> DataFrame {
@@ -460,8 +491,10 @@ impl UBatch {
     fn new(data: DataFrame) -> Self {
         let obj = UBatch { data };
         match obj.check_types() {
-            Ok(_) => {obj},
-            Err(e) => {panic!("{}", e)}
+            Ok(_) => obj,
+            Err(e) => {
+                panic!("{}", e)
+            }
         }
     }
 }
@@ -482,4 +515,91 @@ impl From<UBatch> for DataFrame {
     fn from(data_frame: UBatch) -> Self {
         data_frame.data
     }
+}
+
+fn _strand_expr() -> Expr {
+    when(col("strand").eq(lit("+")))
+        .then(true)
+        .when(col("strand").eq(lit("-")))
+        .then(false)
+        .otherwise(lit(NULL))
+        .cast(BSXCol::Strand.data_type())
+}
+fn _context_expr() -> Expr {
+    when(col("context").eq(lit("CG")))
+        .then(lit(true))
+        .when(col("context").eq(lit("CHG")))
+        .then(lit(false))
+        .otherwise(lit(NULL))
+        .cast(DataType::Boolean)
+}
+fn _nuc_expr() -> Expr {
+    when(col("nuc").eq(lit("C")))
+        .then(true)
+        .when(col("strand").eq(lit("G")))
+        .then(false)
+        .otherwise(lit(NULL))
+        .cast(DataType::Boolean)
+}
+
+/// Calculates obligatory columns from [BSXBatch], performs cast for
+/// all columns except [BSXCol::Chr]
+pub fn report_type_to_bsx(report_type: &ReportType, df: DataFrame) -> BSXResult<DataFrame> {
+    let lazy_frame = df.lazy();
+
+    let res = match report_type {
+        ReportType::BISMARK => lazy_frame
+            // count_total
+            .with_column(
+                (col("count_m") + col("count_um"))
+                    .cast(BSXCol::CountTotal.data_type())
+                    .alias(BSXCol::CountTotal.as_str()),
+            )
+            // density
+            .with_column(
+                (col("count_m").div(BSXCol::CountTotal.into()))
+                    .cast(BSXCol::Density.data_type())
+                    .alias(BSXCol::Density.as_str()),
+            )
+            .with_columns([
+                _strand_expr().alias(BSXCol::Strand.as_str()),
+                _context_expr().alias(BSXCol::Context.as_str()),
+            ]),
+        ReportType::CGMAP => lazy_frame
+            .with_columns([
+                _nuc_expr().alias("strand"),
+                _context_expr().alias("context"),
+            ]),
+        ReportType::BEDGRAPH => lazy_frame
+            .rename(["start"], ["position"], true)
+            .drop(["end"])
+            .with_columns([
+                lit(NULL).alias("strand").cast(BSXCol::Strand.data_type()),
+                lit(NULL).alias("context").cast(BSXCol::Context.data_type()),
+                lit(NULL).alias("count_m").cast(BSXCol::CountM.data_type()),
+                lit(NULL).alias("count_total").cast(BSXCol::CountTotal.data_type()),
+                col("density").div(lit(100)).alias("density").cast(BSXCol::Density.data_type()),
+            ]),
+        ReportType::COVERAGE => lazy_frame
+            .rename(["start"], ["position"], true)
+            .drop(["end"])
+            .with_column((col("count_m") + col("count_um")).alias("count_total"))
+            .with_columns([
+                lit(NULL).alias("strand"),
+                lit(NULL).alias("context"),
+                col("density").div(lit(100)).alias("density"),
+            ]),
+    }.cast(
+        PlHashMap::from_iter(vec![
+            (BSXCol::Position.as_str(), BSXCol::Position.data_type()),
+            (BSXCol::Strand.as_str(), BSXCol::Strand.data_type()),
+            (BSXCol::Context.as_str(), BSXCol::Context.data_type()),
+            (BSXCol::Density.as_str(), BSXCol::Density.data_type()),
+            (BSXCol::CountTotal.as_str(), BSXCol::CountTotal.data_type()),
+            (BSXCol::CountM.as_str(), BSXCol::CountM.data_type()),
+        ]), false
+    )
+    .collect()?;
+
+    Ok(res)
 }

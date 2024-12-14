@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use crate::region::RegionCoordinates;
 use crate::ubatch2::BSXBatch;
 
+#[derive(Debug, Clone)]
 pub struct ReadFinalBatch {
     data: DataFrame,
     region: RegionCoordinates,
@@ -28,6 +29,7 @@ impl Ord for ReadFinalBatch {
 
 impl BSXBatch for ReadFinalBatch {
     fn from_df(data_frame: DataFrame) -> Self {
+        println!("ReadFinalBatch data frame: {:?}", &data_frame);
         let coordinates = RegionCoordinates::new(
             {
                 let first_idx = data_frame
@@ -78,5 +80,11 @@ impl BSXBatch for ReadFinalBatch {
 
     fn _set_data(&mut self, data_frame: DataFrame) {
         self.data = data_frame;
+    }
+}
+
+impl From<ReadFinalBatch> for DataFrame {
+    fn from(batch: ReadFinalBatch) -> Self {
+        batch.data
     }
 }

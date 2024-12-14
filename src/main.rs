@@ -41,18 +41,19 @@ fn main() {
     //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
     //     ).unwrap();
     // println!("Report written");
-    let report_path = "/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt";
-    let report_reader = ReportReaderBuilder::default()
-        .with_chunk_size(20_000)
-        .finish(
-            report_path.into(), ReportType::BISMARK,
-            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa".into(), 
-            "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai".into(),
-        ).unwrap();
-    for batch in report_reader {
-        let batch = batch.unwrap();
-        println!("{:?}, rows {}", batch.get_region_coordinates(), batch.length());
+    
+    let reader = ReportReaderBuilder::default()
+        .with_report_type(ReportType::BISMARK)
+        .with_report_path("/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt".into())
+        .with_fasta_path("/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa".into())
+        .with_fai_path("/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai".into())
+        .build().unwrap();
+    
+    for batch in reader {
+        println!("Rows: {}; {:?}", batch.length(), batch.get_region_coordinates())
     }
+    
+    
     // let reader = BSXReader::new(
     //     File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc").unwrap(),
     //     None,

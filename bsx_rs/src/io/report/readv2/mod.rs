@@ -1,5 +1,5 @@
 use crate::region::RegionCoordinates;
-use crate::ubatch2::BSXBatch;
+use crate::ubatch2::{report_type_to_bsx, BSXBatch, BSXCol, UBatch};
 use crate::utils::types::BSXResult;
 use bio::io::fasta::IndexedReader;
 use log::*;
@@ -10,14 +10,23 @@ use std::collections::BinaryHeap;
 use std::error::Error;
 use std::fs::File;
 use std::mem::ManuallyDrop;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpmc::{Receiver, Sender};
 use std::sync::{mpmc, Mutex};
+use std::thread;
 use std::thread::{sleep, spawn, JoinHandle};
+use itertools::Itertools;
 use polars::io::mmap::MmapBytesReader;
+use polars_arrow::array::Utf8ViewArray;
 use batch_inner::WorkBatch;
 use batch_res::ReadFinalBatch;
 use crate::io::report::types::ReportType;
+
+// TODO:    1. Fix UUID
+//          2. Make batches concat with one another if length < chunk size
+//          4. Make better logging
+
+
 
 mod batch_res;
 mod batch_inner;
@@ -88,25 +97,38 @@ impl ParserThread {
 
     fn run(&mut self) -> JoinHandle<()> {
         let mut cloned_self = self.clone();
-        spawn(move || loop {
-            if !cloned_self.receiver.is_empty() {
-                let data = cloned_self.receiver.recv().unwrap();
-                cloned_self.cache_heap.lock().unwrap().push(data);
-            }
-            if cloned_self.cache_heap.lock().unwrap().len() > 0 {
-                let mut data_to_process = cloned_self.cache_heap.lock().unwrap().pop().unwrap();
+        spawn(move || {
+            info!("ParserThread started");
+            loop {
+                if !cloned_self.receiver.is_empty() {
+                    let data = cloned_self.receiver.recv().unwrap();
+                    cloned_self.cache_heap.lock().unwrap().push(data);
+                }
+                if cloned_self.cache_heap.lock().unwrap().len() > 0 {
 
-                match data_to_process.status() {
-                    BatchStatus::InitialRaw => cloned_self.check(data_to_process).unwrap(),
-                    BatchStatus::ColumnsChecked => cloned_self.single_chr(data_to_process).unwrap(),
-                    BatchStatus::PartitionedChr => cloned_self.align(data_to_process).unwrap(),
-                    BatchStatus::Aligned => cloned_self.cast_chromosomes(data_to_process).unwrap(),
-                    BatchStatus::FullChecked => {
-                        let un = data_to_process.data_mut();
-                        let data = unsafe { ManuallyDrop::take(&mut un.bsx) };
-                        cloned_self.res_heap.lock().unwrap().push(data);
-                    }
-                    BatchStatus::ChrCasted => cloned_self.final_check(data_to_process).unwrap(),
+                    let wbatch = cloned_self.check({
+                            cloned_self.cache_heap.lock().unwrap().pop().unwrap()
+                        })
+                        .expect("Step 1 failed. Checks not passed");
+                    
+                    cloned_self.single_chr(wbatch)
+                        .expect("Step 2 failed. Failed to partition chromosomes")
+                        .into_iter()
+                        .map(
+                            |b| cloned_self.align(b).expect("Step 3 failed. Failed to align")
+                        ).collect_vec().into_iter()
+                        .map(
+                            |b| cloned_self.cast_chromosomes(b).expect("Step 4 failed. Failed to cast chromosome col")
+                        ).map(
+                            |b| cloned_self.final_check(b).expect("Step 5 failed. Final check not passed")
+                        )
+                        .for_each(
+                            |mut b| {
+                                let un = b.data_mut();
+                                let data = unsafe { ManuallyDrop::take(&mut un.bsx) };
+                                cloned_self.res_heap.lock().unwrap().push(data);
+                            }
+                        );
                 }
             }
         })
@@ -121,9 +143,10 @@ impl ParserThread {
     /// -   [BSXBatch::check_cols]
     ///
     /// Puts the final item back to the channel
-    fn final_check(&self, mut item: WorkBatch) -> BSXResult<()> {
+    fn final_check(&self, mut item: WorkBatch) -> BSXResult<WorkBatch> {
         let data = unsafe { ManuallyDrop::take(&mut item.data_mut().df) };
-        let record_batch = ReadFinalBatch::from_df(data);
+        let formatted = report_type_to_bsx(&item.report_type(), data)?;
+        let record_batch = ReadFinalBatch::from_df(formatted);
 
         record_batch.check_cols()?;
         record_batch.check_types()?;
@@ -136,19 +159,17 @@ impl ParserThread {
             item.report_type(),
         );
         debug!("Final check passed for {}", item.uuid());
-        self.sender.send(item)?;
-        Ok(())
+        Ok(item)
     }
 
     /// [BatchStatus::Aligned] ==> [BatchStatus::ChrCasted]
     /// Casts chromosome column to [DataType::Categorical] with preset
     /// possible chromosomes and their indices
-    fn cast_chromosomes(&mut self, mut item: WorkBatch) -> BSXResult<()> {
-        let new_col = unsafe { &item.data().df }
-            .column("chr")?
-            .cast(&self.chr_type)?;
-        let data = unsafe { ManuallyDrop::take(&mut item.data_mut().df) }
-            .with_column(new_col)?
+    fn cast_chromosomes(&self, mut item: WorkBatch) -> BSXResult<WorkBatch> {
+        let df = unsafe { ManuallyDrop::take(&mut item.data_mut().df) };
+        let data = df
+            .lazy().cast(PlHashMap::from_iter(vec![(BSXCol::Chr.as_str(), self.chr_type.clone())]), true)
+            .collect()?
             .to_owned();
         let item = WorkBatch::new(
             ReadQueueData::new_df(data),
@@ -156,13 +177,12 @@ impl ParserThread {
             item.report_type(),
         );
         debug!("Cast chromosomes passed for {}", item.uuid());
-        self.sender.send(item)?;
-        Ok(())
+        Ok(item)
     }
 
     /// [BatchStatus::PartitionedChr] ==> [BatchStatus::Aligned]
     /// Aligns data to the reference genome cytosines
-    fn align(&mut self, batch: WorkBatch) -> BSXResult<()> {
+    fn align(&mut self, batch: WorkBatch) -> BSXResult<WorkBatch> {
         let report_type = batch.report_type();
         let coordinates = RegionCoordinates {
             start: unsafe { &batch.data().df }
@@ -183,15 +203,22 @@ impl ParserThread {
                 .to_owned(),
         };
 
-        let context_df = self.get_context_df(coordinates)?;
-        let old_data = unsafe { ManuallyDrop::take(&mut batch.into_data().df) };
+        let context_df = self.get_context_df(coordinates.clone())?;
+        let mut old_data = unsafe { ManuallyDrop::take(&mut batch.into_data().df) };
+        
+        old_data = old_data.drop(BSXCol::Context.as_str())?;
+        old_data = old_data.drop(BSXCol::Strand.as_str())?;
+        
         let new = context_df
             .lazy()
             .join(
                 old_data.lazy(),
-                [col("position")],
-                [col("position")],
+                [BSXCol::Position.into()],
+                [BSXCol::Position.into()],
                 JoinArgs::new(JoinType::Left),
+            )
+            .with_column(
+                Expr::from(BSXCol::Chr).fill_null(lit(coordinates.chr)),
             )
             .collect()?;
 
@@ -201,41 +228,45 @@ impl ParserThread {
             report_type,
         );
         debug!("Aligned data for {}", item.uuid());
-        self.sender.send(item).unwrap();
-        Ok(())
+        Ok(item)
     }
 
     /// [BatchStatus::ColumnsChecked] ==> [BatchStatus::PartitionedChr]
     /// Data is being partitioned by chromosome
-    fn single_chr(&self, mut item: WorkBatch) -> BSXResult<()> {
-        unsafe { ManuallyDrop::take(&mut item.data_mut().df) }
+    fn single_chr(&self, mut item: WorkBatch) -> BSXResult<Vec<WorkBatch>> {
+        let item = unsafe { ManuallyDrop::take(&mut item.data_mut().df) }
             .partition_by_stable(["chr"], true)?
             .into_iter()
-            .for_each(|data| {
+            .map(|data| {
                 let item = WorkBatch::new(
                     ReadQueueData::new_df(data),
                     BatchStatus::PartitionedChr,
                     item.report_type(),
                 );
                 debug!("Single chr for {}", item.uuid());
-                self.sender.send(item).unwrap();
-            });
-        Ok(())
+                item
+            }).collect_vec();
+        Ok(item)
     }
 
     /// [BatchStatus::InitialRaw] ==> [BatchStatus::ColumnsChecked]
-    fn check(&self, mut read_item: WorkBatch) -> BSXResult<()> {
-        let df = unsafe { &read_item.data().df };
+    fn check(&self, mut item: WorkBatch) -> BSXResult<WorkBatch> {
+        let mut df = unsafe { ManuallyDrop::take(&mut item.data_mut().df) };
         if !df.schema().try_get("chr")?.is_string() {
             return Err(Box::from("Chr col missing"));
         }
         if !df.schema().try_get("position")?.is_numeric() {
             return Err(Box::from("Position must be numeric"));
         }
-        read_item.set_status(BatchStatus::ColumnsChecked);
-        debug!("Check passed for {}", read_item.uuid());
-        self.sender.send(read_item)?;
-        Ok(())
+        
+        df = df.lazy()
+            .cast(PlHashMap::from_iter(vec![(BSXCol::Position.as_str(), BSXCol::Position.data_type())]), true)
+            .collect()?;
+        let new = WorkBatch::new(
+            ReadQueueData::new_df(df), BatchStatus::ColumnsChecked, item.report_type(),
+        );
+        debug!("Check passed for {}", item.uuid());
+        Ok(new)
     }
 
     /// Use FASTA [IndexedReader] to retrieve region sequence and convert it
@@ -260,7 +291,6 @@ impl ParserThread {
             }
         };
         let expanded_coords = region_coordinates.clone().expand(2, chr_len as u32);
-
         // Read sequence
         let mut seq = Vec::new();
         reader.fetch(
@@ -301,7 +331,7 @@ impl ParserThread {
 
             let skip_cond = |strand: bool, index: usize| {
                 let cmp = index.cmp(if strand { &fw_bound } else { &rv_bound });
-                if strand {
+                if !strand {
                     cmp.reverse()
                 } else {
                     cmp
@@ -312,9 +342,9 @@ impl ParserThread {
                 continue 'seq_iter;
             } else {
                 let target_nuc = if forward { b'G' } else { b'C' };
-                let k: isize = if forward { -1 } else { 1 };
+                let k: isize = if forward { 1 } else { -1 };
 
-                let context = if ascii_seq[(index as isize + 1 * k) as usize] == target_nuc {
+                let context = if ascii_seq[((index as isize + k) as usize)] == target_nuc {
                     Some(true)
                 } else if ascii_seq[(index as isize + 2 * k) as usize] == target_nuc {
                     Some(false)
@@ -326,6 +356,9 @@ impl ParserThread {
                 strands.push(forward);
             }
         }
+        positions.shrink_to_fit();
+        contexts.shrink_to_fit();
+        strands.shrink_to_fit();
         (positions, contexts, strands)
     }
 }
@@ -334,7 +367,7 @@ impl Iterator for ParserThread {
     type Item = ReadFinalBatch;
     fn next(&mut self) -> Option<Self::Item> {
         if self.res_heap.lock().unwrap().len() == 0 && !self.receiver.is_empty() {
-            sleep(std::time::Duration::from_millis(100));
+            sleep(std::time::Duration::from_millis(10));
             self.next()
         } else if self.res_heap.lock().unwrap().len() == 0 {
             return None;
@@ -382,10 +415,13 @@ impl ReaderThread {
         spawn(move || {
             let mut reader = cloned_self.batched_reader.lock().unwrap();
             
-            while let Some(batches) = (reader.next_batches(cloned_self.batch_per_read)).unwrap() {
+            info!("ReaderThread started");
+            
+            while let Some(batches) = reader.next_batches(cloned_self.batch_per_read).unwrap() {
                 for df in batches {
+                    let data = UBatch::from_report_type(df, &cloned_self.report_type).unwrap();
                     let work_batch = WorkBatch::new(
-                        ReadQueueData::new_df(df),
+                        ReadQueueData::new_df(data.into()),
                         BatchStatus::InitialRaw,
                         cloned_self.report_type,
                     );
@@ -407,10 +443,36 @@ impl ReaderThread {
 pub struct ReportReader {
     reader: ReaderThread,
     parser: ParserThread,
-    active_batch: Option<ReadFinalBatch>
+    active_batch: Option<ReadFinalBatch>,
+    chunk_size: usize,
+    join_handles: Vec<JoinHandle<()>>,
 }
 
-struct ReportReaderBuilder {
+impl Iterator for ReportReader {
+    type Item = ReadFinalBatch;
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(batch) = self.active_batch.take() {
+            let (ret, left) = batch.split(self.chunk_size as i64);
+            self.active_batch = Some(left);
+            Some(ret)
+        } else {
+            match self.parser.next() {
+                Some(batch) => {
+                    self.active_batch = Some(batch);
+                    self.next()
+                },
+                None => {
+                    for handle in self.join_handles.drain(..) {
+                        handle.join().unwrap();
+                    }
+                    None
+                },
+            }
+        }
+    }
+}
+
+pub struct ReportReaderBuilder {
     report_type: ReportType,
     report_path: PathBuf,
     fasta_path: PathBuf,
@@ -418,12 +480,29 @@ struct ReportReaderBuilder {
     batch_per_read: usize,
     batch_size: usize,
     chunk_size: usize,
+    low_memory: bool,
+    n_threads: Option<usize>,
+    rechunk: bool
+}
+
+impl Default for ReportReaderBuilder {
+    fn default() -> Self {
+        Self {
+            report_type: ReportType::BISMARK,
+            report_path: PathBuf::new(),
+            fasta_path: PathBuf::new(),
+            fai_path: PathBuf::new(),
+            batch_per_read: 16,
+            batch_size: 2 << 20,
+            chunk_size: 10_000,
+            low_memory: false,
+            n_threads: None,
+            rechunk: true
+        }
+    }
 }
 
 impl ReportReaderBuilder {
-    pub fn new(report_type: ReportType, report_path: PathBuf, fasta_path: PathBuf, fai_path: PathBuf, batch_per_read: usize, batch_size: usize, chunk_size: usize) -> Self {
-        Self { report_type, report_path, fasta_path, fai_path, batch_per_read, batch_size, chunk_size }
-    }
 
     pub fn with_report_type(self, report_type: ReportType) -> Self {
         Self { report_type, ..self }
@@ -458,31 +537,39 @@ impl ReportReaderBuilder {
             return Err(Box::from(format!("FAI path does not exist: {}", self.report_path.display())));
         }
         
-        let csv_reader: CsvReader<Box<dyn MmapBytesReader>> = CsvReader::new(Box::new(File::open(self.report_path)?));
+        let csv_reader: CsvReader<Box<dyn MmapBytesReader>> = self.report_type.get_reader(
+            Box::new(File::open(self.report_path)?),
+            Some(self.chunk_size), Some(self.low_memory), self.n_threads, Some(self.rechunk)
+        );
+        
         let fasta_reader = IndexedReader::new(
             File::open(self.fasta_path)?,
             File::open(self.fai_path)?,
         )?;
-        
-        let (sender, reciever) = mpmc::channel();
-        
-        let reader_thread = ReaderThread::new(
+        let chr_names = fasta_reader.index
+            .sequences().iter()
+            .map(|s| Some(s.name.clone()))
+            .collect_vec();
+        let categories = DataType::Enum(
+            Some(Arc::new(RevMapping::build_local({
+                Utf8ViewArray::from_slice(chr_names.as_slice())
+            }))),
+            CategoricalOrdering::Physical,
+        );
+
+        let (sender, reciever) = mpmc::sync_channel(self.batch_per_read);
+        let mut reader_thread = ReaderThread::new(
             csv_reader, self.batch_per_read, Arc::new(sender.clone()), self.report_type,
         );
-        
-        let mut chr_datatype = CategoricalChunkedBuilder::new(
-            "chr".into(), fasta_reader.index.sequences().len(), CategoricalOrdering::Physical
+        let mut parser_thread = ParserThread::new(
+            fasta_reader, Arc::new(reciever), Arc::new(sender), categories 
         );
-        fasta_reader.index.sequences().iter().for_each(|seq| {
-            chr_datatype.append_value(seq.name.as_str())
-        });
         
-        let parser_thread = ParserThread::new(
-            fasta_reader, Arc::new(reciever), Arc::new(sender), chr_datatype.finish().dtype().clone() 
-        );
+        let join_handle = vec![reader_thread.run(), parser_thread.run()];
         
         Ok( ReportReader {
-            reader: reader_thread, parser: parser_thread, active_batch: None
+            reader: reader_thread, parser: parser_thread, active_batch: None, chunk_size: self.chunk_size,
+            join_handles: join_handle
         } )
     }
 }
