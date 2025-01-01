@@ -3,7 +3,6 @@
 extern crate core;
 use std::thread;
 use log::info;
-use bsx_rs::io::report::types::ReportType;
 
 extern crate pretty_env_logger;
 

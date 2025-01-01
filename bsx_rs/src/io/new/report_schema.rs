@@ -14,8 +14,9 @@ pub trait DataSchemaInterface {
     fn schema(&self) -> Arc<Schema> {
         Arc::from(Schema::from_iter(
             self.col_names().iter().cloned()
-                .map(|s| PlSmallStr::from_str)
+                .map(|s| PlSmallStr::from_str(s))
                 .zip(self.col_types().iter().cloned())
+                .collect_vec()
         ))
     }
     /// Get [PlHashMap] instance
@@ -27,7 +28,7 @@ pub trait DataSchemaInterface {
     
     /// Get [DataType] by column name
     fn get(&self, column: &str) -> Option<&DataType> {
-        if let Some(index) = self.col_names().iter().position(column) {
+        if let Some(index) = self.col_names().iter().position(|c| *c == column) {
             self.col_types().get(index)
         } else { None }
     }
@@ -105,7 +106,7 @@ impl DataSchemaInterface for BismarkSchema {
                     .div(col("count_total").cast(DataType::Float64))
                     .alias("density")
             )
-            .select(bsx_schema.col_names())
+            .select(bsx_schema.col_names().into_iter().map(|s| col(*s)).collect_vec())
             .cast(bsx_schema.hash_map(), true)
     }
 
@@ -178,7 +179,7 @@ impl DataSchemaInterface for CgMapSchema {
                     .alias("density")
                 
             ])
-            .select(bsx_schema.col_names())
+            .select(bsx_schema.col_names().into_iter().map(|s| col(*s)).collect_vec())
             .cast(bsx_schema.hash_map(), true)
     }
 
@@ -245,7 +246,7 @@ impl DataSchemaInterface for CoverageSchema {
                 lit(NULL).alias("strand"),
                 col("count_m").add(col("count_um")).alias("count_total"),
             ])
-            .select(bsx_schema.col_names())
+            .select(bsx_schema.col_names().into_iter().map(|s| col(*s)).collect_vec())
             .cast(bsx_schema.hash_map(), true)
     }
 
@@ -306,7 +307,7 @@ impl DataSchemaInterface for BedGraphSchema {
                 lit(NULL).alias("count_total"),
                 lit(NULL).alias("count_m"),
             ])
-            .select(bsx_schema.col_names())
+            .select(bsx_schema.col_names().into_iter().map(|s| col(*s)).collect_vec())
             .cast(bsx_schema.hash_map(), true)
     }
 
