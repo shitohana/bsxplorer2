@@ -197,3 +197,9 @@ impl RegionCoordinates {
         self
     }
 }
+
+impl Display for RegionCoordinates {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}-{}", self.chr, self.start, self.end)
+    }
+}

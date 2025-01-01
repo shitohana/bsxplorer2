@@ -1,5 +1,5 @@
 
-trait IPCEncodedEnum {
+pub trait IPCEncodedEnum {
     fn from_bool(value: Option<bool>) -> Self;
     fn to_bool(&self) -> Option<bool>;
     fn from_str(value: &str) -> Self;

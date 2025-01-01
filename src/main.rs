@@ -1,9 +1,9 @@
+#![allow(warnings)]
+
 extern crate core;
 use std::thread;
 use log::info;
-use bsx_rs::io::report::readv2::*;
 use bsx_rs::io::report::types::ReportType;
-use bsx_rs::ubatch2::BSXBatch;
 
 extern crate pretty_env_logger;
 
@@ -41,17 +41,6 @@ fn main() {
     //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
     //     ).unwrap();
     // println!("Report written");
-    
-    let reader = ReportReaderBuilder::default()
-        .with_report_type(ReportType::BISMARK)
-        .with_report_path("/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt".into())
-        .with_fasta_path("/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa".into())
-        .with_fai_path("/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai".into())
-        .build().unwrap();
-    
-    for batch in reader {
-        println!("Rows: {}; {:?}", batch.length(), batch.get_region_coordinates())
-    }
     
     
     // let reader = BSXReader::new(

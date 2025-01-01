@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 arrow = "53.1.0"
-bzip2 = "0.4.4"
+bzip2 = "0.5.0"
 flate2 = "^1.0"
 tar = "0.4.42"
 xz2 = "0.1.7"
@@ -21,11 +21,11 @@ bio = "2.0.3"
 zip = "=2.2.0"
 itertools = "0.13.0"
 rayon = "1.10"
-rust-htslib = "0.48.0"
+rust-htslib = "0.49.0"
 bam = "0.1.4"
 memmap2 = "0.9.5"
-polars-arrow = {version = "0.44.2", features = ["io_ipc"]}
 log = "0.4.22"
+enum_dispatch = "0.3.13"
 
 
 [dependencies.polars]

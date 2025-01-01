@@ -366,17 +366,17 @@ pub trait BSXBatch {
 
     /* --- Partitions --- */
     /// Partition batch by [BSXCol]
-    fn partition_by_bsx(&self, column: BSXCol, include_key: bool) -> Vec<UBatch> {
+    fn partition_by_bsx(&self, column: BSXCol) -> Vec<UBatch> {
         let new_data = self
             .get_data()
-            .partition_by([column.as_str()], include_key)
+            .partition_by([column.as_str()], true)
             .unwrap();
         new_data.into_iter().map(|df| UBatch::from(df)).collect()
     }
     /// Partition by custom column name. Name is not guarantied
     /// to be present in internal [DataFrame].
-    fn partition_by(&mut self, column: String, include_key: bool) -> PolarsResult<Vec<UBatch>> {
-        match self.get_data().partition_by([column.as_str()], include_key) {
+    fn partition_by(&mut self, column: String) -> PolarsResult<Vec<UBatch>> {
+        match self.get_data().partition_by([column.as_str()], true) {
             Ok(cols) => Ok(cols.into_iter().map(|df| UBatch::from(df)).collect()),
             Err(e) => Err(e),
         }
@@ -497,6 +497,10 @@ impl UBatch {
             }
         }
     }
+    
+    pub fn into_data(self) -> DataFrame {
+        self.data
+    }
 }
 
 impl Display for UBatch {
@@ -602,4 +606,108 @@ pub fn report_type_to_bsx(report_type: &ReportType, df: DataFrame) -> BSXResult<
     .collect()?;
 
     Ok(res)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::assert_matches::assert_matches;
+    use crate::io::report::readv3::{cast_chr_to_categorical, get_enum_chr};
+    use super::*;
+
+    struct TestBatch {
+        data: DataFrame,
+    }
+
+    impl Default for TestBatch {
+        fn default() -> Self {
+            let data = df!(
+                "chr" => &["chr1", "chr1", "chr2", "chr2", "chr2"],
+                "strand" => &[Some(true), Some(false), Some(false), Some(true), Some(true)],
+                "position" => &[1, 2, 6, 7, 8],
+                "context" => &[Some(true), Some(false), None, Some(true), None],
+                "count_m" => &[10, 20, 30, 0, 0],
+                "count_total" => &[10, 20, 30, 40, 50],
+                "density" => &[1.0, 1.0, 1.0, 0.0, 0.0],
+            ).unwrap().lazy().cast(
+                PlHashMap::from_iter([
+                    (BSXCol::Chr.as_str(), DataType::String),
+                    (BSXCol::Strand.as_str(), BSXCol::Strand.data_type()),
+                    (BSXCol::Position.as_str(), BSXCol::Position.data_type()),
+                    (BSXCol::Context.as_str(), BSXCol::Context.data_type()),
+                    (BSXCol::CountM.as_str(), BSXCol::CountM.data_type()),
+                    (BSXCol::CountTotal.as_str(), BSXCol::CountTotal.data_type()),
+                    (BSXCol::Density.as_str(), BSXCol::Density.data_type()),
+                ]), true
+            ).collect().unwrap();
+            let chr_type = get_enum_chr(&vec![String::from("chr1"), String::from("chr2")]);
+            let data = cast_chr_to_categorical(data, &chr_type).unwrap();
+            Self {data}
+        }
+    }
+
+    impl BSXBatch for TestBatch {
+        fn from_df(data_frame: DataFrame) -> Self {
+            Self {data: data_frame}
+        }
+
+        fn get_data(&self) -> &DataFrame {
+            &self.data
+        }
+
+        fn get_data_mut(&mut self) -> &mut DataFrame {
+            &mut self.data
+        }
+
+        fn _set_data(&mut self, data_frame: DataFrame) {
+            self.data = data_frame;
+        }
+    }
+
+    #[test]
+    fn test_pos_retr() {
+        let batch = TestBatch::default();
+        assert_eq!(batch.get_first_pos(), 1);
+        assert_eq!(batch.get_last_pos(), 8);
+    }
+
+    #[test]
+    fn test_chr_retr() {
+        let batch = TestBatch::default();
+        // Splitting to unique chr
+        let mut partitioned = batch.partition_by_bsx(BSXCol::Chr);
+        partitioned.sort_by_cached_key(|b| b.get_chr().unwrap());
+        let batch = partitioned.first().unwrap();
+        assert_eq!(batch.get_chr().unwrap().as_str(), "chr1");
+        assert_eq!(batch.get_chr_idx(), 0);
+
+    }
+
+    #[test]
+    fn test_diff_chr() {
+        let batch = TestBatch::default();
+        assert_eq!(batch.get_chr(), None);
+    }
+    
+    #[test]
+    fn region_coordinates() {
+        let batch = TestBatch::default();
+        // Splitting to unique chr
+        let mut partitioned = batch.partition_by_bsx(BSXCol::Chr);
+        partitioned.sort_by_cached_key(|b| b.get_chr().unwrap());
+        let batch = partitioned.first().unwrap();
+        let correct = RegionCoordinates::new("chr1".into(), 1, 2);
+        assert_eq!(batch.get_region_coordinates().unwrap(), correct)
+    }
+    
+    #[test]
+    fn length() {
+        let batch = TestBatch::default();
+        assert_eq!(batch.length(), 5)
+    }
+    
+    #[test]
+    fn test_chr_unique() {
+        let batch = TestBatch::default();
+        assert_matches!(batch.check_chr_unique(), Err(_));
+    }
 }
