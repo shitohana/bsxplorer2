@@ -1,8 +1,8 @@
 #![allow(warnings)]
 
 extern crate core;
-use std::thread;
 use log::info;
+use std::thread;
 
 extern crate pretty_env_logger;
 
@@ -40,8 +40,7 @@ fn main() {
     //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
     //     ).unwrap();
     // println!("Report written");
-    
-    
+
     // let reader = BSXReader::new(
     //     File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc").unwrap(),
     //     None,
@@ -53,9 +52,9 @@ fn main() {
     // .finish()
     // .unwrap();
     // let region_reader = RegionsDataReader::new(reader, annotation);
-    // 
+    //
     // let start = Instant::now();
-    // 
+    //
     // for reg_data in {
     //     region_reader
     //         .into_iter()

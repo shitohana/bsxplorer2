@@ -1,159 +1,8 @@
-use itertools::Itertools;
-use polars::prelude::*;
-use std::fmt::Display;
-use std::ops::{Mul, Sub};
-use crate::utils::types::BSXResult;
-
-#[derive(Copy, Clone, Debug, PartialEq, Hash)]
-pub enum FillNullStrategy {
-    /// mean value in array
-    Mean,
-    /// minimal value in array
-    Min,
-    /// maximum value in array
-    Max,
-    /// replace with the value zero
-    Zero,
-    /// replace with the value one
-    One,
-    /// replace with the maximum value of that data type
-    MaxBound,
-    /// replace with the minimal value of that data type
-    MinBound,
-}
-
-#[derive(Clone)]
-pub struct NullHandleStrategy {
-    skip: bool,
-    fill: FillNullStrategy,
-}
-
-impl Default for NullHandleStrategy {
-    fn default() -> Self {
-        Self {
-            skip: false,
-            fill: FillNullStrategy::Zero,
-        }
-    }
-}
-
-impl NullHandleStrategy {
-    pub fn new(skip: bool, fill: FillNullStrategy) -> Self {
-        Self { skip, fill }
-    }
-    pub fn with_fill(mut self, fill: FillNullStrategy) -> Self {
-        self.fill = fill;
-        self
-    }
-    pub fn with_skip(mut self, skip: bool) -> Self {
-        self.skip = skip;
-        self
-    }
-    fn to_polars(&self) -> Option<polars::chunked_array::ops::FillNullStrategy> {
-        if !self.skip {
-            None
-        } else {
-            let strategy = match self.fill {
-                FillNullStrategy::Zero => polars::chunked_array::ops::FillNullStrategy::Zero,
-                FillNullStrategy::One => polars::chunked_array::ops::FillNullStrategy::One,
-                FillNullStrategy::Max => polars::chunked_array::ops::FillNullStrategy::Max,
-                FillNullStrategy::Min => polars::chunked_array::ops::FillNullStrategy::Min,
-                FillNullStrategy::Mean => polars::chunked_array::ops::FillNullStrategy::Mean,
-                FillNullStrategy::MaxBound => {
-                    polars::chunked_array::ops::FillNullStrategy::MaxBound
-                }
-                FillNullStrategy::MinBound => {
-                    polars::chunked_array::ops::FillNullStrategy::MinBound
-                }
-            };
-            Some(strategy)
-        }
-    }
-}
-
-pub struct RegionData {
-    pub data: DataFrame,
-    pub coordinates: RegionCoordinates,
-}
-
-impl RegionData {
-    pub fn new(data: DataFrame, coordinates: RegionCoordinates) -> Self {
-        Self { data, coordinates }
-    }
-
-    pub fn drop_null(&mut self, null_strategy: NullHandleStrategy) -> Option<()> {
-        for col in ["density", "count_m", "count_total"] {
-            if self.data.column(col).unwrap().null_count() > 0 && null_strategy.skip {
-                return None;
-            } else if !null_strategy.skip {
-                self.data = self.data.fill_null(null_strategy.to_polars()?).unwrap();
-            }
-        }
-        Some(())
-    }
-
-    pub fn get_coordinates(&self) -> &RegionCoordinates {
-        &self.coordinates
-    }
-
-    pub(crate) fn from_parts(
-        parts: Vec<DataFrame>,
-        coordinates: RegionCoordinates,
-    ) -> Option<Self> {
-        let mut sorted_iter = parts
-            .iter()
-            .filter(|df| df.height() > 0)
-            .sorted_by_key(|df| {
-                df.column("position")
-                    .unwrap()
-                    .u32()
-                    .unwrap()
-                    .first()
-                    .unwrap()
-            });
-        let mut res = match sorted_iter.next() {
-            Some(df) => df.clone(),
-            None => return None,
-        };
-        for df in sorted_iter {
-            res.extend(df).unwrap();
-        }
-        res.align_chunks_par();
-        Some(Self {
-            data: res,
-            coordinates,
-        })
-    }
-
-    pub fn discretize(&self, resolution: usize) -> DataFrame {
-        self.data
-            .clone()
-            .lazy()
-            .with_column(
-                col("position")
-                    .sub(lit(self.coordinates.start()))
-                    .mul(lit(resolution as f64))
-                    .floor_div(lit(self.coordinates.length() as f64 + 0.5))
-                    .cast(DataType::UInt32)
-                    .alias("fragment"),
-            )
-            .collect()
-            .unwrap()
-    }
-}
-
-impl Display for RegionData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Region {}:{}-{} data with {} rows.",
-            self.coordinates.chr(),
-            self.coordinates.start(),
-            self.coordinates.length(),
-            self.data.height()
-        )
-    }
-}
+use log::warn;
+use std::cmp::Ordering;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::ops::{Add, Range, Shr, Sub};
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct RegionCoordinates {
@@ -162,9 +11,109 @@ pub struct RegionCoordinates {
     pub(crate) end: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct GenomicPosition {
+    chr: String,
+    position: u32,
+}
+
+impl Display for GenomicPosition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.chr, self.position)
+    }
+}
+
+impl GenomicPosition {
+    pub fn new(chr: String, position: u32) -> GenomicPosition {
+        GenomicPosition { chr, position }
+    }
+
+    pub fn chr(&self) -> &str {
+        &self.chr
+    }
+
+    pub fn position(&self) -> u32 {
+        self.position
+    }
+}
+
+impl Add<u32> for GenomicPosition {
+    type Output = GenomicPosition;
+    fn add(self, rhs: u32) -> Self::Output {
+        GenomicPosition::new(self.chr, self.position + rhs)
+    }
+}
+
+impl Sub<u32> for GenomicPosition {
+    type Output = GenomicPosition;
+    fn sub(self, rhs: u32) -> Self::Output {
+        GenomicPosition::new(self.chr, self.position - rhs)
+    }
+}
+
+impl PartialEq for GenomicPosition {
+    fn eq(&self, other: &Self) -> bool {
+        self.chr == other.chr && self.position == other.position
+    }
+}
+
+impl PartialOrd for GenomicPosition {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.chr == other.chr {
+            Some(self.position.cmp(&other.position))
+        } else {
+            None
+        }
+    }
+}
+
+impl Shr for GenomicPosition {
+    type Output = Option<RegionCoordinates>;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        let chr_cmp = self.partial_cmp(&rhs);
+        if chr_cmp.is_some() && chr_cmp.unwrap() == Ordering::Greater {
+            warn!(
+                "Bad range operation for {} and {} regions. Lhs must be less than rhs.",
+                self, rhs
+            );
+            Some(RegionCoordinates::new(
+                self.chr,
+                rhs.position,
+                self.position,
+            ))
+        } else if chr_cmp.is_some() && chr_cmp.unwrap() == Ordering::Less {
+            Some(RegionCoordinates::new(
+                self.chr,
+                self.position,
+                rhs.position,
+            ))
+        } else {
+            None
+        }
+    }
+}
+
 impl RegionCoordinates {
     pub fn new(chr: String, start: u32, end: u32) -> Self {
+        assert!(
+            start <= end,
+            "End position can not be less than start! {}:{}-{}",
+            chr,
+            start,
+            end
+        );
         Self { chr, start, end }
+    }
+    pub fn try_from_position(start: GenomicPosition, end: GenomicPosition) -> Option<Self> {
+        start >> end
+    }
+
+    pub fn into_positions(self) -> (GenomicPosition, GenomicPosition) {
+        (
+            GenomicPosition::new(self.chr.clone(), self.start),
+            GenomicPosition::new(self.chr, self.end),
+        )
     }
     pub fn chr(&self) -> &str {
         self.chr.as_str()
@@ -175,17 +124,89 @@ impl RegionCoordinates {
     pub fn end(&self) -> u32 {
         self.end
     }
+    pub fn start_gpos(&self) -> GenomicPosition {
+        GenomicPosition::new(self.chr.clone(), self.start)
+    }
+    pub fn end_gpos(&self) -> GenomicPosition {
+        GenomicPosition::new(self.chr.clone(), self.end)
+    }
     pub fn length(&self) -> u32 {
         self.end - self.start
     }
-    
-    // TODO: Add methods to modify start and end
-    
-    /// Expands limits of the regions by specified value. If length of 
+
+    pub fn intersect(&self, other: &Self) -> Range<u32> {
+        // Determine longer
+        let (lhs, rhs) = if self.length() < other.length() {
+            (self, other)
+        } else {
+            (other, self)
+        };
+
+        // Fully covers
+        // rhs | |#####|------->
+        // lhs | |-----|
+        // OR
+        // rhs | <-|#####|----->
+        // lhs |   |-----|
+        // OR
+        // rhs | <-------|#####|
+        // lhs |         |-----|
+        if rhs.start <= lhs.start && rhs.end >= lhs.end {
+            rhs.start..rhs.end + 1
+        }
+        // rhs |      |###|------>
+        // lhs | <----|---|
+        // OR
+        // rhs |      #---------->
+        // lhs | <----|
+        else if rhs.start > lhs.start && rhs.end >= lhs.start {
+            rhs.start..lhs.end + 1
+        }
+        // rhs | <-------|##|
+        // lhs |         |------->
+        // OR
+        // rhs | <----------#
+        // lhs |            |---->
+        else if rhs.end >= lhs.start && rhs.end > lhs.end {
+            lhs.start..rhs.end + 1
+        } else {
+            0..0
+        }
+    }
+
+    pub fn set_start(&mut self, start: u32) -> Result<(), Box<dyn Error>> {
+        if start < self.end {
+            self.start = start;
+            Ok(())
+        } else {
+            Err(Box::from(format!(
+                "Could not modify start value. Provided {} start value is greater than end {}.",
+                start, self.end
+            )))
+        }
+    }
+    pub fn set_end(&mut self, end: u32) -> Result<(), Box<dyn Error>> {
+        if end < self.start {
+            self.end = end;
+            Ok(())
+        } else {
+            Err(Box::from(format!(
+                "Could not modify end value. Provided {} end value is less than start {}.",
+                end, self.start
+            )))
+        }
+    }
+    pub fn set_chromosome(&mut self, chr: String) {
+        self.chr = chr;
+    }
+
+    /// Expands limits of the regions by specified value. If length of
     /// the resulting region is more than max_length, [Err] is returned.
     /// Also, if start is less than value [Err] is returned.
     /// Otherwise bounds of the region will be modified themselves
-    pub fn expand(mut self, value: u32, max_length: u32) -> Self {
+    pub fn expand(mut self, value: u32, max_length: Option<u32>) -> Self {
+        let max_length = max_length.unwrap_or(u32::MAX);
+
         if self.end + value > max_length {
             self.end = max_length;
         } else {
@@ -199,7 +220,12 @@ impl RegionCoordinates {
 }
 
 impl Display for RegionCoordinates {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}-{}", self.chr, self.start, self.end)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    // TODO
 }
