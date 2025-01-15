@@ -1,33 +1,34 @@
-use std::error::Error;
+use crate::io::report::reader::ReportReader;
 use itertools::Itertools;
 use polars::prelude::*;
-use crate::io::report::reader::ReportReader;
+use std::error::Error;
 
 pub mod schema;
 pub mod bsx_batch;
-
+pub mod fasta_reader;
 
 pub mod reader {
     use super::*;
     use crate::io::report::bsx_batch::BsxBatch;
     use crate::io::report::report_batch_utils::{align_data_with_context, first_position, get_context_data, last_position};
+    use crate::io::report::schema;
+    use crate::io::report::schema::ReportTypeSchema;
     use crate::region::{GenomicPosition, RegionCoordinates};
     use bio::io::fasta::{IndexedReader, Sequence};
+    use log::{debug, info};
     use polars::io::mmap::MmapBytesReader;
     use polars::io::RowIndex;
+    
     use std::error::Error;
     use std::fs::File;
-    use std::io::{Read, Seek};
+    use std::io::{BufReader, Read, Seek};
     use std::ops::{Add, Sub};
     use std::path::PathBuf;
     use std::sync::mpsc;
     use std::sync::mpsc::Receiver;
     use std::thread::JoinHandle;
     use std::{io, thread};
-    use std::borrow::Cow;
-    use log::{debug, info};
-    use crate::io::report::schema;
-    use crate::io::report::schema::ReportTypeSchema;
+    use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
 
     pub struct ReportReaderBuilder {
         report_type: schema::ReportTypeSchema,
@@ -120,11 +121,13 @@ pub mod reader {
                 .into_reader_with_file_handle(handle);
 
             let indexed_reader = match (self.fasta_path, self.fai_path) {
-                (Some(fasta_path), Some(fai_path)) => Some(FastaCoverageReader::new(
-                    fasta_path,
-                    fai_path,
-                    self.sequence_buffer_size.unwrap_or(1_000_000),
-                )),
+                (Some(fasta_path), Some(fai_path)) => {
+                    let reader = FastaReader::try_from_handle(
+                        BufReader::new(File::open(&fasta_path)?),
+                        BufReader::new(File::open(&fai_path)?),
+                    )?;
+                    Some(FastaCoverageReader::from(reader))
+                },
                 (Some(_), None) => todo!(),
                 (None, Some(_)) => return Err(Box::from("No FASTA path given")),
                 (None, None) => None,
@@ -206,250 +209,6 @@ pub mod reader {
         }
     }
 
-    pub struct FastaCoverageReader {
-        reader: IndexedReader<File>,
-        buffer: Vec<u8>,
-        seq_buffer_size: usize,
-        metadata: Vec<(String, Sequence)>,
-        last_position: GenomicPosition,
-    }
-
-    impl FastaCoverageReader {
-        pub fn new(fa_path: PathBuf, fai_path: PathBuf, sequence_buffer_size: usize) -> Self {
-            let reader = IndexedReader::new(
-                File::open(&fa_path)
-                    .unwrap_or_else(|_| panic!("Could not open FASTA file {}", fa_path.display())),
-                File::open(&fai_path).unwrap_or_else(|_| {
-                    panic!("Could not open FASTA index file {}", fai_path.display())
-                }),
-            )
-            .expect("Could not create Indexed reader");
-
-            Self::from_indexed_reader(reader, sequence_buffer_size)
-        }
-
-        pub(crate) fn from_indexed_reader(
-            reader: IndexedReader<File>,
-            sequence_buffer_size: usize,
-        ) -> Self {
-            let seq_metadata = Self::get_seq_metadata(&reader);
-            assert!(!seq_metadata.is_empty(), "Index is empty!");
-
-            let (first_chr, _) = seq_metadata.first().unwrap();
-            let sequence_buffer = Vec::with_capacity(sequence_buffer_size);
-            let last_position = GenomicPosition::new(first_chr.to_string(), 0);
-
-            Self {
-                reader,
-                buffer: sequence_buffer,
-                seq_buffer_size: sequence_buffer_size,
-                metadata: seq_metadata,
-                last_position,
-            }
-        }
-
-        pub fn buffer(&self) -> &Vec<u8> {
-            &self.buffer
-        }
-
-        pub fn seq_buffer_size(&self) -> usize {
-            self.seq_buffer_size
-        }
-
-        pub fn metadata(&self) -> &Vec<(String, Sequence)> {
-            &self.metadata
-        }
-
-        pub fn last_position(&self) -> &GenomicPosition {
-            &self.last_position
-        }
-
-        pub fn get_chr_metadata(&self, chr: &str) -> Option<&Sequence> {
-            self.metadata
-                .iter()
-                .find(|(name, _)| name == chr)
-                .map(|(_, sequence)| sequence)
-        }
-
-        pub fn get_seq_region(&mut self, region: &RegionCoordinates) -> io::Result<Vec<u8>> {
-            let mut sequence = Vec::new();
-
-            self.reader
-                .fetch(region.chr(), region.start.into(), region.end.into())?;
-            self.reader.read(&mut sequence)?;
-            Ok(sequence)
-        }
-
-        pub fn get_seq_until(&mut self, pos: &GenomicPosition) -> io::Result<Vec<u8>> {
-            match self.check_chr(pos.chr()) {
-                Some(false) => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Last chromosome reading not finished",
-                    ))
-                }
-                Some(true) => {
-                    self.last_position = GenomicPosition::new(pos.chr().parse().unwrap(), 0);
-                }
-                _ => {}
-            }
-
-            let region = (self.tell_pos() >> pos.clone()).unwrap();
-            let (start_i, end_i) = loop {
-                if let Some((start, stop)) = self.find_buffer_slice(&region) {
-                    break (start, stop);
-                } else {
-                    let new_end = self.get_shifted_end();
-                    self.fill_buffer(new_end)?;
-                }
-            };
-            debug!("Fetching region {}", region);
-            
-            if let Some(sequence) = self.buffer.get(start_i..end_i) {
-                let res = Ok(sequence.to_vec());
-                self.drain_buffer(end_i);
-                res
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Error reading sequence",
-                ))
-            }
-        }
-
-        pub fn get_seq_leftover(&mut self) -> io::Result<Vec<u8>> {
-            let last_position = self.get_chr_metadata(self.last_position.chr()).unwrap().len;
-            self.get_seq_until(&GenomicPosition::new(
-                self.last_position.chr().to_string(),
-                last_position.try_into().unwrap(),
-            ))
-        }
-
-        pub fn tell(&self) -> usize {
-            <usize as Sub>::sub(
-                self.last_position.position().try_into().unwrap(),
-                self.buffer.len(),
-            ) + 1
-        }
-
-        pub fn tell_pos(&self) -> GenomicPosition {
-            GenomicPosition::new(
-                self.last_position.chr().to_string(),
-                self.tell().try_into().unwrap(),
-            )
-        }
-        
-        pub fn chr_finished(&self) -> bool {
-            self.get_chr_metadata(self.last_position.chr()).unwrap().len == self.last_position().position() as u64
-        }
-
-        fn get_seq_metadata(reader: &IndexedReader<File>) -> Vec<(String, Sequence)> {
-            reader
-                .index
-                .sequences()
-                .iter()
-                .map(|seq| (seq.name.clone(), seq.clone()))
-                .collect_vec()
-        }
-
-        fn get_shifted_end(&mut self) -> GenomicPosition {
-            let mut res_position = <u64 as Add>::add(
-                self.seq_buffer_size.try_into().unwrap(),
-                self.last_position.position().into(),
-            );
-            let current_chr = self.last_position.chr();
-            let (_, chr_data) = self
-                .metadata
-                .iter()
-                .find(|(name, _)| name == current_chr)
-                .unwrap();
-
-            if chr_data.len.lt(&res_position) {
-                res_position = chr_data.len;
-            }
-            GenomicPosition::new(current_chr.to_string(), res_position.try_into().unwrap())
-        }
-
-        pub(crate) fn set_chr(&mut self, chr: &str) -> Result<(), Box<dyn Error>> {
-            if self.get_chr_metadata(chr).is_some() {
-                self.last_position = GenomicPosition::new(chr.to_string(), 0);
-                self.buffer.clear();
-                Ok(())
-            } else {
-                Err(Box::from(format!("Chr {} not found in index", chr)))
-            }
-        }
-        
-        /// Does not check position outof chromosome bounds
-        pub(crate) fn set_position(&mut self, position: u64) {
-            let new_last_position = GenomicPosition::new(
-                self.last_position.chr().to_string(),
-                position.try_into().unwrap(),
-            );
-            self.last_position = new_last_position;
-        }
-
-        fn find_buffer_slice(&self, region: &RegionCoordinates) -> Option<(usize, usize)> {
-            // Check same chromosome
-            assert_eq!(region.chr(), self.last_position.chr());
-
-            let last_pos_usize: usize = self.last_position.position().try_into().unwrap();
-            let buffer_start = self.tell();
-            assert!(
-                buffer_start.le(&region.start().try_into().unwrap()),
-                "Sequence has already been read till {}, but requested position is {}",
-                buffer_start,
-                region.start()
-            );
-
-            if last_pos_usize.gt(&region.end().try_into().unwrap()) {
-                let region_start_idx =
-                    <usize as Sub>::sub(region.start().try_into().unwrap(), buffer_start);
-                let region_end_idx =
-                    <usize as Sub>::sub(region.end().try_into().unwrap(), buffer_start);
-                Some((region_start_idx, region_end_idx))
-            } else {
-                None
-            }
-        }
-
-        fn drain_buffer(&mut self, until: usize) {
-            let (_, new_buf) = self.buffer.split_at(until);
-            self.buffer = Vec::from(new_buf)
-        }
-
-        fn fill_buffer(&mut self, new_pos: GenomicPosition) -> io::Result<()> {
-            // Check same chromosome
-            assert_eq!(new_pos.chr(), self.last_position.chr());
-
-            let read_region = (self.last_position.clone() >> new_pos).unwrap();
-
-            let temp_buf = self.get_seq_region(&read_region)?;
-
-            self.buffer.extend(temp_buf);
-            self.last_position = read_region.end_gpos();
-            Ok(())
-        }
-
-        fn check_chr(&self, chr: &str) -> Option<bool> {
-            if self.last_position.chr() == chr {
-                None
-            } else if self.last_position.position()
-                == self
-                    .metadata
-                    .iter()
-                    .find(|(name, _)| name == chr)
-                    .unwrap()
-                    .1
-                    .len as u32
-            {
-                Some(true)
-            } else {
-                Some(false)
-            }
-        }
-    }
-
     pub struct ContextData {
         positions: Vec<u32>,
         contexts: Vec<Option<bool>>,
@@ -467,6 +226,18 @@ pub mod reader {
                 contexts: Vec::new(),
                 strands: Vec::new(),
             }
+        }
+
+        pub(crate) fn filter<F: Fn(u32) -> bool>(&self, predicate: F) -> Self {
+            let mut new_self = Self::new();
+            for (idx, pos) in self.positions.iter().enumerate() {
+                if predicate(*pos) {
+                    new_self.add_row(
+                        *pos, self.contexts[idx], self.strands[idx]
+                    )
+                }
+            }
+            new_self
         }
         
         pub(crate) fn col_names() -> &'static[&'static str] {
@@ -496,7 +267,7 @@ pub mod reader {
         }
 
         pub fn from_sequence(seq: &[u8], start: GenomicPosition) -> Self {
-            let start_pos = start.position() - 1;
+            let start_pos = start.position();
             let fw_bound: usize = seq.len() - 2;
             let rv_bound: usize = 2;
 
@@ -576,8 +347,8 @@ pub mod reader {
     pub struct ReportReader {
         join_handle: JoinHandle<()>,
         receiver: Receiver<ReadQueueItem>,
-        report_schema: schema::ReportTypeSchema,
-        fasta_reader: Option<FastaCoverageReader>,
+        report_schema: ReportTypeSchema,
+        fasta_reader: Option<FastaCoverageReader<BufReader<File>, u64>>,
         chunk_size: usize,
         batch_cache: DataFrame,
     }
@@ -585,7 +356,7 @@ pub mod reader {
     impl ReportReader {
         pub(crate) fn new<F>(
             reader: CsvReader<F>,
-            fasta_reader: Option<FastaCoverageReader>,
+            fasta_reader: Option<FastaCoverageReader<BufReader<File>, u64>>,
             report_schema: schema::ReportTypeSchema,
             batch_per_read: usize,
             chunk_size: usize,
@@ -619,51 +390,48 @@ pub mod reader {
             let (sc, receiver) = mpsc::sync_channel(batch_per_read);
 
             // Clone schema for thread
-            let report_schema_clone = report_schema.clone();
+            let report_schema_clone = *report_schema;
             // Start reading thread
             let join_handle = thread::spawn(move || {
                 let mut owned_batched =
                     OwnedBatchedCsvReader::new(reader, Arc::from(report_schema_clone.schema()));
+                let chr_col = report_schema_clone.chr_col();
+                let pos_col = report_schema_clone.position_col();
+                
+                let mut cached_batch: Option<DataFrame> = None;
                 
                 loop {
-                    let incoming_batches = owned_batched.next_batches(batch_per_read);
-                    match incoming_batches {
-                        Ok(Some(data)) => {
-                            data.into_iter().for_each(|frame| {
-                                let first_pos = first_position(
-                                    &frame,
-                                    report_schema_clone.chr_col(),
-                                    report_schema_clone.position_col(),
-                                )
-                                    .expect("failed to read first position");
-                                let last_pos = last_position(
-                                    &frame,
-                                    report_schema_clone.chr_col(),
-                                    report_schema_clone.position_col(),
-                                )
-                                    .expect("failed to read last position");
-
-                                if (first_pos >> last_pos).is_some() {
-                                    sc.send((frame, false))
-                                        .expect("Could not send data to main thread.")
+                    let incoming_batches = owned_batched.next_batches(batch_per_read)
+                        .expect("Error while reading batches");
+                    if let Some(batches_vec) = incoming_batches {
+                        // Flatten batches and partition by chr
+                        let batches_vec = batches_vec.into_iter()
+                            .flat_map(|batch| partition_batch(batch, chr_col, pos_col).unwrap())
+                            .collect_vec();
+                        
+                        for batch in batches_vec.into_iter() {
+                            if let Some(cached_batch_data) = cached_batch.take() {
+                                // Compare with cached
+                                let cached_chr = first_position(&cached_batch_data, chr_col, pos_col).unwrap().chr().to_owned();
+                                let new_chr = first_position(&batch, chr_col, pos_col).unwrap().chr().to_owned();
+                                let item = if cached_chr != new_chr {
+                                    (cached_batch_data, true)
                                 } else {
-                                    let mut partitioned = frame
-                                        .partition_by_stable([report_schema_clone.chr_col()], true)
-                                        .expect("Could not get partition by chr");
-                                    while let Some(batch) = partitioned.pop() {
-                                        if partitioned.is_empty() {
-                                            sc.send((batch, false))
-                                                .expect("Could not send data to main thread.")
-                                        } else {
-                                            sc.send((batch, true))
-                                                .expect("Could not send data to main thread.")
-                                        }
-                                    }
-                                }
-                            });
-                        },
-                        Ok(None) => {break}
-                        Err(e) => {panic!("{}", e)}
+                                    (cached_batch_data, false)
+                                };
+                                // Return cached
+                                sc.send(item).expect("Could not send data to main thread.");
+                            }
+                            // Update cached
+                            cached_batch = Some(batch);
+                        }
+                    } else {
+                        // Release cached
+                        if let Some(cached_batch_data) = cached_batch.take() {
+                            let item = (cached_batch_data, true);
+                            sc.send(item).expect("Could not send data to main thread.");
+                        }
+                        break
                     }
                 }
             });
@@ -674,7 +442,8 @@ pub mod reader {
         /// Item must has single chromosome
         fn extend_cache(&mut self, item: ReadQueueItem) -> Result<(), Box<dyn Error>> {
             let context_data = if let Some(reader) = self.fasta_reader.as_mut() {
-                Some(get_context_data(reader, &item, &self.report_schema)?)
+                let data = get_context_data(reader, &item, &self.report_schema)?;
+                Some(data)
             } else {
                 None
             };
@@ -686,9 +455,32 @@ pub mod reader {
             } else { 
                 data_bsx 
             };
-            
-            self.batch_cache.extend(&result)?;
+
+            if result.column("position")?.u64()?.first() <
+                self.batch_cache.column("position")?.u64()?.last() {
+                let (cache, cache_last) = self.batch_cache.split_at(-1);
+                let (res_first, res) = result.split_at(1);
+
+                self.batch_cache = cache;
+                self.batch_cache.extend(&res_first)?;
+                self.batch_cache.extend(&cache_last)?;
+                self.batch_cache.extend(&res)?;
+            } else {
+                self.batch_cache.extend(&result)?
+            }
             Ok(())
+        }
+    }
+    
+    /// It is caller responsibility to validate schema
+    fn partition_batch(batch: DataFrame, chr_col: &str, pos_col: &str) -> Result<Vec<DataFrame>, Box<dyn Error>> {
+        let first_pos = first_position(&batch, chr_col, pos_col)?;
+        let last_pos = last_position(&batch, chr_col, pos_col)?;
+        
+        if first_pos.chr() != last_pos.chr() {
+            Ok(batch.partition_by_stable([chr_col], true)?)
+        } else {
+            Ok(vec![batch])
         }
     }
 
@@ -697,10 +489,10 @@ pub mod reader {
 
         fn next(&mut self) -> Option<Self::Item> {
             if self.batch_cache.height() >= self.chunk_size {
-                let chr_col = self.batch_cache
+                let (mut output, mut rest) = self.batch_cache.split_at(self.chunk_size as i64);
+                let chr_col = output
                     .column("chr").unwrap()
                     .as_series()?.rechunk();
-                
                 let start_chr = chr_col.first()
                     .as_any_value().str_value()
                     .to_string();
@@ -709,15 +501,16 @@ pub mod reader {
                     .str_value()
                     .to_string();
                 
-                let split_at = if start_chr == end_chr {
-                    self.chunk_size as i64
-                } else {
-                    chr_col.iter()
-                        .position(|v| v.str_value() != start_chr.clone())
-                        .unwrap() as i64
-                };
-
-                let (output, rest) = self.batch_cache.split_at(split_at);
+                if start_chr != end_chr {
+                    let mut partitioned = output.partition_by_stable(["chr"], true).unwrap();
+                    partitioned.reverse();
+                    output = partitioned.pop().unwrap();
+                    
+                    if let Some(new_rest) = partitioned.into_iter().reduce(|acc, df| acc.vstack(&df).unwrap()) {
+                        rest = new_rest.vstack(&rest).unwrap();
+                    } 
+                }
+                
                 self.batch_cache = rest;
                 Some(BsxBatch::new(output))
                 
@@ -746,43 +539,60 @@ pub mod reader {
 
 
 pub mod report_batch_utils {
-    use crate::io::report::bsx_batch::BsxBatch;
-    use crate::io::report::reader::{ContextData, FastaCoverageReader, ReadQueueItem};
-    use crate::io::report::schema::ReportTypeSchema;
     use super::*;
-    use crate::region::GenomicPosition;
-    
-    pub(crate) fn get_context_data(
-        reader: &mut FastaCoverageReader, 
+    use crate::io::report::bsx_batch::BsxBatch;
+    use crate::io::report::reader::{ContextData, ReadQueueItem};
+    use crate::io::report::schema::ReportTypeSchema;
+    use crate::region::{GenomicPosition, RegionCoordinates};
+    use std::io::{BufRead, Seek};
+
+    pub(crate) fn get_context_data<R>(
+        reader: &mut fasta_reader::FastaCoverageReader<R, u64>,
         item: &ReadQueueItem,
         report_schema: &ReportTypeSchema,
-    )  -> PolarsResult<ContextData> {
+    ) -> Result<ContextData, Box<dyn Error>> 
+    where R: BufRead + Seek {
         let (data, is_end) = item;
+        let first_position = first_position(
+            data,
+            report_schema.chr_col(),
+            report_schema.position_col()
+        )?;
         let last_position = last_position(
             data, 
             report_schema.chr_col(), 
             report_schema.position_col()
-        )? + 1;
-
-        if reader.chr_finished() {
-            reader.set_chr(last_position.chr()).
-                expect("Could not set chr in fasta reader.");
-        }
-
-        let sequence = if *is_end {
-            // Read sequence till the end of the chromosome
-            let seq = reader.get_seq_leftover()?;
-            // Set position explicitly to mark chromosome as read
-            let chr_length = reader.get_chr_metadata(reader.last_position().chr()).unwrap().len;
-            reader.set_position(chr_length);
-            seq
+        )?;
+        let chr = last_position.clone().chr().to_string();
+        let chr_coverage = *reader.coverage().get(chr.to_string())
+            .expect("Chromosome not found in index");
+        
+        // To ensure we capture all contexts
+        let sequence_overhead = 3;
+        let fetch_start = if chr_coverage.read() == 0 || chr_coverage.read() < sequence_overhead {
+            0
         } else {
-            // Read region
-            reader.get_seq_until(&last_position)?
+            chr_coverage.read() - sequence_overhead
         };
+        let fetch_end = if last_position.position() as u64 + sequence_overhead > chr_coverage.total() || *is_end {
+            chr_coverage.total()
+        } else {
+            last_position.position() as u64 + sequence_overhead
+        };
+        let fetch_region = RegionCoordinates::new(
+            chr.to_string(), fetch_start as u32, fetch_end as u32
+        );
 
-        let first_position = last_position - sequence.len() as u32;
-        let context_data = ContextData::from_sequence(&sequence, first_position);
+        let sequence = reader.inner_mut().fetch_region(fetch_region.clone())?;
+        let context_data = ContextData::from_sequence(&sequence, fetch_region.start_gpos() + 1)
+            .filter(|pos| pos > chr_coverage.read() as u32)
+            .filter(|pos| if !*is_end { pos <= last_position.position() } else { true });
+        if !*is_end {
+            reader.coverage_mut().shift_to(fetch_region.chr(), last_position.position() as u64)?;
+        } else {
+            reader.coverage_mut().shift_to(fetch_region.chr(), chr_coverage.total())?;
+        }
+        
         Ok(context_data)
     }
     
@@ -873,7 +683,7 @@ pub mod report_batch_utils {
             .column(chr_col)?
             .as_series()
             .unwrap()
-            .first()
+            .last()
             .as_any_value()
             .cast(&DataType::String)
             .str_value()

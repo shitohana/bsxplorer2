@@ -10,12 +10,14 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::ops::Div;
 use std::os;
 use std::path::PathBuf;
+use hashbrown::HashSet;
 use itertools::{Itertools};
 use num::{PrimInt};
 use polars::prelude::*;
 use rand::distributions::Distribution;
 use rayon::prelude::*;
 use bsx_rs::io::report::bsx_batch::BsxBatch;
+use bsx_rs::io::report::fasta_reader::FastaReader;
 use bsx_rs::io::report::reader::{ContextData, ReportReader, ReportReaderBuilder};
 use bsx_rs::io::report::report_batch_utils::{decode_context, decode_strand};
 use bsx_rs::io::report::schema::ReportTypeSchema;
@@ -26,68 +28,10 @@ const STD_COVERAGE: f64 = 30.0;
 const MAX_CHROMS: usize = 10;
 const MAX_CHR_LEN: usize = 1_000_000;
 
-/// Test if reader initializes correctly.
-/// Tests [bsx_rs::io::report::reader::FastaCoverageReader::get_seq_until]
-/// and how reader drains its buffer and allocates a new one.
-#[test]
-fn test_fasta_reading() {
-    use bsx_rs::io::report::reader::FastaCoverageReader;
-    
-    let fasta_path = PathBuf::from(env!("CARGO_MANIFEST_DIR").to_string() + "/tests/static/ecoli.fna");
-    let fasta_index_path = PathBuf::from(env!("CARGO_MANIFEST_DIR").to_string() + "/tests/static/ecoli.fna.fai");
-    let seq_buffer_size = 800;
-    
-    let mut reader = FastaCoverageReader::new(
-        fasta_path, fasta_index_path, seq_buffer_size
-    );
-    
-    let first_sequence = reader.get_seq_until(&GenomicPosition::new("NC_000913.3".into(), 81))
-        .expect("Failed to read first sequence");
-    assert_eq!(
-        String::from_utf8(first_sequence.to_vec()).unwrap(),
-        String::from("AGCTTTTCATTCTGACTGCAACGGGCAATATGTCTCTGTGTGGATTAAAAAAAGAGTGTCTGATAGCAGCTTCTGAACTG")
-    );
-    assert_eq!(seq_buffer_size - first_sequence.len(), reader.buffer().len());
-    let second_sequence = reader.get_seq_until(&GenomicPosition::new("NC_000913.3".into(), 161))
-        .expect("Failed to read second sequence");
-    assert_eq!(
-        String::from_utf8(second_sequence.to_vec()).unwrap(),
-        String::from("GTTACCTGCCGTGAGTAAATTAAAATTTTATTGACTTAGGTCACTAAATACTTTAACCAATATAGGCATAGCGCACAGAC")
-    );
-    assert_eq!(seq_buffer_size - first_sequence.len() - second_sequence.len(), reader.buffer().len());
-    let _ = reader.get_seq_until(&GenomicPosition::new("NC_000913.3".into(), 799)).unwrap();
-    
-    // Test if new buffer is allocated
-    let third_sequence = reader.get_seq_until(&GenomicPosition::new("NC_000913.3".into(), 881)).unwrap();
-    assert_eq!(
-        String::from_utf8(third_sequence.to_vec()).unwrap(),
-        String::from("CTGGCAGTGGGGCATTACCTCGAATCTACCGTCGATATTGCTGAGTCCACCCGCCGTATTGCGGCAAGCCGCATTCCGGCTG")
-    );
-    assert!(reader.buffer().len() > 700)
-}
-
-#[test]
-#[should_panic]
-fn test_fasta_position_out_of_bounds() {
-    use bsx_rs::io::report::reader::FastaCoverageReader;
-
-    let fasta_path = PathBuf::from(env!("CARGO_MANIFEST_DIR").to_string() + "/tests/static/ecoli.fna");
-    let fasta_index_path = PathBuf::from(env!("CARGO_MANIFEST_DIR").to_string() + "/tests/static/ecoli.fna.fai");
-    let seq_buffer_size = 800;
-
-    let mut reader = FastaCoverageReader::new(
-        fasta_path, fasta_index_path, seq_buffer_size
-    );
-
-    let _ = reader.get_seq_until(&GenomicPosition::new("NC_000913.3".into(), 81))
-        .expect("Failed to read first sequence");
-    let _ = reader.get_seq_until(&GenomicPosition::new("NC_000913.3".into(), 50))
-        .expect("Failed to read first sequence");
-}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct ReportMetadata {
-    cytosines_per_chr: HashMap<String, usize>,
+    cytosines_per_chr: HashMap<String, HashSet<u64>>,
 }
 
 
@@ -98,16 +42,20 @@ impl ReportMetadata {
         }
     }
     
-    fn get_mut(&mut self, name: &str) -> Option<&mut usize> {
+    fn get_mut(&mut self, name: &str) -> Option<&mut HashSet<u64>> {
         self.cytosines_per_chr.get_mut(name)
     }
 
-    fn append_chr(&mut self, name: String, cytosines: usize) {
-        self.cytosines_per_chr.insert(name, cytosines);
+    fn append_chr(&mut self, name: String, cytosines: &[u64]) {
+        self.cytosines_per_chr.insert(name, HashSet::from_iter(cytosines.iter().cloned()));
+    }
+    
+    fn extend_positions(&mut self, name: String, cytosines: &[u64]) {
+        self.cytosines_per_chr.get_mut(&name).unwrap().extend(cytosines);
     }
 
     fn cytoines_total(&self) -> usize {
-        self.cytosines_per_chr.values().sum()
+        self.cytosines_per_chr.values().map(HashSet::len).sum()
     }
 }
 
@@ -144,8 +92,6 @@ where
         .map(|_| rand::random::<u32>() % MAX_CHR_LEN as u32 + 1).collect_vec();
 
     info!("Number of chroms: {}", chr_number);
-    info!("Total number of nucleotides to be generated: {}", chr_lengths.iter().sum::<u32>());
-    info!("Generating sequences");
     
     let mut metadata = ReportMetadata::new();
 
@@ -162,19 +108,20 @@ where
         let chr_name = format!("chr{}", chr_i);
 
         let sequence = generate_sequence(*chr_length as usize);
+        info!("Writing sequence {} with length {}", chr_name, sequence.len());
         fasta_writer.write(chr_name.as_str(), None, &sequence).unwrap();
-        
         
         let context_data = ContextData::from_sequence(
             &sequence, 
             GenomicPosition::new(chr_name.clone(), 1)
         );
+        assert!(context_data.positions().is_sorted());
         let context_len = context_data.len();
-        metadata.append_chr(chr_name.to_string(), context_len);
+        metadata.append_chr(chr_name.to_string(), &context_data.positions().iter().map(|v| *v as u64).collect_vec());
         
         let counts_total_col = generate_counts_total::<u32>(MEAN_COVERAGE, STD_COVERAGE, context_len);
         let counts_m_col = generate_counts_m::<u32>(&counts_total_col, context_data.contexts(), &context_prob);
-        
+
         let result_bsx = context_data_to_bsx(
             context_data, counts_m_col, counts_total_col, chr_name.as_str()
         ).unwrap();
@@ -183,6 +130,7 @@ where
         writer.write_batch(&result_casted).unwrap()
     }
     writer.finish().expect("Failed to finish writing CSV file");
+    fasta_writer.flush().expect("Failed to flush fasta file");
     info!("Report written");
     metadata
 }
@@ -202,6 +150,7 @@ fn generate_sequence(chr_length: usize) -> Vec<u8> {
         .map(|n| nuc_mapping[&n])
         .collect_vec()
 }
+
 
 fn generate_counts_total<N>(mean: f64, std: f64, length: usize) -> Vec<N>
 where N: PrimInt {
@@ -248,38 +197,66 @@ where
 fn test_reading(reader: ReportReader, metadata: ReportMetadata, chunk_size: usize) {
     let mut read_metadata = ReportMetadata::new();
     metadata.cytosines_per_chr.keys().for_each(|k|
-        read_metadata.append_chr(k.clone(), 0)
+        read_metadata.append_chr(k.clone(), &[])
     );
-
-    let mut prev_chr: Option<String> = None;
-    let mut end_detected = false;
+    let mut shortened_batch_num = 0;
     for batch in reader {
         let batch_position = batch.first_position().unwrap();
-        println!("Batch position: {:?}", batch_position);
         let batch_height = batch.data().height();
+        // Check chr unique
+        // ----------------
+        assert_eq!(batch.data().column("chr").unwrap().as_series().unwrap().unique().unwrap().len(), 1);
+        // Check position sorted
+        // ---------------------
         assert!(
             batch.data()
                 .column("position").unwrap()
                 .as_series().unwrap()
-                .is_sorted(SortOptions::default().with_order_descending(false)).unwrap()
+                .is_sorted(SortOptions::default().with_order_descending(false)).unwrap(),
+            "Got unsorted batch {}",
+            { 
+                let mut prev = 0;
+                let mut idx = 0;
+                for (i, val) in batch.data().column("position").unwrap().u64().unwrap().into_iter().enumerate() {
+                    if let Some(v) = val {
+                        if v >= prev {
+                            prev = v;
+                        } else {
+                            idx = i;
+                            break
+                        }
+                    }
+                }
+                
+                batch.data().slice((idx - 2) as i64, 5)
+            }
         );
-
-        if let Some(ref prev_chr) = prev_chr {
-            if prev_chr == batch_position.chr() && chunk_size != batch_height {
-                end_detected = true;
-            }
-            else if prev_chr != batch_position.chr() && end_detected {
-                end_detected = false;
-            }
+        // Check position unique
+        // ---------------------
+        assert_eq!(batch.data().column("position").unwrap().as_series().unwrap().unique().unwrap().len(), batch_height);
+        
+        if batch.data().height() != chunk_size {
+            shortened_batch_num += 1;
         }
-        if !end_detected {
-            assert_eq!(chunk_size, batch_height);
-        }
-        prev_chr = batch_position.chr().to_string().into();
-
-        *read_metadata.get_mut(batch_position.chr()).unwrap() += batch_height;
+        
+        read_metadata.extend_positions(
+            batch_position.chr().to_string(), 
+            &batch.data().column("position").unwrap().u64().unwrap().iter().map(|v| v.unwrap()).collect_vec()
+        );
     }
-    assert_eq!(metadata, read_metadata);
+    
+    assert_eq!(shortened_batch_num, read_metadata.cytosines_per_chr.len());
+    
+    for chr in metadata.cytosines_per_chr.keys() {
+        let reference = metadata.cytosines_per_chr.get(chr).unwrap();
+        let real = read_metadata.cytosines_per_chr.get(chr).unwrap();
+        let difference = reference.difference(real).cloned().sorted().collect_vec();
+        
+        if !difference.is_empty() {
+            println!("{:?}", reference.iter().sorted().zip(real.iter().sorted()).take(20).collect::<Vec<_>>());;
+            panic!("Context positions differ! {:?}", difference);
+        }
+    }
 }
 
 struct SampleSetup {
@@ -313,11 +290,12 @@ fn test_report_type(report_type_schema: ReportTypeSchema, chunk_size: usize)  {
         fai_sink.write_all(&index).unwrap();
     }
     info!("Fasta index created as: {:?}", tempfile_fai.path());
-    
+
     let reader = {
         let mut builder = ReportReaderBuilder::default()
             .with_chunk_size(chunk_size)
-            .with_report_type(report_type_schema);
+            .with_report_type(report_type_schema)
+            .with_batch_size(2 << 30);
         
         if report_type_schema.need_align() {
             builder = builder
@@ -332,13 +310,47 @@ fn test_report_type(report_type_schema: ReportTypeSchema, chunk_size: usize)  {
 
 #[test]
 fn report_reading() {
-    // TODO add sequence saving and correct bedgraph generation
+    /*
+    This is done:
+        1.  Fix BSX to Bedgraph/Coverage conversion.
+            Currently, NaN columns with no reads are not
+            dropped
+        2.  Find out, why on alignment step the last batch
+            of the chromosome is not aligned with the last
+            nucleotides
+        3.  Find out, why aligned batch can be unsorted by
+            position
+        4.  Error with reports less than chunk size
+        
+    To remember: there were several problems with 
+    reports alignments:
+            1.  bio::io::seq reader is zero-based, so the
+                start position must be 0
+            2.  Extra number of nucleotides per sequence
+                part is now set to 3 to ensure any possible
+                context position will be captured
+            3.  Many small bugs/mistakes, which I already
+                don't remember.  
+        
+    TODO new:  
+        1.  Rewrite what's written so it can be
+            understood and be expandable. Add documentation
+            and unit tests.
+        2.  Rewrite testing strategy, so different ReportTypes
+            could operate the same sequence information
+        3.  Add seeding to tests to make them reproducible
+        4.  Create bulk test with many possible parameters
+            for ReportReader
+        5.  Create should_panic tests for both FastaReader and
+            ReportReader
+    */
+    
     pretty_env_logger::init();
     let chunk_size = 10_000;
     let report_schemas = [
         ReportTypeSchema::BedGraph,
-        ReportTypeSchema::Coverage,
         ReportTypeSchema::Bismark,
+        ReportTypeSchema::Coverage,
         ReportTypeSchema::CgMap,
     ];
     for report_type in report_schemas {

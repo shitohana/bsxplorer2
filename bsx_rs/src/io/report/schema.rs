@@ -227,6 +227,7 @@ impl ReportTypeSchema {
                             col("position").alias("start"),
                             col("position").alias("end"),
                         ])
+                        .drop_nans(Some(vec![col("density")]))
                         .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
                         .cast(self.hashmap(), true)
                         .collect()
@@ -237,6 +238,7 @@ impl ReportTypeSchema {
                             col("position").alias("start"),
                             col("position").alias("end"),
                         ])
+                        .drop_nans(Some(vec![col("density")]))
                         .with_column((col("count_total") - col("count_m")).alias("count_um"))
                         .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
                         .cast(self.hashmap(), true)
