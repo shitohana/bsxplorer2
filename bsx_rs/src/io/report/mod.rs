@@ -27,6 +27,7 @@ pub mod reader {
     use std::sync::mpsc::{Receiver, SyncSender};
     use std::thread;
     use std::thread::JoinHandle;
+    use polars::export::num::{PrimInt, Unsigned};
 
     pub struct ReportReaderBuilder {
         report_type: ReportTypeSchema,
@@ -201,13 +202,15 @@ pub mod reader {
         }
     }
 
-    pub struct ContextData {
-        positions: Vec<u32>,
+    pub struct ContextData<N>
+    where 
+        N: PrimInt + Unsigned {
+        positions: Vec<N>,
         contexts: Vec<Option<bool>>,
         strands: Vec<bool>,
     }
 
-    impl ContextData {
+    impl<N: num::PrimInt + num::Unsigned> ContextData<N> {
         pub fn len(&self) -> usize {
             self.contexts.len()
         }
@@ -224,7 +227,7 @@ pub mod reader {
             }
         }
 
-        pub(crate) fn filter<F: Fn(u32) -> bool>(&self, predicate: F) -> Self {
+        pub(crate) fn filter<F: Fn(N) -> bool>(&self, predicate: F) -> Self {
             let mut new_self = Self::new();
             for (idx, pos) in self.positions.iter().enumerate() {
                 if predicate(*pos) {
@@ -250,13 +253,13 @@ pub mod reader {
             }
         }
 
-        pub(crate) fn add_row(&mut self, position: u32, context: Option<bool>, strand: bool) {
+        pub(crate) fn add_row(&mut self, position: N, context: Option<bool>, strand: bool) {
             self.positions.push(position);
             self.strands.push(strand);
             self.contexts.push(context);
         }
 
-        pub fn from_sequence(seq: &[u8], start: GenomicPosition) -> Self {
+        pub fn from_sequence(seq: &[u8], start: GenomicPosition<N>) -> Self {
             let start_pos = start.position();
             let fw_bound: usize = seq.len() - 2;
             let rv_bound: usize = 2;
@@ -297,7 +300,7 @@ pub mod reader {
                     }
                 };
 
-                new.add_row(start_pos + index as u32, context, forward);
+                new.add_row(start_pos + N::from(index).unwrap(), context, forward);
             }
 
             new.shrink_to_fit();
@@ -312,13 +315,13 @@ pub mod reader {
 
         pub fn into_dataframe(self) -> PolarsResult<DataFrame> {
             df![
-                "position" => self.positions,
+                "position" => self.positions.iter().map(|x| x.to_u64().unwrap()).collect_vec(),
                 "context" => self.contexts,
                 "strand" => self.strands
             ]
         }
 
-        pub fn positions(&self) -> &Vec<u32> {
+        pub fn positions(&self) -> &Vec<N> {
             &self.positions
         }
 
@@ -549,12 +552,14 @@ pub mod report_batch_utils {
     use crate::io::report::schema::ReportTypeSchema;
     use crate::region::{GenomicPosition, RegionCoordinates};
     use std::io::{BufRead, Seek};
+    use num::Unsigned;
+    use polars::export::num::PrimInt;
 
     pub(crate) fn get_context_data<R>(
         reader: &mut fasta_reader::FastaCoverageReader<R, u64>,
         item: &ReadQueueItem,
         report_schema: &ReportTypeSchema,
-    ) -> Result<ContextData, Box<dyn Error>>
+    ) -> Result<ContextData<u64>, Box<dyn Error>>
     where
         R: BufRead + Seek,
     {
@@ -583,11 +588,11 @@ pub mod report_batch_utils {
             last_position.position() as u64 + sequence_overhead
         };
         let fetch_region =
-            RegionCoordinates::new(chr.to_string(), fetch_start as u32, fetch_end as u32);
+            RegionCoordinates::new(chr.to_string(), fetch_start, fetch_end);
 
         let sequence = reader.inner_mut().fetch_region(fetch_region.clone())?;
         let context_data = ContextData::from_sequence(&sequence, fetch_region.start_gpos() + 1)
-            .filter(|pos| pos > chr_coverage.read() as u32)
+            .filter(|pos| pos > chr_coverage.read())
             .filter(|pos| {
                 if !*is_end {
                     pos <= last_position.position()
@@ -598,7 +603,7 @@ pub mod report_batch_utils {
         if !*is_end {
             reader
                 .coverage_mut()
-                .shift_to(fetch_region.chr(), last_position.position() as u64)?;
+                .shift_to(fetch_region.chr(), last_position.position())?;
         } else {
             reader
                 .coverage_mut()
@@ -618,12 +623,12 @@ pub mod report_batch_utils {
         maintain_order: MaintainOrderJoin::Left,
     };
 
-    pub(crate) fn align_data_with_context(
+    pub(crate) fn align_data_with_context<N: PrimInt + Unsigned>(
         data_frame: &DataFrame,
-        context_data: ContextData,
+        context_data: ContextData<N>,
     ) -> PolarsResult<DataFrame> {
         let data_join_columns = [BsxBatch::pos_col()];
-        let context_join_columns = [ContextData::position_col()];
+        let context_join_columns = [ContextData::<N>::position_col()];
         let chr = first_position(data_frame, BsxBatch::chr_col(), BsxBatch::pos_col())?
             .chr()
             .to_string();
@@ -682,7 +687,7 @@ pub mod report_batch_utils {
         data: &DataFrame,
         chr_col: &str,
         pos_col: &str,
-    ) -> PolarsResult<GenomicPosition> {
+    ) -> PolarsResult<GenomicPosition<u64>> {
         let chr = data
             .column(chr_col)?
             .as_series()
@@ -698,14 +703,14 @@ pub mod report_batch_utils {
             .u64()?
             .first()
             .unwrap();
-        Ok(GenomicPosition::new(chr, pos as u32))
+        Ok(GenomicPosition::new(chr, pos))
     }
 
     pub(crate) fn last_position(
         data: &DataFrame,
         chr_col: &str,
         pos_col: &str,
-    ) -> PolarsResult<GenomicPosition> {
+    ) -> PolarsResult<GenomicPosition<u64>> {
         let chr = data
             .column(chr_col)?
             .as_series()
@@ -721,7 +726,7 @@ pub mod report_batch_utils {
             .u64()?
             .last()
             .unwrap();
-        Ok(GenomicPosition::new(chr, pos as u32))
+        Ok(GenomicPosition::new(chr, pos))
     }
 
     pub fn encode_strand(lazy_frame: LazyFrame, strand_col: &str) -> LazyFrame {

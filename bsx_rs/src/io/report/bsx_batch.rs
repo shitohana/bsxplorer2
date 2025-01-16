@@ -55,11 +55,11 @@ impl BsxBatch {
         hashmap_from_arrays(Self::col_names(), Self::col_types())
     }
 
-    pub fn first_position(&self) -> PolarsResult<GenomicPosition> {
+    pub fn first_position(&self) -> PolarsResult<GenomicPosition<u64>> {
         use crate::io::report::report_batch_utils::first_position;
         first_position(&self.0, Self::chr_col(), Self::pos_col())
     }
-    pub fn last_position(&self) -> PolarsResult<GenomicPosition> {
+    pub fn last_position(&self) -> PolarsResult<GenomicPosition<u64>> {
         use crate::io::report::report_batch_utils::last_position;
         last_position(&self.0, Self::chr_col(), Self::pos_col())
     }

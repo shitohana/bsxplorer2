@@ -33,24 +33,27 @@ where
         &self.reader.index
     }
 
-    pub fn fetch_region(
+    pub fn fetch_region<N>(
         &mut self,
-        region_coordinates: RegionCoordinates,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        region_coordinates: RegionCoordinates<N>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> 
+    where 
+        N: PrimInt + Unsigned + Display,
+    {
         if let Some(seq_data) = self.get_record_metadata(region_coordinates.chr()) {
-            if seq_data.len < region_coordinates.end() as u64 {
+            if seq_data.len < region_coordinates.end().to_u64().unwrap() {
                 Err(CoverageError::OutOfBounds(
                     region_coordinates.chr().into(),
-                    region_coordinates.end() as usize,
+                    region_coordinates.end().to_usize().unwrap(),
                 )
                 .into())
             } else {
                 self.reader.fetch(
                     region_coordinates.chr(),
-                    region_coordinates.start() as u64,
-                    if region_coordinates.end != seq_data.len as u32 { region_coordinates.end() as u64 + 1 } else { seq_data.len },
+                    region_coordinates.start().to_u64().unwrap(),
+                    if region_coordinates.end != N::from(seq_data.len).unwrap() { region_coordinates.end().to_u64().unwrap() + 1 } else { seq_data.len },
                 )?;
-                let mut buffer: Vec<u8> = Vec::with_capacity(region_coordinates.length() as usize);
+                let mut buffer: Vec<u8> = Vec::with_capacity(region_coordinates.length().to_usize().unwrap());
                 self.reader.read(&mut buffer)?;
 
                 debug!("Fetched sequence for {}", region_coordinates);
@@ -142,7 +145,7 @@ where
         &mut self.coverage
     }
 
-    pub fn get_seq_until(&mut self, position: &GenomicPosition) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn get_seq_until<N: num::PrimInt + num::Unsigned>(&mut self, position: &GenomicPosition<N>) -> Result<Vec<u8>, Box<dyn Error>> {
         let (chr, pos) = (position.chr(), position.position());
         
         let (fetch_start, fetch_end) = self.coverage.shift_to(chr, V::from(pos).unwrap())?;

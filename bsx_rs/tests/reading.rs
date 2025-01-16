@@ -11,7 +11,7 @@ use bsx_rs::region::GenomicPosition;
 use bsx_rs::utils::types::{Context, IPCEncodedEnum};
 use hashbrown::HashSet;
 use itertools::Itertools;
-use num::PrimInt;
+use num::{PrimInt, Unsigned};
 use polars::prelude::*;
 use rand::distributions::uniform::SampleUniform;
 use rand::distributions::Distribution;
@@ -36,7 +36,7 @@ struct TestReportConfig {
     std_coverage: f64,
     chroms_num: Range<usize>,
     chr_len: Range<usize>,
-    context_prob: Vec<(Context, f64)>,
+    context_meth: Vec<(Context, f64)>,
     nuc_prob: [f64; 4],
     seed: Option<u64>,
     chunk_size: usize,
@@ -49,7 +49,7 @@ impl Default for TestReportConfig {
             std_coverage: 30f64,
             chroms_num: 5..10,
             chr_len: 5e5 as usize..3e6 as usize,
-            context_prob: vec![
+            context_meth: vec![
                 (Context::CG, 0.4),
                 (Context::CHG, 0.15),
                 (Context::CHH, 0.05),
@@ -150,7 +150,7 @@ impl TestReportEnv {
                 &mut rng,
                 &counts_total_col,
                 context_data.contexts(),
-                &config.context_prob,
+                &config.context_meth,
             );
 
             let bsx_result = context_data_to_bsx(
@@ -483,13 +483,13 @@ impl CytosinesHashmap {
 }
 
 fn context_data_to_bsx<N>(
-    context_data: ContextData,
+    context_data: ContextData<N>,
     counts_m: Vec<N>,
     counts_total: Vec<N>,
     chr_name: &str,
 ) -> PolarsResult<DataFrame>
 where
-    N: PrimInt,
+    N: PrimInt + Unsigned,
 {
     let mut result_df = context_data.into_dataframe()?;
     result_df.with_column(Series::new(
