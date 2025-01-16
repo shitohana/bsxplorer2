@@ -256,6 +256,8 @@ mod report_schema_test {
     
     #[test]
     fn bismark_conversion() {
+        let report_type = ReportTypeSchema::Bismark;
+        
         let input_df = df![
             "chr" => ["1", "2", "3"],
             "position" => [1, 2, 3],
@@ -263,10 +265,12 @@ mod report_schema_test {
             "context" => ["CG", "CHG", "CHH"],
             "count_m" => [0, 1, 0],
             "count_um" => [1, 0, 1],
-            "trinuc" => ["CGA", "CAG", "CAA"]
+            "trinuc" => ["CG", "CHG", "CHH"]
         ].unwrap().lazy()
-            .cast(ReportTypeSchema::Bismark.hashmap(), true)
-            .collect().unwrap();
+            .cast(report_type.hashmap(), true)
+            .collect().unwrap()
+            .select(report_type.col_names().iter().cloned())
+            .unwrap();
         
         let output_df = df![
             "chr" => ["1", "2", "3"],
@@ -279,30 +283,35 @@ mod report_schema_test {
         ].unwrap().lazy()
             .cast(BsxBatch::hashmap(), true)
             .collect().unwrap();
-        
-        let mutate_func = ReportTypeSchema::Bismark.bsx_mutate();
-        assert_eq!(mutate_func(input_df).unwrap(), output_df);
+
+        let mutate_func = report_type.bsx_mutate();
+        let bsx_batch = mutate_func(input_df.clone()).unwrap();
+        assert_eq!(bsx_batch, output_df);
+        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        assert_eq!(reverse_transform, input_df);
     }
     
     #[test]
     fn cgmap_conversion() {
+        let report_type = ReportTypeSchema::CgMap;
+        
         let input_df = df![
             "chr" => ["1", "2", "3"],
-            "nuc" => ["G", "C", "A"],
+            "nuc" => ["G", "C", "C"],
             "position" => [1, 2, 3],
             "context" => ["CG", "CHG", "CHH"],
-            "dinuc" => ["CG", "CA", "CA"],
+            "dinuc" => ["CG", "CHG", "CHH"],
             "density" => [0, 1, 0],
             "count_m" => [0, 1, 0],
             "count_total" => [1, 1, 1],
         ].unwrap().lazy()
-            .cast(ReportTypeSchema::CgMap.hashmap(), true)
+            .cast(report_type.hashmap(), true)
             .collect().unwrap();
 
         let output_df = df![
             "chr" => ["1", "2", "3"],
             "position" => [1, 2, 3],
-            "strand" => ["-", "+", "."],
+            "strand" => ["-", "+", "+"],
             "context" => ["CG", "CHG", "CHH"],
             "count_m" => [0, 1, 0],
             "count_total" => [1, 1, 1],
@@ -311,12 +320,16 @@ mod report_schema_test {
             .cast(BsxBatch::hashmap(), true)
             .collect().unwrap();
 
-        let mutate_func = ReportTypeSchema::CgMap.bsx_mutate();
-        assert_eq!(mutate_func(input_df).unwrap(), output_df);
+        let mutate_func = report_type.bsx_mutate();
+        let bsx_batch = mutate_func(input_df.clone()).unwrap();
+        assert_eq!(bsx_batch, output_df);
+        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        assert_eq!(reverse_transform, input_df);
     }
 
     #[test]
     fn coverage_conversion() {
+        let report_type = ReportTypeSchema::Coverage;
         let input_df = df![
             "chr" => ["1", "2", "3"],
             "start" => [1, 2, 3],
@@ -325,7 +338,7 @@ mod report_schema_test {
             "count_m" => [0, 1, 0],
             "count_um" => [1, 0, 1],
         ].unwrap().lazy()
-            .cast(ReportTypeSchema::Coverage.hashmap(), true)
+            .cast(report_type.hashmap(), true)
             .collect().unwrap();
 
         let output_df = df![
@@ -340,19 +353,24 @@ mod report_schema_test {
             .cast(BsxBatch::hashmap(), true)
             .collect().unwrap();
 
-        let mutate_func = ReportTypeSchema::Coverage.bsx_mutate();
-        assert_eq!(mutate_func(input_df).unwrap(), output_df);
+        let mutate_func = report_type.bsx_mutate();
+        let bsx_batch = mutate_func(input_df.clone()).unwrap();
+        assert_eq!(bsx_batch, output_df);
+        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        assert_eq!(reverse_transform, input_df);
     }
 
     #[test]
     fn bedgraph_conversion() {
+        let report_type = ReportTypeSchema::BedGraph;
+        
         let input_df = df![
             "chr" => ["1", "2", "3"],
             "start" => [1, 2, 3],
             "end" => [1, 2, 3],
             "density" => [0, 1, 0],
         ].unwrap().lazy()
-            .cast(ReportTypeSchema::BedGraph.hashmap(), true)
+            .cast(report_type.hashmap(), true)
             .collect().unwrap();
 
         let output_df = df![
@@ -367,7 +385,10 @@ mod report_schema_test {
             .cast(BsxBatch::hashmap(), true)
             .collect().unwrap();
 
-        let mutate_func = ReportTypeSchema::BedGraph.bsx_mutate();
-        assert_eq!(mutate_func(input_df).unwrap(), output_df);
+        let mutate_func = report_type.bsx_mutate();
+        let bsx_batch = mutate_func(input_df.clone()).unwrap();
+        assert_eq!(bsx_batch, output_df);
+        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        assert_eq!(reverse_transform, input_df);
     }
 }
