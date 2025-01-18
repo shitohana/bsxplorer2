@@ -442,7 +442,7 @@ pub mod reader {
                 >= self.chunk_size
             {
                 let df = self.get_chunk().expect("Could not get chunk");
-                Some(BsxBatch::new(df))
+                Some(unsafe { BsxBatch::new_unchecked(df) })
             } else {
                 match self.receiver.recv() {
                     Ok(data) => {
@@ -454,7 +454,7 @@ pub mod reader {
                     Err(_) => {
                         if let Some(cache) = self.batch_cache.take() {
                             debug!("Batch cache is emptied");
-                            let res = BsxBatch::new(cache.clone());
+                            let res = unsafe { BsxBatch::new_unchecked(cache.clone()) };
                             Some(res)
                         } else {
                             None
@@ -736,7 +736,8 @@ pub mod report_batch_utils {
                 .when(col(strand_col).eq(lit("-")))
                 .then(lit(false))
                 .otherwise(lit(NULL))
-                .cast(DataType::Boolean),
+                .cast(DataType::Boolean)
+                .alias("strand"),
         )
     }
 
@@ -747,7 +748,8 @@ pub mod report_batch_utils {
                 .when(col(context_col).eq(lit("CHG")))
                 .then(lit(false))
                 .otherwise(lit(NULL))
-                .cast(DataType::Boolean),
+                .cast(DataType::Boolean)
+                .alias(context_col),
         )
     }
 

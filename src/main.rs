@@ -1,8 +1,15 @@
 #![allow(warnings)]
 
 extern crate core;
+
+use std::fs::File;
+use std::io::BufWriter;
 use log::info;
 use std::thread;
+use bsx_rs::io::bsx::writer::BsxIpcWriter;
+use bsx_rs::io::report::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use bsx_rs::io::report::reader::ReportReaderBuilder;
+use bsx_rs::io::report::schema::ReportTypeSchema;
 
 extern crate pretty_env_logger;
 
@@ -40,7 +47,27 @@ fn main() {
     //         "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai",
     //     ).unwrap();
     // println!("Report written");
-
+    
+    let reader = ReportReaderBuilder::default()
+        .with_report_type(ReportTypeSchema::Bismark)
+        .try_finish(File::open("/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt").unwrap())
+        .unwrap();
+    
+    let mut writer = BsxIpcWriter::try_from_path_and_fai(
+        BufWriter::new(File::create("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/test.ipc").unwrap()),
+        "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai".into()
+    ).unwrap();
+    
+    for batch in reader {
+        let encoded = EncodedBsxBatch::encode(batch, writer.get_chr_dtype()).unwrap();
+        let test = encoded.trim_region::<u32>(&(encoded.first_position().unwrap() + 3 >> encoded.last_position().unwrap() - 5).unwrap()).unwrap();
+        println!("{}", encoded.data());
+        println!("{}", test.data());
+        writer.write_batch(encoded).unwrap()
+    }
+    
+    writer.close().unwrap();
+    
     // let reader = BSXReader::new(
     //     File::open("/Users/shitohana/Desktop/RustProjects/bsxplorer2_dev/bismark.ipc").unwrap(),
     //     None,
