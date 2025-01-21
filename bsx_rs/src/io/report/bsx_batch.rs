@@ -4,6 +4,7 @@ use std::ops::BitAnd;
 use crate::region::{GenomicPosition, RegionCoordinates};
 use crate::utils::types::{IPCEncodedEnum, Strand, Context};
 use itertools::Itertools;
+use log::warn;
 use num::{PrimInt, Unsigned};
 use polars::prelude::*;
 use crate::io::report::report_batch_utils::{decode_context, decode_strand, encode_context, encode_strand};
@@ -194,7 +195,7 @@ impl EncodedBsxBatch {
         ])
     }
 
-    pub fn trim_region<N: PrimInt + Unsigned + Display>(&self, region_coordinates: &RegionCoordinates<u64>) -> PolarsResult<Self> where Self: Sized {
+    pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> PolarsResult<Self> where Self: Sized {
         let batch_first = self.first_position()?;
         let pos_col = self.data().column("position")?.u32()?;
         let height = self.height();
@@ -203,7 +204,7 @@ impl EncodedBsxBatch {
             None => Err(PolarsError::ComputeError("Chromosome does not match".into())),
             Some(Ordering::Greater) => Err(PolarsError::ComputeError("Batch does not contain region information".into())),
             _ => {
-                let start_shift = pos_col.iter().position(|v| v.unwrap() > region_coordinates.start() as u32).unwrap().saturating_sub(1);
+                let start_shift = pos_col.iter().position(|v| v.unwrap() > region_coordinates.start() as u32).unwrap_or(height - 1);
                 let end_shift = pos_col.iter().skip(start_shift).position(|v| v.unwrap() > region_coordinates.end() as u32).map(|val| val + start_shift).unwrap_or(height);
                 let mask = BooleanChunked::from_iter({
                     let mut start = vec![false; start_shift];
@@ -298,7 +299,7 @@ pub trait BsxBatchMethods {
     fn data_mut(&mut self) -> &mut DataFrame;
     
     fn check_chr_unique(&self) -> bool {
-        self.data().column("chr").unwrap().as_series().unwrap().unique().unwrap().len() == 1
+        self.data().column("chr").unwrap().unique().unwrap().len() == 1
     }
     
     fn first_position(&self) -> PolarsResult<GenomicPosition<u64>> {
@@ -320,7 +321,18 @@ pub trait BsxBatchMethods {
             return Err(PolarsError::ComputeError("Chromosomes in batches differ".into()))
         }
         if self_pos.position() >= other_pos.position() {
-            return Err(PolarsError::ComputeError("First position in other batch must be less than last position in the current".into()))
+            warn!("First position in other batch ({}) must be less than last position in the current ({})", other_pos, self_pos);
+            self.data_mut().extend(other.data())?;
+            self.data_mut()
+                .sort_in_place(
+                    ["position"],
+                    SortMultipleOptions::default()
+                        .with_order_descending(false)
+                        .with_multithreaded(true)
+                )?;
+            if self.data().column("chr")?.unique()?.len() != self.data().height() {
+                return Err(PolarsError::ComputeError("Position values are duplicated".into()));
+            }
         }
         
         self.data_mut().extend(other.data())
@@ -414,19 +426,19 @@ mod tests {
         let chr_dtype = get_categorical_dtype(vec!["1".into()]);
         let encoded = EncodedBsxBatch::encode(batch.clone(), &chr_dtype).unwrap();
         
-        let trimmed = encoded.trim_region::<u64>(
+        let trimmed = encoded.trim_region(
             &RegionCoordinates::new("1".to_string(), 4, 9)
         ).unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 4);
         assert_eq!(trimmed.last_position().unwrap().position(), 9);
 
-        let trimmed = encoded.trim_region::<u64>(
+        let trimmed = encoded.trim_region(
             &RegionCoordinates::new("1".to_string(), 1, 9)
         ).unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 2);
         assert_eq!(trimmed.last_position().unwrap().position(), 9);
 
-        let trimmed = encoded.trim_region::<u64>(
+        let trimmed = encoded.trim_region(
             &RegionCoordinates::new("1".to_string(), 4, 12)
         ).unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 4);

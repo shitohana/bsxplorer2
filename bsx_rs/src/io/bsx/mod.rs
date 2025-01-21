@@ -36,7 +36,7 @@ pub mod writer {
             Ok(Self {writer, schema})
         }
         
-        pub fn try_from_path_and_fai(
+        pub fn try_from_sink_and_fai(
             sink: W,
             fai_path: PathBuf,
         ) -> Result<Self, Box<dyn Error>> {
@@ -57,5 +57,10 @@ pub mod writer {
             self.schema.get("chr").unwrap()
         }
     }
-
+    
+    impl<W: Write> Drop for BsxIpcWriter<W> {
+        fn drop(&mut self) {
+            let _ = self.close();
+        }
+    } 
 }
