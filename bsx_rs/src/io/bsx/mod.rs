@@ -2,15 +2,13 @@ pub mod ipc;
 pub mod read;
 
 pub mod writer {
-    use crate::io::report::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+    use crate::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
     use itertools::Itertools;
-    use polars::datatypes::CategoricalOrdering;
     use polars::io::ipc::{BatchedWriter, IpcWriterOptions};
     use polars::prelude::*;
     use std::error::Error;
     use std::io::Write;
     use std::path::PathBuf;
-    use std::sync::Arc;
     use crate::utils::get_categorical_dtype;
     
     // TODO Add marker for no context information to invalidate Nulls in context

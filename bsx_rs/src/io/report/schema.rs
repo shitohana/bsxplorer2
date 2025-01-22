@@ -1,7 +1,8 @@
 use std::ops::Div;
-use crate::io::report::bsx_batch::BsxBatch;
+use crate::bsx_batch::BsxBatch;
 use crate::io::report::*;
-use crate::io::report::report_batch_utils::{hashmap_from_arrays, schema_from_arrays};
+use crate::utils::{hashmap_from_arrays, schema_from_arrays};
+
 #[derive(Debug, Clone, Copy)]
 pub enum ReportTypeSchema {
     Bismark,
@@ -250,7 +251,7 @@ impl ReportTypeSchema {
 
 #[cfg(test)]
 mod report_schema_test {
-    use crate::io::report::bsx_batch::BsxBatch;
+    use crate::bsx_batch::BsxBatch;
     use crate::io::report::schema::schema::ReportTypeSchema;
     use crate::io::report::*;
     

@@ -8,3 +8,4 @@ pub mod genome;
 pub mod io;
 pub mod region;
 pub mod utils;
+pub mod bsx_batch;

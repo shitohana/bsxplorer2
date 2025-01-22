@@ -1,6 +1,5 @@
 use crate::io::bsx::ipc::IpcFileReader;
-use crate::io::report::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
-use crate::io::report::report_batch_utils::first_position;
+use crate::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::region::{GenomicPosition, RegionCoordinates};
 use itertools::Itertools;
 use polars::error::PolarsResult;
@@ -13,7 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::io::{Read, Seek};
 use std::ops::Bound::Included;
-use std::sync::mpsc::{Receiver, Sender, SyncSender};
+use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::thread;
 use std::thread::JoinHandle;
@@ -200,50 +199,53 @@ impl RegionAssembler {
     }
 
     pub fn consume_batch(&mut self, data: EncodedBsxBatch, batch_idx: usize) {
-        {
-            if let Some(regions) = self.read_plan.read().unwrap().get_batch(batch_idx) {
-                let data_ref = Arc::new(data);
-
-                regions.par_iter().for_each(|region| {
-                    let trimmed = data_ref.trim_region(region).unwrap();
-                    let cache = Arc::clone(&self.assemble_cache);
+        let data_ref = Arc::new(data);
+        let affected_regions = self.read_plan.write().unwrap().remove_batch(batch_idx);
+        
+        if let Some(affected_regions) = affected_regions {
+            let trimmed_dfs: HashMap<RegionCoordinates<u64>, EncodedBsxBatch> = HashMap::from_iter(
+                affected_regions.par_iter().map(
+                    |region_coordinates| (region_coordinates.clone(), data_ref.trim_region(region_coordinates).unwrap()),
+                ).collect::<Vec<_>>(),
+            );
+            
+            trimmed_dfs.into_iter().for_each(|(region_coordinates, data)| {
+                let cache = Arc::clone(&self.assemble_cache);
+                
+                let was_cached= cache.read().unwrap().get(&region_coordinates).is_some();
+                if was_cached {
+                    cache.write().unwrap().get_mut(&region_coordinates).unwrap().push(data);
+                } else {
+                    cache.write().unwrap().insert(region_coordinates.clone(), vec![data]);
+                }
+            });
+            
+            affected_regions.iter()
+                .for_each(|region| {
+                    let is_finished = self.read_plan
+                        .read().unwrap()
+                        .get_region(region)
+                        .map_or(false, |indices| indices.is_empty());
                     
-                    let was_cached= cache.read().unwrap().get(region).is_some();
-                    if was_cached {
-                        cache.write().unwrap().get_mut(region).unwrap().push(trimmed);
-                    } else {
-                        cache.write().unwrap().insert(region.clone(), vec![trimmed]);
-                    }
-                });
-            }
-        }
-        
-        let removed_batch_regions = self.read_plan.write().unwrap().remove_batch(batch_idx);
-        
-        if let Some(regions_to_check) = removed_batch_regions {
-            for region in regions_to_check.iter() {
-                if self
-                    .read_plan
-                    .read()
-                    .unwrap()
-                    .get_region(region)
-                    .map_or(false, |indices| indices.is_empty())
-                {
-                    if let Some(region_batches) =
-                        self.assemble_cache.write().unwrap().remove(region)
-                    {
-                        let assembled = region_batches
+                    if is_finished {
+                        let mut region_batches = self.assemble_cache
+                            .write().unwrap()
+                            .remove(region)
+                            .expect("Region marked as read, but missing in cache")
                             .into_iter()
                             .sorted_by_cached_key(|b| b.first_position().unwrap().position())
-                            .reduce(|mut acc, new| {
-                                acc.extend(&new).unwrap();
-                                acc
-                            })
-                            .unwrap();
+                            .collect_vec();
+                        region_batches.reverse();
+                        
+                        let mut assembled = region_batches.pop()
+                            .expect("Region marked as read, but has no batches");
+                        
+                        while let Some(batch) = region_batches.pop() {
+                            assembled.extend(&batch).unwrap();
+                        }
                         self.output_queue.push_front((region.clone(), assembled));
                     }
-                }
-            }
+                })
         }
     }
 

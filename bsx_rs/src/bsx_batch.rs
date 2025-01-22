@@ -2,12 +2,12 @@ use std::cmp::Ordering;
 use std::fmt::Display;
 use std::ops::BitAnd;
 use crate::region::{GenomicPosition, RegionCoordinates};
-use crate::utils::types::{IPCEncodedEnum, Strand, Context};
+use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use itertools::Itertools;
 use log::warn;
 use num::{PrimInt, Unsigned};
 use polars::prelude::*;
-use crate::io::report::report_batch_utils::{decode_context, decode_strand, encode_context, encode_strand};
+use crate::utils::{decode_context, decode_strand, encode_context, encode_strand};
 
 #[derive(Debug)]
 /// DataFrame with
@@ -57,12 +57,12 @@ impl BsxBatch {
     }
 
     pub fn schema() -> Schema {
-        use crate::io::report::report_batch_utils::schema_from_arrays;
+        use crate::utils::schema_from_arrays;
         schema_from_arrays(Self::col_names(), Self::col_types())
     }
 
     pub fn hashmap() -> PlHashMap<&'static str, DataType> {
-        use crate::io::report::report_batch_utils::hashmap_from_arrays;
+        use crate::utils::hashmap_from_arrays;
         hashmap_from_arrays(Self::col_names(), Self::col_types())
     }
 }
@@ -225,6 +225,12 @@ impl EncodedBsxBatch {
     }
 }
 
+impl From<EncodedBsxBatch> for DataFrame {
+    fn from(batch: EncodedBsxBatch) -> Self {
+        batch.0
+    }
+}
+
 impl BsxBatchMethods for EncodedBsxBatch {
     fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self where Self: Sized {
         if context.is_none() && strand.is_none() {
@@ -285,12 +291,6 @@ impl BsxBatchMethods for EncodedBsxBatch {
     }
 }
 
-impl From<EncodedBsxBatch> for DataFrame {
-    fn from(bs: EncodedBsxBatch) -> Self {
-        bs.0
-    }
-}
-
 pub trait BsxBatchMethods {
     fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self where Self: Sized;
     
@@ -303,11 +303,11 @@ pub trait BsxBatchMethods {
     }
     
     fn first_position(&self) -> PolarsResult<GenomicPosition<u64>> {
-        use crate::io::report::report_batch_utils::first_position;
+        use crate::utils::first_position;
         first_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
     }
     fn last_position(&self) -> PolarsResult<GenomicPosition<u64>> {
-        use crate::io::report::report_batch_utils::last_position;
+        use crate::utils::last_position;
         last_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
     }
     fn extend(&mut self, other: &Self) -> PolarsResult<()> where Self: Sized {
@@ -330,7 +330,8 @@ pub trait BsxBatchMethods {
                         .with_order_descending(false)
                         .with_multithreaded(true)
                 )?;
-            if self.data().column("chr")?.unique()?.len() != self.data().height() {
+            
+            if self.data().column("position")?.unique()?.len() != self.data().height() {
                 return Err(PolarsError::ComputeError("Position values are duplicated".into()));
             }
         }
