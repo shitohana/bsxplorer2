@@ -1,7 +1,7 @@
-use std::ops::Div;
 use crate::bsx_batch::BsxBatch;
 use crate::io::report::*;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
+use std::ops::Div;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ReportTypeSchema {
@@ -17,14 +17,7 @@ impl ReportTypeSchema {
             Self::Bismark => &[
                 "chr", "position", "strand", "count_m", "count_um", "context", "trinuc",
             ],
-            Self::Coverage => &[
-                "chr",
-                "start",
-                "end",
-                "density",
-                "count_m",
-                "count_um",
-            ],
+            Self::Coverage => &["chr", "start", "end", "density", "count_m", "count_um"],
             Self::CgMap => &[
                 "chr",
                 "nuc",
@@ -142,109 +135,99 @@ impl ReportTypeSchema {
 
     pub fn bsx_mutate(&self) -> fn(DataFrame) -> PolarsResult<DataFrame> {
         match self {
-            ReportTypeSchema::Bismark => {
-                |df: DataFrame|
-                    df.lazy()
-                        .with_column((col("count_m") + col("count_um")).alias("count_total"))
-                        .with_column((col("count_m").cast(DataType::Float64).div(col("count_total"))).alias("density"))
-                        .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                        .cast(BsxBatch::hashmap(), true)
-                        .collect()
-            }
-            ReportTypeSchema::CgMap => {
-                |df: DataFrame|
-                    df.lazy()
-                        .with_columns([
-                            when(col("nuc").eq(lit("C")))
-                                .then(lit("+"))
-                                .when(col("nuc").eq(lit("G")))
-                                .then(lit("-"))
-                                .otherwise(lit("."))
-                                .alias("strand"),
-                        ])
-                        .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                        .cast(BsxBatch::hashmap(), true)
-                        .collect()
+            ReportTypeSchema::Bismark => |df: DataFrame| {
+                df.lazy()
+                    .with_column((col("count_m") + col("count_um")).alias("count_total"))
+                    .with_column(
+                        (col("count_m")
+                            .cast(DataType::Float64)
+                            .div(col("count_total")))
+                        .alias("density"),
+                    )
+                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .cast(BsxBatch::hashmap(), true)
+                    .collect()
             },
-            ReportTypeSchema::BedGraph => {
-                |df: DataFrame|
-                    df.lazy()
-                        .with_columns([
-                            col("start").alias("position"),
-                            lit(".").alias("strand"),
-                            lit(NULL).alias("context"),
-                            lit(NULL).alias("count_m"),
-                            lit(NULL).alias("count_total"),
-                        ])
-                        .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                        .cast(BsxBatch::hashmap(), true)
-                        .collect()
+            ReportTypeSchema::CgMap => |df: DataFrame| {
+                df.lazy()
+                    .with_columns([when(col("nuc").eq(lit("C")))
+                        .then(lit("+"))
+                        .when(col("nuc").eq(lit("G")))
+                        .then(lit("-"))
+                        .otherwise(lit("."))
+                        .alias("strand")])
+                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .cast(BsxBatch::hashmap(), true)
+                    .collect()
             },
-            ReportTypeSchema::Coverage => {
-                |df: DataFrame|
-                    df.lazy()
-                        .with_column((col("count_m") + col("count_um")).alias("count_total"))
-                        .with_columns([
-                            col("start").alias("position"),
-                            lit(".").alias("strand"),
-                            lit(NULL).alias("context"),
-                            (col("count_m").cast(DataType::Float64).div(col("count_total"))).alias("density")
-                        ])
-                        .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                        .cast(BsxBatch::hashmap(), true)
-                        .collect()
-            }
+            ReportTypeSchema::BedGraph => |df: DataFrame| {
+                df.lazy()
+                    .with_columns([
+                        col("start").alias("position"),
+                        lit(".").alias("strand"),
+                        lit(NULL).alias("context"),
+                        lit(NULL).alias("count_m"),
+                        lit(NULL).alias("count_total"),
+                    ])
+                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .cast(BsxBatch::hashmap(), true)
+                    .collect()
+            },
+            ReportTypeSchema::Coverage => |df: DataFrame| {
+                df.lazy()
+                    .with_column((col("count_m") + col("count_um")).alias("count_total"))
+                    .with_columns([
+                        col("start").alias("position"),
+                        lit(".").alias("strand"),
+                        lit(NULL).alias("context"),
+                        (col("count_m")
+                            .cast(DataType::Float64)
+                            .div(col("count_total")))
+                        .alias("density"),
+                    ])
+                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .cast(BsxBatch::hashmap(), true)
+                    .collect()
+            },
         }
     }
-    
+
     pub fn report_mutate_from_bsx(&self, df: DataFrame) -> PolarsResult<DataFrame> {
         match self {
-            ReportTypeSchema::Bismark => {
-                df.lazy()
-                    .with_column((col("count_total") - col("count_m")).alias("count_um"))
-                    .with_column(col("context").alias("trinuc"))
-                    .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    .cast(self.hashmap(), true)
-                    .collect()
-            }
-            ReportTypeSchema::CgMap => {
-                    df.lazy()
-                        .with_columns([
-                            when(col("strand").eq(lit("+")))
-                                .then(lit("C"))
-                                .when(col("strand").eq(lit("-")))
-                                .then(lit("G"))
-                                .otherwise(lit("."))
-                                .alias("nuc"),
-                        ])
-                        .with_column(col("context").alias("dinuc"))
-                        .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                        .cast(self.hashmap(), true)
-                        .collect()
-            },
-            ReportTypeSchema::BedGraph => {
-                    df.lazy()
-                        .with_columns([
-                            col("position").alias("start"),
-                            col("position").alias("end"),
-                        ])
-                        .drop_nans(Some(vec![col("density")]))
-                        .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                        .cast(self.hashmap(), true)
-                        .collect()
-            },
-            ReportTypeSchema::Coverage => {
-                    df.lazy()
-                        .with_columns([
-                            col("position").alias("start"),
-                            col("position").alias("end"),
-                        ])
-                        .drop_nans(Some(vec![col("density")]))
-                        .with_column((col("count_total") - col("count_m")).alias("count_um"))
-                        .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                        .cast(self.hashmap(), true)
-                        .collect()
-            }
+            ReportTypeSchema::Bismark => df
+                .lazy()
+                .with_column((col("count_total") - col("count_m")).alias("count_um"))
+                .with_column(col("context").alias("trinuc"))
+                .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
+                .cast(self.hashmap(), true)
+                .collect(),
+            ReportTypeSchema::CgMap => df
+                .lazy()
+                .with_columns([when(col("strand").eq(lit("+")))
+                    .then(lit("C"))
+                    .when(col("strand").eq(lit("-")))
+                    .then(lit("G"))
+                    .otherwise(lit("."))
+                    .alias("nuc")])
+                .with_column(col("context").alias("dinuc"))
+                .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
+                .cast(self.hashmap(), true)
+                .collect(),
+            ReportTypeSchema::BedGraph => df
+                .lazy()
+                .with_columns([col("position").alias("start"), col("position").alias("end")])
+                .drop_nans(Some(vec![col("density")]))
+                .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
+                .cast(self.hashmap(), true)
+                .collect(),
+            ReportTypeSchema::Coverage => df
+                .lazy()
+                .with_columns([col("position").alias("start"), col("position").alias("end")])
+                .drop_nans(Some(vec![col("density")]))
+                .with_column((col("count_total") - col("count_m")).alias("count_um"))
+                .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
+                .cast(self.hashmap(), true)
+                .collect(),
         }
     }
 }
@@ -254,11 +237,11 @@ mod report_schema_test {
     use crate::bsx_batch::BsxBatch;
     use crate::io::report::schema::schema::ReportTypeSchema;
     use crate::io::report::*;
-    
+
     #[test]
     fn bismark_conversion() {
         let report_type = ReportTypeSchema::Bismark;
-        
+
         let input_df = df![
             "chr" => ["1", "2", "3"],
             "position" => [1, 2, 3],
@@ -267,12 +250,15 @@ mod report_schema_test {
             "count_m" => [0, 1, 0],
             "count_um" => [1, 0, 1],
             "trinuc" => ["CG", "CHG", "CHH"]
-        ].unwrap().lazy()
-            .cast(report_type.hashmap(), true)
-            .collect().unwrap()
-            .select(report_type.col_names().iter().cloned())
-            .unwrap();
-        
+        ]
+        .unwrap()
+        .lazy()
+        .cast(report_type.hashmap(), true)
+        .collect()
+        .unwrap()
+        .select(report_type.col_names().iter().cloned())
+        .unwrap();
+
         let output_df = df![
             "chr" => ["1", "2", "3"],
             "position" => [1, 2, 3],
@@ -281,9 +267,12 @@ mod report_schema_test {
             "count_m" => [0, 1, 0],
             "count_total" => [1, 1, 1],
             "density" => [0, 1, 0]
-        ].unwrap().lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect().unwrap();
+        ]
+        .unwrap()
+        .lazy()
+        .cast(BsxBatch::hashmap(), true)
+        .collect()
+        .unwrap();
 
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();
@@ -291,11 +280,11 @@ mod report_schema_test {
         let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
         assert_eq!(reverse_transform, input_df);
     }
-    
+
     #[test]
     fn cgmap_conversion() {
         let report_type = ReportTypeSchema::CgMap;
-        
+
         let input_df = df![
             "chr" => ["1", "2", "3"],
             "nuc" => ["G", "C", "C"],
@@ -305,9 +294,12 @@ mod report_schema_test {
             "density" => [0, 1, 0],
             "count_m" => [0, 1, 0],
             "count_total" => [1, 1, 1],
-        ].unwrap().lazy()
-            .cast(report_type.hashmap(), true)
-            .collect().unwrap();
+        ]
+        .unwrap()
+        .lazy()
+        .cast(report_type.hashmap(), true)
+        .collect()
+        .unwrap();
 
         let output_df = df![
             "chr" => ["1", "2", "3"],
@@ -317,9 +309,12 @@ mod report_schema_test {
             "count_m" => [0, 1, 0],
             "count_total" => [1, 1, 1],
             "density" => [0, 1, 0]
-        ].unwrap().lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect().unwrap();
+        ]
+        .unwrap()
+        .lazy()
+        .cast(BsxBatch::hashmap(), true)
+        .collect()
+        .unwrap();
 
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();
@@ -338,9 +333,12 @@ mod report_schema_test {
             "density" => [0, 1, 0],
             "count_m" => [0, 1, 0],
             "count_um" => [1, 0, 1],
-        ].unwrap().lazy()
-            .cast(report_type.hashmap(), true)
-            .collect().unwrap();
+        ]
+        .unwrap()
+        .lazy()
+        .cast(report_type.hashmap(), true)
+        .collect()
+        .unwrap();
 
         let output_df = df![
             "chr" => ["1", "2", "3"],
@@ -350,9 +348,12 @@ mod report_schema_test {
             "count_m" => [0, 1, 0],
             "count_total" => [1, 1, 1],
             "density" => [0, 1, 0]
-        ].unwrap().lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect().unwrap();
+        ]
+        .unwrap()
+        .lazy()
+        .cast(BsxBatch::hashmap(), true)
+        .collect()
+        .unwrap();
 
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();
@@ -364,15 +365,18 @@ mod report_schema_test {
     #[test]
     fn bedgraph_conversion() {
         let report_type = ReportTypeSchema::BedGraph;
-        
+
         let input_df = df![
             "chr" => ["1", "2", "3"],
             "start" => [1, 2, 3],
             "end" => [1, 2, 3],
             "density" => [0, 1, 0],
-        ].unwrap().lazy()
-            .cast(report_type.hashmap(), true)
-            .collect().unwrap();
+        ]
+        .unwrap()
+        .lazy()
+        .cast(report_type.hashmap(), true)
+        .collect()
+        .unwrap();
 
         let output_df = df![
             "chr" => ["1", "2", "3"],
@@ -382,9 +386,12 @@ mod report_schema_test {
             "count_m" => [None::<u32>, None, None],
             "count_total" => [None::<u32>, None, None],
             "density" => [0, 1, 0]
-        ].unwrap().lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect().unwrap();
+        ]
+        .unwrap()
+        .lazy()
+        .cast(BsxBatch::hashmap(), true)
+        .collect()
+        .unwrap();
 
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();

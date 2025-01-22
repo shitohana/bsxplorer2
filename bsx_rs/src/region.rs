@@ -1,15 +1,15 @@
 use log::warn;
+use num::Unsigned;
+use polars::export::num::PrimInt;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Range, Shr, Sub};
-use num::Unsigned;
-use polars::export::num::PrimInt;
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct RegionCoordinates<N>
-where 
-    N: PrimInt + Unsigned + Clone 
+where
+    N: PrimInt + Unsigned + Clone,
 {
     pub(crate) chr: String,
     pub(crate) start: N,
@@ -19,14 +19,15 @@ where
 #[derive(Debug, Clone)]
 pub struct GenomicPosition<N>
 where
-    N: PrimInt + Unsigned + Clone
+    N: PrimInt + Unsigned + Clone,
 {
     chr: String,
     position: N,
 }
 
-impl<N> Display for GenomicPosition<N> where
-    N: PrimInt + Unsigned + Clone + Display
+impl<N> Display for GenomicPosition<N>
+where
+    N: PrimInt + Unsigned + Clone + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.chr, self.position)
@@ -35,7 +36,7 @@ impl<N> Display for GenomicPosition<N> where
 
 impl<N> GenomicPosition<N>
 where
-    N: PrimInt + Unsigned + Clone
+    N: PrimInt + Unsigned + Clone,
 {
     pub fn new(chr: String, position: N) -> GenomicPosition<N> {
         GenomicPosition { chr, position }
@@ -50,8 +51,9 @@ where
     }
 }
 
-impl<N> Add<N> for GenomicPosition<N> where
-    N: PrimInt + Unsigned + Clone
+impl<N> Add<N> for GenomicPosition<N>
+where
+    N: PrimInt + Unsigned + Clone,
 {
     type Output = GenomicPosition<N>;
     fn add(self, rhs: N) -> Self::Output {
@@ -59,9 +61,9 @@ impl<N> Add<N> for GenomicPosition<N> where
     }
 }
 
-impl<N> Sub<N> for GenomicPosition<N> 
+impl<N> Sub<N> for GenomicPosition<N>
 where
-    N: PrimInt + Unsigned + Clone
+    N: PrimInt + Unsigned + Clone,
 {
     type Output = GenomicPosition<N>;
     fn sub(self, rhs: N) -> Self::Output {
@@ -69,8 +71,9 @@ where
     }
 }
 
-impl<N> PartialEq for GenomicPosition<N> where
-    N: PrimInt + Unsigned + Clone
+impl<N> PartialEq for GenomicPosition<N>
+where
+    N: PrimInt + Unsigned + Clone,
 {
     fn eq(&self, other: &Self) -> bool {
         self.chr == other.chr && self.position == other.position
@@ -79,7 +82,7 @@ impl<N> PartialEq for GenomicPosition<N> where
 
 impl<N> PartialOrd for GenomicPosition<N>
 where
-    N: PrimInt + Unsigned + Clone
+    N: PrimInt + Unsigned + Clone,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.chr == other.chr {
@@ -92,7 +95,7 @@ where
 
 impl<N> Shr for GenomicPosition<N>
 where
-    N: PrimInt + Unsigned + Clone + Display
+    N: PrimInt + Unsigned + Clone + Display,
 {
     type Output = Option<RegionCoordinates<N>>;
 
@@ -120,9 +123,9 @@ where
     }
 }
 
-impl<N> RegionCoordinates<N> 
+impl<N> RegionCoordinates<N>
 where
-    N: PrimInt + Unsigned + Clone + Display
+    N: PrimInt + Unsigned + Clone + Display,
 {
     pub fn new(chr: String, start: N, end: N) -> Self {
         assert!(
@@ -248,8 +251,9 @@ where
     }
 }
 
-impl<N> Display for RegionCoordinates<N> where
-    N: PrimInt + Unsigned + Clone + Display
+impl<N> Display for RegionCoordinates<N>
+where
+    N: PrimInt + Unsigned + Clone + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}-{}", self.chr, self.start, self.end)

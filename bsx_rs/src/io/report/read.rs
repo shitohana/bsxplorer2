@@ -1,26 +1,26 @@
-use std::path::PathBuf;
-use polars::io::RowIndex;
-use std::error::Error;
-use std::io::{BufReader, Read, Seek};
-use polars::io::mmap::MmapBytesReader;
-use std::fs::File;
-use num::{NumCast, PrimInt, Unsigned};
-use polars::error::PolarsResult;
-use polars::frame::DataFrame;
-use polars::df;
-use log::debug;
-use std::thread::JoinHandle;
-use std::sync::mpsc::{Receiver, SyncSender};
-use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef, SeriesTrait};
-use std::sync::{mpsc, Arc};
-use std::thread;
-use itertools::Itertools;
+use super::report_read_utils::{align_data_with_context, get_context_data};
 use crate::bsx_batch::BsxBatch;
 use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
-use super::report_read_utils::{align_data_with_context, get_context_data};
 use crate::io::report::schema::ReportTypeSchema;
 use crate::region::GenomicPosition;
 use crate::utils::{first_position, last_position};
+use itertools::Itertools;
+use log::debug;
+use num::{PrimInt, Unsigned};
+use polars::df;
+use polars::error::PolarsResult;
+use polars::frame::DataFrame;
+use polars::io::mmap::MmapBytesReader;
+use polars::io::RowIndex;
+use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef};
+use std::error::Error;
+use std::fs::File;
+use std::io::{BufReader, Read, Seek};
+use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, SyncSender};
+use std::sync::{mpsc, Arc};
+use std::thread;
+use std::thread::JoinHandle;
 
 pub struct ReportReaderBuilder {
     report_type: ReportTypeSchema,
@@ -196,8 +196,9 @@ where
 }
 
 pub struct ContextData<N>
-where 
-    N: PrimInt + Unsigned {
+where
+    N: PrimInt + Unsigned,
+{
     positions: Vec<N>,
     contexts: Vec<Option<bool>>,
     strands: Vec<bool>,
@@ -207,11 +208,11 @@ impl<N: num::PrimInt + num::Unsigned> ContextData<N> {
     pub fn len(&self) -> usize {
         self.contexts.len()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.contexts.is_empty()
     }
-    
+
     pub(crate) fn new() -> Self {
         ContextData {
             positions: Vec::new(),
@@ -230,6 +231,7 @@ impl<N: num::PrimInt + num::Unsigned> ContextData<N> {
         new_self
     }
 
+    #[allow(dead_code)]
     pub(crate) fn col_names() -> &'static [&'static str] {
         &["position", "context", "strand"]
     }
@@ -466,8 +468,7 @@ fn reader_thread<R>(
 ) where
     R: MmapBytesReader + 'static,
 {
-    let mut owned_batched =
-        OwnedBatchedCsvReader::new(reader, Arc::from(report_schema.schema()));
+    let mut owned_batched = OwnedBatchedCsvReader::new(reader, Arc::from(report_schema.schema()));
     let chr_col = report_schema.chr_col();
     let pos_col = report_schema.position_col();
 

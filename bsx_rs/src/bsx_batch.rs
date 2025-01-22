@@ -1,28 +1,24 @@
-use std::cmp::Ordering;
-use std::fmt::Display;
-use std::ops::BitAnd;
 use crate::region::{GenomicPosition, RegionCoordinates};
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+use crate::utils::{decode_context, decode_strand, encode_context, encode_strand};
 use itertools::Itertools;
 use log::warn;
-use num::{PrimInt, Unsigned};
 use polars::prelude::*;
-use crate::utils::{decode_context, decode_strand, encode_context, encode_strand};
+use std::cmp::Ordering;
+use std::ops::BitAnd;
 
 #[derive(Debug)]
 /// DataFrame with
 /// 1. Non-null chr and position
 /// 2. Single unique chr
 /// 3. Ascending sorted positions
-#[derive(Clone)]
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct BsxBatch(DataFrame);
 
 impl BsxBatch {
     pub(crate) unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         BsxBatch(data_frame)
     }
-
 
     pub(crate) const fn col_names() -> &'static [&'static str] {
         &[
@@ -70,7 +66,7 @@ impl BsxBatch {
 impl BsxBatchMethods for BsxBatch {
     fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
         if context.is_none() && strand.is_none() {
             self
@@ -127,12 +123,11 @@ impl TryFrom<DataFrame> for BsxBatch {
     }
 }
 
-
 impl From<BsxBatch> for DataFrame {
     fn from(b: BsxBatch) -> Self {
         b.0
     }
-}   
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EncodedBsxBatch(DataFrame);
@@ -144,17 +139,17 @@ impl EncodedBsxBatch {
     pub fn encode(batch: BsxBatch, chr_dtype: &DataType) -> PolarsResult<Self> {
         let batch_data = DataFrame::from(batch);
         let target_schema = Self::get_hashmap(chr_dtype);
-        
+
         let mut batch_lazy = batch_data.lazy();
         batch_lazy = encode_context(batch_lazy, "context");
         batch_lazy = encode_strand(batch_lazy, "strand");
-        
+
         batch_lazy = batch_lazy
             .cast(target_schema, true)
             .select(Self::col_names().iter().cloned().map(col).collect_vec());
         let mut result = batch_lazy.collect()?;
         result.rechunk_mut();
-        
+
         Ok(Self(result))
     }
     pub fn decode(self) -> PolarsResult<BsxBatch> {
@@ -170,7 +165,7 @@ impl EncodedBsxBatch {
         let result = batch_lazy.collect()?;
         Ok(BsxBatch(result))
     }
-    
+
     pub(crate) fn get_schema(chr_dtype: &DataType) -> Schema {
         Schema::from_iter([
             ("chr".into(), chr_dtype.clone()),
@@ -191,32 +186,50 @@ impl EncodedBsxBatch {
             ("context", DataType::Boolean),
             ("count_m", DataType::Int16),
             ("count_total", DataType::Int16),
-            ("density", DataType::Float32)
+            ("density", DataType::Float32),
         ])
     }
 
-    pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> PolarsResult<Self> where Self: Sized {
+    pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> PolarsResult<Self>
+    where
+        Self: Sized,
+    {
         let batch_first = self.first_position()?;
         let pos_col = self.data().column("position")?.u32()?;
         let height = self.height();
 
         match batch_first.partial_cmp(&region_coordinates.end_gpos()) {
-            None => Err(PolarsError::ComputeError("Chromosome does not match".into())),
-            Some(Ordering::Greater) => Err(PolarsError::ComputeError("Batch does not contain region information".into())),
+            None => Err(PolarsError::ComputeError(
+                "Chromosome does not match".into(),
+            )),
+            Some(Ordering::Greater) => Err(PolarsError::ComputeError(
+                "Batch does not contain region information".into(),
+            )),
             _ => {
-                let start_shift = pos_col.iter().position(|v| v.unwrap() > region_coordinates.start() as u32).unwrap_or(height - 1);
-                let end_shift = pos_col.iter().skip(start_shift).position(|v| v.unwrap() > region_coordinates.end() as u32).map(|val| val + start_shift).unwrap_or(height);
+                let start_shift = pos_col
+                    .iter()
+                    .position(|v| v.unwrap() > region_coordinates.start() as u32)
+                    .unwrap_or(height - 1);
+                let end_shift = pos_col
+                    .iter()
+                    .skip(start_shift)
+                    .position(|v| v.unwrap() > region_coordinates.end() as u32)
+                    .map(|val| val + start_shift)
+                    .unwrap_or(height);
                 let mask = BooleanChunked::from_iter({
                     let mut start = vec![false; start_shift];
                     start.extend(vec![true; end_shift - start_shift]);
                     start.extend(vec![false; height - end_shift]);
                     start
                 });
-                self.data().filter(&mask).map(|df| unsafe {Self::new_unchecked(df)} )
+                self.data()
+                    .filter(&mask)
+                    .map(|df| unsafe { Self::new_unchecked(df) })
             }
         }
     }
-    
+
+    #[allow(dead_code)]
     pub(crate) fn schema(&self) -> Schema {
         self.data().schema()
     }
@@ -232,11 +245,15 @@ impl From<EncodedBsxBatch> for DataFrame {
 }
 
 impl BsxBatchMethods for EncodedBsxBatch {
-    fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self where Self: Sized {
+    fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
+    where
+        Self: Sized,
+    {
         if context.is_none() && strand.is_none() {
             self
         } else {
-            let mut boolean_chunked = BooleanChunked::new("mask".into(), vec![false; self.0.height()]);
+            let mut boolean_chunked =
+                BooleanChunked::new("mask".into(), vec![false; self.0.height()]);
             if let Some(strand) = strand {
                 let mask = BooleanChunked::new(
                     "strand".into(),
@@ -275,33 +292,39 @@ impl BsxBatchMethods for EncodedBsxBatch {
     fn data_mut(&mut self) -> &mut DataFrame {
         &mut self.0
     }
-    
+
     fn first_position(&self) -> Result<GenomicPosition<u64>, PolarsError> {
         let chr_col = self.data().column("chr")?.categorical()?;
-        let chr = chr_col.get_rev_map().get(chr_col.physical().first().unwrap());
+        let chr = chr_col
+            .get_rev_map()
+            .get(chr_col.physical().first().unwrap());
         let pos = self.data().column("position")?.u32()?.first().unwrap();
         Ok(GenomicPosition::new(chr.to_string(), pos as u64))
     }
 
     fn last_position(&self) -> Result<GenomicPosition<u64>, PolarsError> {
         let chr_col = self.data().column("chr")?.categorical()?;
-        let chr = chr_col.get_rev_map().get(chr_col.physical().last().unwrap());
+        let chr = chr_col
+            .get_rev_map()
+            .get(chr_col.physical().last().unwrap());
         let pos = self.data().column("position")?.u32()?.last().unwrap();
         Ok(GenomicPosition::new(chr.to_string(), pos as u64))
     }
 }
 
 pub trait BsxBatchMethods {
-    fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self where Self: Sized;
-    
+    fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
+    where
+        Self: Sized;
+
     fn data(&self) -> &DataFrame;
-    
+
     fn data_mut(&mut self) -> &mut DataFrame;
-    
+
     fn check_chr_unique(&self) -> bool {
         self.data().column("chr").unwrap().unique().unwrap().len() == 1
     }
-    
+
     fn first_position(&self) -> PolarsResult<GenomicPosition<u64>> {
         use crate::utils::first_position;
         first_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
@@ -310,35 +333,43 @@ pub trait BsxBatchMethods {
         use crate::utils::last_position;
         last_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
     }
-    fn extend(&mut self, other: &Self) -> PolarsResult<()> where Self: Sized {
+    fn extend(&mut self, other: &Self) -> PolarsResult<()>
+    where
+        Self: Sized,
+    {
         if !(self.check_chr_unique() && other.check_chr_unique()) {
-            return Err(PolarsError::ComputeError("Chromosomes in batches non-unique".into()));
+            return Err(PolarsError::ComputeError(
+                "Chromosomes in batches non-unique".into(),
+            ));
         }
         let self_pos = self.last_position()?;
         let other_pos = self.first_position()?;
-        
+
         if self_pos.chr() != other_pos.chr() {
-            return Err(PolarsError::ComputeError("Chromosomes in batches differ".into()))
+            return Err(PolarsError::ComputeError(
+                "Chromosomes in batches differ".into(),
+            ));
         }
         if self_pos.position() >= other_pos.position() {
             warn!("First position in other batch ({}) must be less than last position in the current ({})", other_pos, self_pos);
             self.data_mut().extend(other.data())?;
-            self.data_mut()
-                .sort_in_place(
-                    ["position"],
-                    SortMultipleOptions::default()
-                        .with_order_descending(false)
-                        .with_multithreaded(true)
-                )?;
-            
+            self.data_mut().sort_in_place(
+                ["position"],
+                SortMultipleOptions::default()
+                    .with_order_descending(false)
+                    .with_multithreaded(true),
+            )?;
+
             if self.data().column("position")?.unique()?.len() != self.data().height() {
-                return Err(PolarsError::ComputeError("Position values are duplicated".into()));
+                return Err(PolarsError::ComputeError(
+                    "Position values are duplicated".into(),
+                ));
             }
         }
-        
+
         self.data_mut().extend(other.data())
     }
-    
+
     fn height(&self) -> usize {
         self.data().height()
     }
@@ -346,11 +377,12 @@ pub trait BsxBatchMethods {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::get_categorical_dtype;
     use super::*;
-    
+    use crate::utils::get_categorical_dtype;
+
     fn dummy_batch() -> BsxBatch {
-        BsxBatch::try_from(df![
+        BsxBatch::try_from(
+            df![
                 "chr" => ["1", "1", "1"],
                 "position" => [1, 2, 3],
                 "strand" => [".", ".", "."],
@@ -358,15 +390,20 @@ mod tests {
                 "count_m" => [None::<u32>, None, None],
                 "count_total" => [None::<u32>, None, None],
                 "density" => [0, 1, 0]
-            ].unwrap().lazy()
+            ]
+            .unwrap()
+            .lazy()
             .cast(BsxBatch::hashmap(), true)
-            .collect().unwrap()
-        ).unwrap()
+            .collect()
+            .unwrap(),
+        )
+        .unwrap()
     }
-    
+
     #[test]
     fn test_chr_unique() {
-        let batch = BsxBatch::try_from(df![
+        let batch = BsxBatch::try_from(
+            df![
                 "chr" => ["1", "2", "3"],
                 "position" => [1, 2, 3],
                 "strand" => [".", ".", "."],
@@ -374,33 +411,43 @@ mod tests {
                 "count_m" => [None::<u32>, None, None],
                 "count_total" => [None::<u32>, None, None],
                 "density" => [0, 1, 0]
-            ].unwrap().lazy()
-                .cast(BsxBatch::hashmap(), true)
-                .collect().unwrap()
-        ).unwrap();
-        
+            ]
+            .unwrap()
+            .lazy()
+            .cast(BsxBatch::hashmap(), true)
+            .collect()
+            .unwrap(),
+        )
+        .unwrap();
+
         assert!(!batch.check_chr_unique());
 
         let batch = dummy_batch();
-        
+
         assert!(batch.check_chr_unique());
-        
+
         let chr_dtype = get_categorical_dtype(vec!["1".into()]);
         let encoded = EncodedBsxBatch::encode(batch, &chr_dtype).unwrap();
-        
+
         assert!(encoded.check_chr_unique())
     }
-    
+
     #[test]
     fn test_position() {
         let batch = dummy_batch();
         let chr_dtype = get_categorical_dtype(vec!["1".into()]);
         let encoded = EncodedBsxBatch::encode(batch.clone(), &chr_dtype).unwrap();
-        
-        assert_eq!(batch.first_position().unwrap(), encoded.first_position().unwrap());
-        assert_eq!(batch.last_position().unwrap(), encoded.last_position().unwrap());
+
+        assert_eq!(
+            batch.first_position().unwrap(),
+            encoded.first_position().unwrap()
+        );
+        assert_eq!(
+            batch.last_position().unwrap(),
+            encoded.last_position().unwrap()
+        );
     }
-    
+
     #[test]
     fn test_encode_decode() {
         let batch = dummy_batch();
@@ -409,10 +456,11 @@ mod tests {
         let decoded = encoded.decode().unwrap();
         assert_eq!(batch, decoded);
     }
-    
+
     #[test]
     fn test_trim() {
-        let batch = BsxBatch::try_from(df![
+        let batch = BsxBatch::try_from(
+            df![
                 "chr" => ["1", "1", "1", "1", "1", "1", "1"],
                 "position" => [2, 3, 4, 5, 7, 9, 10],
                 "strand" => [".", ".", ".", ".", ".", ".", "."],
@@ -420,28 +468,32 @@ mod tests {
                 "count_m" => [None::<u32>, None, None, None, None, None, None],
                 "count_total" => [None::<u32>, None, None, None, None, None, None],
                 "density" => [0, 1, 0, 0, 1, 0, 0]
-            ].unwrap().lazy()
+            ]
+            .unwrap()
+            .lazy()
             .cast(BsxBatch::hashmap(), true)
-            .collect().unwrap()
-        ).unwrap();
+            .collect()
+            .unwrap(),
+        )
+        .unwrap();
         let chr_dtype = get_categorical_dtype(vec!["1".into()]);
         let encoded = EncodedBsxBatch::encode(batch.clone(), &chr_dtype).unwrap();
-        
-        let trimmed = encoded.trim_region(
-            &RegionCoordinates::new("1".to_string(), 4, 9)
-        ).unwrap();
+
+        let trimmed = encoded
+            .trim_region(&RegionCoordinates::new("1".to_string(), 4, 9))
+            .unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 4);
         assert_eq!(trimmed.last_position().unwrap().position(), 9);
 
-        let trimmed = encoded.trim_region(
-            &RegionCoordinates::new("1".to_string(), 1, 9)
-        ).unwrap();
+        let trimmed = encoded
+            .trim_region(&RegionCoordinates::new("1".to_string(), 1, 9))
+            .unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 2);
         assert_eq!(trimmed.last_position().unwrap().position(), 9);
 
-        let trimmed = encoded.trim_region(
-            &RegionCoordinates::new("1".to_string(), 4, 12)
-        ).unwrap();
+        let trimmed = encoded
+            .trim_region(&RegionCoordinates::new("1".to_string(), 4, 12))
+            .unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 4);
         assert_eq!(trimmed.last_position().unwrap().position(), 10);
     }

@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use crate::region::GenomicPosition;
 use itertools::Itertools;
 use polars::datatypes::PlIndexMap;
 use polars::prelude::*;
-use crate::region::GenomicPosition;
+use std::sync::Arc;
 
 pub mod types;
 
@@ -15,7 +15,7 @@ pub fn array_to_schema(array: &[(&str, DataType)]) -> Schema {
 pub fn get_categorical_dtype(categories: Vec<String>) -> DataType {
     let categories = polars::export::arrow::array::Utf8ViewArray::from_vec(
         categories.iter().map(String::as_str).collect_vec(),
-        ArrowDataType::Utf8View
+        ArrowDataType::Utf8View,
     );
     let rev_mapping = Arc::new(RevMapping::build_local(categories));
     DataType::Enum(Some(rev_mapping), CategoricalOrdering::Physical)
@@ -114,11 +114,7 @@ pub fn decode_strand(lazy_frame: LazyFrame, strand_col: &str, result_name: &str)
     )
 }
 
-pub fn decode_context(
-    lazy_frame: LazyFrame,
-    context_col: &str,
-    result_name: &str,
-) -> LazyFrame {
+pub fn decode_context(lazy_frame: LazyFrame, context_col: &str, result_name: &str) -> LazyFrame {
     lazy_frame.with_column(
         when(col(context_col).eq(lit(true)))
             .then(lit("CG"))

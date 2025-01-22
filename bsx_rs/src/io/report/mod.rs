@@ -3,19 +3,19 @@ use polars::prelude::*;
 use std::error::Error;
 
 pub mod fasta_reader;
-pub mod schema;
 pub mod read;
+pub mod schema;
 
 mod report_read_utils {
     use super::*;
     use crate::bsx_batch::BsxBatch;
+    use crate::io::report::read::{ContextData, ReadQueueItem};
     use crate::io::report::schema::ReportTypeSchema;
     use crate::region::RegionCoordinates;
-    use std::io::{BufRead, Seek};
+    use crate::utils;
     use num::Unsigned;
     use polars::export::num::PrimInt;
-    use crate::io::report::read::{ContextData, ReadQueueItem};
-    use crate::utils;
+    use std::io::{BufRead, Seek};
 
     pub(crate) fn get_context_data<R>(
         reader: &mut fasta_reader::FastaCoverageReader<R, u64>,
@@ -49,8 +49,7 @@ mod report_read_utils {
         } else {
             last_position.position() as u64 + sequence_overhead
         };
-        let fetch_region =
-            RegionCoordinates::new(chr.to_string(), fetch_start, fetch_end);
+        let fetch_region = RegionCoordinates::new(chr.to_string(), fetch_start, fetch_end);
 
         let sequence = reader.inner_mut().fetch_region(fetch_region.clone())?;
         let context_data = ContextData::from_sequence(&sequence, fetch_region.start_gpos() + 1)

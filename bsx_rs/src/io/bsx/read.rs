@@ -1,5 +1,5 @@
-use crate::io::bsx::ipc::IpcFileReader;
 use crate::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::io::bsx::ipc::IpcFileReader;
 use crate::region::{GenomicPosition, RegionCoordinates};
 use itertools::Itertools;
 use polars::error::PolarsResult;
@@ -201,51 +201,71 @@ impl RegionAssembler {
     pub fn consume_batch(&mut self, data: EncodedBsxBatch, batch_idx: usize) {
         let data_ref = Arc::new(data);
         let affected_regions = self.read_plan.write().unwrap().remove_batch(batch_idx);
-        
+
         if let Some(affected_regions) = affected_regions {
             let trimmed_dfs: HashMap<RegionCoordinates<u64>, EncodedBsxBatch> = HashMap::from_iter(
-                affected_regions.par_iter().map(
-                    |region_coordinates| (region_coordinates.clone(), data_ref.trim_region(region_coordinates).unwrap()),
-                ).collect::<Vec<_>>(),
+                affected_regions
+                    .par_iter()
+                    .map(|region_coordinates| {
+                        (
+                            region_coordinates.clone(),
+                            data_ref.trim_region(region_coordinates).unwrap(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
             );
-            
-            trimmed_dfs.into_iter().for_each(|(region_coordinates, data)| {
-                let cache = Arc::clone(&self.assemble_cache);
-                
-                let was_cached= cache.read().unwrap().get(&region_coordinates).is_some();
-                if was_cached {
-                    cache.write().unwrap().get_mut(&region_coordinates).unwrap().push(data);
-                } else {
-                    cache.write().unwrap().insert(region_coordinates.clone(), vec![data]);
-                }
-            });
-            
-            affected_regions.iter()
-                .for_each(|region| {
-                    let is_finished = self.read_plan
-                        .read().unwrap()
-                        .get_region(region)
-                        .map_or(false, |indices| indices.is_empty());
-                    
-                    if is_finished {
-                        let mut region_batches = self.assemble_cache
-                            .write().unwrap()
-                            .remove(region)
-                            .expect("Region marked as read, but missing in cache")
-                            .into_iter()
-                            .sorted_by_cached_key(|b| b.first_position().unwrap().position())
-                            .collect_vec();
-                        region_batches.reverse();
-                        
-                        let mut assembled = region_batches.pop()
-                            .expect("Region marked as read, but has no batches");
-                        
-                        while let Some(batch) = region_batches.pop() {
-                            assembled.extend(&batch).unwrap();
-                        }
-                        self.output_queue.push_front((region.clone(), assembled));
+
+            trimmed_dfs
+                .into_iter()
+                .for_each(|(region_coordinates, data)| {
+                    let cache = Arc::clone(&self.assemble_cache);
+
+                    let was_cached = cache.read().unwrap().get(&region_coordinates).is_some();
+                    if was_cached {
+                        cache
+                            .write()
+                            .unwrap()
+                            .get_mut(&region_coordinates)
+                            .unwrap()
+                            .push(data);
+                    } else {
+                        cache
+                            .write()
+                            .unwrap()
+                            .insert(region_coordinates.clone(), vec![data]);
                     }
-                })
+                });
+
+            affected_regions.iter().for_each(|region| {
+                let is_finished = self
+                    .read_plan
+                    .read()
+                    .unwrap()
+                    .get_region(region)
+                    .map_or(false, |indices| indices.is_empty());
+
+                if is_finished {
+                    let mut region_batches = self
+                        .assemble_cache
+                        .write()
+                        .unwrap()
+                        .remove(region)
+                        .expect("Region marked as read, but missing in cache")
+                        .into_iter()
+                        .sorted_by_cached_key(|b| b.first_position().unwrap().position())
+                        .collect_vec();
+                    region_batches.reverse();
+
+                    let mut assembled = region_batches
+                        .pop()
+                        .expect("Region marked as read, but has no batches");
+
+                    while let Some(batch) = region_batches.pop() {
+                        assembled.extend(&batch).unwrap();
+                    }
+                    self.output_queue.push_front((region.clone(), assembled));
+                }
+            })
         }
     }
 
@@ -253,6 +273,7 @@ impl RegionAssembler {
         self.output_queue.pop_front()
     }
 
+    #[allow(dead_code)]
     fn read_plan(&self) -> Arc<RwLock<LinkedReadPlan>> {
         Arc::clone(&self.read_plan)
     }
@@ -275,20 +296,21 @@ pub struct RegionReader {
 }
 
 impl RegionReader {
-    pub fn try_new<R: Read + Seek + Send + 'static>(handle: R, regions: &[RegionCoordinates<u64>]) -> Result<Self, Box<dyn Error>> {
+    pub fn try_new<R: Read + Seek + Send + 'static>(
+        handle: R,
+        regions: &[RegionCoordinates<u64>],
+    ) -> Result<Self, Box<dyn Error>> {
         let mut reader = BsxFileReader::new(handle);
 
-        let read_plan = LinkedReadPlan::from_index_and_regions(
-            BSXBTree::from_file(&mut reader)?,
-            regions,
-        );
+        let read_plan =
+            LinkedReadPlan::from_index_and_regions(BSXBTree::from_file(&mut reader)?, regions);
 
         let assembler = RegionAssembler::new(read_plan.clone());
         let read_plan_copy = Arc::new(read_plan.clone());
 
         const BATCH_SIZE: usize = 10;
         let (sender, receiver) = mpsc::sync_channel(BATCH_SIZE);
-        
+
         let read_thread =
             thread::spawn(move || region_reader_thread(reader, sender, read_plan_copy));
 
@@ -317,28 +339,28 @@ impl Iterator for RegionReader {
                     } else {
                         panic!("{}", e)
                     }
-                },
+                }
             },
         }
     }
 }
 
 pub fn df_to_regions(
-    data_frame: &DataFrame, 
-    chr_colname: Option<&str>, 
-    start_colname: Option<&str>, 
-    end_colname: Option<&str>
+    data_frame: &DataFrame,
+    chr_colname: Option<&str>,
+    start_colname: Option<&str>,
+    end_colname: Option<&str>,
 ) -> PolarsResult<Vec<RegionCoordinates<u64>>> {
     let chr_colname = chr_colname.unwrap_or("chr");
     let start_colname = start_colname.unwrap_or("start");
     let end_colname = end_colname.unwrap_or("end");
-    
+
     let target_schema = Schema::from_iter([
         (chr_colname.into(), DataType::String),
         (start_colname.into(), DataType::UInt64),
         (end_colname.into(), DataType::UInt64),
     ]);
-    
+
     let mut data_casted = data_frame
         .select([chr_colname, start_colname, end_colname])?
         .select_with_schema(
@@ -346,18 +368,20 @@ pub fn df_to_regions(
             &SchemaRef::new(target_schema),
         )?;
     data_casted = data_casted.drop_nulls(None::<&[String]>)?;
-    
+
     let chr_col = data_casted.column(chr_colname)?.str()?;
     let start_col = data_casted.column(start_colname)?.u64()?;
     let pos_col = data_casted.column(end_colname)?.u64()?;
-    
-    Ok(
-        itertools::izip!(chr_col.into_iter(), start_col.into_iter(), pos_col.into_iter())
-            .map(|(chr, start, end)| RegionCoordinates::new(chr.unwrap().to_string(), start.unwrap(), end.unwrap()))
-            .collect_vec()
+
+    Ok(itertools::izip!(
+        chr_col.into_iter(),
+        start_col.into_iter(),
+        pos_col.into_iter()
     )
-    
-    
+    .map(|(chr, start, end)| {
+        RegionCoordinates::new(chr.unwrap().to_string(), start.unwrap(), end.unwrap())
+    })
+    .collect_vec())
 }
 
 fn region_reader_thread<R: Read + Seek>(

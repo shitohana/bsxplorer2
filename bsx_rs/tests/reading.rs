@@ -4,9 +4,11 @@ extern crate pretty_env_logger;
 extern crate log;
 
 use bsx_rs::bsx_batch::{BsxBatch, BsxBatchMethods};
+use bsx_rs::io::report::read::{ContextData, ReportReader, ReportReaderBuilder};
 use bsx_rs::io::report::schema::ReportTypeSchema;
 use bsx_rs::region::GenomicPosition;
 use bsx_rs::utils::types::{Context, IPCEncodedEnum};
+use bsx_rs::utils::{decode_context, decode_strand};
 use hashbrown::HashSet;
 use itertools::Itertools;
 use num::{PrimInt, Unsigned};
@@ -27,8 +29,6 @@ use std::ops::{Div, Range};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tempfile::NamedTempFile;
-use bsx_rs::io::report::read::{ContextData, ReportReader, ReportReaderBuilder};
-use bsx_rs::utils::{decode_context, decode_strand};
 
 #[derive(Debug)]
 struct TestReportConfig {

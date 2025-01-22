@@ -1,7 +1,6 @@
 use crate::region::{GenomicPosition, RegionCoordinates};
 use bio::io::fasta::*;
 use hashbrown::HashMap;
-use itertools::Itertools;
 use log::{debug, info};
 use num::{PrimInt, ToPrimitive, Unsigned};
 use std::error::Error;
@@ -36,8 +35,8 @@ where
     pub fn fetch_region<N>(
         &mut self,
         region_coordinates: RegionCoordinates<N>,
-    ) -> Result<Vec<u8>, Box<dyn Error>> 
-    where 
+    ) -> Result<Vec<u8>, Box<dyn Error>>
+    where
         N: PrimInt + Unsigned + Display,
     {
         if let Some(seq_data) = self.get_record_metadata(region_coordinates.chr()) {
@@ -51,9 +50,14 @@ where
                 self.reader.fetch(
                     region_coordinates.chr(),
                     region_coordinates.start().to_u64().unwrap(),
-                    if region_coordinates.end != N::from(seq_data.len).unwrap() { region_coordinates.end().to_u64().unwrap() + 1 } else { seq_data.len },
+                    if region_coordinates.end != N::from(seq_data.len).unwrap() {
+                        region_coordinates.end().to_u64().unwrap() + 1
+                    } else {
+                        seq_data.len
+                    },
                 )?;
-                let mut buffer: Vec<u8> = Vec::with_capacity(region_coordinates.length().to_usize().unwrap());
+                let mut buffer: Vec<u8> =
+                    Vec::with_capacity(region_coordinates.length().to_usize().unwrap());
                 self.reader.read(&mut buffer)?;
 
                 debug!("Fetched sequence for {}", region_coordinates);
@@ -124,11 +128,11 @@ where
     pub fn new(fasta_reader: FastaReader<R>) -> Self {
         Self::from(fasta_reader)
     }
-    
+
     pub fn tell_pos(&self, name: &str) -> Option<V> {
         self.coverage.get(name.to_string()).map(|c| c.read)
     }
-    
+
     pub fn inner(&self) -> &FastaReader<R> {
         &self.inner
     }
@@ -145,9 +149,12 @@ where
         &mut self.coverage
     }
 
-    pub fn get_seq_until<N: num::PrimInt + num::Unsigned>(&mut self, position: &GenomicPosition<N>) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn get_seq_until<N: num::PrimInt + num::Unsigned>(
+        &mut self,
+        position: &GenomicPosition<N>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         let (chr, pos) = (position.chr(), position.position());
-        
+
         let (fetch_start, fetch_end) = self.coverage.shift_to(chr, V::from(pos).unwrap())?;
 
         let read_region = RegionCoordinates::new(
@@ -158,9 +165,17 @@ where
         let sequence = self.inner.fetch_region(read_region)?;
         Ok(sequence)
     }
-    
+
     pub fn get_seq_leftover(&mut self, chr: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        let end_gpos = GenomicPosition::new(chr.to_string(), self.coverage.get(chr.to_string()).unwrap().total.to_u32().unwrap());
+        let end_gpos = GenomicPosition::new(
+            chr.to_string(),
+            self.coverage
+                .get(chr.to_string())
+                .unwrap()
+                .total
+                .to_u32()
+                .unwrap(),
+        );
         self.get_seq_until(&end_gpos)
     }
 }
@@ -189,15 +204,15 @@ where
     }
     pub fn shift_to(&mut self, pos: V) -> Result<(V, V), CoverageError> {
         if self.read > pos {
-            return Err(CoverageError::ValueError(format!("New pos {} is less than previous {}", pos.to_u64().unwrap(), self.read.to_u64().unwrap())));
+            return Err(CoverageError::ValueError(format!(
+                "New pos {} is less than previous {}",
+                pos.to_u64().unwrap(),
+                self.read.to_u64().unwrap()
+            )));
         }
-        
+
         let prev = self.read + V::from(1).unwrap();
-        self.read = if pos <= self.total {
-            pos
-        } else {
-            self.total
-        };
+        self.read = if pos <= self.total { pos } else { self.total };
         Ok((prev, self.read))
     }
     pub fn is_finished(&self) -> bool {
@@ -236,8 +251,10 @@ impl Debug for CoverageError {
             }
             CoverageError::OutOfBounds(name, size) => {
                 write!(f, "Position {} for '{}' is out of bounds", name, size)
-            },
-            CoverageError::ValueError(descr) => {write!(f, "{}", descr)}
+            }
+            CoverageError::ValueError(descr) => {
+                write!(f, "{}", descr)
+            }
         }
     }
 }
@@ -299,7 +316,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn coverage_row() {
         // Test finished
@@ -315,16 +332,22 @@ mod tests {
         assert_eq!(start, 1u32);
         assert_eq!(end, 10u32);
     }
-    
+
     #[test]
     fn coverage() {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
-            Sequence { name: "chr1".to_string(), len: 100 },
-            Sequence { name: "chr2".to_string(), len: 200 }
+            Sequence {
+                name: "chr1".to_string(),
+                len: 100,
+            },
+            Sequence {
+                name: "chr2".to_string(),
+                len: 200,
+            },
         ]);
         assert_eq!(coverage.get("chr1".to_string()).map(|v| v.read), Some(0u64));
         assert_eq!(coverage.get("chr2".to_string()).map(|v| v.read), Some(0u64));
-        
+
         let (start, end) = coverage.shift_to("chr1", 50).unwrap();
         assert_eq!(start, 1u64);
         assert_eq!(end, 50u64);
@@ -336,13 +359,19 @@ mod tests {
         assert_eq!(start, 1u64);
         assert_eq!(end, 100u64);
     }
-    
+
     #[test]
     #[should_panic]
     fn coverage_without_finish() {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
-            Sequence { name: "chr1".to_string(), len: 100 },
-            Sequence { name: "chr2".to_string(), len: 200 }
+            Sequence {
+                name: "chr1".to_string(),
+                len: 100,
+            },
+            Sequence {
+                name: "chr2".to_string(),
+                len: 200,
+            },
         ]);
         let (start, end) = coverage.shift_to("chr2", 100).unwrap();
     }
@@ -351,8 +380,14 @@ mod tests {
     #[should_panic]
     fn coverage_unknown_chr() {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
-            Sequence { name: "chr1".to_string(), len: 100 },
-            Sequence { name: "chr2".to_string(), len: 200 }
+            Sequence {
+                name: "chr1".to_string(),
+                len: 100,
+            },
+            Sequence {
+                name: "chr2".to_string(),
+                len: 200,
+            },
         ]);
         let (start, end) = coverage.shift_to("chr3", 100).unwrap();
     }
