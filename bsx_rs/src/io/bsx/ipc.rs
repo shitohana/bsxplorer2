@@ -29,6 +29,7 @@ use polars::export::arrow::io::ipc::read::{
 };
 use polars::export::arrow::record_batch::RecordBatchT;
 use polars::prelude::{ArrowSchema, DataFrame, PlHashMap, PolarsError, PolarsResult};
+use std::default::Default;
 use std::io::{Read, Seek};
 
 fn apply_projection(

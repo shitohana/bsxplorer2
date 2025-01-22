@@ -208,7 +208,7 @@ impl EncodedBsxBatch {
             _ => {
                 let start_shift = pos_col
                     .iter()
-                    .position(|v| v.unwrap() > region_coordinates.start() as u32)
+                    .position(|v| v.unwrap() >= region_coordinates.start() as u32)
                     .unwrap_or(height - 1);
                 let end_shift = pos_col
                     .iter()
@@ -235,6 +235,11 @@ impl EncodedBsxBatch {
     }
     pub(crate) fn col_names() -> &'static [&'static str] {
         BsxBatch::col_names()
+    }
+    
+    pub fn vstack(self, other: Self) -> PolarsResult<Self> {
+        let new = self.0.vstack(&other.0)?;
+        unsafe { Ok(Self::new_unchecked(new)) }
     }
 }
 
@@ -360,7 +365,9 @@ pub trait BsxBatchMethods {
                     .with_multithreaded(true),
             )?;
 
-            if self.data().column("position")?.unique()?.len() != self.data().height() {
+            if self.data().column("position")?.n_unique()? != self.data().height() {
+                println!("{} != {}", self.data().column("position")?.n_unique()?, self.data().height());
+                println!("{}", self.data());
                 return Err(PolarsError::ComputeError(
                     "Position values are duplicated".into(),
                 ));

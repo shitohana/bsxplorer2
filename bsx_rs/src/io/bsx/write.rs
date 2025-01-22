@@ -1,4 +1,4 @@
-use crate::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::bsx_batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
 use crate::utils::get_categorical_dtype;
 use itertools::Itertools;
 use polars::datatypes::DataType;
@@ -44,8 +44,13 @@ where
         Self::try_new(sink, chr_names)
     }
 
-    pub fn write_batch(&mut self, batch: EncodedBsxBatch) -> PolarsResult<()> {
+    pub fn write_encoded_batch(&mut self, batch: EncodedBsxBatch) -> PolarsResult<()> {
         self.writer.write_batch(batch.data())
+    }
+    
+    pub fn write_batch(&mut self, batch: BsxBatch) -> PolarsResult<()> {
+        let encoded = EncodedBsxBatch::encode(batch, self.get_chr_dtype())?;
+        self.write_encoded_batch(encoded)
     }
 
     pub fn close(&mut self) -> PolarsResult<()> {

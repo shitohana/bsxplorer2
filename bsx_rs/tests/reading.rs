@@ -532,6 +532,8 @@ fn report_reading() {
     ];
     let config = TestReportConfig {
         seed: Some(1234),
+        chunk_size: 5000,
+        chr_len: (500_000..1_000_001),
         ..Default::default()
     };
     let env = TestReportEnv::new(config);

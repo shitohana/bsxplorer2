@@ -26,7 +26,7 @@ type BSXIndex = HashMap<String, BTreeMap<u64, usize>>;
 pub struct BSXBTree(BSXIndex);
 
 impl BSXBTree {
-    pub(crate) fn from_file<R: Read + Seek>(
+    pub(crate) fn from_file<R: Read + Seek + Send>(
         reader: &mut BsxFileReader<R>,
     ) -> Result<Self, Box<dyn Error>> {
         let mut new = Self::empty();
@@ -180,27 +180,24 @@ impl LinkedReadPlan {
     }
 }
 
-type BatchSliceCache = Vec<EncodedBsxBatch>;
-type AssembleCache = RwLock<HashMap<RegionCoordinates<u64>, BatchSliceCache>>;
-
 struct RegionAssembler {
-    read_plan: Arc<RwLock<LinkedReadPlan>>,
-    assemble_cache: Arc<AssembleCache>,
-    output_queue: VecDeque<(RegionCoordinates<u64>, EncodedBsxBatch)>,
+    read_plan: LinkedReadPlan,
+    assemble_cache: Arc<RwLock<HashMap<RegionCoordinates<u64>, Vec<EncodedBsxBatch>>>>,
+    output_queue: Arc<RwLock<VecDeque<(RegionCoordinates<u64>, EncodedBsxBatch)>>>,
 }
 
 impl RegionAssembler {
     pub fn new(read_plan: LinkedReadPlan) -> Self {
         Self {
-            read_plan: Arc::new(RwLock::new(read_plan)),
+            read_plan,
             assemble_cache: Arc::new(RwLock::new(HashMap::new())),
-            output_queue: VecDeque::new(),
+            output_queue: Arc::new(RwLock::new(VecDeque::new())),
         }
     }
 
     pub fn consume_batch(&mut self, data: EncodedBsxBatch, batch_idx: usize) {
         let data_ref = Arc::new(data);
-        let affected_regions = self.read_plan.write().unwrap().remove_batch(batch_idx);
+        let affected_regions = self.read_plan.remove_batch(batch_idx);
 
         if let Some(affected_regions) = affected_regions {
             let trimmed_dfs: HashMap<RegionCoordinates<u64>, EncodedBsxBatch> = HashMap::from_iter(
@@ -217,69 +214,62 @@ impl RegionAssembler {
 
             trimmed_dfs
                 .into_iter()
-                .for_each(|(region_coordinates, data)| {
-                    let cache = Arc::clone(&self.assemble_cache);
+                .for_each(|(region_coordinates, region_data)| {
+                    let cache = &mut self.assemble_cache;
 
                     let was_cached = cache.read().unwrap().get(&region_coordinates).is_some();
                     if was_cached {
                         cache
-                            .write()
-                            .unwrap()
+                            .write().unwrap()
                             .get_mut(&region_coordinates)
                             .unwrap()
-                            .push(data);
+                            .push(region_data);
                     } else {
-                        cache
-                            .write()
-                            .unwrap()
-                            .insert(region_coordinates.clone(), vec![data]);
+                        cache.write().unwrap()
+                            .insert(region_coordinates.clone(), vec![region_data]);
                     }
                 });
 
-            affected_regions.iter().for_each(|region| {
+            affected_regions.par_iter().for_each(|region| {
                 let is_finished = self
                     .read_plan
-                    .read()
-                    .unwrap()
                     .get_region(region)
                     .map_or(false, |indices| indices.is_empty());
 
                 if is_finished {
+                    #[allow(unused_mut)]
                     let mut region_batches = self
                         .assemble_cache
-                        .write()
-                        .unwrap()
+                        .write().unwrap()
                         .remove(region)
                         .expect("Region marked as read, but missing in cache")
                         .into_iter()
-                        .sorted_by_cached_key(|b| b.first_position().unwrap().position())
+                        .sorted_unstable_by_key(|b| b.first_position().unwrap().position())
                         .collect_vec();
-                    region_batches.reverse();
-
+                    
+                    #[allow(unused_mut)]
                     let mut assembled = region_batches
-                        .pop()
-                        .expect("Region marked as read, but has no batches");
+                        .into_iter()
+                        .reduce(|acc, df| acc.vstack(df).unwrap())
+                        .unwrap();
 
-                    while let Some(batch) = region_batches.pop() {
-                        assembled.extend(&batch).unwrap();
-                    }
-                    self.output_queue.push_front((region.clone(), assembled));
+                    self.output_queue.write().unwrap().push_front((region.clone(), assembled));
                 }
             })
         }
     }
 
     fn try_get(&mut self) -> Option<(RegionCoordinates<u64>, EncodedBsxBatch)> {
-        self.output_queue.pop_front()
+        self.output_queue.write().unwrap().pop_front()
     }
 
     #[allow(dead_code)]
-    fn read_plan(&self) -> Arc<RwLock<LinkedReadPlan>> {
-        Arc::clone(&self.read_plan)
+    fn read_plan(&self) -> &LinkedReadPlan {
+        &self.read_plan
     }
 
     fn is_finished(&self) -> bool {
-        self.read_plan.read().unwrap().batch_mapping.is_empty()
+        self.read_plan.batch_mapping.is_empty()
     }
 }
 
@@ -389,10 +379,11 @@ fn region_reader_thread<R: Read + Seek>(
     sender: SyncSender<(usize, EncodedBsxBatch)>,
     read_plan: Arc<LinkedReadPlan>,
 ) {
-    for batch_idx in read_plan.batch_mapping.keys() {
-        match reader.get_batch(*batch_idx) {
+    let batch_indices = read_plan.batch_mapping.keys().cloned().collect_vec();
+    for batch_idx in  batch_indices {
+        match reader.get_batch(batch_idx) {
             Some(Ok(batch)) => {
-                sender.send((*batch_idx, batch)).unwrap();
+                sender.send((batch_idx, batch)).unwrap();
             }
             None => {
                 continue;
@@ -439,6 +430,8 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
         next.map(|res| self.process_record_batch(res))
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
