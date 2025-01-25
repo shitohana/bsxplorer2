@@ -115,7 +115,7 @@ impl ReportReaderBuilder {
                 )?;
                 Some(FastaCoverageReader::from(reader))
             }
-            (Some(_), None) => todo!(),
+            (Some(_), None) => todo!("Add auto FASTA indexing?"),
             (None, Some(_)) => return Err(Box::from("No FASTA path given")),
             (None, None) => None,
         };
@@ -392,7 +392,6 @@ impl ReportReader {
     }
 
     /// It is caller responsibility to check, if cache size is enough
-    /// TODO maybe change it
     fn get_chunk(&mut self) -> Result<DataFrame, Box<dyn Error>> {
         if let Some(cache) = self.batch_cache.as_mut() {
             let (mut output, mut rest) = cache.split_at(self.chunk_size as i64);

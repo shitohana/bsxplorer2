@@ -10,8 +10,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use polars::export::arrow::datatypes::Metadata;
 
-// TODO Add marker for no context information to invalidate Nulls in context
-//      column
 pub struct BsxIpcWriter<W>
 where
     W: Write,
