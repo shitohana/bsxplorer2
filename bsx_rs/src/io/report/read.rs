@@ -204,7 +204,7 @@ where
     strands: Vec<bool>,
 }
 
-impl<N: num::PrimInt + num::Unsigned> ContextData<N> {
+impl<N: PrimInt + Unsigned> ContextData<N> {
     pub fn len(&self) -> usize {
         self.contexts.len()
     }
