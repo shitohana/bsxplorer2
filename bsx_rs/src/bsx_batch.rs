@@ -101,14 +101,13 @@ impl TryFrom<DataFrame> for BsxBatch {
         }
         // Try cast
         let data_casted = value.lazy().cast(Self::hashmap(), true).collect()?;
-        // Chr null check
-        if data_casted.column(Self::chr_col())?.null_count() != 0 {
-            return Err(PolarsError::ComputeError("Nulls in chr col".into()));
+        
+        for colname in [Self::chr_col(), Self::pos_col(), "context", "strand", "count_m", "count_total"] {
+            if data_casted.column(colname)?.null_count() != 0 {
+                return Err(PolarsError::ComputeError(format!("Nulls in {} col", colname).into()));
+            }
         }
-        // Pos null check
-        if data_casted.column(Self::pos_col())?.null_count() != 0 {
-            return Err(PolarsError::ComputeError("Nulls in pos col".into()));
-        }
+        
         // Check sorted
         if !data_casted
             .column(Self::pos_col())?
@@ -139,8 +138,9 @@ impl EncodedBsxBatch {
     pub fn encode(batch: BsxBatch, chr_dtype: &DataType) -> PolarsResult<Self> {
         let batch_data = DataFrame::from(batch);
         let target_schema = Self::get_hashmap(chr_dtype);
-
+            
         let mut batch_lazy = batch_data.lazy();
+        
         batch_lazy = encode_context(batch_lazy, "context");
         batch_lazy = encode_strand(batch_lazy, "strand");
 

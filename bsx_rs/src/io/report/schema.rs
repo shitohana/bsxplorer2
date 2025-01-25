@@ -132,7 +132,10 @@ impl ReportTypeSchema {
         };
         read_options
     }
-
+    
+    /// Returns DataFrame with columns and types as in [BsxBatch],
+    /// but context, strand and counts data are possibly invalid or non
+    /// present.
     pub fn bsx_mutate(&self) -> fn(DataFrame) -> PolarsResult<DataFrame> {
         match self {
             ReportTypeSchema::Bismark => |df: DataFrame| {

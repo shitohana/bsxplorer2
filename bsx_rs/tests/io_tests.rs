@@ -4,7 +4,7 @@ extern crate pretty_env_logger;
 extern crate log;
 
 use bsx_rs::bsx_batch::{BsxBatch, BsxBatchMethods};
-use bsx_rs::io::report::read::{ContextData, ReportReader, ReportReaderBuilder};
+use bsx_rs::io::report::read::{ContextData, ReportReaderBuilder};
 use bsx_rs::io::report::schema::ReportTypeSchema;
 use bsx_rs::region::GenomicPosition;
 use bsx_rs::utils::types::{Context, IPCEncodedEnum};
@@ -29,6 +29,8 @@ use std::ops::{Div, Range};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tempfile::NamedTempFile;
+use bsx_rs::io::bsx::region_read::BsxFileReader;
+use bsx_rs::io::bsx::write::BsxIpcWriter;
 
 #[derive(Debug)]
 struct TestReportConfig {
@@ -98,7 +100,6 @@ struct TestReportEnv {
     fasta_tempfile: NamedTempFile,
     fai_tempfile: NamedTempFile,
     config: TestReportConfig,
-    rng: ChaCha8Rng,
     reference_metadata: ReferenceMetadata,
 }
 
@@ -177,9 +178,55 @@ impl TestReportEnv {
             fasta_tempfile,
             fai_tempfile,
             reference_metadata,
-            rng,
             config,
         }
+    }
+    
+    fn test_bsx_file(&self) -> Result<(), Box<dyn Error>> {
+        let report_tempfile = NamedTempFile::new()?;
+        self.write_bsx(report_tempfile.reopen()?)?;
+        
+        let mut read_metadata = CytosinesHashmap::new();
+        self.reference_metadata
+            .order
+            .iter()
+            .for_each(|k| read_metadata.append_chr(k.clone(), &[]));
+
+        let mut shortened_batch_num = 0;
+        
+        let reader = BsxFileReader::new(
+            report_tempfile.reopen()?,
+        );
+
+        for batch in reader {
+            let batch = batch?.decode()?;
+            
+            Self::check_chr_unique(&batch);
+            Self::check_positions_sorted(&batch);
+            Self::check_positions_unique(&batch);
+
+            if batch.data().height() != self.config.chunk_size {
+                shortened_batch_num += 1;
+            }
+
+            read_metadata.extend_positions(
+                batch.first_position()?.chr().to_string(),
+                &batch
+                    .data()
+                    .column("position")?
+                    .u64()?
+                    .iter()
+                    .map(|v| v.unwrap())
+                    .collect_vec(),
+            );
+        }
+
+        assert_eq!(shortened_batch_num, read_metadata.c_positions.len());
+        Self::check_compare_metadata(&self.reference_metadata, &read_metadata)?;
+
+        info!("Finished testing BsxIpc. SUCCESS");
+        
+        Ok(())
     }
 
     fn test_report_type(&self, report_type: ReportTypeSchema) -> Result<(), Box<dyn Error>> {
@@ -235,9 +282,17 @@ impl TestReportEnv {
 
         assert_eq!(shortened_batch_num, read_metadata.c_positions.len());
 
-        for chr in self.reference_metadata.order() {
+        Self::check_compare_metadata(&self.reference_metadata, &read_metadata)?;
+        
+        info!("Finished testing report type {:?}. SUCCESS", report_type);
+        report_tempfile.close()?;
+        Ok(())
+    }
+
+    fn check_compare_metadata(reference: &ReferenceMetadata, read: &CytosinesHashmap) -> Result<(), Box<dyn Error>> {
+        for chr in reference.order() {
             let reference = HashSet::from_iter(
-                self.reference_metadata
+                reference
                     .get(chr)
                     .unwrap()
                     .column("position")?
@@ -245,7 +300,7 @@ impl TestReportEnv {
                     .into_iter()
                     .map(|v| v.unwrap()),
             );
-            let real = read_metadata.c_positions.get(chr).unwrap();
+            let real = read.c_positions.get(chr).unwrap();
             let difference = reference.difference(real).cloned().sorted().collect_vec();
 
             if !difference.is_empty() {
@@ -261,11 +316,10 @@ impl TestReportEnv {
                 panic!("Context positions differ! {:?}", difference);
             }
         }
-        info!("Finished testing report type {:?}. SUCCESS", report_type);
-        report_tempfile.close()?;
+        
         Ok(())
     }
-
+    
     fn check_chr_unique(batch: &BsxBatch) {
         let batch_chroms = batch
             .data()
@@ -357,6 +411,26 @@ impl TestReportEnv {
         Ok(())
     }
 
+    fn write_bsx<W>(&self, sink: W) -> Result<(), Box<dyn Error>>
+    where
+        W: Write,
+    {
+        let mut writer = BsxIpcWriter::try_from_sink_and_fai(
+            sink, self.fai_tempfile.path().to_path_buf(), None, None
+        )?;
+
+        for chr_name in self.reference_metadata.order() {
+            let mut bsx_data = self.reference_metadata.get(chr_name).unwrap().clone();
+            bsx_data.align_chunks_par();
+            let batch = BsxBatch::try_from(bsx_data.clone())?;
+            
+            writer.write_batch(batch)?;
+        }
+
+        writer.close()?;
+        Ok(())
+    }
+    
     fn create_fai<W>(fasta_path: &Path, mut fai_sink: W) -> io::Result<()>
     where
         W: Write,
@@ -511,9 +585,9 @@ where
     result_lazy = result_lazy
         .with_columns([
             lit(chr_name).alias("chr"),
-            (col("count_m")
+            col("count_m")
                 .cast(DataType::Float64)
-                .div(col("count_total")))
+                .div(col("count_total"))
             .alias("density"),
         ])
         .cast(BsxBatch::hashmap(), true);
@@ -533,7 +607,7 @@ fn report_reading() {
     let config = TestReportConfig {
         seed: Some(1234),
         chunk_size: 5000,
-        chr_len: (500_000..1_000_001),
+        chr_len: 500_000..1_000_001,
         ..Default::default()
     };
     let env = TestReportEnv::new(config);
@@ -546,4 +620,18 @@ fn report_reading() {
             }
         }
     }
+}
+
+#[test]
+fn bsx_io() {
+    pretty_env_logger::init();
+    // let chunk_size = 10_000;
+    let config = TestReportConfig {
+        seed: Some(1234),
+        chunk_size: 5000,
+        chr_len: 500_000..1_000_001,
+        ..Default::default()
+    };
+    let env = TestReportEnv::new(config);
+    env.test_bsx_file().unwrap()
 }
