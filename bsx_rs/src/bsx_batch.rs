@@ -101,13 +101,22 @@ impl TryFrom<DataFrame> for BsxBatch {
         }
         // Try cast
         let data_casted = value.lazy().cast(Self::hashmap(), true).collect()?;
-        
-        for colname in [Self::chr_col(), Self::pos_col(), "context", "strand", "count_m", "count_total"] {
+
+        for colname in [
+            Self::chr_col(),
+            Self::pos_col(),
+            "context",
+            "strand",
+            "count_m",
+            "count_total",
+        ] {
             if data_casted.column(colname)?.null_count() != 0 {
-                return Err(PolarsError::ComputeError(format!("Nulls in {} col", colname).into()));
+                return Err(PolarsError::ComputeError(
+                    format!("Nulls in {} col", colname).into(),
+                ));
             }
         }
-        
+
         // Check sorted
         if !data_casted
             .column(Self::pos_col())?
@@ -138,9 +147,9 @@ impl EncodedBsxBatch {
     pub fn encode(batch: BsxBatch, chr_dtype: &DataType) -> PolarsResult<Self> {
         let batch_data = DataFrame::from(batch);
         let target_schema = Self::get_hashmap(chr_dtype);
-            
+
         let mut batch_lazy = batch_data.lazy();
-        
+
         batch_lazy = encode_context(batch_lazy, "context");
         batch_lazy = encode_strand(batch_lazy, "strand");
 
@@ -236,7 +245,7 @@ impl EncodedBsxBatch {
     pub(crate) fn col_names() -> &'static [&'static str] {
         BsxBatch::col_names()
     }
-    
+
     pub fn vstack(self, other: Self) -> PolarsResult<Self> {
         let new = self.0.vstack(&other.0)?;
         unsafe { Ok(Self::new_unchecked(new)) }
@@ -366,7 +375,11 @@ pub trait BsxBatchMethods {
             )?;
 
             if self.data().column("position")?.n_unique()? != self.data().height() {
-                println!("{} != {}", self.data().column("position")?.n_unique()?, self.data().height());
+                println!(
+                    "{} != {}",
+                    self.data().column("position")?.n_unique()?,
+                    self.data().height()
+                );
                 println!("{}", self.data());
                 return Err(PolarsError::ComputeError(
                     "Position values are duplicated".into(),
@@ -394,8 +407,8 @@ mod tests {
                 "position" => [1, 2, 3],
                 "strand" => [".", ".", "."],
                 "context" => ["CG", "CHG", "CHH"],
-                "count_m" => [None::<u32>, None, None],
-                "count_total" => [None::<u32>, None, None],
+                "count_m" => [0,0,0],
+                "count_total" => [0,0,0],
                 "density" => [0, 1, 0]
             ]
             .unwrap()
@@ -414,9 +427,9 @@ mod tests {
                 "chr" => ["1", "2", "3"],
                 "position" => [1, 2, 3],
                 "strand" => [".", ".", "."],
-                "context" => [None::<&str>, None, None],
-                "count_m" => [None::<u32>, None, None],
-                "count_total" => [None::<u32>, None, None],
+                "context" => ["CG", "CHG", "CHH"],
+                "count_m" => [0,0,0],
+                "count_total" => [0,0,0],
                 "density" => [0, 1, 0]
             ]
             .unwrap()
@@ -472,8 +485,8 @@ mod tests {
                 "position" => [2, 3, 4, 5, 7, 9, 10],
                 "strand" => [".", ".", ".", ".", ".", ".", "."],
                 "context" => ["CG", "CHG", "CHH", "CG", "CHG", "CHH", "CG"],
-                "count_m" => [None::<u32>, None, None, None, None, None, None],
-                "count_total" => [None::<u32>, None, None, None, None, None, None],
+                "count_m" => [0,0,0,0,0,0,0],
+                "count_total" => [0,0,0,0,0,0,0],
                 "density" => [0, 1, 0, 0, 1, 0, 0]
             ]
             .unwrap()

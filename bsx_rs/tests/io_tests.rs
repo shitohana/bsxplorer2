@@ -1,9 +1,11 @@
 #![feature(path_add_extension)]
-extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
+extern crate pretty_env_logger;
 
 use bsx_rs::bsx_batch::{BsxBatch, BsxBatchMethods};
+use bsx_rs::io::bsx::region_read::BsxFileReader;
+use bsx_rs::io::bsx::write::BsxIpcWriter;
 use bsx_rs::io::report::read::{ContextData, ReportReaderBuilder};
 use bsx_rs::io::report::schema::ReportTypeSchema;
 use bsx_rs::region::GenomicPosition;
@@ -29,8 +31,6 @@ use std::ops::{Div, Range};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tempfile::NamedTempFile;
-use bsx_rs::io::bsx::region_read::BsxFileReader;
-use bsx_rs::io::bsx::write::BsxIpcWriter;
 
 #[derive(Debug)]
 struct TestReportConfig {
@@ -181,11 +181,11 @@ impl TestReportEnv {
             config,
         }
     }
-    
+
     fn test_bsx_file(&self) -> Result<(), Box<dyn Error>> {
         let report_tempfile = NamedTempFile::new()?;
         self.write_bsx(report_tempfile.reopen()?)?;
-        
+
         let mut read_metadata = CytosinesHashmap::new();
         self.reference_metadata
             .order
@@ -193,14 +193,12 @@ impl TestReportEnv {
             .for_each(|k| read_metadata.append_chr(k.clone(), &[]));
 
         let mut shortened_batch_num = 0;
-        
-        let reader = BsxFileReader::new(
-            report_tempfile.reopen()?,
-        );
+
+        let reader = BsxFileReader::new(report_tempfile.reopen()?);
 
         for batch in reader {
             let batch = batch?.decode()?;
-            
+
             Self::check_chr_unique(&batch);
             Self::check_positions_sorted(&batch);
             Self::check_positions_unique(&batch);
@@ -225,7 +223,7 @@ impl TestReportEnv {
         Self::check_compare_metadata(&self.reference_metadata, &read_metadata)?;
 
         info!("Finished testing BsxIpc. SUCCESS");
-        
+
         Ok(())
     }
 
@@ -283,13 +281,16 @@ impl TestReportEnv {
         assert_eq!(shortened_batch_num, read_metadata.c_positions.len());
 
         Self::check_compare_metadata(&self.reference_metadata, &read_metadata)?;
-        
+
         info!("Finished testing report type {:?}. SUCCESS", report_type);
         report_tempfile.close()?;
         Ok(())
     }
 
-    fn check_compare_metadata(reference: &ReferenceMetadata, read: &CytosinesHashmap) -> Result<(), Box<dyn Error>> {
+    fn check_compare_metadata(
+        reference: &ReferenceMetadata,
+        read: &CytosinesHashmap,
+    ) -> Result<(), Box<dyn Error>> {
         for chr in reference.order() {
             let reference = HashSet::from_iter(
                 reference
@@ -316,10 +317,10 @@ impl TestReportEnv {
                 panic!("Context positions differ! {:?}", difference);
             }
         }
-        
+
         Ok(())
     }
-    
+
     fn check_chr_unique(batch: &BsxBatch) {
         let batch_chroms = batch
             .data()
@@ -416,21 +417,24 @@ impl TestReportEnv {
         W: Write,
     {
         let mut writer = BsxIpcWriter::try_from_sink_and_fai(
-            sink, self.fai_tempfile.path().to_path_buf(), None, None
+            sink,
+            self.fai_tempfile.path().to_path_buf(),
+            None,
+            None,
         )?;
 
         for chr_name in self.reference_metadata.order() {
             let mut bsx_data = self.reference_metadata.get(chr_name).unwrap().clone();
             bsx_data.align_chunks_par();
             let batch = BsxBatch::try_from(bsx_data.clone())?;
-            
+
             writer.write_batch(batch)?;
         }
 
         writer.close()?;
         Ok(())
     }
-    
+
     fn create_fai<W>(fasta_path: &Path, mut fai_sink: W) -> io::Result<()>
     where
         W: Write,
@@ -588,7 +592,7 @@ where
             col("count_m")
                 .cast(DataType::Float64)
                 .div(col("count_total"))
-            .alias("density"),
+                .alias("density"),
         ])
         .cast(BsxBatch::hashmap(), true);
     result_lazy.collect()
@@ -596,7 +600,8 @@ where
 
 #[test]
 fn report_reading() {
-    pretty_env_logger::init();
+    #[allow(unused_results)]
+    pretty_env_logger::try_init();
     // let chunk_size = 10_000;
     let report_schemas = [
         ReportTypeSchema::BedGraph,
@@ -624,7 +629,8 @@ fn report_reading() {
 
 #[test]
 fn bsx_io() {
-    pretty_env_logger::init();
+    #[allow(unused_results)]
+    pretty_env_logger::try_init();
     // let chunk_size = 10_000;
     let config = TestReportConfig {
         seed: Some(1234),
