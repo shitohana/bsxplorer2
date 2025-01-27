@@ -1,3 +1,5 @@
+use pyo3::pyclass;
+
 pub trait IPCEncodedEnum {
     fn from_bool(value: Option<bool>) -> Self;
     fn to_bool(&self) -> Option<bool>;
@@ -7,6 +9,7 @@ pub trait IPCEncodedEnum {
 
 pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "python", pyclass)]
 pub enum Context {
     CG,
     CHG,
@@ -48,6 +51,7 @@ impl IPCEncodedEnum for Context {
 }
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "python", pyclass)]
 pub enum Strand {
     Forward,
     Reverse,

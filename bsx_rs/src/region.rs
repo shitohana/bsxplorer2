@@ -6,16 +6,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Range, Shr, Sub};
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct RegionCoordinates<N>
-where
-    N: PrimInt + Unsigned + Clone,
-{
-    pub(crate) chr: String,
-    pub(crate) start: N,
-    pub(crate) end: N,
-}
-
 #[derive(Debug, Clone)]
 pub struct GenomicPosition<N>
 where
@@ -121,6 +111,16 @@ where
             None
         }
     }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct RegionCoordinates<N>
+where
+    N: PrimInt + Unsigned + Clone,
+{
+    pub(crate) chr: String,
+    pub(crate) start: N,
+    pub(crate) end: N,
 }
 
 impl<N> RegionCoordinates<N>
@@ -259,6 +259,138 @@ where
         write!(f, "{}:{}-{}", self.chr, self.start, self.end)
     }
 }
+
+#[cfg(feature = "python")]
+mod python {
+    use crate::region::{GenomicPosition, RegionCoordinates};
+    use pyo3::prelude::*;
+
+    #[pyclass(name = "GenomicPosition")]
+    #[derive(Clone)]
+    pub struct PyGenomicPosition {
+        pub chr: String,
+        pub position: u64,
+    }
+
+    impl From<GenomicPosition<u64>> for PyGenomicPosition {
+        fn from(pos: GenomicPosition<u64>) -> Self {
+            PyGenomicPosition {
+                chr: pos.chr,
+                position: pos.position,
+            }
+        }
+    }
+
+    impl From<PyGenomicPosition> for GenomicPosition<u64> {
+        fn from(pos: PyGenomicPosition) -> Self {
+            GenomicPosition {
+                chr: pos.chr,
+                position: pos.position,
+            }
+        }
+    }
+
+    #[pymethods]
+    impl PyGenomicPosition {
+        #[new]
+        fn new(chr: String, position: u64) -> PyGenomicPosition {
+            PyGenomicPosition { chr, position }
+        }
+
+        fn __add__(&self, other: &PyGenomicPosition) -> PyGenomicPosition {
+            PyGenomicPosition {
+                chr: self.chr.clone(),
+                position: self.position + other.position,
+            }
+        }
+
+        fn __sub__(&self, other: &PyGenomicPosition) -> PyGenomicPosition {
+            PyGenomicPosition {
+                chr: self.chr.clone(),
+                position: self.position - other.position,
+            }
+        }
+
+        fn __rshift__(&self, other: &PyGenomicPosition) -> Option<PyRegionCoordinates> {
+            let rhs = GenomicPosition::from(self.clone());
+            let lhs = GenomicPosition::from(other.clone());
+            (rhs >> lhs).map(PyRegionCoordinates::from)
+        }
+    }
+
+    #[pymethods]
+    impl PyRegionCoordinates {
+        #[new]
+        fn new(chr: &str, start: u64, end: u64) -> Self {
+            PyRegionCoordinates {
+                chr: chr.to_string(),
+                start,
+                end,
+            }
+        }
+
+        #[getter]
+        fn get_chr(&self) -> &str {
+            self.chr.as_str()
+        }
+        #[getter]
+        fn get_start(&self) -> u64 {
+            self.start
+        }
+        #[getter]
+        fn get_end(&self) -> u64 {
+            self.end
+        }
+        #[getter]
+        fn start_gpos(&self) -> PyGenomicPosition {
+            PyGenomicPosition {
+                chr: self.chr.clone(),
+                position: self.start,
+            }
+        }
+        #[getter]
+        fn end_gpos(&self) -> PyGenomicPosition {
+            PyGenomicPosition {
+                chr: self.chr.clone(),
+                position: self.end,
+            }
+        }
+        fn __len__(&self) -> usize {
+            self.end as usize - self.start as usize
+        }
+    }
+
+    #[pyclass(name = "RegionCoordinates")]
+    #[derive(Clone)]
+    pub struct PyRegionCoordinates {
+        pub chr: String,
+        pub start: u64,
+        pub end: u64,
+    }
+
+    impl From<RegionCoordinates<u64>> for PyRegionCoordinates {
+        fn from(region: RegionCoordinates<u64>) -> Self {
+            PyRegionCoordinates {
+                chr: region.chr,
+                start: region.start,
+                end: region.end,
+            }
+        }
+    }
+
+    impl From<PyRegionCoordinates> for RegionCoordinates<u64> {
+        fn from(region: PyRegionCoordinates) -> Self {
+            RegionCoordinates {
+                chr: region.chr,
+                start: region.start,
+                end: region.end,
+            }
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+pub(crate) use python::{PyGenomicPosition, PyRegionCoordinates};
 
 #[cfg(test)]
 mod tests {

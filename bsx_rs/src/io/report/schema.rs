@@ -1,9 +1,16 @@
 use crate::bsx_batch::BsxBatch;
-use crate::io::report::*;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
+use itertools::Itertools;
+use polars::prelude::*;
 use std::ops::Div;
 
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+#[cfg(feature = "python")]
+use pyo3_polars::PySchema;
+
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "python", pyclass)]
 pub enum ReportTypeSchema {
     Bismark,
     CgMap,
@@ -132,7 +139,7 @@ impl ReportTypeSchema {
         };
         read_options
     }
-    
+
     /// Returns DataFrame with columns and types as in [BsxBatch],
     /// but context, strand and counts data are possibly invalid or non
     /// present.
@@ -235,10 +242,18 @@ impl ReportTypeSchema {
     }
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
+impl ReportTypeSchema {
+    fn get_schema(&self) -> PyResult<PySchema> {
+        Ok(PySchema(SchemaRef::new(self.schema())))
+    }
+}
+
 #[cfg(test)]
 mod report_schema_test {
     use crate::bsx_batch::BsxBatch;
-    use crate::io::report::schema::schema::ReportTypeSchema;
+    use crate::io::report::schema::ReportTypeSchema;
     use crate::io::report::*;
 
     #[test]

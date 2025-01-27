@@ -6,16 +6,25 @@ use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
 use polars::export::arrow::record_batch::RecordBatchT;
 use polars::prelude::*;
+use pyo3::exceptions::PyIOError;
 use rayon::prelude::*;
 use std::collections::btree_map::Cursor;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
+use std::fs::File;
 use std::io::{Read, Seek};
 use std::ops::Bound::Included;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::thread;
 use std::thread::JoinHandle;
+
+#[cfg(feature = "python")]
+use crate::region::PyRegionCoordinates;
+#[cfg(feature = "python")]
+use crate::wrap_box_result;
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
 
 /// chromosome -> (start_position -> batch_index)
 type BSXIndex = HashMap<String, BTreeMap<u64, usize>>;
@@ -220,12 +229,15 @@ impl RegionAssembler {
                     let was_cached = cache.read().unwrap().get(&region_coordinates).is_some();
                     if was_cached {
                         cache
-                            .write().unwrap()
+                            .write()
+                            .unwrap()
                             .get_mut(&region_coordinates)
                             .unwrap()
                             .push(region_data);
                     } else {
-                        cache.write().unwrap()
+                        cache
+                            .write()
+                            .unwrap()
                             .insert(region_coordinates.clone(), vec![region_data]);
                     }
                 });
@@ -240,20 +252,24 @@ impl RegionAssembler {
                     #[allow(unused_mut)]
                     let mut region_batches = self
                         .assemble_cache
-                        .write().unwrap()
+                        .write()
+                        .unwrap()
                         .remove(region)
                         .expect("Region marked as read, but missing in cache")
                         .into_iter()
                         .sorted_unstable_by_key(|b| b.first_position().unwrap().position())
                         .collect_vec();
-                    
+
                     #[allow(unused_mut)]
                     let mut assembled = region_batches
                         .into_iter()
                         .reduce(|acc, df| acc.vstack(df).unwrap())
                         .unwrap();
 
-                    self.output_queue.write().unwrap().push_front((region.clone(), assembled));
+                    self.output_queue
+                        .write()
+                        .unwrap()
+                        .push_front((region.clone(), assembled));
                 }
             })
         }
@@ -279,6 +295,7 @@ impl From<LinkedReadPlan> for RegionAssembler {
     }
 }
 
+#[cfg_attr(feature = "python", pyclass)]
 pub struct RegionReader {
     assembler: RegionAssembler,
     _read_thread: JoinHandle<()>,
@@ -335,6 +352,24 @@ impl Iterator for RegionReader {
     }
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
+impl RegionReader {
+    #[new]
+    fn new_py(path: String, regions: Vec<PyRegionCoordinates>) -> PyResult<Self> {
+        let handle = File::open(path)?;
+        let regions = regions
+            .into_iter()
+            .map(RegionCoordinates::from)
+            .collect_vec();
+        wrap_box_result!(PyIOError, Self::try_new(handle, &regions))
+    }
+
+    fn __next__(&mut self) -> Option<(PyRegionCoordinates, EncodedBsxBatch)> {
+        self.next().map(|(index, batch)| (index.into(), batch))
+    }
+}
+
 pub fn df_to_regions(
     data_frame: &DataFrame,
     chr_colname: Option<&str>,
@@ -380,7 +415,7 @@ fn region_reader_thread<R: Read + Seek>(
     read_plan: Arc<LinkedReadPlan>,
 ) {
     let batch_indices = read_plan.batch_mapping.keys().cloned().collect_vec();
-    for batch_idx in  batch_indices {
+    for batch_idx in batch_indices {
         match reader.get_batch(batch_idx) {
             Some(Ok(batch)) => {
                 sender.send((batch_idx, batch)).unwrap();
@@ -431,7 +466,23 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
     }
 }
 
+#[cfg(feature = "python")]
+#[pyclass(name = "BsxFileReader")]
+struct PyBsxFileReader {
+    inner: BsxFileReader<std::fs::File>,
+}
 
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyBsxFileReader {
+    #[new]
+    fn new(path: String) -> PyResult<Self> {
+        let file = std::fs::File::open(path)?;
+        Ok(PyBsxFileReader {
+            inner: BsxFileReader::new(file),
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {

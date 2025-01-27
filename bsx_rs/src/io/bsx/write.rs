@@ -3,12 +3,12 @@ use crate::utils::get_categorical_dtype;
 use itertools::Itertools;
 use polars::datatypes::DataType;
 use polars::error::PolarsResult;
+use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 use std::error::Error;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use polars::export::arrow::datatypes::Metadata;
 
 pub struct BsxIpcWriter<W>
 where
@@ -23,7 +23,7 @@ where
     W: Write,
 {
     pub fn try_new(
-        sink: W, 
+        sink: W,
         chr_names: Vec<String>,
         compression: Option<IpcCompression>,
         custom_metadata: Option<Arc<Metadata>>,
@@ -40,11 +40,14 @@ where
             writer.set_custom_schema_metadata(metadata);
         }
         let batched_writer = writer.batched(&schema)?;
-        Ok(Self { writer: batched_writer, schema })
+        Ok(Self {
+            writer: batched_writer,
+            schema,
+        })
     }
 
     pub fn try_from_sink_and_fai(
-        sink: W, 
+        sink: W,
         fai_path: PathBuf,
         compression: Option<IpcCompression>,
         custom_metadata: Option<Arc<Metadata>>,
@@ -61,7 +64,7 @@ where
     pub fn write_encoded_batch(&mut self, batch: EncodedBsxBatch) -> PolarsResult<()> {
         self.writer.write_batch(batch.data())
     }
-    
+
     pub fn write_batch(&mut self, batch: BsxBatch) -> PolarsResult<()> {
         let encoded = EncodedBsxBatch::encode(batch, self.get_chr_dtype())?;
         self.write_encoded_batch(encoded)
@@ -81,3 +84,56 @@ impl<W: Write> Drop for BsxIpcWriter<W> {
         let _ = self.close();
     }
 }
+
+#[cfg(feature = "python")]
+mod python {
+    use super::*;
+    use crate::utils::wrap_box_result;
+    use pyo3::exceptions::PyIOError;
+    use pyo3::prelude::*;
+    use std::fs::File;
+    use std::io::BufWriter;
+
+    #[pyclass(name = "IpcCompression")]
+    #[derive(Clone)]
+    pub enum PyIpcCompression {
+        ZSTD,
+        LZ4,
+    }
+
+    impl From<PyIpcCompression> for IpcCompression {
+        fn from(value: PyIpcCompression) -> Self {
+            match value {
+                PyIpcCompression::ZSTD => IpcCompression::ZSTD,
+                PyIpcCompression::LZ4 => IpcCompression::LZ4,
+            }
+        }
+    }
+
+    #[pyclass(name = "BsxWriter")]
+    pub struct PyBsxIpcWriter {
+        inner: BsxIpcWriter<BufWriter<File>>,
+    }
+
+    #[pymethods]
+    impl PyBsxIpcWriter {
+        #[new]
+        fn new(
+            path: String,
+            fai_path: String,
+            compression: Option<PyIpcCompression>,
+        ) -> PyResult<Self> {
+            let res = BsxIpcWriter::try_from_sink_and_fai(
+                BufWriter::new(File::create(PathBuf::from(path))?),
+                fai_path.into(),
+                compression.map(|c| c.into()),
+                None,
+            );
+            let inner = wrap_box_result!(PyIOError, res)?;
+            Ok(Self { inner })
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+pub use python::{PyBsxIpcWriter, PyIpcCompression};

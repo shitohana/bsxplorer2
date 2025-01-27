@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages]
 # Pure Python packages/modules
-find = { where = ["python"] }
+find = { where = ["src"] }
 
 [[tool.setuptools-rust.ext-modules]]
 # Private Rust extension module to be nested into the Python package

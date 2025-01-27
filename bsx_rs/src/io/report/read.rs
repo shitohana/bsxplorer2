@@ -3,6 +3,8 @@ use crate::bsx_batch::BsxBatch;
 use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
 use crate::io::report::schema::ReportTypeSchema;
 use crate::region::GenomicPosition;
+#[cfg(feature = "python")]
+use crate::utils::wrap_box_result;
 use crate::utils::{first_position, last_position};
 use itertools::Itertools;
 use log::debug;
@@ -13,9 +15,18 @@ use polars::frame::DataFrame;
 use polars::io::mmap::MmapBytesReader;
 use polars::io::RowIndex;
 use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef};
+#[cfg(feature = "python")]
+use pyo3::exceptions::PyIOError;
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+#[cfg(feature = "python")]
+use pyo3_polars::error::PyPolarsErr;
+#[cfg(feature = "python")]
+use pyo3_polars::PyDataFrame;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{mpsc, Arc};
@@ -332,6 +343,7 @@ impl<N: PrimInt + Unsigned> ContextData<N> {
 /// Data itself and marker if the batch is the last
 pub(in crate::io::report) type ReadQueueItem = (DataFrame, bool);
 
+#[cfg_attr(feature = "python", pyclass)]
 pub struct ReportReader {
     _join_handle: JoinHandle<()>,
     receiver: Receiver<ReadQueueItem>,
@@ -456,6 +468,62 @@ impl Iterator for ReportReader {
                 }
             }
         }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl ReportReader {
+    #[new]
+    #[pyo3(signature = (
+        report_path,
+        report_type,
+        /,
+        rechunk=false,
+        n_threads=None,
+        low_memory=false,
+        n_rows=None,
+        chunk_size=10000,
+        skip=0,
+        fasta_path=None,
+        fai_path=None,
+        batch_per_read=16,
+        batch_size=2 << 20
+    ))]
+    pub fn new_py(
+        report_path: String,
+        report_type: ReportTypeSchema,
+        rechunk: bool,
+        n_threads: Option<usize>,
+        low_memory: bool,
+        n_rows: Option<usize>,
+        chunk_size: usize,
+        skip: usize,
+        fasta_path: Option<PathBuf>,
+        fai_path: Option<PathBuf>,
+        batch_per_read: usize,
+        batch_size: usize,
+    ) -> PyResult<Self> {
+        let builder = ReportReaderBuilder {
+            report_type,
+            rechunk,
+            n_threads,
+            low_memory,
+            n_rows,
+            row_index: None,
+            chunk_size,
+            skip_rows_after_header: skip,
+            fasta_path,
+            fai_path,
+            batch_per_read,
+            batch_size,
+        };
+        let file = BufReader::new(File::open(report_path)?);
+        wrap_box_result!(PyIOError, builder.try_finish(file))
+    }
+
+    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<BsxBatch> {
+        slf.next()
     }
 }
 

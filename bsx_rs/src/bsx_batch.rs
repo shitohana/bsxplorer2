@@ -1,18 +1,32 @@
 use crate::region::{GenomicPosition, RegionCoordinates};
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
-use crate::utils::{decode_context, decode_strand, encode_context, encode_strand};
+use crate::utils::{
+    decode_context, decode_strand, encode_context, encode_strand, get_categorical_dtype,
+    polars_schema,
+};
 use itertools::Itertools;
 use log::warn;
 use polars::prelude::*;
 use std::cmp::Ordering;
 use std::ops::BitAnd;
 
-#[derive(Debug)]
+#[cfg(feature = "python")]
+use crate::region::{PyGenomicPosition, PyRegionCoordinates};
+#[cfg(feature = "python")]
+use crate::utils::wrap_polars_result;
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+#[cfg(feature = "python")]
+use pyo3_polars::error::PyPolarsErr;
+#[cfg(feature = "python")]
+use pyo3_polars::{PyDataFrame, PySchema};
+
 /// DataFrame with
 /// 1. Non-null chr and position
 /// 2. Single unique chr
 /// 3. Ascending sorted positions
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct BsxBatch(DataFrame);
 
 impl BsxBatch {
@@ -137,7 +151,47 @@ impl From<BsxBatch> for DataFrame {
     }
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
+impl BsxBatch {
+    #[getter]
+    fn get_data(&self) -> PyDataFrame {
+        PyDataFrame(self.data().clone())
+    }
+
+    #[new]
+    fn new_py(data: PyDataFrame) -> PyResult<Self> {
+        let data: DataFrame = data.into();
+        wrap_polars_result!(BsxBatch::try_from(data))
+    }
+
+    #[pyo3(name="filter", signature = (context=None, strand=None))]
+    fn filter_py(&self, context: Option<Context>, strand: Option<Strand>) -> Self {
+        self.clone().filter(context, strand)
+    }
+
+    #[getter]
+    fn get_first_position(&self) -> PyResult<PyGenomicPosition> {
+        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
+    }
+
+    #[getter]
+    fn get_last_position(&self) -> PyResult<PyGenomicPosition> {
+        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
+    }
+
+    #[getter]
+    fn get_height(&self) -> usize {
+        self.height()
+    }
+
+    fn __len__(&self) -> usize {
+        self.height()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct EncodedBsxBatch(DataFrame);
 
 impl EncodedBsxBatch {
@@ -176,15 +230,15 @@ impl EncodedBsxBatch {
     }
 
     pub(crate) fn get_schema(chr_dtype: &DataType) -> Schema {
-        Schema::from_iter([
-            ("chr".into(), chr_dtype.clone()),
-            ("position".into(), DataType::UInt32),
-            ("strand".into(), DataType::Boolean),
-            ("context".into(), DataType::Boolean),
-            ("count_m".into(), DataType::Int16),
-            ("count_total".into(), DataType::Int16),
-            ("density".into(), DataType::Float32),
-        ])
+        polars_schema![
+            "chr" => chr_dtype.clone(),
+            "position" => DataType::UInt32,
+            "strand" => DataType::Boolean,
+            "context" => DataType::Boolean,
+            "count_m" => DataType::Int16,
+            "count_total" => DataType::Int16,
+            "density" => DataType::Float32
+        ]
     }
 
     pub(crate) fn get_hashmap(chr_dtype: &DataType) -> PlHashMap<&str, DataType> {
@@ -246,6 +300,7 @@ impl EncodedBsxBatch {
         BsxBatch::col_names()
     }
 
+    // TODO: add checks
     pub fn vstack(self, other: Self) -> PolarsResult<Self> {
         let new = self.0.vstack(&other.0)?;
         unsafe { Ok(Self::new_unchecked(new)) }
@@ -392,6 +447,39 @@ pub trait BsxBatchMethods {
 
     fn height(&self) -> usize {
         self.data().height()
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl EncodedBsxBatch {
+    #[new]
+    pub fn new_py(batch: BsxBatch, chr_names: Vec<String>) -> PyResult<EncodedBsxBatch> {
+        let chr_dtype = get_categorical_dtype(chr_names);
+        wrap_polars_result!(Self::encode(batch, &chr_dtype))
+    }
+
+    #[pyo3(name = "decode")]
+    pub fn decode_py(&self) -> PyResult<BsxBatch> {
+        let clone = self.clone();
+        wrap_polars_result!(clone.decode())
+    }
+
+    #[pyo3(name = "trim_region")]
+    pub fn trim_region_py(&self, region: PyRegionCoordinates) -> PyResult<Self> {
+        let region_coordinates: RegionCoordinates<_> = region.into();
+        wrap_polars_result!(self.trim_region(&region_coordinates))
+    }
+
+    #[getter]
+    #[pyo3(name = "schema")]
+    pub fn schema_py(&self) -> PyResult<PySchema> {
+        Ok(PySchema(SchemaRef::new(self.schema())))
+    }
+
+    #[pyo3(name = "vstack")]
+    pub fn vstack_py(&self, other: &Self) -> PyResult<Self> {
+        wrap_polars_result!(self.clone().vstack(other.clone()))
     }
 }
 

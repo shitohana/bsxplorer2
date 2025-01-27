@@ -6,6 +6,45 @@ use std::sync::Arc;
 
 pub mod types;
 
+#[cfg(feature = "python")]
+mod python {
+    #[macro_export]
+    macro_rules! wrap_polars_result {
+        ($expression: expr) => {{
+            match $expression {
+                Ok(v) => Ok(v),
+                Err(e) => Err(PyPolarsErr::from(e).into()),
+            }
+        }};
+    }
+
+    #[macro_export]
+    macro_rules! wrap_box_result {
+        ($error: ty, $expression: expr) => {{
+            match $expression {
+                Ok(v) => Ok(v),
+                Err(e) => Err(<$error>::new_err(e.to_string())),
+            }
+        }};
+    }
+    pub use {wrap_box_result, wrap_polars_result};
+}
+#[cfg(feature = "python")]
+pub(crate) use python::{wrap_box_result, wrap_polars_result};
+
+macro_rules! polars_schema {
+    ( $($name: expr => $dtype: expr),* ) => {
+        {
+            let mut fields: Vec<(PlSmallStr, DataType)> = Vec::new();
+            $(
+                fields.push(($name.into(), $dtype));
+            )*
+            Schema::from_iter(fields)
+        }
+    };
+}
+pub(crate) use polars_schema;
+
 pub fn array_to_schema(array: &[(&str, DataType)]) -> Schema {
     Schema::from(PlIndexMap::from_iter(
         array.iter().cloned().map(|(k, v)| (PlSmallStr::from(k), v)),

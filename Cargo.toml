@@ -11,7 +11,6 @@ path = "src/main.rs"
 [workspace]
 members = [
     "bsx_rs",
-    "bsxplorer2"
 ]
 
 [dependencies]
@@ -19,7 +18,7 @@ bsx_rs = { path = "./bsx_rs"}
 log = "0.4.22"
 pretty_env_logger = "0.5.0"
 
-polars = {version = "0.45.1", features = [
+polars = {version = "*", features = [
     # Performance
 #    "performant",
     # Data types
