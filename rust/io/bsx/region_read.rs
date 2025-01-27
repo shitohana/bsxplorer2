@@ -469,7 +469,7 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
 
 #[cfg(feature = "python")]
 #[pyclass(name = "BsxFileReader")]
-struct PyBsxFileReader {
+pub struct PyBsxFileReader {
     inner: BsxFileReader<std::fs::File>,
 }
 
@@ -477,7 +477,7 @@ struct PyBsxFileReader {
 #[pymethods]
 impl PyBsxFileReader {
     #[new]
-    fn new(path: String) -> PyResult<Self> {
+    pub fn new(path: String) -> PyResult<Self> {
         let file = std::fs::File::open(path)?;
         Ok(PyBsxFileReader {
             inner: BsxFileReader::new(file),
