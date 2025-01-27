@@ -3,14 +3,14 @@
 extern crate log;
 extern crate pretty_env_logger;
 
-use bsx_rs::bsx_batch::{BsxBatch, BsxBatchMethods};
-use bsx_rs::io::bsx::region_read::BsxFileReader;
-use bsx_rs::io::bsx::write::BsxIpcWriter;
-use bsx_rs::io::report::read::{ContextData, ReportReaderBuilder};
-use bsx_rs::io::report::schema::ReportTypeSchema;
-use bsx_rs::region::GenomicPosition;
-use bsx_rs::utils::types::{Context, IPCEncodedEnum};
-use bsx_rs::utils::{decode_context, decode_strand};
+use _lib::bsx_batch::{BsxBatch, BsxBatchMethods};
+use _lib::io::bsx::region_read::BsxFileReader;
+use _lib::io::bsx::write::BsxIpcWriter;
+use _lib::io::report::read::{ContextData, ReportReaderBuilder};
+use _lib::io::report::schema::ReportTypeSchema;
+use _lib::region::GenomicPosition;
+use _lib::utils::types::{Context, IPCEncodedEnum};
+use _lib::utils::{decode_context, decode_strand};
 use hashbrown::HashSet;
 use itertools::Itertools;
 use num::{PrimInt, Unsigned};

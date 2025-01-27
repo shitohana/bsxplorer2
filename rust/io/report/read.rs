@@ -33,6 +33,12 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::thread::JoinHandle;
 
+/*
+TODO:
+    Add decompression
+    Add expand_user
+*/
+
 pub struct ReportReaderBuilder {
     report_type: ReportTypeSchema,
     rechunk: bool,
@@ -522,7 +528,11 @@ impl ReportReader {
         wrap_box_result!(PyIOError, builder.try_finish(file))
     }
 
-    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<BsxBatch> {
+    pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    pub fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<BsxBatch> {
         slf.next()
     }
 }

@@ -1,10 +1,14 @@
 use crate::bsx_batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
 use crate::utils::get_categorical_dtype;
+#[cfg(feature = "python")]
+use crate::utils::wrap_polars_result;
 use itertools::Itertools;
 use polars::datatypes::DataType;
 use polars::error::PolarsResult;
 use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
+#[cfg(feature = "python")]
+use pyo3_polars::error::PyPolarsErr;
 use std::error::Error;
 use std::io::Write;
 use std::path::PathBuf;
@@ -89,6 +93,7 @@ impl<W: Write> Drop for BsxIpcWriter<W> {
 mod python {
     use super::*;
     use crate::utils::wrap_box_result;
+    use crate::wrap_polars_result;
     use pyo3::exceptions::PyIOError;
     use pyo3::prelude::*;
     use std::fs::File;
@@ -131,6 +136,18 @@ mod python {
             );
             let inner = wrap_box_result!(PyIOError, res)?;
             Ok(Self { inner })
+        }
+
+        fn write_batch(&mut self, batch: BsxBatch) -> PyResult<()> {
+            wrap_polars_result!(self.inner.write_batch(batch))
+        }
+
+        fn write_encoded_batch(&mut self, batch: EncodedBsxBatch) -> PyResult<()> {
+            wrap_polars_result!(self.inner.write_encoded_batch(batch))
+        }
+
+        fn close(&mut self) -> PyResult<()> {
+            wrap_polars_result!(self.inner.close())
         }
     }
 }

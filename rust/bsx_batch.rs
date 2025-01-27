@@ -481,6 +481,35 @@ impl EncodedBsxBatch {
     pub fn vstack_py(&self, other: &Self) -> PyResult<Self> {
         wrap_polars_result!(self.clone().vstack(other.clone()))
     }
+
+    #[getter]
+    fn get_data(&self) -> PyDataFrame {
+        PyDataFrame(self.data().clone())
+    }
+
+    #[pyo3(name="filter", signature = (context=None, strand=None))]
+    fn filter_py(&self, context: Option<Context>, strand: Option<Strand>) -> Self {
+        self.clone().filter(context, strand)
+    }
+
+    #[getter]
+    fn get_first_position(&self) -> PyResult<PyGenomicPosition> {
+        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
+    }
+
+    #[getter]
+    fn get_last_position(&self) -> PyResult<PyGenomicPosition> {
+        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
+    }
+
+    #[getter]
+    fn get_height(&self) -> usize {
+        self.height()
+    }
+
+    fn __len__(&self) -> usize {
+        self.height()
+    }
 }
 
 #[cfg(test)]

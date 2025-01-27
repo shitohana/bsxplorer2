@@ -21,11 +21,15 @@ use std::thread::JoinHandle;
 #[cfg(feature = "python")]
 use crate::region::PyRegionCoordinates;
 #[cfg(feature = "python")]
+use crate::utils::wrap_polars_result;
+#[cfg(feature = "python")]
 use crate::wrap_box_result;
 #[cfg(feature = "python")]
 use pyo3::exceptions::PyIOError;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
+#[cfg(feature = "python")]
+use pyo3_polars::error::PyPolarsErr;
 
 /// chromosome -> (start_position -> batch_index)
 type BSXIndex = HashMap<String, BTreeMap<u64, usize>>;
@@ -470,7 +474,7 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
 #[cfg(feature = "python")]
 #[pyclass(name = "BsxFileReader")]
 pub struct PyBsxFileReader {
-    inner: BsxFileReader<std::fs::File>,
+    inner: BsxFileReader<File>,
 }
 
 #[cfg(feature = "python")]
@@ -478,10 +482,16 @@ pub struct PyBsxFileReader {
 impl PyBsxFileReader {
     #[new]
     pub fn new(path: String) -> PyResult<Self> {
-        let file = std::fs::File::open(path)?;
+        let file = File::open(path)?;
         Ok(PyBsxFileReader {
             inner: BsxFileReader::new(file),
         })
+    }
+    pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    pub fn __next__(&mut self) -> Option<PyResult<EncodedBsxBatch>> {
+        self.inner.next().map(|res| wrap_polars_result!(res))
     }
 }
 
