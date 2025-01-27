@@ -316,6 +316,15 @@ mod python {
             let lhs = GenomicPosition::from(other.clone());
             (rhs >> lhs).map(PyRegionCoordinates::from)
         }
+
+        #[getter]
+        fn get_chr(&self) -> &str {
+            self.chr.as_str()
+        }
+        #[getter]
+        fn get_position(&self) -> u64 {
+            self.position
+        }
     }
 
     #[pymethods]

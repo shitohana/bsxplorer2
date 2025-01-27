@@ -1,9 +1,0 @@
-target/*
-*.ipc
-Cargo.lock
-coverage.sh
-.idea
-bsxplorer2/.venv
-bsxplorer2/uv.lock
-*.egg-info
-*.so

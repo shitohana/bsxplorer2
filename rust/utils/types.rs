@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::pyclass;
 
 pub trait IPCEncodedEnum {

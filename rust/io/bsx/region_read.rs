@@ -6,7 +6,6 @@ use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
 use polars::export::arrow::record_batch::RecordBatchT;
 use polars::prelude::*;
-use pyo3::exceptions::PyIOError;
 use rayon::prelude::*;
 use std::collections::btree_map::Cursor;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -23,6 +22,8 @@ use std::thread::JoinHandle;
 use crate::region::PyRegionCoordinates;
 #[cfg(feature = "python")]
 use crate::wrap_box_result;
+#[cfg(feature = "python")]
+use pyo3::exceptions::PyIOError;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 
