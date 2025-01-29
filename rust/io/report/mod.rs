@@ -5,7 +5,7 @@ use std::error::Error;
 pub mod fasta_reader;
 pub mod read;
 pub mod schema;
-mod write;
+pub mod write;
 
 mod report_read_utils {
     use super::*;

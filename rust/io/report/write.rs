@@ -17,7 +17,6 @@ impl<W: Write> ReportWriter<W> {
             .include_header(report_options.has_header)
             .with_separator(report_options.parse_options.separator)
             .with_quote_char(report_options.parse_options.quote_char.unwrap_or_default())
-            .with_line_terminator(report_options.parse_options.eol_char.to_string())
             .n_threads(n_threads)
             .batched(&schema.schema())?;
 
@@ -56,8 +55,10 @@ mod python {
         #[new]
         pub fn new(sink: String, schema: ReportTypeSchema, n_threads: usize) -> PyResult<Self> {
             let file = BufWriter::new(File::create(sink)?);
-            let writer = wrap_polars_result!(ReportWriter::try_new(file, schema, n_threads))?;
-            Ok(Self { inner: writer })
+            wrap_polars_result!(
+                ReportWriter::<BufWriter<File>>::try_new(file, schema, n_threads)
+                    .map(|v| Self { inner: v })
+            )
         }
 
         pub fn write_batch(&mut self, batch: BsxBatch) -> PyResult<()> {

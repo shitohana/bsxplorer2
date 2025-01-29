@@ -38,6 +38,7 @@ fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // --- Report
     m.add_class::<schema::ReportTypeSchema>()?;
     m.add_class::<read::ReportReader>()?;
+    m.add_class::<write::PyReportWriter>()?;
     // --- Bsx
     m.add_class::<bsx::region_read::RegionReader>()?;
     m.add_class::<bsx::region_read::PyBsxFileReader>()?;

@@ -166,46 +166,6 @@ where
         self.end - self.start
     }
 
-    pub fn intersect(&self, other: &Self) -> Range<N> {
-        // Determine longer
-        let (lhs, rhs) = if self.length() < other.length() {
-            (self, other)
-        } else {
-            (other, self)
-        };
-
-        // Fully covers
-        // rhs | |#####|------->
-        // lhs | |-----|
-        // OR
-        // rhs | <-|#####|----->
-        // lhs |   |-----|
-        // OR
-        // rhs | <-------|#####|
-        // lhs |         |-----|
-        if rhs.start <= lhs.start && rhs.end >= lhs.end {
-            rhs.start..rhs.end + N::from(1).unwrap()
-        }
-        // rhs |      |###|------>
-        // lhs | <----|---|
-        // OR
-        // rhs |      #---------->
-        // lhs | <----|
-        else if rhs.start > lhs.start && rhs.end >= lhs.start {
-            rhs.start..lhs.end + N::from(1).unwrap()
-        }
-        // rhs | <-------|##|
-        // lhs |         |------->
-        // OR
-        // rhs | <----------#
-        // lhs |            |---->
-        else if rhs.end >= lhs.start && rhs.end > lhs.end {
-            lhs.start..rhs.end + N::from(1).unwrap()
-        } else {
-            N::from(0).unwrap()..N::from(0).unwrap()
-        }
-    }
-
     pub fn set_start(&mut self, start: N) -> Result<(), Box<dyn Error>> {
         if start < self.end {
             self.start = start;

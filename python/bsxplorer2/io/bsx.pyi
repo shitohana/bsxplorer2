@@ -1,5 +1,5 @@
 from enum import Enum
-from ..bsxplorer2 import BsxBatch, EncodedBsxBatch, RegionCoordinates
+from ..misc import BsxBatch, EncodedBsxBatch, RegionCoordinates
 
 
 class IpcCompression(Enum):

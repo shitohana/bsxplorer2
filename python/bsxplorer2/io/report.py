@@ -3,7 +3,8 @@ import contextlib
 with contextlib.suppress(ImportError):
     from .._lib import (
         ReportTypeSchema,
-        ReportReader
+        ReportReader,
+        ReportWriter
     )
 
-__all__ = ["ReportTypeSchema", "ReportReader"]
+__all__ = ["ReportTypeSchema", "ReportReader", "ReportWriter"]

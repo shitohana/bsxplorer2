@@ -25,3 +25,4 @@ target = "bsxplorer2._lib"  # The last part of the name (e.g. "_lib") has to mat
 path = "Cargo.toml"
 binding = "PyO3"
 features=["python"]
+debug=false
