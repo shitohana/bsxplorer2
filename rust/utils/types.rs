@@ -1,5 +1,6 @@
 #[cfg(feature = "python")]
 use pyo3::pyclass;
+use serde::{Deserialize, Serialize};
 
 pub trait IPCEncodedEnum {
     fn from_bool(value: Option<bool>) -> Self;
@@ -9,7 +10,7 @@ pub trait IPCEncodedEnum {
 }
 
 pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
-#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "python", pyclass)]
 pub enum Context {
     CG,
@@ -51,7 +52,7 @@ impl IPCEncodedEnum for Context {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "python", pyclass)]
 pub enum Strand {
     Forward,

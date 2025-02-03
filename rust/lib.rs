@@ -5,6 +5,7 @@
 #![feature(assert_matches)]
 
 pub mod bsx_batch;
+pub mod bsx_batch_group;
 pub mod genome;
 pub mod io;
 pub mod region;

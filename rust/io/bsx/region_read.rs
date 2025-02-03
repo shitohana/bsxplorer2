@@ -461,6 +461,10 @@ impl<R: Read + Seek> BsxFileReader<R> {
             .read_at(batch_idx)
             .map(|res| self.process_record_batch(res))
     }
+
+    pub fn blocks_total(&self) -> usize {
+        self.reader.blocks_total()
+    }
 }
 
 impl<R: Read + Seek> Iterator for BsxFileReader<R> {

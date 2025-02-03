@@ -1,25 +1,32 @@
+use crate::io::bsx::meth_stats::MethylationStats;
 use crate::region::{GenomicPosition, RegionCoordinates};
+#[cfg(feature = "python")]
+use crate::region::{PyGenomicPosition, PyRegionCoordinates};
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+#[cfg(feature = "python")]
+use crate::utils::wrap_polars_result;
 use crate::utils::{
     decode_context, decode_strand, encode_context, encode_strand, get_categorical_dtype,
     polars_schema,
 };
+use bio_types::annot::contig::Contig;
+use bio_types::annot::loc::Loc;
+use bio_types::annot::pos::Pos;
+use bio_types::annot::refids::RefIDSet;
+use bio_types::strand::NoStrand;
 use itertools::Itertools;
 use log::warn;
 use polars::prelude::*;
-use std::cmp::Ordering;
-use std::ops::BitAnd;
-
-#[cfg(feature = "python")]
-use crate::region::{PyGenomicPosition, PyRegionCoordinates};
-#[cfg(feature = "python")]
-use crate::utils::wrap_polars_result;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(feature = "python")]
 use pyo3_polars::error::PyPolarsErr;
 #[cfg(feature = "python")]
 use pyo3_polars::{PyDataFrame, PySchema};
+use statrs::statistics::Statistics;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::ops::BitAnd;
 
 /// DataFrame with
 /// 1. Non-null chr and position
@@ -58,10 +65,12 @@ impl BsxBatch {
         ]
     }
 
+    #[inline(always)]
     pub(crate) const fn chr_col() -> &'static str {
         "chr"
     }
 
+    #[inline(always)]
     pub(crate) const fn pos_col() -> &'static str {
         "position"
     }
@@ -96,10 +105,12 @@ impl BsxBatchMethods for BsxBatch {
         }
     }
 
+    #[inline]
     fn data(&self) -> &DataFrame {
         &self.0
     }
 
+    #[inline]
     fn data_mut(&mut self) -> &mut DataFrame {
         &mut self.0
     }
@@ -293,9 +304,11 @@ impl EncodedBsxBatch {
     }
 
     #[allow(dead_code)]
+    #[inline]
     pub(crate) fn schema(&self) -> Schema {
         self.data().schema()
     }
+    #[inline]
     pub(crate) fn col_names() -> &'static [&'static str] {
         BsxBatch::col_names()
     }
@@ -304,6 +317,182 @@ impl EncodedBsxBatch {
     pub fn vstack(self, other: Self) -> PolarsResult<Self> {
         let new = self.0.vstack(&other.0)?;
         unsafe { Ok(Self::new_unchecked(new)) }
+    }
+
+    pub fn get_methylation_stats(&self) -> PolarsResult<MethylationStats> {
+        let density_col = self.data().column("density")?;
+        let mean_methylation = density_col
+            .f32()?
+            .iter()
+            .map(|v| v.unwrap_or(0.0) as f64)
+            .filter(|v| !v.is_nan())
+            .mean();
+        let variance_methylation = density_col
+            .f32()?
+            .iter()
+            .map(|v| v.unwrap_or(0.0) as f64)
+            .filter(|v| !v.is_nan())
+            .variance();
+        let coverage_distribution = self.data().column("count_total")?.i16()?.iter().fold(
+            HashMap::<u16, u32>::new(),
+            |mut counts, value| {
+                *counts.entry(value.unwrap() as u16).or_insert(0) += 1;
+                counts
+            },
+        );
+        let context_methylation = {
+            let context_col = self.data().column("context")?;
+
+            let hashmap = itertools::izip!(context_col.bool()?.iter(), density_col.f32()?.iter())
+                .fold(
+                    HashMap::<Option<bool>, (f64, u32)>::new(),
+                    |mut stats, (context, density)| {
+                        if density.map(|v| !v.is_nan()).unwrap_or(true) {
+                            let (sum, count) = stats.entry(context).or_insert((0f64, 0));
+                            *sum += density.unwrap_or(0f32) as f64;
+                            *count += 1;
+                        }
+                        stats
+                    },
+                );
+
+            HashMap::<Context, (f64, u32)>::from_iter(
+                hashmap.into_iter().map(|(k, v)| (Context::from_bool(k), v)),
+            )
+        };
+        let strand_methylation = {
+            let strand_col = self.data().column("strand")?;
+
+            let hashmap = itertools::izip!(strand_col.bool()?.iter(), density_col.f32()?.iter())
+                .fold(
+                    HashMap::<Option<bool>, (f64, u32)>::new(),
+                    |mut stats, (strand, density)| {
+                        if density.map(|v| !v.is_nan()).unwrap_or(true) {
+                            let (sum, count) = stats.entry(strand).or_insert((0f64, 0));
+                            *sum += density.unwrap_or(0f32) as f64;
+                            *count += 1;
+                        }
+                        stats
+                    },
+                );
+
+            HashMap::<Strand, (f64, u32)>::from_iter(
+                hashmap.into_iter().map(|(k, v)| (Strand::from_bool(k), v)),
+            )
+        };
+
+        Ok(MethylationStats::from_data(
+            mean_methylation,
+            variance_methylation,
+            coverage_distribution,
+            context_methylation,
+            strand_methylation,
+        ))
+    }
+    pub fn chr(&self) -> PolarsResult<String> {
+        let chr_col = self.data().column("chr")?.categorical()?;
+        let chr = chr_col.get_rev_map().get(
+            chr_col
+                .physical()
+                .first()
+                .ok_or(PolarsError::ComputeError("Could not get first id".into()))?,
+        );
+        Ok(chr.to_string())
+    }
+
+    pub fn first_seq_pos(
+        &self,
+        refid_set: &mut Option<RefIDSet<Arc<String>>>,
+    ) -> PolarsResult<Pos<Arc<String>, NoStrand>> {
+        let pos = self.data().column("position")?.u32()?.first().unwrap();
+        let chr = if let Some(refids) = refid_set {
+            refids.intern(self.chr()?.as_str())
+        } else {
+            Arc::new(self.chr()?.to_owned())
+        };
+        Ok(Pos::new(chr, pos as isize, NoStrand::Unknown))
+    }
+
+    pub fn last_seq_pos(
+        &self,
+        refid_set: &mut Option<RefIDSet<Arc<String>>>,
+    ) -> PolarsResult<Pos<Arc<String>, NoStrand>> {
+        let pos = self.data().column("position")?.u32()?.last().unwrap();
+        let chr = if let Some(refids) = refid_set {
+            refids.intern(self.chr()?.as_str())
+        } else {
+            Arc::new(self.chr()?.to_owned())
+        };
+        Ok(Pos::new(chr, pos as isize, NoStrand::Unknown))
+    }
+
+    pub fn as_contig(
+        &self,
+        refid_set: &mut Option<RefIDSet<Arc<String>>>,
+    ) -> PolarsResult<Contig<Arc<String>, NoStrand>> {
+        let start = self.first_seq_pos(refid_set)?;
+        let end = self.last_seq_pos(refid_set)?;
+        if start.refid() != end.refid() {
+            Err(PolarsError::ComputeError(
+                "Different start and end refererence IDs".into(),
+            ))
+        } else {
+            Ok(Contig::new(
+                start.refid().clone(),
+                start.pos(),
+                (end.pos() + 1 - start.pos()) as usize,
+                NoStrand::Unknown,
+            ))
+        }
+    }
+
+    /// Replaces low coverage methylation sites to count_total = 0, density = NaN
+    pub fn mark_low_counts(self, threshold: i16) -> PolarsResult<Self> {
+        let data = self
+            .0
+            .lazy()
+            .with_column(
+                when(col("count_total").lt(lit(threshold)))
+                    .then(lit(0))
+                    .otherwise(col("count_total"))
+                    .alias("count_total"),
+            )
+            .with_columns([
+                when(col("count_total").eq(lit(0)))
+                    .then(lit(0))
+                    .otherwise(col("count_m"))
+                    .alias("count_m"),
+                when(col("count_total").eq(lit(0)))
+                    .then(lit(f64::NAN))
+                    .otherwise(col("density"))
+                    .alias("density"),
+            ])
+            .collect()?;
+        Ok(Self(data))
+    }
+
+    pub fn get_density_vals(&self) -> PolarsResult<Vec<f32>> {
+        Ok(self
+            .0
+            .column("density")?
+            .f32()?
+            .into_iter()
+            .map(|x| x.unwrap_or(f32::NAN))
+            .collect())
+    }
+
+    pub fn get_position_vals(&self) -> PolarsResult<Vec<u32>> {
+        Ok(self
+            .0
+            .column("position")?
+            .u32()?
+            .into_iter()
+            .map(|x| x.unwrap())
+            .collect())
+    }
+
+    pub fn filter_mask(self, mask: &BooleanChunked) -> PolarsResult<Self> {
+        Ok(unsafe { Self::new_unchecked(self.0.filter(mask)?) })
     }
 }
 
