@@ -1,4 +1,4 @@
-use crate::region::GenomicPosition;
+use crate::data_structs::region::GenomicPosition;
 use itertools::Itertools;
 use polars::datatypes::PlIndexMap;
 use polars::prelude::*;

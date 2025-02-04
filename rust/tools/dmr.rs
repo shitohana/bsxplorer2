@@ -1,4 +1,4 @@
-use crate::bsx_batch_group::EncodedBsxBatchGroup;
+use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
 use crate::io::bsx::multiple_reader::MultiBsxFileReader;
 use crate::io::bsx::region_read::BsxFileReader;
 use crate::utils::types::Context;
@@ -8,14 +8,15 @@ use bio_types::annot::refids::RefIDSet;
 use bio_types::strand::NoStrand;
 use itertools::Itertools;
 use log::debug;
+use serde::Serialize;
 use statrs::distribution::{ContinuousCDF, StudentsT};
 use statrs::statistics::Statistics;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::fs::File;
 use std::hash::Hash;
-use std::io::{Read, Seek};
+use std::io::{BufReader, BufWriter, Read, Seek, Write};
 use std::sync::Arc;
-
 // ---------------------------------------------------------------------------
 // MethyLasso segmentation (fused–lasso) for a single condition.
 //
@@ -71,7 +72,7 @@ fn segment_tv1d(y: &[f64], positions: &[u32], lambda: f64) -> Result<Vec<u32>> {
     Ok(boundaries)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MethyLassoConfig {
     pub context: Context,
     pub n_missing: usize,
@@ -81,6 +82,7 @@ pub struct MethyLassoConfig {
     pub p_value: f64,
     pub type_density: HashMap<RegionType, f64>,
     pub min_cpgs: usize,
+    pub segment_model: SegmentModel,
 }
 
 impl Default for MethyLassoConfig {
@@ -98,6 +100,7 @@ impl Default for MethyLassoConfig {
                 (RegionType::PMD, 1.0),
             ]),
             min_cpgs: 10,
+            segment_model: SegmentModel::default(),
         }
     }
 }
@@ -152,13 +155,14 @@ impl MethyLassoConfig {
             ),
             group_pair: group_order,
             current_chr: Arc::new(String::default()),
+            segment_model: self.segment_model.clone(),
         };
 
         Ok(out)
     }
 }
 
-#[derive(Debug, Default, Hash, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Hash, Copy, Clone, Eq, PartialEq, Serialize)]
 pub enum RegionType {
     DMR,
     UMR, // Unmethylated region (or DMV)
@@ -169,7 +173,7 @@ pub enum RegionType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct MethylationSites {
+pub struct MethylationSites {
     chr: Arc<String>,
     positions: Vec<u32>,
     density: Vec<f64>,
@@ -222,7 +226,7 @@ impl MethylationSites {
         )
     }
 
-    pub fn append(&mut self, other: MethylationSites) {
+    pub(crate) fn append(&mut self, other: MethylationSites) {
         let mut other = other;
         self.chr = other.clone().chr;
         self.positions.append(&mut other.positions);
@@ -234,7 +238,7 @@ impl MethylationSites {
         self.positions.len()
     }
 
-    pub fn drain(&mut self) -> Option<Self> {
+    pub(crate) fn drain(&mut self) -> Option<Self> {
         if self.positions.is_empty() {
             return None;
         }
@@ -288,15 +292,15 @@ impl PairwiseSites {
         Some(PairwiseSites::new(left_drain, right_drain))
     }
 
-    fn meth_diff(&self) -> f64 {
+    pub fn meth_diff(&self) -> f64 {
         (self.mean_left() - self.mean_right()).abs()
     }
 
-    fn mean_left(&self) -> f64 {
+    pub fn mean_left(&self) -> f64 {
         self.left.density.iter().mean()
     }
 
-    fn mean_right(&self) -> f64 {
+    pub fn mean_right(&self) -> f64 {
         self.right.density.iter().mean()
     }
 
@@ -340,7 +344,7 @@ impl PairwiseSites {
         (Self { left, right }).into()
     }
 
-    fn into_methylation_region(self, config: &MethyLassoConfig) -> MethylationRegion {
+    pub fn into_methylation_region(self, config: &MethyLassoConfig) -> MethylationRegion {
         let mean_left = self.mean_left();
         let mean_right = self.mean_right();
         let p_value = self.compute_t_test_pvalue();
@@ -368,6 +372,204 @@ impl PairwiseSites {
     pub fn len(&self) -> usize {
         self.left.len()
     }
+
+    pub fn left(&self) -> &MethylationSites {
+        &self.left
+    }
+
+    pub fn right(&self) -> &MethylationSites {
+        &self.right
+    }
+}
+
+/// Perform Welch’s t–test on two samples and return the two–tailed p–value.
+/// (If there isn’t enough data, we return p = 1.0 so that no merge occurs.)
+fn welch_t_test(sample1: &[f64], sample2: &[f64]) -> f64 {
+    let n1 = sample1.len();
+    let n2 = sample2.len();
+    if n1 < 2 || n2 < 2 {
+        return 1.0;
+    }
+    let mean1 = sample1.mean();
+    let mean2 = sample2.mean();
+    let var1 = sample1.variance();
+    let var2 = sample2.variance();
+    let se = (var1 / (n1 as f64) + var2 / (n2 as f64)).sqrt();
+    if se == 0.0 {
+        return 1.0;
+    }
+    let t_stat = (mean1 - mean2).abs() / se;
+    let df = (var1 / (n1 as f64) + var2 / (n2 as f64)).powi(2)
+        / ((var1 / (n1 as f64)).powi(2) / ((n1 - 1) as f64)
+            + (var2 / (n2 as f64)).powi(2) / ((n2 - 1) as f64));
+    let t_dist = StudentsT::new(0.0, 1.0, df).unwrap();
+    let p_value = 2.0 * (1.0 - t_dist.cdf(t_stat));
+    p_value
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SegmentModel {
+    pub min_seg_length: usize,
+    pub num_lambdas: usize,
+    pub lambda_low: f64,
+    pub penalty_weight: f64,
+    pub seg_count_weight: f64,
+    pub merge_pvalue: f64,
+    segmentation_tol: f64,
+}
+
+impl Default for SegmentModel {
+    fn default() -> Self {
+        Self {
+            min_seg_length: 10,
+            num_lambdas: 100,
+            lambda_low: 1e-3,
+            penalty_weight: 1e5,
+            seg_count_weight: 1e4,
+            merge_pvalue: 1e-2,
+            segmentation_tol: 1e-6,
+        }
+    }
+}
+
+impl SegmentModel {
+    /// Optimize λ by grid search (in log–space) over a specified range.
+    /// Returns the optimal λ and the corresponding denoised signal.
+    ///
+    /// You can tune:
+    ///   - num_lambdas: grid resolution.
+    ///   - lambda_low: lower bound (should be > 0).
+    ///   - lambda_high: an upper bound (for example, the overall data range).
+    pub fn denoise(&self, signal: &[f64]) -> (f64, Vec<f64>) {
+        let mut best_lambda = self.lambda_low;
+        let mut best_score = f64::INFINITY;
+        let mut best_x = Vec::new();
+
+        let data_min = signal.iter().cloned().fold(f64::INFINITY, f64::min);
+        let data_max = signal.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let lambda_high = data_max - data_min; // roughly the overall data range.
+
+        // Grid search in log-space.
+        for i in 0..self.num_lambdas {
+            let t = i as f64 / (self.num_lambdas - 1) as f64;
+            let lambda = self.lambda_low * (lambda_high / self.lambda_low).powf(t);
+            let denoised = tv1d::condat(signal, lambda);
+            let segments = self.get_segments(&denoised);
+            let score = self.objective_function(signal, &denoised, &segments);
+
+            // Uncomment the next line to see the grid search details.
+            // println!("λ = {:.6} => {} segments, score = {:.3}", lambda, segments.len(), score);
+
+            if score < best_score {
+                best_score = score;
+                best_lambda = lambda;
+                best_x = denoised;
+            }
+        }
+        (best_lambda, best_x)
+    }
+
+    pub fn map_segments(positions: &[u32], segments: Vec<(usize, usize, f64)>) -> Vec<u32> {
+        Vec::from_iter(segments.into_iter().map(|(_, end, _)| positions[end]))
+    }
+
+    /// Extract segments from a (piecewise–constant) signal.
+    /// Two adjacent values are considered equal if their difference is below tol.
+    pub fn get_segments(&self, x: &[f64]) -> Vec<(usize, usize, f64)> {
+        let mut segments = Vec::new();
+        if x.is_empty() {
+            return segments;
+        }
+        let mut start = 0;
+        let mut current_val = x[0];
+        for (i, &val) in x.iter().enumerate() {
+            if (val - current_val).abs() > self.segmentation_tol {
+                segments.push((start, i - 1, current_val));
+                start = i;
+                current_val = val;
+            }
+        }
+        segments.push((start, x.len() - 1, current_val));
+        segments
+    }
+
+    /// A modified objective function that penalizes both the residual error
+    /// and (heavily) any segments shorter than a desired minimum length, as well as
+    /// the overall number of segments. (Lower is better.)
+    ///
+    /// - rss: sum of squared residuals.
+    /// - seg_penalty: for each segment shorter than min_seg_length, we add
+    ///       penalty_weight * (min_seg_length - seg_length)².
+    /// - count_penalty: seg_count_weight * (# segments)
+    fn objective_function(&self, y: &[f64], x: &[f64], segments: &[(usize, usize, f64)]) -> f64 {
+        let rss: f64 = y
+            .iter()
+            .zip(x.iter())
+            .map(|(yi, xi)| (yi - xi).powi(2))
+            .sum();
+        let mut seg_penalty = 0.0;
+        for &(start, end, _) in segments {
+            let seg_len = end - start + 1;
+            if seg_len < self.min_seg_length {
+                let diff = self.min_seg_length as f64 - seg_len as f64;
+                seg_penalty += self.penalty_weight * diff * diff;
+            }
+        }
+        let count_penalty = self.seg_count_weight * segments.len() as f64;
+        rss + seg_penalty + count_penalty
+    }
+
+    /// Merge adjacent segments if the t–test on their underlying data does not show a significant difference.
+    /// The t–test is performed on the original noisy data from each segment.
+    /// If the p–value exceeds p_threshold, the segments are merged.
+    fn merge_adjacent_segments(
+        &self,
+        y: &[f64],
+        segments: &[(usize, usize, f64)],
+    ) -> Vec<(usize, usize, f64)> {
+        if segments.is_empty() {
+            return vec![];
+        }
+        let mut merged_segments = Vec::new();
+        let mut current_seg = segments[0];
+
+        for seg in segments.iter().skip(1) {
+            let sample1 = &y[current_seg.0..=current_seg.1];
+            let sample2 = &y[seg.0..=seg.1];
+            let p_value = welch_t_test(sample1, sample2);
+
+            // If the difference is not significant, merge the segments.
+            if p_value > self.merge_pvalue {
+                let new_start = current_seg.0;
+                let new_end = seg.1;
+                let merged_data = &y[new_start..=new_end];
+                let new_mean = merged_data.mean();
+                current_seg = (new_start, new_end, new_mean);
+            } else {
+                merged_segments.push(current_seg);
+                current_seg = *seg;
+            }
+        }
+        merged_segments.push(current_seg);
+        merged_segments
+    }
+
+    /// Iteratively merge segments until no further merging occurs.
+    pub fn merge_segments(
+        &self,
+        y: &[f64],
+        segments: &[(usize, usize, f64)],
+    ) -> Vec<(usize, usize, f64)> {
+        let mut current_segments = segments.to_vec();
+        loop {
+            let merged = self.merge_adjacent_segments(y, &current_segments);
+            if merged.len() == current_segments.len() {
+                break;
+            }
+            current_segments = merged;
+        }
+        current_segments
+    }
 }
 
 pub struct MethyLassoDmrIterator<F, R>
@@ -377,6 +579,7 @@ where
 {
     group_mapping: HashMap<uuid::Uuid, R>,
     multi_reader: MultiBsxFileReader<uuid::Uuid, F>,
+    segment_model: SegmentModel,
     config: MethyLassoConfig,
     ref_idset: RefIDSet<Arc<String>>,
     boundaries: BTreeSet<u32>,
@@ -408,6 +611,8 @@ where
     }
 
     fn process_group(&mut self, group: EncodedBsxBatchGroup<R>) -> Result<()> {
+        let segment_model = SegmentModel::default();
+
         // 1. Check correct groups
         if !(group
             .labels()
@@ -436,47 +641,69 @@ where
         let group_right = individual_groups.get(&self.group_pair.1).unwrap();
         // 6. Extract constant vars
         let chr = self.ref_idset.intern(group_left.get_chr()?.as_str());
-        let mut positions = self.unprocessed_sites.left.positions.clone();
-        positions.append(&mut group_left.get_positions()?);
+        let positions = {
+            self.unprocessed_sites
+                .left
+                .positions
+                .clone()
+                .into_iter()
+                .chain(group_left.get_positions()?.into_iter())
+                .collect_vec()
+        };
         // 4. Calculate avg densities
-        let mut avg_density_left = self
-            .unprocessed_sites
-            .left
-            .drain()
-            .map(|m| m.density)
-            .unwrap_or(Vec::new());
-        avg_density_left.append(&mut group_left.get_average_density(true)?);
-        let mut avg_density_right = self
-            .unprocessed_sites
-            .right
-            .drain()
-            .map(|m| m.density)
-            .unwrap_or(Vec::new());
-        avg_density_right.append(&mut group_right.get_average_density(true)?);
-        // 7. Get segment boundaries
-        let boundaries_left = BTreeSet::from_iter(segment_tv1d(
-            &avg_density_left,
-            &positions,
-            self.config.lambda,
-        )?);
-        let boundaries_right = BTreeSet::from_iter(segment_tv1d(
-            &avg_density_left,
-            &positions,
-            self.config.lambda,
-        )?);
-        // 8. Union boundaries
-        let mut boundaries_union =
-            BTreeSet::from_iter(boundaries_left.union(&boundaries_right).cloned());
-        // 9. Cache boundaries
-        self.boundaries.append(&mut boundaries_union);
-        // 10. Create methylation stats objects
-        let sites_left = MethylationSites::new(chr.clone(), positions.clone(), avg_density_left);
-        let sites_right = MethylationSites::new(chr.clone(), positions.clone(), avg_density_right);
-        // 11. Create pairwise sites
-        let pairwise = PairwiseSites::new(sites_left, sites_right);
-        self.unprocessed_sites.append(pairwise);
+        let avg_density_left = {
+            let new_vals = group_left.get_average_density(true)?;
+            self.unprocessed_sites
+                .left
+                .drain()
+                .map(|m| m.density)
+                .unwrap_or(Vec::new())
+                .into_iter()
+                .chain(new_vals.into_iter())
+                .collect_vec()
+        };
+        let avg_density_right = {
+            let new_vals = group_right.get_average_density(true)?;
+            self.unprocessed_sites
+                .right
+                .drain()
+                .map(|m| m.density)
+                .unwrap_or(Vec::new())
+                .into_iter()
+                .chain(new_vals.into_iter())
+                .collect_vec()
+        };
 
+        let mut boundaries_union = {
+            let (_, denoised_left) = segment_model.denoise(&avg_density_left);
+            let (_, denoised_right) = segment_model.denoise(&avg_density_right);
+
+            let initial_seg_left = segment_model.get_segments(&denoised_left);
+            let initial_seg_right = segment_model.get_segments(&denoised_right);
+
+            let merged_left = segment_model.merge_segments(&avg_density_left, &initial_seg_left);
+            let merged_right = segment_model.merge_segments(&avg_density_right, &initial_seg_right);
+
+            let boundaries_left =
+                BTreeSet::from_iter(SegmentModel::map_segments(&positions, merged_left));
+            let boundaries_right =
+                BTreeSet::from_iter(SegmentModel::map_segments(&positions, merged_right));
+            let boundaries_union =
+                BTreeSet::from_iter(boundaries_left.union(&boundaries_right).cloned());
+
+            boundaries_union
+        };
+
+        // 11. Create pairwise sites
+        let pairwise = PairwiseSites::new(
+            MethylationSites::new(chr.clone(), positions.clone(), avg_density_left),
+            MethylationSites::new(chr.clone(), positions.clone(), avg_density_right),
+        );
+
+        self.boundaries.append(&mut boundaries_union);
+        self.unprocessed_sites.append(pairwise);
         self.current_chr = chr;
+
         debug!("Processed new methylation batch");
         Ok(())
     }
@@ -588,6 +815,57 @@ where
         }
 
         Some(pairwise_data.into_methylation_region(&self.config))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct MethylLassoRunConfig {
+    pub analysis_config: MethyLassoConfig,
+    pub sample_paths: Vec<String>,
+    pub sample_labels: Vec<String>,
+    pub selected_regions: Vec<RegionType>,
+    pub output: String,
+}
+
+impl MethylLassoRunConfig {
+    pub fn run(&self) -> Result<()> {
+        let files = self
+            .sample_paths
+            .iter()
+            .map(|path| File::open(path))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(BufReader::new)
+            .collect_vec();
+
+        let iterator = self.analysis_config.clone().finish(
+            self.sample_labels
+                .iter()
+                .cloned()
+                .zip(files.into_iter())
+                .collect_vec(),
+        )?;
+
+        let mut sink = BufWriter::new(File::create(&self.output)?);
+
+        for region in iterator {
+            if self.selected_regions.contains(&region.region_type) {
+                let meth_diff = region.mean_right - region.mean_left;
+                let overall = (region.mean_left + region.mean_right) / 2.0;
+                let n_cytosines = region.pairwise_sites.len();
+                let ref_id = region.pairwise_sites.left.chr.as_str();
+                let start = region.pairwise_sites.left.positions.first().unwrap();
+                let end = region.pairwise_sites.left.positions.last().unwrap();
+                let region_type = region.region_type;
+                let mean_a = region.mean_left;
+                let mean_b = region.mean_right;
+                let pvalue = region.p_value;
+
+                let line = format!("{ref_id}\t{start}\t{end}\t{n_cytosines}\t{region_type:?}\t{pvalue:.3e}\t{mean_a:.5}\t{mean_b:.5}\t{meth_diff:.5}\t{overall}");
+                writeln!(sink, "{line}")?;
+            }
+        }
+        Ok(())
     }
 }
 

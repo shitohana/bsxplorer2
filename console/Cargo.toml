@@ -1,0 +1,13 @@
+[package]
+name = "bsxplorer-ci"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bsxplorer-lib = { path = "../rust" }
+
+clap = { version = "4.1", features = ["derive"] }
+wild = "2.0"
+glob = "0.3"
+console = "0.15"
+dialoguer = "0.11.0"

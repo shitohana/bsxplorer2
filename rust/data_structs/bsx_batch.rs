@@ -1,14 +1,14 @@
-use crate::io::bsx::meth_stats::MethylationStats;
-use crate::region::{GenomicPosition, RegionCoordinates};
+use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 #[cfg(feature = "python")]
-use crate::region::{PyGenomicPosition, PyRegionCoordinates};
+use crate::data_structs::region::{PyGenomicPosition, PyRegionCoordinates};
+use crate::tools::meth_stats::MethylationStats;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
-#[cfg(feature = "python")]
-use crate::utils::wrap_polars_result;
 use crate::utils::{
     decode_context, decode_strand, encode_context, encode_strand, get_categorical_dtype,
     polars_schema,
 };
+#[cfg(feature = "python")]
+use crate::wrap_polars_result;
 use bio_types::annot::contig::Contig;
 use bio_types::annot::loc::Loc;
 use bio_types::annot::pos::Pos;

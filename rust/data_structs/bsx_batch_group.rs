@@ -1,4 +1,4 @@
-use crate::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use anyhow::anyhow;
 use itertools::{izip, Itertools};
@@ -149,7 +149,7 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         })
     }
 
-    /// Filter rows where number of missing (NaN) methylation site densities < `n_missing`
+    /// Filter rows where number of missing (NaN) methylation site densities <= `n_missing`
     pub fn filter_n_missing(self, n_missing: usize) -> anyhow::Result<Self> {
         let mut threshold = n_missing;
         if threshold > self.n_samples() {
@@ -187,7 +187,7 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
                             nan_count += 1;
                         }
                     }
-                    nan_count < threshold
+                    nan_count <= threshold
                 })
                 .collect();
             BooleanChunked::new("mask".into(), mask_vec)

@@ -1,6 +1,6 @@
-use crate::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::io::bsx::ipc::IpcFileReader;
-use crate::region::{GenomicPosition, RegionCoordinates};
 use itertools::Itertools;
 use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
@@ -19,7 +19,7 @@ use std::thread;
 use std::thread::JoinHandle;
 
 #[cfg(feature = "python")]
-use crate::region::PyRegionCoordinates;
+use crate::data_structs::region::PyRegionCoordinates;
 #[cfg(feature = "python")]
 use crate::utils::wrap_polars_result;
 #[cfg(feature = "python")]

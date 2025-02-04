@@ -3,12 +3,11 @@
 #![feature(vec_pop_if)]
 #![feature(mpmc_channel)]
 #![feature(assert_matches)]
+#![feature(path_add_extension)]
 
-pub mod bsx_batch;
-pub mod bsx_batch_group;
-pub mod genome;
+pub mod data_structs;
 pub mod io;
-pub mod region;
+pub mod tools;
 pub mod utils;
 
 use crate::io::bsx;
@@ -20,12 +19,12 @@ use pyo3::prelude::*;
 #[pymodule]
 fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Region
-    use crate::region::{PyGenomicPosition, PyRegionCoordinates};
+    use data_structs::region::{PyGenomicPosition, PyRegionCoordinates};
     m.add_class::<PyGenomicPosition>()?;
     m.add_class::<PyRegionCoordinates>()?;
 
     // BsxBatch
-    use crate::bsx_batch::{BsxBatch, EncodedBsxBatch};
+    use data_structs::bsx_batch::{BsxBatch, EncodedBsxBatch};
     m.add_class::<BsxBatch>()?;
     m.add_class::<EncodedBsxBatch>()?;
 

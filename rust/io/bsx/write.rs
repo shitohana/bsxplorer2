@@ -1,4 +1,4 @@
-use crate::bsx_batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
 use crate::utils::get_categorical_dtype;
 #[cfg(feature = "python")]
 use crate::utils::wrap_polars_result;
@@ -10,6 +10,7 @@ use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 #[cfg(feature = "python")]
 use pyo3_polars::error::PyPolarsErr;
 use std::error::Error;
+use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -63,6 +64,17 @@ where
             .map(|seq| seq.name)
             .collect_vec();
         Self::try_new(sink, chr_names, compression, custom_metadata)
+    }
+
+    pub fn try_from_sink_and_fasta(
+        sink: W,
+        fasta_path: PathBuf,
+        compression: Option<IpcCompression>,
+        custom_metadata: Option<Arc<Metadata>>,
+    ) -> Result<Self, Box<dyn Error>> {
+        noodles::fasta::fs::index(fasta_path.clone())?;
+        let index_path = fasta_path.as_path().with_added_extension("fai");
+        Self::try_from_sink_and_fai(sink, index_path, compression, custom_metadata)
     }
 
     pub fn write_encoded_batch(&mut self, batch: EncodedBsxBatch) -> PolarsResult<()> {

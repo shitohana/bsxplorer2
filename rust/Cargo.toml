@@ -1,0 +1,101 @@
+[package]
+name = "bsxplorer-lib"
+version = "0.1.0"
+edition = "2021"
+authors = ["shitohana"]
+
+[lib]
+name="_lib"
+path = "lib.rs"
+
+[features]
+python = ["pyo3", "pyo3-polars"]
+
+[dev-dependencies]
+rand = { version = "0.8.5", features = ["std", "std_rng"] }
+rand_distr = "0.4.3"
+rand_chacha = "0.3.1"
+assert_approx_eq = "1.1.0"
+
+[dependencies]
+bzip2 = "0.5.0"
+flate2 = "^1.0"
+tar = "0.4.42"
+xz2 = "0.1.7"
+zstd = "0.13.2"
+hashbrown = { version = "=0.14.5", features = ["raw"] }
+bio = "2.0.3"
+zip = "=2.2.0"
+itertools = "0.14.0"
+rayon = "1.10"
+memmap2 = "0.9.5"
+noodles = { version = "0.90.0", features = ["fasta"] }
+log = "0.4.22"
+pretty_env_logger = "0.5.0"
+num = "0.4.3"
+tempfile = "3.15.0"
+bio-types = "1.0.4"
+serde = "1.0.217"
+statrs = "0.18.0"
+bincode = "1.3.3"
+serde_json = "1"
+anyhow = "1.0.91"
+tv1d = "0.1.0"
+lru-cache-macros = "0.3.1"
+ndarray = "0.16.1"
+uuid = { version="1.12.1" , features = ["serde"]}
+
+[dependencies.pyo3-polars]
+version = "0.19.0"
+features = [
+    "dtype-array",
+    "dtype-categorical",
+    "dtype-full",
+    "dtype-struct",
+    "derive"
+]
+optional = true
+
+[dependencies.pyo3]
+version = "*"
+features = [
+    "extension-module"
+]
+optional = true
+
+
+[dependencies.polars]
+version = "=0.45.0"
+features = [
+    # Performance
+    #    "performant",
+    # Data types
+    "dtype-categorical",
+    "dtype-struct",
+    "dtype-array",
+    # Lazy
+    "lazy",
+    # IO
+    "csv",
+    "decompress",
+    "ipc",
+    "ipc_streaming",
+    "streaming",
+    # DataFrame operations
+    "dataframe_arithmetic",
+    "partition_by",
+    "asof_join",
+    "polars-ops",
+    # Expressions
+    "strings",
+    "is_in",
+    "round_series",
+    "concat_str",
+    "rank",
+    "list_eval",
+    "list_count",
+    "list_any_all",
+    "search_sorted",
+    # Misc
+    "fmt",
+]

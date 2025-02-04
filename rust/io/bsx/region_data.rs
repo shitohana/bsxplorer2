@@ -1,5 +1,5 @@
-use crate::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
-use crate::region::RegionCoordinates;
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::region::RegionCoordinates;
 use itertools::Itertools;
 use polars::prelude::*;
 use std::fmt::Display;

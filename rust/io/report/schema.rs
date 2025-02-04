@@ -1,4 +1,4 @@
-use crate::bsx_batch::BsxBatch;
+use crate::data_structs::bsx_batch::BsxBatch;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 use itertools::Itertools;
 use polars::prelude::*;
@@ -252,7 +252,7 @@ impl ReportTypeSchema {
 
 #[cfg(test)]
 mod report_schema_test {
-    use crate::bsx_batch::BsxBatch;
+    use crate::data_structs::bsx_batch::BsxBatch;
     use crate::io::report::schema::ReportTypeSchema;
     use crate::io::report::*;
 

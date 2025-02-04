@@ -1,4 +1,4 @@
-use crate::region::{GenomicPosition, RegionCoordinates};
+use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use bio::io::fasta::*;
 use hashbrown::HashMap;
 use log::{debug, info};

@@ -1,4 +1,4 @@
-use crate::bsx_batch::BsxBatch;
+use crate::data_structs::bsx_batch::BsxBatch;
 use crate::io::report::schema::ReportTypeSchema;
 use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;

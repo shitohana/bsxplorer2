@@ -1,4 +1,4 @@
-use crate::bsx_batch::EncodedBsxBatch;
+use crate::data_structs::bsx_batch::EncodedBsxBatch;
 use crate::io::bsx::region_read::BsxFileReader;
 use itertools::Itertools;
 use rayon::prelude::*;

@@ -1,8 +1,8 @@
 use super::report_read_utils::{align_data_with_context, get_context_data};
-use crate::bsx_batch::BsxBatch;
+use crate::data_structs::bsx_batch::BsxBatch;
+use crate::data_structs::region::GenomicPosition;
 use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
 use crate::io::report::schema::ReportTypeSchema;
-use crate::region::GenomicPosition;
 #[cfg(feature = "python")]
 use crate::utils::wrap_box_result;
 use crate::utils::{first_position, last_position};

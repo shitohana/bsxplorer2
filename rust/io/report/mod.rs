@@ -9,10 +9,10 @@ pub mod write;
 
 mod report_read_utils {
     use super::*;
-    use crate::bsx_batch::BsxBatch;
+    use crate::data_structs::bsx_batch::BsxBatch;
+    use crate::data_structs::region::RegionCoordinates;
     use crate::io::report::read::{ContextData, ReadQueueItem};
     use crate::io::report::schema::ReportTypeSchema;
-    use crate::region::RegionCoordinates;
     use crate::utils;
     use num::Unsigned;
     use polars::export::num::PrimInt;

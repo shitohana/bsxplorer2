@@ -3,12 +3,12 @@
 extern crate log;
 extern crate pretty_env_logger;
 
-use _lib::bsx_batch::{BsxBatch, BsxBatchMethods};
+use _lib::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
+use _lib::data_structs::region::GenomicPosition;
 use _lib::io::bsx::region_read::BsxFileReader;
 use _lib::io::bsx::write::BsxIpcWriter;
 use _lib::io::report::read::{ContextData, ReportReaderBuilder};
 use _lib::io::report::schema::ReportTypeSchema;
-use _lib::region::GenomicPosition;
 use _lib::utils::types::{Context, IPCEncodedEnum};
 use _lib::utils::{decode_context, decode_strand};
 use hashbrown::HashSet;
@@ -439,7 +439,7 @@ impl TestReportEnv {
     where
         W: Write,
     {
-        rust_htslib::faidx::build(fasta_path).expect("Failed to build .fai");
+        noodles::fasta::fs::index(fasta_path).expect("Failed to build .fai");
 
         let index_path = fasta_path.with_added_extension("fai");
         let mut fai_handle = File::open(index_path.clone())?;

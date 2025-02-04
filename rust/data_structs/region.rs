@@ -222,7 +222,7 @@ where
 
 #[cfg(feature = "python")]
 mod python {
-    use crate::region::{GenomicPosition, RegionCoordinates};
+    use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
     use pyo3::prelude::*;
 
     #[pyclass(name = "GenomicPosition")]
