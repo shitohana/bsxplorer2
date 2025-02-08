@@ -1,0 +1,13 @@
+Examples:
+
+1. Convert from Bismark methylation report to BSX file format
+
+bsxplorer convert --from bismark --into bsx -o report.bsx --fai example.fa.fai -c 20000 bismark_report.CX_report.txt
+
+2. Convert from Bismark to BedGraph
+
+bsxplorer convert --from bismark --into bed-graph -o report.bedGraph bismark_report.CX_report.txt
+
+3. Convert from BSX file format to Bismark
+
+bsxplorer convert --from bsx --into Bismark -o report.CX_report.txt bsx_report.bsx

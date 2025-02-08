@@ -471,7 +471,13 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
     type Item = PolarsResult<EncodedBsxBatch>;
     fn next(&mut self) -> Option<Self::Item> {
         let next = self.reader.next();
-        next.map(|res| self.process_record_batch(res))
+        let res = next.map(|res| self.process_record_batch(res));
+        if let Some(Ok(data)) = res.as_ref() {
+            if data.height() == 0 {
+                return None;
+            }
+        }
+        res
     }
 }
 

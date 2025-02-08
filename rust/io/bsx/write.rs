@@ -15,6 +15,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub use polars::prelude::IpcCompression as PolarsIpcCompression;
+
 pub struct BsxIpcWriter<W>
 where
     W: Write,

@@ -40,28 +40,28 @@ TODO:
 */
 
 pub struct ReportReaderBuilder {
-    report_type: ReportTypeSchema,
-    rechunk: bool,
-    n_threads: Option<usize>,
-    low_memory: bool,
-    n_rows: Option<usize>,
-    row_index: Option<RowIndex>,
-    chunk_size: usize,
-    skip_rows_after_header: usize,
-    fasta_path: Option<PathBuf>,
-    fai_path: Option<PathBuf>,
-    batch_per_read: usize,
-    batch_size: usize,
-}
-
-pub fn new(report_type: ReportTypeSchema) -> ReportReaderBuilder {
-    ReportReaderBuilder {
-        report_type,
-        ..Default::default()
-    }
+    pub report_type: ReportTypeSchema,
+    pub rechunk: bool,
+    pub n_threads: Option<usize>,
+    pub low_memory: bool,
+    pub n_rows: Option<usize>,
+    pub row_index: Option<RowIndex>,
+    pub chunk_size: usize,
+    pub skip_rows_after_header: usize,
+    pub fasta_path: Option<PathBuf>,
+    pub fai_path: Option<PathBuf>,
+    pub batch_per_read: usize,
+    pub batch_size: usize,
 }
 
 impl ReportReaderBuilder {
+    pub fn new(report_type: ReportTypeSchema) -> ReportReaderBuilder {
+        ReportReaderBuilder {
+            report_type,
+            ..Default::default()
+        }
+    }
+
     pub fn with_rechunk(mut self, rechunk: bool) -> Self {
         self.rechunk = rechunk;
         self

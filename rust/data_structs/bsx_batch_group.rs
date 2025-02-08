@@ -49,6 +49,7 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         check_eq_batches!(
             batches
                 .iter()
+                .filter(|b| b.height() > 0)
                 .map(|b| EncodedBsxBatch::as_contig(b, &mut None))
                 .map(|c| c.unwrap()),
             "Batches differ"
@@ -248,6 +249,52 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
                     .filter(|&x| if na_rm { !x.is_nan() } else { true })
                     .map(|x| x as f64)
                     .mean()
+            })
+            .collect::<Vec<_>>();
+
+        Ok(res)
+    }
+
+    pub fn get_sum_counts_m(&self) -> anyhow::Result<Vec<i16>> {
+        let count_m_cols = self
+            .batches
+            .iter()
+            .map(EncodedBsxBatch::get_counts_m)
+            .collect::<anyhow::Result<Vec<_>, _>>()?;
+
+        let (height, width) = (self.height(), self.n_samples());
+
+        let res = (0..height)
+            .into_par_iter()
+            .map(|j| {
+                (0..width)
+                    .into_iter()
+                    .map(|i| count_m_cols[i][j])
+                    .map(|x| x)
+                    .sum()
+            })
+            .collect::<Vec<_>>();
+
+        Ok(res)
+    }
+
+    pub fn get_sum_counts_total(&self) -> anyhow::Result<Vec<i16>> {
+        let count_m_cols = self
+            .batches
+            .iter()
+            .map(EncodedBsxBatch::get_counts_total)
+            .collect::<anyhow::Result<Vec<_>, _>>()?;
+
+        let (height, width) = (self.height(), self.n_samples());
+
+        let res = (0..height)
+            .into_par_iter()
+            .map(|j| {
+                (0..width)
+                    .into_iter()
+                    .map(|i| count_m_cols[i][j])
+                    .map(|x| x)
+                    .sum()
             })
             .collect::<Vec<_>>();
 

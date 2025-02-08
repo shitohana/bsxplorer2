@@ -1,4 +1,4 @@
-use crate::data_structs::bsx_batch::EncodedBsxBatch;
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::io::bsx::region_read::BsxFileReader;
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -53,6 +53,10 @@ where
         self.current_batch_idx = batch_idx;
     }
 
+    pub(crate) fn current_batch_idx(&self) -> usize {
+        self.current_batch_idx
+    }
+
     pub fn get_batch(
         &mut self,
         batch_idx: usize,
@@ -82,6 +86,7 @@ where
             .into_iter()
             .filter(|(_, batch)| batch.is_some())
             .map(|(key, batch)| (key, batch.unwrap()))
+            .filter(|(_, batch)| batch.as_ref().map(|b| b.height() > 0).unwrap_or(false))
             .collect_vec();
 
         if batch_results.is_empty() {
@@ -103,6 +108,13 @@ where
                 .map(|(k, v)| (k, v.unwrap()))
                 .collect(),
         ))
+    }
+
+    pub(crate) fn blocks_total(&self) -> usize {
+        self.readers.values().collect::<Vec<_>>()[0]
+            .read()
+            .unwrap()
+            .blocks_total()
     }
 }
 

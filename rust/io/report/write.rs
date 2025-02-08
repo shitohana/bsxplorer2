@@ -4,13 +4,13 @@ use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;
 use std::io::Write;
 
-struct ReportWriter<W: Write> {
+pub struct ReportWriter<W: Write> {
     schema: ReportTypeSchema,
     writer: BatchedCsvWriter<W>,
 }
 
 impl<W: Write> ReportWriter<W> {
-    fn try_new(sink: W, schema: ReportTypeSchema, n_threads: usize) -> PolarsResult<Self> {
+    pub fn try_new(sink: W, schema: ReportTypeSchema, n_threads: usize) -> PolarsResult<Self> {
         let report_options = schema.read_options();
 
         let writer = CsvWriter::new(sink)
@@ -23,8 +23,9 @@ impl<W: Write> ReportWriter<W> {
         Ok(Self { schema, writer })
     }
 
-    fn write_batch(&mut self, batch: BsxBatch) -> PolarsResult<()> {
-        let converted = self.schema.report_mutate_from_bsx(batch.into())?;
+    pub fn write_batch(&mut self, batch: BsxBatch) -> PolarsResult<()> {
+        let mut converted = self.schema.report_mutate_from_bsx(batch.into())?;
+        converted.rechunk_mut();
         self.writer.write_batch(&converted)
     }
 

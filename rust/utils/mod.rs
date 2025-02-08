@@ -113,7 +113,7 @@ pub(crate) fn last_position(
         .cast(&DataType::UInt64)?
         .u64()?
         .last()
-        .unwrap();
+        .unwrap_or(0);
     Ok(GenomicPosition::new(chr, pos))
 }
 

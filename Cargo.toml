@@ -6,3 +6,10 @@ authors = ["shitohana"]
 
 [workspace]
 members = ["console", "rust"]
+
+[[bin]]
+name = "bsxplorer"
+path = "src/main.rs"
+
+[dependencies]
+bsxplorer-lib = { path = "rust" }

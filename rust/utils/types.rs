@@ -39,7 +39,7 @@ impl IPCEncodedEnum for Context {
             "CG" => Context::CG,
             "CHG" => Context::CHG,
             "CHH" => Context::CHH,
-            _ => panic!(),
+            other => unimplemented!("Context {} is not yet supported", other),
         }
     }
 

@@ -1,7 +1,9 @@
-use crate::utils::types::{Context, Strand};
+use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+use itertools::Itertools;
 use lru_cache_macros::lru_cache;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MethylationStats {
@@ -108,7 +110,7 @@ impl MethylationStats {
     }
 
     /// Compute genome-wide mean methylation
-    pub fn genome_wide_mean_methylation(&self) -> f64 {
+    pub fn mean_methylation(&self) -> f64 {
         if self.total_coverage() == 0 {
             0.0
         } else {
@@ -124,6 +126,42 @@ impl MethylationStats {
         }
         genome_stats.finalize_methylation();
         genome_stats
+    }
+
+    pub fn display_long(&mut self) -> String {
+        let mut buf = String::new();
+        self.finalize_methylation();
+
+        writeln!(&mut buf, "Methylation mean: {:.6}", self.mean_methylation).unwrap();
+        writeln!(
+            &mut buf,
+            "Methylation variance: {:.6}",
+            self.variance_methylation
+        )
+        .unwrap();
+        writeln!(&mut buf).unwrap();
+        writeln!(&mut buf, "Cytosine coverage distribution: ").unwrap();
+        writeln!(&mut buf, "coverage\tcount").unwrap();
+        for (key, value) in self
+            .coverage_distribution
+            .iter()
+            .sorted_by_key(|(k, _)| **k)
+        {
+            writeln!(&mut buf, "{}\t{}", key, value).unwrap();
+        }
+        writeln!(&mut buf).unwrap();
+        writeln!(&mut buf, "Methylation per context: ").unwrap();
+        writeln!(&mut buf, "coverage\tmean\tcount").unwrap();
+        for (key, (mean, count)) in self.context_methylation.iter() {
+            writeln!(&mut buf, "{}\t{:.6}\t{}", key.to_string(), mean, count).unwrap();
+        }
+        writeln!(&mut buf).unwrap();
+        writeln!(&mut buf, "Methylation per strand").unwrap();
+        writeln!(&mut buf, "strand\tmean\tcount").unwrap();
+        for (key, (mean, count)) in self.strand_methylation.iter() {
+            writeln!(&mut buf, "{}\t{:.6}\t{}", key.to_string(), mean, count).unwrap();
+        }
+        buf
     }
 }
 
@@ -228,7 +266,7 @@ mod tests {
             vec![(10, 100), (20, 200)],
             vec![(Context::CG, 0.4, 300)],
         );
-        assert!((stats.genome_wide_mean_methylation() - 0.4).abs() < 1e-6);
+        assert!((stats.mean_methylation() - 0.4).abs() < 1e-6);
     }
 
     /// Test merging multiple methylation statistics

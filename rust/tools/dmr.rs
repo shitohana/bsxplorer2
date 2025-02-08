@@ -77,7 +77,6 @@ pub struct MethyLassoConfig {
     pub context: Context,
     pub n_missing: usize,
     pub min_coverage: i16,
-    pub lambda: f64,
     pub diff_threshold: f64,
     pub p_value: f64,
     pub type_density: HashMap<RegionType, f64>,
@@ -91,7 +90,6 @@ impl Default for MethyLassoConfig {
             context: Context::CG,
             n_missing: 0,
             min_coverage: 5,
-            lambda: 3.0,
             diff_threshold: 0.05,
             p_value: 0.01,
             type_density: HashMap::from_iter([
@@ -174,8 +172,8 @@ pub enum RegionType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MethylationSites {
-    chr: Arc<String>,
-    positions: Vec<u32>,
+    pub chr: Arc<String>,
+    pub positions: Vec<u32>,
     density: Vec<f64>,
 }
 
@@ -277,7 +275,7 @@ impl Iterator for MethylationSites {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PairwiseSites {
-    left: MethylationSites,
+    pub left: MethylationSites,
     right: MethylationSites,
 }
 
@@ -353,9 +351,9 @@ impl PairwiseSites {
 
         let region_type = if p_value <= config.p_value && meth_diff >= config.diff_threshold {
             RegionType::DMR
-        } else if overall <= *config.type_density.get(&RegionType::UMR).unwrap() {
+        } else if overall <= *config.type_density.get(&RegionType::UMR).unwrap_or(&1.0) {
             RegionType::UMR
-        } else if overall <= *config.type_density.get(&RegionType::LMR).unwrap() {
+        } else if overall <= *config.type_density.get(&RegionType::LMR).unwrap_or(&1.0) {
             RegionType::LMR
         } else {
             RegionType::PMD
@@ -415,7 +413,7 @@ pub struct SegmentModel {
     pub penalty_weight: f64,
     pub seg_count_weight: f64,
     pub merge_pvalue: f64,
-    segmentation_tol: f64,
+    pub segmentation_tol: f64,
 }
 
 impl Default for SegmentModel {
@@ -610,6 +608,14 @@ where
         }
     }
 
+    pub fn blocks_total(&self) -> usize {
+        self.multi_reader.blocks_total()
+    }
+
+    pub fn current_block(&self) -> usize {
+        self.multi_reader.current_batch_idx()
+    }
+
     fn process_group(&mut self, group: EncodedBsxBatchGroup<R>) -> Result<()> {
         let segment_model = SegmentModel::default();
 
@@ -711,11 +717,11 @@ where
 
 #[derive(Debug)]
 pub struct MethylationRegion {
-    pairwise_sites: PairwiseSites,
-    region_type: RegionType,
-    p_value: f64,
-    mean_left: f64,
-    mean_right: f64,
+    pub pairwise_sites: PairwiseSites,
+    pub region_type: RegionType,
+    pub p_value: f64,
+    pub mean_left: f64,
+    pub mean_right: f64,
 }
 
 impl Display for MethylationRegion {

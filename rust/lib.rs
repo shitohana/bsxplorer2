@@ -4,6 +4,7 @@
 #![feature(mpmc_channel)]
 #![feature(assert_matches)]
 #![feature(path_add_extension)]
+#![allow(unused_assignments)]
 
 pub mod data_structs;
 pub mod io;

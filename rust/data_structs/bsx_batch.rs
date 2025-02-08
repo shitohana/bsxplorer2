@@ -491,6 +491,26 @@ impl EncodedBsxBatch {
             .collect())
     }
 
+    pub fn get_counts_m(&self) -> PolarsResult<Vec<i16>> {
+        Ok(self
+            .0
+            .column("count_m")?
+            .i16()?
+            .into_iter()
+            .map(|x| x.unwrap_or(0))
+            .collect())
+    }
+
+    pub fn get_counts_total(&self) -> PolarsResult<Vec<i16>> {
+        Ok(self
+            .0
+            .column("count_total")?
+            .i16()?
+            .into_iter()
+            .map(|x| x.unwrap_or(0))
+            .collect())
+    }
+
     pub fn filter_mask(self, mask: &BooleanChunked) -> PolarsResult<Self> {
         Ok(unsafe { Self::new_unchecked(self.0.filter(mask)?) })
     }
