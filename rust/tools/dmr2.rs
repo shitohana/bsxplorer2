@@ -10,6 +10,7 @@ use itertools::Itertools;
 use log::{debug, error};
 use rayon::prelude::*;
 use rust_lapper::Interval;
+use serde::{Deserialize, Serialize};
 use statrs::distribution::{ContinuousCDF, StudentsT};
 use statrs::function::gamma::ln_gamma;
 use statrs::statistics::Statistics;
@@ -22,20 +23,28 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct SegmentModelConfig {
-    block_size: usize,
-    seg_tolerance: f64,
-    p_threshold: f64,
-    max_dist: u32,
-    union_threshold: f64,
-    base_null: (f64, f64),
-    base_alt: (f64, f64, f64),
-    epsilon: f64,
-    max_iters: u64,
+    pub block_size: usize,
+    pub seg_tolerance: f64,
+    pub p_threshold: f64,
+    pub coarse_steps: usize,
+    pub refined_steps: usize,
+    pub lambda_min: f64,
+    pub lambda_max: f64,
+    pub max_dist: u32,
+    pub union_threshold: f64,
+    pub base_null: (f64, f64),
+    pub base_alt: (f64, f64, f64),
+    pub epsilon: f64,
+    pub max_iters: u64,
 }
 
 impl Default for SegmentModelConfig {
     fn default() -> Self {
         Self {
+            coarse_steps: 20,
+            refined_steps: 20,
+            lambda_min: 0.001,
+            lambda_max: 2.0,
             block_size: 20,
             seg_tolerance: 1e-6,
             p_threshold: 0.01,
@@ -52,8 +61,8 @@ impl Default for SegmentModelConfig {
 #[derive(Debug, Clone)]
 pub struct MethylatedRegion {
     density: Vec<f64>,
-    count_m: Vec<i16>,
-    count_total: Vec<i16>,
+    count_m: Vec<u32>,
+    count_total: Vec<u32>,
     position: Vec<u32>,
 }
 
@@ -67,8 +76,8 @@ impl PartialEq for MethylatedRegion {
 impl MethylatedRegion {
     pub fn new(
         density: Vec<f64>,
-        count_m: Vec<i16>,
-        count_total: Vec<i16>,
+        count_m: Vec<u32>,
+        count_total: Vec<u32>,
         position: Vec<u32>,
     ) -> Self {
         assert!(density.len() > 0, "Region can't be empty");
@@ -93,7 +102,7 @@ impl MethylatedRegion {
         self.position.last().unwrap() - self.position.first().unwrap()
     }
 
-    pub fn push(&mut self, position: u32, count_m: i16, count_total: i16, density: f64) {
+    pub fn push(&mut self, position: u32, count_m: u32, count_total: u32, density: f64) {
         self.position.push(position);
         self.count_m.push(count_m);
         self.count_total.push(count_total);
@@ -185,11 +194,11 @@ impl MethylatedRegion {
         &self.density
     }
 
-    pub fn count_m(&self) -> &Vec<i16> {
+    pub fn count_m(&self) -> &Vec<u32> {
         &self.count_m
     }
 
-    pub fn count_total(&self) -> &Vec<i16> {
+    pub fn count_total(&self) -> &Vec<u32> {
         &self.count_total
     }
 
@@ -289,8 +298,8 @@ impl FromIterator<MethylatedSite> for MethylatedRegion {
 
 pub struct MethylatedSite {
     position: u32,
-    count_m: i16,
-    count_total: i16,
+    count_m: u32,
+    count_total: u32,
     density: f64,
 }
 
@@ -637,7 +646,7 @@ fn robust_noise_variance(y: &[f64]) -> f64 {
 ///     SURE(λ) = ||y - f||² + 2σ²·df - nσ²,
 /// where the degrees of freedom (df) are approximated as the number
 /// of constant segments in `f`.
-fn compute_sure(y: &[f64], f: &[f64], sigma2: f64) -> f64 {
+fn compute_sure(y: &[f64], f: &[f64], sigma2: f64, config: &SegmentModelConfig) -> f64 {
     let n = y.len() as f64;
     let residual: f64 = y
         .iter()
@@ -646,7 +655,7 @@ fn compute_sure(y: &[f64], f: &[f64], sigma2: f64) -> f64 {
         .sum();
 
     // Count segments as changes in f.
-    let tol = 1e-6;
+    let tol = config.seg_tolerance;
     let mut segments = 1;
     for i in 1..f.len() {
         if (f[i] - f[i - 1]).abs() > tol {
@@ -658,18 +667,18 @@ fn compute_sure(y: &[f64], f: &[f64], sigma2: f64) -> f64 {
 
 /// Computes a block-resampled SURE for a given lambda by partitioning the signal into blocks.
 /// This helps account for spatial dependence in the methylation data.
-fn block_resampled_sure(y: &[f64], lambda: f64, block_size: usize, sigma2: f64) -> f64 {
+fn block_resampled_sure(y: &[f64], lambda: f64, sigma2: f64, config: &SegmentModelConfig) -> f64 {
     let n = y.len();
-    let num_blocks = (n + block_size - 1) / block_size; // Ceiling division
+    let num_blocks = (n + config.block_size - 1) / config.block_size; // Ceiling division
     let mut sure_sum = 0.0;
 
     for i in 0..num_blocks {
-        let start = i * block_size;
-        let end = ((i + 1) * block_size).min(n);
+        let start = i * config.block_size;
+        let end = ((i + 1) * config.block_size).min(n);
         let block = &y[start..end];
         // Use the available tv_denoise and compute_sure functions on the block.
         let denoised_block = tv1d::condat(block, lambda);
-        let sure_block = compute_sure(block, &denoised_block, sigma2);
+        let sure_block = compute_sure(block, &denoised_block, sigma2, &config);
         sure_sum += sure_block;
     }
     sure_sum / (num_blocks as f64)
@@ -678,7 +687,7 @@ fn block_resampled_sure(y: &[f64], lambda: f64, block_size: usize, sigma2: f64) 
 /// Performs a refined candidate grid search for the optimal λ.
 /// First, a coarse grid is evaluated using block-resampled SURE, and then a refined grid
 /// is searched around the best coarse candidate.
-fn refined_candidate_grid(y: &[f64], sigma2: f64, block_size: usize) -> (f64, Vec<f64>) {
+fn refined_candidate_grid(y: &[f64], sigma2: f64, config: &SegmentModelConfig) -> (f64, Vec<f64>) {
     // --- Coarse Grid Search ---
     let lambda_min = 0.001;
     let lambda_max = 2.0;
@@ -691,7 +700,7 @@ fn refined_candidate_grid(y: &[f64], sigma2: f64, block_size: usize) -> (f64, Ve
     for i in 0..coarse_steps {
         let lambda =
             lambda_min + (lambda_max - lambda_min) * (i as f64) / ((coarse_steps - 1) as f64);
-        let sure = block_resampled_sure(y, lambda, block_size, sigma2);
+        let sure = block_resampled_sure(y, lambda, sigma2, config);
         if sure < best_sure {
             best_sure = sure;
             best_lambda = lambda;
@@ -713,7 +722,7 @@ fn refined_candidate_grid(y: &[f64], sigma2: f64, block_size: usize) -> (f64, Ve
     for i in 0..refined_steps {
         let lambda = refined_lambda_min
             + (refined_lambda_max - refined_lambda_min) * (i as f64) / ((refined_steps - 1) as f64);
-        let sure = block_resampled_sure(y, lambda, block_size, sigma2);
+        let sure = block_resampled_sure(y, lambda, sigma2, config);
         if sure < best_sure {
             best_sure = sure;
             best_lambda = lambda;
@@ -817,7 +826,7 @@ fn merge_segments(y: &[f64], segments: &[(usize, usize)], p_threshold: f64) -> V
 
 fn segment_signal(y: &[f64], config: &SegmentModelConfig) -> Vec<(usize, usize)> {
     let sigma2 = robust_noise_variance(&y);
-    let (opt_lambda, denoised_signal) = refined_candidate_grid(&y, sigma2, config.block_size);
+    let (opt_lambda, denoised_signal) = refined_candidate_grid(&y, sigma2, config);
     debug!("Optimal lambda: {:.6}", opt_lambda);
 
     let initial_segments = get_segments(&denoised_signal, config.seg_tolerance);
@@ -1157,6 +1166,7 @@ where
                 p_value,
                 left.density().mean(),
                 right.density().mean(),
+                left.size(),
             ))
         } else {
             Err(anyhow!("Error fitting models"))
@@ -1167,7 +1177,7 @@ where
 impl<F, R> Iterator for DmrIterator<F, R>
 where
     F: Read + Seek + Send + Sync + 'static,
-    R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + std::marker::Sync,
+    R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + Sync,
 {
     type Item = DMRegion;
 
@@ -1193,14 +1203,15 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMRegion {
-    pub chr: Arc<String>,
+    pub chr: String,
     pub start: u32,
     pub end: u32,
     pub p_value: f64,
     pub meth_left: f64,
     pub meth_right: f64,
+    pub n_cytosines: usize,
 }
 
 impl DMRegion {
@@ -1211,14 +1222,16 @@ impl DMRegion {
         p_value: f64,
         meth_left: f64,
         meth_right: f64,
+        n_cytosines: usize,
     ) -> Self {
         DMRegion {
-            chr,
+            chr: chr.to_string(),
             start,
             end,
             p_value,
             meth_left,
             meth_right,
+            n_cytosines,
         }
     }
 
@@ -1228,5 +1241,9 @@ impl DMRegion {
 
     fn meth_mean(&self) -> f64 {
         (self.meth_left + self.meth_right) / 2.0
+    }
+
+    pub fn length(&self) -> u32 {
+        self.end - self.start + 1
     }
 }

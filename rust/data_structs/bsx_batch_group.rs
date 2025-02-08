@@ -255,7 +255,7 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         Ok(res)
     }
 
-    pub fn get_sum_counts_m(&self) -> anyhow::Result<Vec<i16>> {
+    pub fn get_sum_counts_m(&self) -> anyhow::Result<Vec<u32>> {
         let count_m_cols = self
             .batches
             .iter()
@@ -270,7 +270,7 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
                 (0..width)
                     .into_iter()
                     .map(|i| count_m_cols[i][j])
-                    .map(|x| x)
+                    .map(|x| x as u32)
                     .sum()
             })
             .collect::<Vec<_>>();
@@ -278,7 +278,7 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         Ok(res)
     }
 
-    pub fn get_sum_counts_total(&self) -> anyhow::Result<Vec<i16>> {
+    pub fn get_sum_counts_total(&self) -> anyhow::Result<Vec<u32>> {
         let count_m_cols = self
             .batches
             .iter()
@@ -293,7 +293,7 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
                 (0..width)
                     .into_iter()
                     .map(|i| count_m_cols[i][j])
-                    .map(|x| x)
+                    .map(|x| x as u32)
                     .sum()
             })
             .collect::<Vec<_>>();
