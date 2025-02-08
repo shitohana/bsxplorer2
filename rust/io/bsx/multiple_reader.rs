@@ -53,7 +53,7 @@ where
         self.current_batch_idx = batch_idx;
     }
 
-    pub(crate) fn current_batch_idx(&self) -> usize {
+    pub fn current_batch_idx(&self) -> usize {
         self.current_batch_idx
     }
 
@@ -110,7 +110,7 @@ where
         ))
     }
 
-    pub(crate) fn blocks_total(&self) -> usize {
+    pub fn blocks_total(&self) -> usize {
         self.readers.values().collect::<Vec<_>>()[0]
             .read()
             .unwrap()

@@ -1,3 +1,5 @@
+#![feature(path_add_extension)]
+
 mod dmr2;
 mod dmr;
 mod convert;
@@ -56,12 +58,14 @@ enum Commands {
         group_a: Vec<String>,
         #[arg(value_parser, short='B', long, required = true, help = "Paths to BSX files of the second sample group.")]
         group_b: Vec<String>,
-        #[arg(short='o', long, required = true, help = "Path for the generated output file.")]
+        #[arg(short='o', long, required = true, help = "Prefix for the generated output files.")]
         output: PathBuf,
         #[clap(flatten)]
         filters: FilterArgs2,
         #[arg(short, long, required = false, default_value_t = false, help = "Automatically confirm selected paths.")]
         force: bool,
+        #[arg(long, required = false, default_value_t = true, help = "Display progress bar (Disable if you need clean pipeline logs).")]
+        progress: bool,
         #[clap(flatten)]
         segmentation: SegmentationArgs2,
     },
@@ -114,7 +118,8 @@ fn main() {
             group_b,
             output ,
             force,
-        } => dmr2::run(filters, segmentation, group_a, group_b, output, force),
+            progress,
+        } => dmr2::run(filters, segmentation, group_a, group_b, output, force, progress),
 
         Commands::Convert {
             input,

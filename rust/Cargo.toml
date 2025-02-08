@@ -44,7 +44,7 @@ tv1d = "0.1.0"
 lru-cache-macros = "0.3.1"
 ndarray = "0.16.1"
 uuid = { version="1.12.1" , features = ["serde"]}
-argmin = "0.10.0"
+argmin = { version = "0.10.0", features = ["rayon"] }
 argmin-math = { version = "0.4.0", features = ["vec"]}
 rust-lapper = "1.1.0"
 

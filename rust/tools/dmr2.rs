@@ -21,6 +21,202 @@ use std::hash::Hash;
 use std::io::{Read, Seek};
 use std::sync::Arc;
 
+/// An owned methylation region. This struct owns its data.
+#[derive(Clone, Debug)]
+pub struct MethylatedRegionOwned {
+    pub positions: Vec<u32>,
+    pub density: Vec<f64>,
+    pub count_m: Vec<u32>,
+    pub count_total: Vec<u32>,
+}
+
+impl MethylatedRegionOwned {
+    /// Creates a new region, validating that all vectors have the same nonzero length.
+    pub fn new(
+        positions: Vec<u32>,
+        density: Vec<f64>,
+        count_m: Vec<u32>,
+        count_total: Vec<u32>,
+    ) -> Self {
+        assert!(!positions.is_empty(), "Region cannot be empty");
+        assert_eq!(positions.len(), density.len());
+        assert_eq!(positions.len(), count_m.len());
+        assert_eq!(positions.len(), count_total.len());
+        Self {
+            positions,
+            density,
+            count_m,
+            count_total,
+        }
+    }
+
+    /// Returns a read-only view of the entire region.
+    pub fn as_view(&self) -> MethylatedRegionView {
+        MethylatedRegionView {
+            positions: &self.positions,
+            density: &self.density,
+            count_m: &self.count_m,
+            count_total: &self.count_total,
+        }
+    }
+
+    /// Returns a read-only view for the slice [start, end) without copying.
+    pub fn slice(&self, start: usize, end: usize) -> MethylatedRegionView {
+        assert!(start <= end, "Start must be <= end");
+        assert!(
+            end <= self.positions.len(),
+            "Slice bounds exceed region size"
+        );
+        MethylatedRegionView {
+            positions: &self.positions[start..end],
+            density: &self.density[start..end],
+            count_m: &self.count_m[start..end],
+            count_total: &self.count_total[start..end],
+        }
+    }
+
+    pub fn slice_multiple(&self, indices: &[(usize, usize)]) -> Vec<MethylatedRegionView> {
+        indices
+            .into_par_iter()
+            .map(|(start, end)| self.slice(*start, end + 1))
+            .collect()
+    }
+}
+
+/// A lightweight view into a methylation region.
+/// This struct borrows from an underlying owned region without extra allocations.
+#[derive(Clone, Debug)]
+pub struct MethylatedRegionView<'a> {
+    pub positions: &'a [u32],
+    pub density: &'a [f64],
+    pub count_m: &'a [u32],
+    pub count_total: &'a [u32],
+}
+
+impl<'a> MethylatedRegionView<'a> {
+    pub fn to_owned(self) -> MethylatedRegionOwned {
+        MethylatedRegionOwned {
+            positions: self.positions.to_vec(),
+            density: self.density.to_vec(),
+            count_m: self.count_m.to_vec(),
+            count_total: self.count_total.to_vec(),
+        }
+    }
+    pub fn size(&self) -> usize {
+        self.positions.len()
+    }
+
+    /// Returns the number of sites in this view.
+    pub fn len(&self) -> usize {
+        self.positions.len()
+    }
+
+    pub fn segment_indices(&self, config: &SegmentModelConfig) -> Vec<(usize, usize)> {
+        let segment_indices = segment_signal(&self.density, config);
+        segment_indices
+            .into_par_iter()
+            .map(|(start, end)| {
+                let mut result = Vec::new();
+                let mut current = start;
+                for i in start..end {
+                    if self.positions[i + 1] - self.positions[i] > config.max_dist {
+                        result.push((current, i));
+                        current = i + 1
+                    }
+                }
+
+                result.push((current, end));
+                result
+            })
+            .flatten()
+            .collect()
+    }
+
+    /// Returns a read-only view for the slice [start, end) without copying.
+    pub fn slice(&self, start: usize, end: usize) -> MethylatedRegionView {
+        assert!(start <= end, "Start must be <= end");
+        assert!(
+            end <= self.positions.len(),
+            "Slice bounds exceed region size"
+        );
+        MethylatedRegionView {
+            positions: &self.positions[start..end],
+            density: &self.density[start..end],
+            count_m: &self.count_m[start..end],
+            count_total: &self.count_total[start..end],
+        }
+    }
+
+    pub fn slice_multiple(&self, indices: &[(usize, usize)]) -> Vec<MethylatedRegionView> {
+        indices
+            .into_par_iter()
+            .map(|(start, end)| self.slice(*start, end + 1))
+            .collect()
+    }
+
+    /// Splits the view at the provided index into two sub-views.
+    pub fn split_at(&self, index: usize) -> (MethylatedRegionView<'a>, MethylatedRegionView<'a>) {
+        let (pos_left, pos_right) = self.positions.split_at(index);
+        let (dens_left, dens_right) = self.density.split_at(index);
+        let (cm_left, cm_right) = self.count_m.split_at(index);
+        let (ct_left, ct_right) = self.count_total.split_at(index);
+        (
+            MethylatedRegionView {
+                positions: pos_left,
+                density: dens_left,
+                count_m: cm_left,
+                count_total: ct_left,
+            },
+            MethylatedRegionView {
+                positions: pos_right,
+                density: dens_right,
+                count_m: cm_right,
+                count_total: ct_right,
+            },
+        )
+    }
+
+    /// Concatenates two views into a new owned region.
+    /// Note: This operation does incur an allocation.
+    pub fn concat(
+        left: MethylatedRegionView<'a>,
+        right: MethylatedRegionView<'a>,
+    ) -> MethylatedRegionOwned {
+        let mut positions = Vec::with_capacity(left.len() + right.len());
+        positions.extend_from_slice(left.positions);
+        positions.extend_from_slice(right.positions);
+
+        let mut density = Vec::with_capacity(left.len() + right.len());
+        density.extend_from_slice(left.density);
+        density.extend_from_slice(right.density);
+
+        let mut count_m = Vec::with_capacity(left.len() + right.len());
+        count_m.extend_from_slice(left.count_m);
+        count_m.extend_from_slice(right.count_m);
+
+        let mut count_total = Vec::with_capacity(left.len() + right.len());
+        count_total.extend_from_slice(left.count_total);
+        count_total.extend_from_slice(right.count_total);
+
+        MethylatedRegionOwned {
+            positions,
+            density,
+            count_m,
+            count_total,
+        }
+    }
+
+    pub fn to_beta_binom_observations(&self) -> Vec<BetaBinomObservation> {
+        self.count_m
+            .iter()
+            .zip(self.count_total.iter())
+            .map(|(&count_m, &count_total)| {
+                BetaBinomObservation::new(count_m as f64, count_total as f64).unwrap()
+            })
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SegmentModelConfig {
     pub block_size: usize,
@@ -54,301 +250,6 @@ impl Default for SegmentModelConfig {
             base_alt: (0.5, 0.5, 0.1),
             epsilon: 1e-3,
             max_iters: 1000,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct MethylatedRegion {
-    density: Vec<f64>,
-    count_m: Vec<u32>,
-    count_total: Vec<u32>,
-    position: Vec<u32>,
-}
-
-impl Eq for MethylatedRegion {}
-impl PartialEq for MethylatedRegion {
-    fn eq(&self, other: &MethylatedRegion) -> bool {
-        self.position == other.position
-    }
-}
-
-impl MethylatedRegion {
-    pub fn new(
-        density: Vec<f64>,
-        count_m: Vec<u32>,
-        count_total: Vec<u32>,
-        position: Vec<u32>,
-    ) -> Self {
-        assert!(density.len() > 0, "Region can't be empty");
-
-        assert_eq!(density.len(), count_m.len());
-        assert_eq!(density.len(), count_total.len());
-        assert_eq!(density.len(), position.len());
-
-        Self {
-            density,
-            count_m,
-            count_total,
-            position,
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        self.density.len()
-    }
-
-    pub fn length(&self) -> u32 {
-        self.position.last().unwrap() - self.position.first().unwrap()
-    }
-
-    pub fn push(&mut self, position: u32, count_m: u32, count_total: u32, density: f64) {
-        self.position.push(position);
-        self.count_m.push(count_m);
-        self.count_total.push(count_total);
-        self.density.push(density);
-    }
-
-    pub fn empty() -> Self {
-        Self {
-            density: vec![],
-            count_m: vec![],
-            count_total: vec![],
-            position: vec![],
-        }
-    }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            density: Vec::with_capacity(capacity),
-            count_m: Vec::with_capacity(capacity),
-            count_total: Vec::with_capacity(capacity),
-            position: Vec::with_capacity(capacity),
-        }
-    }
-
-    pub fn extend(&mut self, other: &MethylatedRegion) {
-        self.density.extend(&other.density);
-        self.count_m.extend(&other.count_m);
-        self.count_total.extend(&other.count_total);
-        self.position.extend(&other.position);
-    }
-
-    pub fn concat(mut self, other: MethylatedRegion) -> Self {
-        let mut other = other;
-        self.position.append(&mut other.position);
-        self.density.append(&mut other.density);
-        self.count_m.append(&mut other.count_m);
-        self.count_total.append(&mut other.count_total);
-        self
-    }
-
-    pub fn interval(&self) -> Interval<u32, ()> {
-        assert!(!self.position.is_empty(), "Position vector is empty");
-        Interval {
-            start: self.position.first().unwrap().clone(),
-            stop: self.position.last().unwrap().clone() + 1,
-            val: (),
-        }
-    }
-
-    /// Create new [MethylatedRegion] from slice [start, end);
-    pub fn slice(&self, start: usize, end: usize) -> MethylatedRegion {
-        assert!(start <= end, "Start must be less than end");
-        assert!(
-            end <= self.size(),
-            "End must be less than the size of the region"
-        );
-        MethylatedRegion {
-            position: self.position[start..end].iter().cloned().collect(),
-            density: self.density[start..end].iter().cloned().collect(),
-            count_m: self.count_m[start..end].iter().cloned().collect(),
-            count_total: self.count_total[start..end].iter().cloned().collect(),
-        }
-    }
-
-    pub fn split_at(&self, index: usize) -> (MethylatedRegion, MethylatedRegion) {
-        assert!(index <= self.size() - 1, "Index out of bounds");
-        let (p1, p2) = self.position.split_at(index);
-        let (cm1, cm2) = self.count_m.split_at(index);
-        let (ctr1, ctr2) = self.count_total.split_at(index);
-        let (d1, d2) = self.density.split_at(index);
-
-        let res1 = MethylatedRegion {
-            position: p1.to_vec(),
-            count_m: cm1.to_vec(),
-            count_total: ctr1.to_vec(),
-            density: d1.to_vec(),
-        };
-        let res2 = MethylatedRegion {
-            position: p2.to_vec(),
-            count_m: cm2.to_vec(),
-            count_total: ctr2.to_vec(),
-            density: d2.to_vec(),
-        };
-
-        (res1, res2)
-    }
-
-    pub fn density(&self) -> &Vec<f64> {
-        &self.density
-    }
-
-    pub fn count_m(&self) -> &Vec<u32> {
-        &self.count_m
-    }
-
-    pub fn count_total(&self) -> &Vec<u32> {
-        &self.count_total
-    }
-
-    pub fn positions(&self) -> &Vec<u32> {
-        &self.position
-    }
-
-    pub fn into_segments(self, config: &SegmentModelConfig) -> Vec<MethylatedRegion> {
-        let segment_indices = segment_signal(&self.density, config);
-        let result = segment_indices
-            .into_par_iter()
-            .map(|(start, end)| self.slice(start, end + 1))
-            .map(|x| x.split_by_dist(config.max_dist))
-            .flatten()
-            .collect::<Vec<MethylatedRegion>>();
-        result
-    }
-
-    pub fn segment_indices(&self, config: &SegmentModelConfig) -> Vec<(usize, usize)> {
-        let segment_indices = segment_signal(&self.density, config);
-        segment_indices
-            .into_par_iter()
-            .map(|(start, end)| {
-                let mut result = Vec::new();
-                let mut current = start;
-                for i in start..end {
-                    if self.position[i + 1] - self.position[i] > config.max_dist {
-                        result.push((current, i));
-                        current = i + 1
-                    }
-                }
-
-                result.push((current, end));
-                result
-            })
-            .flatten()
-            .collect()
-    }
-
-    pub fn slice_multiple(&self, indices: &[(usize, usize)]) -> Vec<MethylatedRegion> {
-        indices
-            .into_par_iter()
-            .map(|(start, end)| self.slice(*start, end + 1))
-            .collect()
-    }
-
-    pub fn split_by_dist(self, distance: u32) -> Vec<MethylatedRegion> {
-        let mut result = Vec::new();
-        let mut current = self;
-
-        loop {
-            let split_at = current
-                .positions()
-                .windows(2)
-                .position(|w| w[1] - w[0] > distance);
-            if let Some(split_at) = split_at {
-                let (left, right) = current.split_at(split_at);
-                current = right;
-                result.push(left);
-            } else {
-                break;
-            }
-        }
-        result.push(current);
-        result
-    }
-
-    pub fn to_beta_binom_observations(&self) -> Vec<BetaBinomObservation> {
-        self.count_m
-            .iter()
-            .zip(self.count_total.iter())
-            .map(|(&count_m, &count_total)| {
-                BetaBinomObservation::new(count_m as f64, count_total as f64).unwrap()
-            })
-            .collect()
-    }
-}
-
-impl IntoIterator for MethylatedRegion {
-    type Item = MethylatedSite;
-    type IntoIter = MethylatedRegionIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        MethylatedRegionIterator::new(self)
-    }
-}
-
-impl FromIterator<MethylatedSite> for MethylatedRegion {
-    fn from_iter<I: IntoIterator<Item = MethylatedSite>>(iter: I) -> Self {
-        iter.into_iter()
-            .fold(MethylatedRegion::empty(), |mut acc, x| {
-                acc.push(x.position, x.count_m, x.count_total, x.density);
-                acc
-            })
-    }
-}
-
-pub struct MethylatedSite {
-    position: u32,
-    count_m: u32,
-    count_total: u32,
-    density: f64,
-}
-
-pub struct MethylatedRegionIterator {
-    i: usize,
-    inner: MethylatedRegion,
-}
-
-impl MethylatedRegionIterator {
-    pub fn new(inner: MethylatedRegion) -> Self {
-        Self { i: 0, inner }
-    }
-}
-
-impl Iterator for MethylatedRegionIterator {
-    type Item = MethylatedSite;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.i < self.inner.size() {
-            let res = Some(MethylatedSite {
-                position: self.inner.position[self.i],
-                count_m: self.inner.count_m[self.i],
-                count_total: self.inner.count_total[self.i],
-                density: self.inner.density[self.i],
-            });
-            res
-        } else {
-            None
-        }
-    }
-
-    fn count(self) -> usize
-    where
-        Self: Sized,
-    {
-        self.inner.size()
-    }
-
-    fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        if n < self.inner.size() {
-            let res = Some(MethylatedSite {
-                position: self.inner.position[n],
-                count_m: self.inner.count_m[n],
-                count_total: self.inner.count_total[n],
-                density: self.inner.density[n],
-            });
-            res
-        } else {
-            None
         }
     }
 }
@@ -482,6 +383,7 @@ fn generate_initial_simplex(base: Vec<f64>, epsilon: f64) -> Vec<Vec<f64>> {
 struct BetaBinomObservation {
     k: f64,
     n: f64,
+    ln_binom: f64,
 }
 
 impl BetaBinomObservation {
@@ -490,7 +392,8 @@ impl BetaBinomObservation {
         if k < 0.0 || n <= 0.0 || k > n {
             return Err("Invalid values: Ensure 0 <= k <= n and n > 0.");
         }
-        Ok(Self { k, n })
+        let ln_binom = ln_gamma(n + 1.0) - ln_gamma(k + 1.0) - ln_gamma(n - k + 1.0);
+        Ok(Self { k, n, ln_binom })
     }
 }
 
@@ -510,11 +413,11 @@ impl CostFunction for NullBetaBinomCost {
         if !(0.0..1.0).contains(&p) || !(0.0..1.0).contains(&phi) {
             return Ok(f64::INFINITY);
         }
-        let mut neg_log_likelihood = 0.0;
-        for obs in &self.observations {
-            let ll = log_likelihood_single(obs.k, obs.n, p, phi);
-            neg_log_likelihood -= ll;
-        }
+        let neg_log_likelihood: f64 = self
+            .observations
+            .par_iter()
+            .map(|obs| -log_likelihood_single(obs, p, phi))
+            .sum();
         Ok(neg_log_likelihood)
     }
 }
@@ -536,16 +439,17 @@ impl CostFunction for AltBetaBinomCost {
         if !(0.0..1.0).contains(&p1) || !(0.0..1.0).contains(&p2) || !(0.0..1.0).contains(&phi) {
             return Ok(f64::INFINITY);
         }
-        let mut neg_log_likelihood = 0.0;
-        for obs in &self.observations_group1 {
-            let ll = log_likelihood_single(obs.k, obs.n, p1, phi);
-            neg_log_likelihood -= ll;
-        }
-        for obs in &self.observations_group2 {
-            let ll = log_likelihood_single(obs.k, obs.n, p2, phi);
-            neg_log_likelihood -= ll;
-        }
-        Ok(neg_log_likelihood)
+        let neg_log_likelihood1: f64 = self
+            .observations_group1
+            .par_iter()
+            .map(|obs| -log_likelihood_single(obs, p1, phi))
+            .sum();
+        let neg_log_likelihood2: f64 = self
+            .observations_group2
+            .par_iter()
+            .map(|obs| -log_likelihood_single(obs, p2, phi))
+            .sum();
+        Ok(neg_log_likelihood1 + neg_log_likelihood2)
     }
 }
 
@@ -554,17 +458,13 @@ impl CostFunction for AltBetaBinomCost {
 /// We use the reparameterization:
 ///   alpha = p * ((1 - phi) / phi)
 ///   beta  = (1 - p) * ((1 - phi) / phi)
-fn log_likelihood_single(k: f64, n: f64, p: f64, phi: f64) -> f64 {
+fn log_likelihood_single(obs: &BetaBinomObservation, p: f64, phi: f64) -> f64 {
     let alpha = p * ((1.0 - phi) / phi);
     let beta = (1.0 - p) * ((1.0 - phi) / phi);
-
-    // Log of the binomial coefficient:
-    let ln_binom = ln_gamma(n + 1.0) - ln_gamma(k + 1.0) - ln_gamma(n - k + 1.0);
-    // Log beta functions:
-    let ln_b1 = ln_gamma(k + alpha) + ln_gamma(n - k + beta) - ln_gamma(n + alpha + beta);
+    let ln_b1 =
+        ln_gamma(obs.k + alpha) + ln_gamma(obs.n - obs.k + beta) - ln_gamma(obs.n + alpha + beta);
     let ln_b0 = ln_gamma(alpha) + ln_gamma(beta) - ln_gamma(alpha + beta);
-
-    ln_binom + ln_b1 - ln_b0
+    obs.ln_binom + ln_b1 - ln_b0
 }
 
 /// Filters intersecting indices between two sets of indices based on a threshold.
@@ -649,8 +549,8 @@ fn robust_noise_variance(y: &[f64]) -> f64 {
 fn compute_sure(y: &[f64], f: &[f64], sigma2: f64, config: &SegmentModelConfig) -> f64 {
     let n = y.len() as f64;
     let residual: f64 = y
-        .iter()
-        .zip(f.iter())
+        .par_iter()
+        .zip(f.par_iter())
         .map(|(yi, fi)| (yi - fi).powi(2))
         .sum();
 
@@ -670,17 +570,20 @@ fn compute_sure(y: &[f64], f: &[f64], sigma2: f64, config: &SegmentModelConfig) 
 fn block_resampled_sure(y: &[f64], lambda: f64, sigma2: f64, config: &SegmentModelConfig) -> f64 {
     let n = y.len();
     let num_blocks = (n + config.block_size - 1) / config.block_size; // Ceiling division
-    let mut sure_sum = 0.0;
 
-    for i in 0..num_blocks {
-        let start = i * config.block_size;
-        let end = ((i + 1) * config.block_size).min(n);
-        let block = &y[start..end];
-        // Use the available tv_denoise and compute_sure functions on the block.
-        let denoised_block = tv1d::condat(block, lambda);
-        let sure_block = compute_sure(block, &denoised_block, sigma2, &config);
-        sure_sum += sure_block;
-    }
+    let sure_sum: f64 = (0..num_blocks)
+        .into_par_iter()
+        .map(|i| {
+            let start = i * config.block_size;
+            let end = ((i + 1) * config.block_size).min(n);
+            let block = &y[start..end];
+            // Use the available tv_denoise and compute_sure functions on the block.
+            let denoised_block = tv1d::condat(block, lambda);
+            let sure_block = compute_sure(block, &denoised_block, sigma2, &config);
+            sure_block
+        })
+        .sum();
+
     sure_sum / (num_blocks as f64)
 }
 
@@ -689,48 +592,75 @@ fn block_resampled_sure(y: &[f64], lambda: f64, sigma2: f64, config: &SegmentMod
 /// is searched around the best coarse candidate.
 fn refined_candidate_grid(y: &[f64], sigma2: f64, config: &SegmentModelConfig) -> (f64, Vec<f64>) {
     // --- Coarse Grid Search ---
-    let lambda_min = 0.001;
-    let lambda_max = 2.0;
-    let coarse_steps = 20;
+    let lambda_min = config.lambda_min;
+    let lambda_max = config.lambda_max;
+    let coarse_steps = config.coarse_steps;
 
-    let mut best_lambda = 0.0;
-    let mut best_sure = std::f64::INFINITY;
-    let mut best_denoised = Vec::new();
+    let coarse_candidates: Vec<(f64, f64, Vec<f64>)> = (0..coarse_steps)
+        .into_par_iter()
+        .map(|i| {
+            let lambda =
+                lambda_min + (lambda_max - lambda_min) * (i as f64) / ((coarse_steps - 1) as f64);
+            let sure = block_resampled_sure(y, lambda, sigma2, config);
+            let denoised = tv1d::condat(y, lambda);
+            (lambda, sure, denoised)
+        })
+        .collect();
+    let (mut best_lambda, mut best_sure, mut best_denoised) = coarse_candidates
+        .into_iter()
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .unwrap();
 
-    for i in 0..coarse_steps {
-        let lambda =
-            lambda_min + (lambda_max - lambda_min) * (i as f64) / ((coarse_steps - 1) as f64);
-        let sure = block_resampled_sure(y, lambda, sigma2, config);
-        if sure < best_sure {
-            best_sure = sure;
-            best_lambda = lambda;
-            best_denoised = tv1d::condat(y, lambda);
-        }
-    }
-
-    // --- Refined Grid Search ---
-    // Define a refinement range around the best lambda from the coarse search.
-    let refinement_range = best_lambda * 0.5; // for example, search ±50% around best_lambda
+    // Updated refined grid search:
+    let refinement_range = best_lambda * 0.5;
     let refined_lambda_min = if best_lambda > refinement_range {
         best_lambda - refinement_range
     } else {
         0.0
     };
     let refined_lambda_max = best_lambda + refinement_range;
-    let refined_steps = 20;
 
-    for i in 0..refined_steps {
-        let lambda = refined_lambda_min
-            + (refined_lambda_max - refined_lambda_min) * (i as f64) / ((refined_steps - 1) as f64);
-        let sure = block_resampled_sure(y, lambda, sigma2, config);
+    let refined_candidates: Vec<(f64, f64, Vec<f64>)> = (0..config.refined_steps)
+        .into_par_iter()
+        .map(|i| {
+            let lambda = refined_lambda_min
+                + (refined_lambda_max - refined_lambda_min) * (i as f64)
+                    / ((config.refined_steps - 1) as f64);
+            let sure = block_resampled_sure(y, lambda, sigma2, config);
+            let denoised = tv1d::condat(y, lambda);
+            (lambda, sure, denoised)
+        })
+        .collect();
+    if let Some((lambda, sure, denoised)) = refined_candidates
+        .into_iter()
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+    {
         if sure < best_sure {
-            best_sure = sure;
             best_lambda = lambda;
-            best_denoised = tv1d::condat(y, lambda);
+            best_sure = sure;
+            best_denoised = denoised;
         }
     }
 
     (best_lambda, best_denoised)
+}
+
+fn mean_variance_welford(data: &[f64]) -> (f64, f64) {
+    let mut n = 0;
+    let mut mean = 0.0;
+    let mut m2 = 0.0;
+    for &x in data {
+        n += 1;
+        let delta = x - mean;
+        mean += delta / (n as f64);
+        let delta2 = x - mean;
+        m2 += delta * delta2;
+    }
+    if n > 1 {
+        (mean, m2 / (n as f64 - 1.0))
+    } else {
+        (mean, 0.0)
+    }
 }
 
 /// Perform Welch’s t–test on two samples and return the two–tailed p–value.
@@ -741,10 +671,8 @@ fn welch_t_test(sample1: &[f64], sample2: &[f64]) -> f64 {
     if n1 < 2 || n2 < 2 {
         return 1.0;
     }
-    let mean1 = sample1.mean();
-    let mean2 = sample2.mean();
-    let var1 = sample1.variance();
-    let var2 = sample2.variance();
+    let (mean1, var1) = mean_variance_welford(sample1);
+    let (mean2, var2) = mean_variance_welford(sample2);
     let se = (var1 / (n1 as f64) + var2 / (n2 as f64)).sqrt();
     if se == 0.0 {
         return 1.0;
@@ -865,10 +793,10 @@ impl DmrConfig {
         }
     }
 
-    pub fn try_finish<F, R>(&self, readers: Vec<(R, F)>) -> anyhow::Result<DmrIterator<F, R>>
+    pub fn try_finish<F, R>(&self, readers: Vec<(R, F)>) -> anyhow::Result<DmrIterator<R>>
     where
         F: Read + Seek + Send + Sync + 'static,
-        R: Display + Eq + Hash + Clone + Default + std::fmt::Debug,
+        R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + Send + 'static,
     {
         let sample_mapping: HashMap<uuid::Uuid, (R, F)> = HashMap::from_iter(
             readers
@@ -898,19 +826,43 @@ impl DmrConfig {
                 .into_iter()
                 .map(|(id, (_, handle))| (id, BsxFileReader::new(handle))),
         );
-        let multi_reader =
-            MultiBsxFileReader::try_new(readers_mapping).map_err(|e| anyhow!("{:?}", e))?;
+
         let config_copy = self.clone();
 
+        let (sender, receiver) = std::sync::mpsc::sync_channel(10);
+        let last_chr = Arc::new(String::new());
+        let ref_idset = RefIDSet::new();
+
+        let group_mapping_clone = group_mapping.clone();
+        let mut multi_reader =
+            MultiBsxFileReader::try_new(readers_mapping).map_err(|e| anyhow!("{:?}", e))?;
+        let reader_stat = ReaderMetadata::new(multi_reader.blocks_total());
+
+        let join_handle = std::thread::spawn(move || {
+            let group_mapping = group_mapping_clone;
+
+            while let Some(batches) = multi_reader.next() {
+                let labels = batches
+                    .iter()
+                    .map(|(id, _)| group_mapping.get(id).unwrap().clone())
+                    .collect();
+                let data = batches.into_iter().map(|(_, batch)| batch).collect();
+                let group = EncodedBsxBatchGroup::try_new(data, Some(labels)).unwrap();
+                sender.send(Some(group)).unwrap();
+            }
+            sender.send(None).unwrap();
+        });
+
         let out = DmrIterator {
-            group_mapping,
-            multi_reader,
             config: config_copy,
-            ref_idset: RefIDSet::new(),
+            ref_idset,
             group_pair: group_order,
             leftover: None,
             regions_cache: Vec::new(),
-            last_chr: Arc::new(String::new()),
+            last_chr,
+            receiver,
+            reader_stat,
+            _join_handle: join_handle,
         };
 
         Ok(out)
@@ -930,45 +882,45 @@ impl Default for DmrConfig {
     }
 }
 
-pub struct DmrIterator<F, R>
+struct ReaderMetadata {
+    blocks_total: usize,
+    current_block: usize,
+}
+
+impl ReaderMetadata {
+    fn new(blocks_total: usize) -> Self {
+        Self {
+            blocks_total,
+            current_block: 0,
+        }
+    }
+}
+
+pub struct DmrIterator<R>
 where
-    F: Read + Seek + Send + Sync + 'static,
     R: Display + Eq + Hash + Clone + Default,
 {
     config: DmrConfig,
-    group_mapping: HashMap<uuid::Uuid, R>,
-    multi_reader: MultiBsxFileReader<uuid::Uuid, F>,
     group_pair: (R, R),
     ref_idset: RefIDSet<Arc<String>>,
-    leftover: Option<(MethylatedRegion, MethylatedRegion)>,
+    leftover: Option<(MethylatedRegionOwned, MethylatedRegionOwned)>,
     regions_cache: Vec<DMRegion>,
     last_chr: Arc<String>,
+    receiver: std::sync::mpsc::Receiver<Option<EncodedBsxBatchGroup<R>>>,
+    reader_stat: ReaderMetadata,
+    _join_handle: std::thread::JoinHandle<()>,
 }
 
-impl<F, R> DmrIterator<F, R>
+impl<R> DmrIterator<R>
 where
-    F: Read + Seek + Send + Sync + 'static,
-    R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + std::marker::Sync,
+    R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + Sync,
 {
-    fn read_batch_group(&mut self) -> Option<anyhow::Result<EncodedBsxBatchGroup<R>>> {
-        if let Some(batches) = self.multi_reader.next() {
-            let labels = batches
-                .iter()
-                .map(|(id, _)| self.group_mapping.get(id).unwrap().clone())
-                .collect();
-            let data = batches.into_iter().map(|(_, batch)| batch).collect();
-            Some(EncodedBsxBatchGroup::try_new(data, Some(labels)))
-        } else {
-            None
-        }
-    }
-
     pub fn blocks_total(&self) -> usize {
-        self.multi_reader.blocks_total()
+        self.reader_stat.blocks_total
     }
 
     pub fn current_block(&self) -> usize {
-        self.multi_reader.current_batch_idx()
+        self.reader_stat.current_block
     }
 
     /// Processes a group of methylation data, applies filters, and performs statistical tests.
@@ -996,21 +948,25 @@ where
         // Handle leftover regions from the previous group
         if let Some((leftover_left, leftover_right)) = self.leftover.take() {
             if new_chr != self.last_chr {
-                self.regions_cache.push(self.bbinom_test(
+                self.regions_cache.push(Self::bbinom_test(
                     self.last_chr.clone(),
-                    &leftover_left,
-                    &leftover_right,
+                    leftover_left.as_view(),
+                    leftover_right.as_view(),
+                    Arc::new(self.config.segment_model.clone()),
                 )?);
             } else {
-                region_left = leftover_left.concat(region_left);
-                region_right = leftover_right.concat(region_right);
+                region_left =
+                    MethylatedRegionView::concat(leftover_left.as_view(), region_left.as_view());
+                region_right =
+                    MethylatedRegionView::concat(leftover_right.as_view(), region_right.as_view());
             }
         }
 
         self.last_chr = new_chr.clone();
 
         // Get intersecting indices between the left and right regions
-        let intersecting_indices = self.get_intersecting_indices(&region_left, &region_right)?;
+        let intersecting_indices =
+            self.get_intersecting_indices(region_left.as_view(), region_right.as_view())?;
 
         // If there are no intersecting indices, return early
         if intersecting_indices.is_empty() {
@@ -1077,35 +1033,35 @@ where
         &self,
         group_left: &EncodedBsxBatchGroup<R>,
         group_right: &EncodedBsxBatchGroup<R>,
-    ) -> anyhow::Result<(MethylatedRegion, MethylatedRegion)> {
+    ) -> anyhow::Result<(MethylatedRegionOwned, MethylatedRegionOwned)> {
         let positions = group_left.get_positions()?;
-        let region_left = MethylatedRegion::new(
+        let region_left = MethylatedRegionOwned::new(
+            positions.clone(),
             group_left.get_average_density(true)?,
             group_left.get_sum_counts_m()?,
             group_left.get_sum_counts_total()?,
-            positions.clone(),
         );
-        let region_right = MethylatedRegion::new(
+        let region_right = MethylatedRegionOwned::new(
+            positions,
             group_right.get_average_density(true)?,
             group_right.get_sum_counts_m()?,
             group_right.get_sum_counts_total()?,
-            positions,
         );
         Ok((region_left, region_right))
     }
 
     fn get_intersecting_indices(
         &self,
-        region_left: &MethylatedRegion,
-        region_right: &MethylatedRegion,
+        region_left: MethylatedRegionView,
+        region_right: MethylatedRegionView,
     ) -> anyhow::Result<Vec<(usize, usize)>> {
         let segments_left = region_left.segment_indices(&self.config.segment_model);
         let segments_right = region_right.segment_indices(&self.config.segment_model);
-        let positions = region_left.positions();
+        let positions = region_left.positions;
         Ok(filter_intersecting_indices(
             &segments_left,
             &segments_right,
-            &positions,
+            positions,
             self.config.segment_model.union_threshold,
         ))
     }
@@ -1113,20 +1069,24 @@ where
     fn update_cache(
         &mut self,
         chr: Arc<String>,
-        region_left: MethylatedRegion,
-        region_right: MethylatedRegion,
+        region_left: MethylatedRegionOwned,
+        region_right: MethylatedRegionOwned,
         intersecting_indices: Vec<(usize, usize)>,
     ) -> anyhow::Result<()> {
         let mut left = region_left.slice_multiple(&intersecting_indices);
         let mut right = region_right.slice_multiple(&intersecting_indices);
 
-        self.leftover = Some((left.pop().unwrap(), right.pop().unwrap()));
+        self.leftover = Some((
+            left.pop().unwrap().to_owned(),
+            right.pop().unwrap().to_owned(),
+        ));
+        let config = Arc::new(self.config.segment_model.clone());
 
         let mut new_cache = left
             .clone()
             .into_par_iter()
             .zip(right.clone().into_par_iter())
-            .map(|(left, right)| self.bbinom_test(chr.clone(), &left, &right))
+            .map(|(left, right)| Self::bbinom_test(chr.clone(), left, right, config.clone()))
             .collect::<anyhow::Result<Vec<DMRegion>>>()?;
 
         self.regions_cache.append(&mut new_cache);
@@ -1134,10 +1094,10 @@ where
     }
 
     fn bbinom_test(
-        &self,
         chr: Arc<String>,
-        left: &MethylatedRegion,
-        right: &MethylatedRegion,
+        left: MethylatedRegionView,
+        right: MethylatedRegionView,
+        config: Arc<SegmentModelConfig>,
     ) -> anyhow::Result<DMRegion> {
         let left_obs = left.to_beta_binom_observations();
         let right_obs = right.to_beta_binom_observations();
@@ -1145,27 +1105,27 @@ where
         let null = fit_null_model(
             left_obs.clone(),
             right_obs.clone(),
-            self.config.segment_model.base_null,
-            self.config.segment_model.epsilon,
-            self.config.segment_model.max_iters,
+            config.base_null,
+            config.epsilon,
+            config.max_iters,
         );
         let alt = fit_alt_model(
             left_obs,
             right_obs,
-            self.config.segment_model.base_alt,
-            self.config.segment_model.epsilon,
-            self.config.segment_model.max_iters,
+            config.base_alt,
+            config.epsilon,
+            config.max_iters,
         );
 
         if let (Ok(null), Ok(alt)) = (null, alt) {
             let p_value = likelihood_ratio_test(null, alt, 1);
             Ok(DMRegion::new(
                 chr,
-                left.positions().first().cloned().unwrap_or(0),
-                left.positions().last().cloned().unwrap_or(0),
+                left.positions.first().cloned().unwrap_or(0),
+                left.positions.last().cloned().unwrap_or(0),
                 p_value,
-                left.density().mean(),
-                right.density().mean(),
+                left.density.mean(),
+                right.density.mean(),
                 left.size(),
             ))
         } else {
@@ -1174,28 +1134,36 @@ where
     }
 }
 
-impl<F, R> Iterator for DmrIterator<F, R>
+impl<R> Iterator for DmrIterator<R>
 where
-    F: Read + Seek + Send + Sync + 'static,
     R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + Sync,
 {
-    type Item = DMRegion;
+    type Item = (usize, DMRegion);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(region) = self.regions_cache.pop() {
-            Some(region)
+            Some((self.current_block(), region))
         } else {
-            match self.read_batch_group() {
-                Some(Ok(group)) => {
-                    if let Err(e) = self.process_group(group) {
-                        error!("Error processing group: {}", e);
+            if let Ok(new_group) = self.receiver.recv() {
+                match new_group {
+                    Some(group) => {
+                        self.reader_stat.current_block += 1;
+                        if let Err(e) = self.process_group(group) {
+                            error!("Error processing group: {}", e);
+                        }
                     }
+                    None => {}
                 }
-                Some(Err(e)) => {
-                    error!("Error reading group: {}", e);
-                }
-                None => {
-                    return None;
+            } else {
+                if let Some(leftover) = self.leftover.take() {
+                    let p_value = Self::bbinom_test(
+                        self.last_chr.clone(),
+                        leftover.0.as_view(),
+                        leftover.1.as_view(),
+                        Arc::new(self.config.segment_model.clone()),
+                    )
+                    .expect("Error fitting models");
+                    self.regions_cache.push(p_value);
                 }
             }
             self.next()

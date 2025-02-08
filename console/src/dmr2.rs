@@ -140,6 +140,7 @@ pub fn run(
     group_b: Vec<String>,
     output: PathBuf,
     force: bool,
+    progress: bool,
 ) {
     let a_paths = expand_wildcards(group_a);
     let b_paths = expand_wildcards(group_b);
@@ -173,15 +174,6 @@ pub fn run(
             style(output.display()).red()
         );
     }
-
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-            .template("{spinner} {msg}")
-            .expect("Failed to set spinner template"),
-    );
-    spinner.set_message("Processing...");
 
     let context = match filters.context {
         DmrContext::CG => Context::CG,
@@ -230,22 +222,62 @@ pub fn run(
         .try_finish(labeled)
         .expect("Failed to initialize DMR iterator");
 
+    let mut progress_bar = if progress {
+        let progress_bar = ProgressBar::new(dmr_iterator.blocks_total() as u64);
+        progress_bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}, ETA: {eta}] [{bar:40.cyan/blue}] {pos:>5.green}/{len:5} {msg}").expect("Failed to create progress bar style")
+                .progress_chars("#>-"),
+        );
+        progress_bar.set_message("Processing...");
+        Some(progress_bar)
+    } else {
+        None
+    };
+
     let mut dmrs = Vec::new();
     let mut p_values = Vec::new();
+    let mut last_batch_idx = 0;
     let mut count = 0;
-    for dmr in dmr_iterator {
+
+    let mut writer = BufWriter::new(
+        File::create(
+            output
+                .with_added_extension("segments")
+                .with_added_extension("tsv"),
+        )
+        .expect("Failed to open output file"),
+    );
+    for (batch_idx, dmr) in dmr_iterator {
+        if let Some(progress_bar) = progress_bar.as_mut() {
+            if batch_idx != last_batch_idx {
+                progress_bar.inc(batch_idx as u64 - last_batch_idx as u64);
+                last_batch_idx = batch_idx;
+            }
+
+            progress_bar.set_message(format!(
+                "{}{}",
+                style(format!("{}:", dmr.chr.as_str())).blue(),
+                style(format!("{}-{}", dmr.start, dmr.end)).green(),
+            ));
+        }
+
         count += 1;
-        spinner.inc(1);
-        spinner.set_message(format!(
-            "Processed {} Regions. {}:{}-{}",
-            style(count).green().bold(),
-            dmr.chr.as_str(),
-            dmr.start,
-            dmr.end
-        ));
 
         if dmr.n_cytosines >= filters.min_cytosines && dmr.meth_diff() >= filters.diff_threshold {
             p_values.push(dmr.p_value);
+
+            writeln!(
+                &mut writer,
+                "{}\t{}\t{}\t{}\t{}",
+                dmr.chr.as_str(),
+                dmr.start,
+                dmr.end,
+                dmr.p_value,
+                dmr.meth_diff()
+            )
+            .unwrap();
+
             dmrs.push(dmr);
         }
     }
@@ -257,7 +289,7 @@ pub fn run(
 
     let mut adjusted_p_values = vec![0.0; m];
     for (i, (index, p_value)) in sorted_p_values.iter().enumerate() {
-        adjusted_p_values[*index] = p_value * m as f64 / (i + 1) as f64;
+        adjusted_p_values[*index] = (*p_value * m as f64 / (i + 1) as f64).min(1.0);
     }
 
     // Ensure the adjusted p-values are monotonic
@@ -272,7 +304,14 @@ pub fn run(
         dmr.p_value = *adj_p_value;
     }
 
-    let mut writer = BufWriter::new(File::create(output).expect("Failed to open output file"));
+    let mut writer = BufWriter::new(
+        File::create(
+            output
+                .with_added_extension("segments")
+                .with_added_extension("tsv"),
+        )
+        .expect("Failed to open output file"),
+    );
     for dmr in dmrs {
         if dmr.p_value < filters.q_value {
             writeln!(
