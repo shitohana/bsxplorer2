@@ -46,7 +46,7 @@ ndarray = "0.16.1"
 uuid = { version="1.12.1" , features = ["serde"]}
 argmin = { version = "0.10.0", features = ["rayon"] }
 argmin-math = { version = "0.4.0", features = ["vec"]}
-rust-lapper = "1.1.0"
+adjustp = "0.1.6"
 
 [dependencies.pyo3-polars]
 version = "0.19.0"

@@ -1,11 +1,11 @@
 #![feature(path_add_extension)]
 
-mod dmr2;
-mod dmr;
+mod dmr_binom;
+mod dmr_fast;
 mod convert;
 
-use crate::dmr::{FilterArgs, SegmentationArgs};
-use crate::dmr2::{FilterArgs2, SegmentationArgs2};
+use crate::dmr_fast::{FilterArgs, SegmentationArgs};
+use crate::dmr_binom::{SegmentationArgs2};
 use clap::{Parser, Subcommand, ValueEnum};
 use glob::glob;
 use std::path::PathBuf;
@@ -44,6 +44,10 @@ enum Commands {
         filters: FilterArgs,
         #[arg(short, long, required = false, default_value_t = false, help = "Automatically confirm selected paths.")]
         force: bool,
+        #[arg(long, required = false, default_value_t = true, help = "Display progress bar (Disable if you need clean pipeline logs).")]
+        progress: bool,
+        #[arg(long, required = false, default_value_t = 1, help = "Number of threads to use.")]
+        threads: usize,
         #[clap(flatten)]
         segmentation: SegmentationArgs,
     },
@@ -61,11 +65,13 @@ enum Commands {
         #[arg(short='o', long, required = true, help = "Prefix for the generated output files.")]
         output: PathBuf,
         #[clap(flatten)]
-        filters: FilterArgs2,
+        filters: FilterArgs,
         #[arg(short, long, required = false, default_value_t = false, help = "Automatically confirm selected paths.")]
         force: bool,
         #[arg(long, required = false, default_value_t = true, help = "Display progress bar (Disable if you need clean pipeline logs).")]
         progress: bool,
+        #[arg(long, required = false, default_value_t = 1, help = "Number of threads to use.")]
+        threads: usize,
         #[clap(flatten)]
         segmentation: SegmentationArgs2,
     },
@@ -109,7 +115,9 @@ fn main() {
             group_b, 
             output ,
             force,
-        } => dmr::run(filters, segmentation, group_a, group_b, output, force),
+            threads,
+            progress,
+        } => dmr_fast::run(filters, segmentation, group_a, group_b, output, force, threads, progress),
 
         Commands::Dmr2 {
             filters,
@@ -118,8 +126,9 @@ fn main() {
             group_b,
             output ,
             force,
+            threads,
             progress,
-        } => dmr2::run(filters, segmentation, group_a, group_b, output, force, progress),
+        } => dmr_binom::run(filters, segmentation, group_a, group_b, output, force, threads, progress),
 
         Commands::Convert {
             input,
