@@ -1,7 +1,10 @@
+use num::{PrimInt, Unsigned};
 #[cfg(feature = "python")]
 use pyo3::pyclass;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::fmt::Display;
+use std::hash::Hash;
 
 pub trait IPCEncodedEnum {
     fn from_bool(value: Option<bool>) -> Self;
@@ -137,3 +140,15 @@ impl IPCEncodedEnum for Strand {
         }
     }
 }
+
+pub trait PosNum: PrimInt + Unsigned + Clone + Serialize + Display + Sync {}
+
+impl<T> PosNum for T where T: PrimInt + Unsigned + Clone + Serialize + Display + Sync {}
+
+pub trait RefId: Eq + Hash + From<String> + Clone + Default {}
+
+impl<T> RefId for T where T: Eq + Hash + From<String> + Clone + Default {}
+
+pub trait Data: Sized + Clone {}
+
+impl<T> Data for T where T: Sized + Clone {}

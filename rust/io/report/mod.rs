@@ -13,10 +13,8 @@ mod report_read_utils {
     use crate::io::report::read::{ContextData, ReadQueueItem};
     use crate::io::report::schema::ReportTypeSchema;
     use crate::utils;
+    use crate::utils::types::PosNum;
     use crate::utils::types::Strand;
-    use num::Unsigned;
-    use polars::export::num::PrimInt;
-    use serde::Serialize;
     use std::io::{BufRead, Seek};
 
     pub(crate) fn get_context_data<R>(
@@ -87,9 +85,7 @@ mod report_read_utils {
         maintain_order: MaintainOrderJoin::Left,
     };
 
-    pub(crate) fn align_data_with_context<
-        N: PrimInt + Unsigned + Serialize + Default + std::fmt::Display,
-    >(
+    pub(crate) fn align_data_with_context<N: PosNum>(
         data_frame: &DataFrame,
         context_data: ContextData<N>,
     ) -> PolarsResult<DataFrame> {

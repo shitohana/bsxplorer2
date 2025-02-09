@@ -1,4 +1,5 @@
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
+use crate::utils::types::PosNum;
 use crate::utils::types::Strand;
 use bio::io::fasta::*;
 use hashbrown::HashMap;
@@ -39,7 +40,7 @@ where
         region_coordinates: RegionCoordinates<N>,
     ) -> Result<Vec<u8>, Box<dyn Error>>
     where
-        N: PrimInt + Unsigned + Display + Serialize,
+        N: PosNum,
     {
         if let Some(seq_data) = self.get_record_metadata(region_coordinates.chr()) {
             if seq_data.len < region_coordinates.end().to_u64().unwrap() {
@@ -125,7 +126,7 @@ where
 impl<R, V> FastaCoverageReader<R, V>
 where
     R: Read + BufRead + Seek,
-    V: PrimInt + Unsigned + ToPrimitive,
+    V: PosNum,
 {
     pub fn new(fasta_reader: FastaReader<R>) -> Self {
         Self::from(fasta_reader)
@@ -151,7 +152,7 @@ where
         &mut self.coverage
     }
 
-    pub fn get_seq_until<N: PrimInt + Unsigned + Display + Serialize>(
+    pub fn get_seq_until<N: PosNum>(
         &mut self,
         position: &GenomicPosition<N>,
     ) -> Result<Vec<u8>, Box<dyn Error>> {

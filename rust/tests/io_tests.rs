@@ -9,7 +9,7 @@ use _lib::io::bsx::read::BsxFileReader;
 use _lib::io::bsx::write::BsxIpcWriter;
 use _lib::io::report::read::{ContextData, ReportReaderBuilder};
 use _lib::io::report::schema::ReportTypeSchema;
-use _lib::utils::types::{Context, IPCEncodedEnum};
+use _lib::utils::types::{Context, IPCEncodedEnum, PosNum};
 use _lib::utils::{decode_context, decode_strand};
 use hashbrown::HashSet;
 use itertools::Itertools;
@@ -22,8 +22,10 @@ use rand_chacha::ChaCha8Rng;
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::Display;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Write};
@@ -567,7 +569,7 @@ fn context_data_to_bsx<N>(
     chr_name: &str,
 ) -> PolarsResult<DataFrame>
 where
-    N: PrimInt + Unsigned,
+    N: PosNum,
 {
     let mut result_df = context_data.into_dataframe()?;
     result_df.with_column(Series::new(

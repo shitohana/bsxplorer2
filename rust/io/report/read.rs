@@ -3,6 +3,7 @@ use crate::data_structs::bsx_batch::BsxBatch;
 use crate::data_structs::region::GenomicPosition;
 use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
 use crate::io::report::schema::ReportTypeSchema;
+use crate::utils::types::PosNum;
 #[cfg(feature = "python")]
 use crate::utils::wrap_box_result;
 use crate::utils::{first_position, last_position};
@@ -214,14 +215,14 @@ where
 
 pub struct ContextData<N>
 where
-    N: PrimInt + Unsigned + Serialize + Display,
+    N: PosNum,
 {
     positions: Vec<N>,
     contexts: Vec<Option<bool>>,
     strands: Vec<bool>,
 }
 
-impl<N: PrimInt + Unsigned + Serialize + Display> ContextData<N> {
+impl<N: PosNum> ContextData<N> {
     pub fn len(&self) -> usize {
         self.contexts.len()
     }

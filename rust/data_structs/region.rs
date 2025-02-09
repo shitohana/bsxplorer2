@@ -8,27 +8,18 @@ use std::fmt::{Display, Formatter};
 use std::ops::{Add, Shr, Sub};
 
 #[derive(Debug, Clone, Serialize)]
-pub struct GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+pub struct GenomicPosition<N: PosNum> {
     chr: String,
     position: N,
 }
 
-impl<N> Display for GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> Display for GenomicPosition<N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.chr, self.position)
     }
 }
 
-impl<N> GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> GenomicPosition<N> {
     pub fn new(chr: String, position: N) -> GenomicPosition<N> {
         GenomicPosition { chr, position }
     }
@@ -42,39 +33,27 @@ where
     }
 }
 
-impl<N> Add<N> for GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> Add<N> for GenomicPosition<N> {
     type Output = GenomicPosition<N>;
     fn add(self, rhs: N) -> Self::Output {
         GenomicPosition::new(self.chr, self.position + rhs)
     }
 }
 
-impl<N> Sub<N> for GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> Sub<N> for GenomicPosition<N> {
     type Output = GenomicPosition<N>;
     fn sub(self, rhs: N) -> Self::Output {
         GenomicPosition::new(self.chr, self.position - rhs)
     }
 }
 
-impl<N> PartialEq for GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> PartialEq for GenomicPosition<N> {
     fn eq(&self, other: &Self) -> bool {
         self.chr == other.chr && self.position == other.position
     }
 }
 
-impl<N> PartialOrd for GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> PartialOrd for GenomicPosition<N> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.chr == other.chr {
             Some(self.position.cmp(&other.position))
@@ -84,10 +63,7 @@ where
     }
 }
 
-impl<N> Shr for GenomicPosition<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> Shr for GenomicPosition<N> {
     type Output = Option<RegionCoordinates<N>>;
 
     fn shr(self, rhs: Self) -> Self::Output {
@@ -117,20 +93,14 @@ where
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize)]
-pub struct RegionCoordinates<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+pub struct RegionCoordinates<N: PosNum> {
     pub chr: String,
     pub start: N,
     pub end: N,
     pub strand: Strand,
 }
 
-impl<N> RegionCoordinates<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> RegionCoordinates<N> {
     pub fn new(chr: String, start: N, end: N, strand: Strand) -> Self {
         assert!(
             start <= end,
@@ -223,10 +193,7 @@ where
     }
 }
 
-impl<N> Display for RegionCoordinates<N>
-where
-    N: PrimInt + Unsigned + Clone + Serialize + Display,
-{
+impl<N: PosNum> Display for RegionCoordinates<N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}-{}", self.chr, self.start, self.end)
     }
@@ -370,6 +337,7 @@ mod python {
     }
 }
 
+use crate::utils::types::PosNum;
 use crate::utils::types::Strand;
 #[cfg(feature = "python")]
 pub(crate) use python::{PyGenomicPosition, PyRegionCoordinates};
