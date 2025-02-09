@@ -1,6 +1,7 @@
 #[cfg(feature = "python")]
 use pyo3::pyclass;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
 pub trait IPCEncodedEnum {
     fn from_bool(value: Option<bool>) -> Self;
@@ -16,6 +17,29 @@ pub enum Context {
     CG,
     CHG,
     CHH,
+}
+
+impl PartialOrd<Self> for Context {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Context {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self == other {
+            Ordering::Equal
+        } else {
+            match (self, other) {
+                (Context::CG, _) => Ordering::Greater,
+                (_, Context::CG) => Ordering::Less,
+                (Context::CHG, _) => Ordering::Greater,
+                (_, Context::CHG) => Ordering::Less,
+                (Context::CHH, _) => Ordering::Greater,
+                (_, Context::CHH) => Ordering::Less,
+            }
+        }
+    }
 }
 
 impl IPCEncodedEnum for Context {
@@ -58,6 +82,29 @@ pub enum Strand {
     Forward,
     Reverse,
     None,
+}
+
+impl PartialOrd<Self> for Strand {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Strand {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self == other {
+            Ordering::Equal
+        } else {
+            match (self, other) {
+                (Strand::Forward, _) => Ordering::Greater,
+                (_, Strand::Forward) => Ordering::Less,
+                (Strand::Reverse, _) => Ordering::Greater,
+                (_, Strand::Reverse) => Ordering::Less,
+                (Strand::None, _) => Ordering::Greater,
+                (_, Strand::None) => Ordering::Less,
+            }
+        }
+    }
 }
 
 impl IPCEncodedEnum for Strand {

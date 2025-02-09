@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use polars::prelude::*;
 use std::error::Error;
 
@@ -14,8 +13,10 @@ mod report_read_utils {
     use crate::io::report::read::{ContextData, ReadQueueItem};
     use crate::io::report::schema::ReportTypeSchema;
     use crate::utils;
+    use crate::utils::types::Strand;
     use num::Unsigned;
     use polars::export::num::PrimInt;
+    use serde::Serialize;
     use std::io::{BufRead, Seek};
 
     pub(crate) fn get_context_data<R>(
@@ -50,7 +51,8 @@ mod report_read_utils {
         } else {
             last_position.position() as u64 + sequence_overhead
         };
-        let fetch_region = RegionCoordinates::new(chr.to_string(), fetch_start, fetch_end);
+        let fetch_region =
+            RegionCoordinates::new(chr.to_string(), fetch_start, fetch_end, Strand::None);
 
         let sequence = reader.inner_mut().fetch_region(fetch_region.clone())?;
         let context_data = ContextData::from_sequence(&sequence, fetch_region.start_gpos() + 1)
@@ -85,7 +87,9 @@ mod report_read_utils {
         maintain_order: MaintainOrderJoin::Left,
     };
 
-    pub(crate) fn align_data_with_context<N: PrimInt + Unsigned>(
+    pub(crate) fn align_data_with_context<
+        N: PrimInt + Unsigned + Serialize + Default + std::fmt::Display,
+    >(
         data_frame: &DataFrame,
         context_data: ContextData<N>,
     ) -> PolarsResult<DataFrame> {

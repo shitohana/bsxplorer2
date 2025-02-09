@@ -1,0 +1,5 @@
+DMRs are identified using modified MethyLasso (doi: 10.1093/nar/gkae880)
+fused-lasso algorithm.
+
+This algorithm uses beta-binomial model fitting and SURE-based optimal lambda
+approximation algorithm.

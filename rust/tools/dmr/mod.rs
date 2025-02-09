@@ -12,7 +12,7 @@ use anyhow::anyhow;
 use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 use meth_region::{MethylatedRegionOwned, MethylatedRegionView};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -193,7 +193,14 @@ where
 
     fn region_cache(&mut self) -> &mut Vec<DMRegion>;
     fn receiver(&mut self) -> &std::sync::mpsc::Receiver<Option<EncodedBsxBatchGroup<R>>>;
-    fn process_last_leftover(&mut self);
+    fn process_last_leftover(&mut self) -> Option<DMRegion>;
+}
+
+fn serialize_scientific<S>(x: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&format!("{:e}", x))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,10 +208,13 @@ pub struct DMRegion {
     pub chr: String,
     pub start: u32,
     pub end: u32,
+    #[serde(serialize_with = "serialize_scientific")]
     pub p_value: f64,
     pub meth_left: f64,
     pub meth_right: f64,
     pub n_cytosines: usize,
+    pub meth_diff: f64,
+    pub meth_mean: f64,
 }
 
 impl DMRegion {
@@ -225,6 +235,8 @@ impl DMRegion {
             meth_left,
             meth_right,
             n_cytosines,
+            meth_diff: meth_left - meth_right,
+            meth_mean: (meth_left + meth_right) / 2.0,
         }
     }
 

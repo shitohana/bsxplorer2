@@ -1,7 +1,6 @@
 use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
-use crate::io::bsx::region_read::BsxFileReader;
+use crate::io::bsx::read::BsxFileReader;
 use itertools::Itertools;
-use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;

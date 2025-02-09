@@ -1,5 +1,5 @@
 use _lib::data_structs::bsx_batch::BsxBatchMethods;
-use _lib::io::bsx::region_read::BsxFileReader;
+use _lib::io::bsx::read::BsxFileReader;
 use _lib::io::bsx::write::{BsxIpcWriter, PolarsIpcCompression};
 use _lib::io::report::read::ReportReaderBuilder;
 use _lib::io::report::schema::ReportTypeSchema;

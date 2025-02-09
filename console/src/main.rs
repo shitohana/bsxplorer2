@@ -3,6 +3,7 @@
 mod dmr_binom;
 mod dmr_fast;
 mod convert;
+mod stats;
 
 use crate::dmr_fast::{FilterArgs, SegmentationArgs};
 use crate::dmr_binom::{SegmentationArgs2};
@@ -24,14 +25,15 @@ struct Cli {
     command: Commands,
 }
 
-const DMR_ABOUT: &'static str = "BSXplorer DMR identification algorithm";
+const DMR_ABOUT_FAST: &'static str = "BSXplorer DMR fast identification algorithm.";
+const DMR_ABOUT: &'static str = "BSXplorer DMR Beta-binomial identification algorithm.";
 const CONVERT_ABOUT: &'static str = "BSXplorer report type conversion tool";
 #[derive(Subcommand, Debug)]
 enum Commands {
     #[command(
-        about = DMR_ABOUT, 
+        about = DMR_ABOUT_FAST,
         name = "dmrfast",
-        after_help = include_str!("strings/dmr_ahelp.txt"),
+        after_help = include_str!("strings/dmr_fast_ahelp.txt"),
     )]
     Dmr {
         #[arg(value_parser, short='A', long, required = true, help = "Paths to BSX files of the first sample group.")]
@@ -55,7 +57,7 @@ enum Commands {
     #[command(
         about = DMR_ABOUT, 
         name = "dmr",
-        after_help = include_str!("strings/dmr_ahelp.txt"),
+        after_help = include_str!("strings/dmr_binom_ahelp.txt"),
     )]
     Dmr2 {
         #[arg(value_parser, short='A', long, required = true, help = "Paths to BSX files of the first sample group.")]
@@ -94,6 +96,16 @@ enum Commands {
         ipc_compression: IpcCompression,
         #[clap(flatten)]
         report: ReportArgs,
+    },
+
+    #[command(
+        name = "stats",
+        about = "Compute methylation statistics.",
+        after_help = include_str!("strings/stats_ahelp.txt"),
+    )]
+    Stats {
+        #[clap(flatten)]
+        stats: stats::StatsArgs,
     }
 }
 
@@ -138,6 +150,8 @@ fn main() {
             ipc_compression,
             report
         } => convert::run(input, output, from_type, into_type, ipc_compression, report),
+
+        Commands::Stats { stats } => stats::run(stats),
     }
 }
 

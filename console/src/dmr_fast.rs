@@ -1,16 +1,16 @@
 use crate::{expand_wildcards, DmrContext};
-use _lib::tools::dmr::dmr_fast::MethyLassoConfig;
+use _lib::exports::anyhow::anyhow;
+use _lib::exports::itertools::Itertools;
+use _lib::exports::serde::Serialize;
+use _lib::tools::dmr::dmr_fast::DmrConfig;
 use _lib::tools::dmr::penalty_segment::PenaltySegmentModel;
-use _lib::tools::dmr::{DMRegion, DmrModel};
+use _lib::tools::dmr::DMRegion;
 use _lib::utils::types::Context;
-use anyhow::anyhow;
 use clap::Args;
 use console::style;
 use dialoguer::Confirm;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
-use std::io::BufWriter;
-use std::io::Write;
 use std::iter::repeat_n;
 use std::path::PathBuf;
 
@@ -144,7 +144,7 @@ pub fn run(
         DmrContext::CHH => Context::CHH,
     };
 
-    let run_config = MethyLassoConfig {
+    let run_config = DmrConfig {
         context,
         n_missing: filters.n_missing,
         min_coverage: filters.min_coverage,
@@ -183,7 +183,7 @@ pub fn run(
     run_dmr(Box::new(dmr_iterator), progress_bar, filters, output);
 }
 
-pub(crate) fn init_pbar(total: usize) -> anyhow::Result<ProgressBar> {
+pub(crate) fn init_pbar(total: usize) -> _lib::exports::anyhow::Result<ProgressBar> {
     let progress_bar = ProgressBar::new(total as u64);
     progress_bar.set_style(
         ProgressStyle::default_bar()
@@ -200,8 +200,8 @@ pub(crate) fn init(
     output: PathBuf,
     force: bool,
     threads: usize,
-) -> anyhow::Result<(Vec<String>, Vec<String>)> {
-    rayon::ThreadPoolBuilder::new()
+) -> _lib::exports::anyhow::Result<(Vec<String>, Vec<String>)> {
+    _lib::exports::rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build_global()?;
     let a_paths = expand_wildcards(group_a);
@@ -258,18 +258,18 @@ pub(crate) fn run_dmr(
     filters: FilterArgs,
     output: PathBuf,
 ) {
-    let mut dmrs = Vec::new();
     let mut p_values = Vec::new();
     let mut last_batch_idx = 0;
 
-    let mut writer = BufWriter::new(
-        File::create(
-            output
-                .with_added_extension("segments")
-                .with_added_extension("tsv"),
-        )
-        .expect("Failed to open output file"),
-    );
+    let all_segments_path = output
+        .with_added_extension("segments")
+        .with_added_extension("tsv");
+
+    let mut csv_writer = csv::WriterBuilder::default()
+        .delimiter(b'\t')
+        .has_headers(true)
+        .from_path(&all_segments_path)
+        .expect("Failed to open output file");
     for (batch_idx, dmr) in iterator {
         if let Some(progress_bar) = progress_bar.as_mut() {
             if batch_idx != last_batch_idx {
@@ -286,62 +286,50 @@ pub(crate) fn run_dmr(
 
         if dmr.n_cytosines >= filters.min_cytosines {
             p_values.push(dmr.p_value);
-
-            writeln!(
-                &mut writer,
-                "{}\t{}\t{}\t{}\t{:.10e}\t{:.10}\t{:.10}\t{:.10}",
-                dmr.chr.as_str(),
-                dmr.start,
-                dmr.end,
-                dmr.n_cytosines,
-                dmr.p_value,
-                dmr.meth_left,
-                dmr.meth_right,
-                dmr.meth_diff()
-            )
-            .unwrap();
-
-            dmrs.push(dmr);
+            csv_writer
+                .serialize(dmr)
+                .expect("Failed to write DMR to file");
         }
     }
 
-    // Calculate adjusted p-values using Benjamini-Hochberg procedure
-    let adjusted_p_values = adjustp::adjust(&p_values, adjustp::Procedure::BenjaminiHochberg);
+    csv_writer.flush().expect("Failed to write DMRs to file");
 
-    // Assign adjusted p-values back to DMRs
-    for (dmr, adj_p_value) in dmrs.iter_mut().zip(adjusted_p_values.iter()) {
-        dmr.p_value = *adj_p_value;
-    }
+    let dmrs = csv::ReaderBuilder::default()
+        .delimiter(b'\t')
+        .has_headers(true)
+        .from_path(&all_segments_path)
+        .expect("Failed to open output file")
+        .deserialize::<DMRegion>()
+        .collect::<Result<Vec<_>, _>>()
+        .expect("Failed to read DMRs from file");
 
-    let mut writer = BufWriter::new(
-        File::create(
-            output
-                .with_added_extension("filtered")
-                .with_added_extension("tsv"),
-        )
-        .expect("Failed to open output file"),
+    let adjusted_p_values = _lib::exports::adjustp::adjust(
+        &*dmrs.iter().map(|dmr| dmr.p_value).collect_vec(),
+        _lib::exports::adjustp::Procedure::BenjaminiHochberg,
     );
+
+    let filtered_path = output
+        .with_added_extension("filtered")
+        .with_added_extension("tsv");
+
+    let mut csv_writer = csv::WriterBuilder::default()
+        .delimiter(b'\t')
+        .has_headers(true)
+        .from_path(&filtered_path)
+        .expect("Failed to open output file");
+
     let mut dmr_count = 0;
-    for dmr in dmrs {
-        if dmr.p_value < filters.q_value && dmr.meth_diff().abs() >= filters.diff_threshold {
-            writeln!(
-                &mut writer,
-                "{}\t{}\t{}\t{}\t{:.10e}\t{:.10}\t{:.10}\t{:.10}",
-                dmr.chr.as_str(),
-                dmr.start,
-                dmr.end,
-                dmr.n_cytosines,
-                dmr.p_value,
-                dmr.meth_left,
-                dmr.meth_right,
-                dmr.meth_diff()
-            )
-            .unwrap();
+    for (mut dmr, padj) in dmrs.into_iter().zip(adjusted_p_values.into_iter()) {
+        dmr.p_value = padj;
+        if dmr.meth_diff() >= filters.diff_threshold && dmr.p_value <= filters.q_value {
             dmr_count += 1;
+            p_values.push(dmr.p_value);
+            csv_writer
+                .serialize(dmr)
+                .expect("Failed to write DMR to file");
         }
     }
 
-    writer.flush().unwrap();
     progress_bar.map(|pb| pb.finish());
     println!(
         "{}",

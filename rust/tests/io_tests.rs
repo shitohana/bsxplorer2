@@ -5,7 +5,7 @@ extern crate pretty_env_logger;
 
 use _lib::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
 use _lib::data_structs::region::GenomicPosition;
-use _lib::io::bsx::region_read::BsxFileReader;
+use _lib::io::bsx::read::BsxFileReader;
 use _lib::io::bsx::write::BsxIpcWriter;
 use _lib::io::report::read::{ContextData, ReportReaderBuilder};
 use _lib::io::report::schema::ReportTypeSchema;

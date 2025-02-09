@@ -1,6 +1,6 @@
 use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
 use crate::io::bsx::multiple_reader::MultiBsxFileReader;
-use crate::io::bsx::region_read::BsxFileReader;
+use crate::io::bsx::read::BsxFileReader;
 use crate::tools::dmr::meth_region::{MethylatedRegionOwned, MethylatedRegionView};
 use crate::tools::dmr::sure_segment::SureSegmentModelConfig;
 use crate::tools::dmr::{beta_binom, utils, DMRegion, DmrModel, FilterConfig, ReaderMetadata};
@@ -272,16 +272,18 @@ where
         &self.receiver
     }
 
-    fn process_last_leftover(&mut self) {
+    fn process_last_leftover(&mut self) -> Option<DMRegion> {
         if let Some(leftover) = self.leftover.take() {
-            let p_value = Self::bbinom_test(
+            let region = Self::bbinom_test(
                 self.last_chr.clone(),
                 leftover.0.as_view(),
                 leftover.1.as_view(),
                 Arc::new(self.config.segment_model.clone()),
             )
             .expect("Error fitting models");
-            self.regions_cache.push(p_value);
+            Some(region)
+        } else {
+            None
         }
     }
 }
@@ -342,23 +344,33 @@ where
     type Item = (usize, DMRegion);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(region) = self.region_cache().pop() {
-            Some((self.current_block(), region))
-        } else {
-            if let Ok(new_group) = self.receiver().recv() {
-                match new_group {
-                    Some(group) => {
-                        self.reader_metadata_mut().current_block += 1;
-                        if let Err(e) = self.process_group(group) {
-                            error!("Error processing group: {}", e);
-                        }
-                    }
-                    None => {}
-                }
-            } else {
-                self.process_last_leftover()
+        loop {
+            // Try to pop from region cache first
+            if let Some(region) = self.region_cache().pop() {
+                return Some((self.current_block(), region));
             }
-            self.next()
+
+            // Try to receive a new group
+            match self.receiver().recv() {
+                Ok(Some(group)) => {
+                    self.reader_metadata_mut().current_block += 1;
+                    if let Err(e) = self.process_group(group) {
+                        error!("Error processing group: {}", e);
+                    }
+                }
+                Ok(None) => {
+                    // No more groups; process the last leftover and break
+                    return self
+                        .process_last_leftover()
+                        .map(|region| (self.current_block(), region));
+                }
+                Err(_) => {
+                    // Handle the case where receiving fails (e.g., channel closed)
+                    return self
+                        .process_last_leftover()
+                        .map(|region| (self.current_block(), region));
+                }
+            }
         }
     }
 }

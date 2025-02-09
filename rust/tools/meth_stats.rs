@@ -1,17 +1,96 @@
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use itertools::Itertools;
-use lru_cache_macros::lru_cache;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize, Serializer};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
+fn serialize_sorted_map<S, K: Ord + Serialize, V: Serialize>(
+    map: &HashMap<K, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let sorted_map: BTreeMap<_, _> = map.iter().collect();
+    sorted_map.serialize(serializer)
+}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MethylationStats {
     mean_methylation: f64,
-    variance_methylation: f64,
+    methylation_var: f64,
+    #[serde(serialize_with = "serialize_sorted_map")]
     coverage_distribution: HashMap<u16, u32>, // (count_total -> frequency)
+    #[serde(serialize_with = "serialize_sorted_map")]
     context_methylation: HashMap<Context, (f64, u32)>, // (context -> (sum_methylation, count))
-    strand_methylation: HashMap<Strand, (f64, u32)>,
+    #[serde(serialize_with = "serialize_sorted_map")]
+    strand_methylation: HashMap<Strand, (f64, u32)>, // (strand -> (sum_methylation, count))
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MethylationStatFlat {
+    pub mean_methylation: f64,
+    pub methylation_var: f64,
+    pub mean_coverage: f64,
+    pub cg_mean_methylation: f64,
+    pub cg_coverage: u32,
+    pub chg_mean_methylation: f64,
+    pub chg_coverage: u32,
+    pub chh_mean_methylation: f64,
+    pub chh_coverage: u32,
+    pub fwd_mean_methylation: f64,
+    pub fwd_coverage: u32,
+    pub rev_mean_methylation: f64,
+    pub rev_coverage: u32,
+}
+
+impl From<MethylationStats> for MethylationStatFlat {
+    fn from(value: MethylationStats) -> Self {
+        MethylationStatFlat {
+            mean_methylation: value.mean_methylation,
+            methylation_var: value.methylation_var,
+            mean_coverage: value.total_coverage() as f64 / value.coverage_distribution.len() as f64,
+            cg_mean_methylation: value
+                .context_methylation
+                .get(&Context::CG)
+                .map_or(0.0, |(sum_m, count)| sum_m / *count as f64),
+            cg_coverage: value
+                .context_methylation
+                .get(&Context::CG)
+                .map_or(0, |(_, count)| *count),
+            chg_mean_methylation: value
+                .context_methylation
+                .get(&Context::CHG)
+                .map_or(0.0, |(sum_m, count)| sum_m / *count as f64),
+            chg_coverage: value
+                .context_methylation
+                .get(&Context::CHG)
+                .map_or(0, |(_, count)| *count),
+            chh_mean_methylation: value
+                .context_methylation
+                .get(&Context::CHH)
+                .map_or(0.0, |(sum_m, count)| sum_m / *count as f64),
+            chh_coverage: value
+                .context_methylation
+                .get(&Context::CHH)
+                .map_or(0, |(_, count)| *count),
+            fwd_mean_methylation: value
+                .strand_methylation
+                .get(&Strand::Forward)
+                .map_or(0.0, |(sum_m, count)| sum_m / *count as f64),
+            fwd_coverage: value
+                .strand_methylation
+                .get(&Strand::Forward)
+                .map_or(0, |(_, count)| *count),
+            rev_mean_methylation: value
+                .strand_methylation
+                .get(&Strand::Forward)
+                .map_or(0.0, |(sum_m, count)| sum_m / *count as f64),
+            rev_coverage: value
+                .strand_methylation
+                .get(&Strand::Reverse)
+                .map_or(0, |(_, count)| *count),
+        }
+    }
 }
 
 impl MethylationStats {
@@ -19,7 +98,7 @@ impl MethylationStats {
     pub fn new() -> Self {
         Self {
             mean_methylation: 0.0,
-            variance_methylation: 0.0,
+            methylation_var: 0.0,
             coverage_distribution: HashMap::new(),
             context_methylation: HashMap::new(),
             strand_methylation: HashMap::new(),
@@ -33,9 +112,20 @@ impl MethylationStats {
         context_methylation: HashMap<Context, (f64, u32)>,
         strand_methylation: HashMap<Strand, (f64, u32)>,
     ) -> MethylationStats {
+        let mean_methylation = if mean_methylation.is_nan() {
+            0.0
+        } else {
+            mean_methylation
+        };
+        let variance_methylation = if variance_methylation.is_nan() {
+            0.0
+        } else {
+            variance_methylation
+        };
+
         Self {
             mean_methylation,
-            variance_methylation,
+            methylation_var: variance_methylation,
             context_methylation,
             coverage_distribution,
             strand_methylation,
@@ -55,8 +145,8 @@ impl MethylationStats {
                 / total_weight;
 
             // Correct variance computation considering mean shift
-            self.variance_methylation = ((weight_self * self.variance_methylation
-                + weight_other * other.variance_methylation)
+            self.methylation_var = ((weight_self * self.methylation_var
+                + weight_other * other.methylation_var)
                 + (weight_self * weight_other / total_weight) * (delta * delta))
                 / total_weight;
         }
@@ -106,6 +196,7 @@ impl MethylationStats {
         self.coverage_distribution
             .iter()
             .map(|(_, &freq)| freq)
+            .filter(|&freq| freq > 0)
             .sum()
     }
 
@@ -136,7 +227,7 @@ impl MethylationStats {
         writeln!(
             &mut buf,
             "Methylation variance: {:.6}",
-            self.variance_methylation
+            self.methylation_var
         )
         .unwrap();
         writeln!(&mut buf).unwrap();
@@ -186,7 +277,7 @@ mod tests {
 
         MethylationStats {
             mean_methylation: mean,
-            variance_methylation: variance,
+            methylation_var: variance,
             coverage_distribution,
             context_methylation,
             strand_methylation: HashMap::new(),
@@ -198,7 +289,7 @@ mod tests {
     fn test_methylation_stats_new() {
         let stats = MethylationStats::new();
         assert_eq!(stats.mean_methylation, 0.0);
-        assert_eq!(stats.variance_methylation, 0.0);
+        assert_eq!(stats.methylation_var, 0.0);
         assert!(stats.coverage_distribution.is_empty());
         assert!(stats.context_methylation.is_empty());
     }
@@ -240,7 +331,7 @@ mod tests {
         assert!((stats1.mean_methylation - expected_mean).abs() < 1e-6);
 
         // Check if variance is correctly calculated
-        assert!((stats1.variance_methylation - expected_variance).abs() < 1e-6);
+        assert!((stats1.methylation_var - expected_variance).abs() < 1e-6);
 
         // Check merged coverage distribution
         assert_eq!(stats1.coverage_distribution.get(&10), Some(&300));
@@ -297,7 +388,7 @@ mod tests {
             / total_weight;
 
         assert!((merged.mean_methylation - expected_mean).abs() < 1e-6);
-        assert!(((merged.variance_methylation - expected_variance) as f64).abs() < 1e-6);
+        assert!(((merged.methylation_var - expected_variance) as f64).abs() < 1e-6);
         assert_eq!(merged.coverage_distribution.get(&10), Some(&100));
         assert_eq!(merged.coverage_distribution.get(&20), Some(&200));
         assert_eq!(merged.coverage_distribution.get(&30), Some(&300));
@@ -341,10 +432,7 @@ mod tests {
             serde_json::from_str(&json).expect("Deserialization failed");
 
         assert_eq!(stats.mean_methylation, deserialized.mean_methylation);
-        assert_eq!(
-            stats.variance_methylation,
-            deserialized.variance_methylation
-        );
+        assert_eq!(stats.methylation_var, deserialized.methylation_var);
         assert_eq!(
             stats.coverage_distribution,
             deserialized.coverage_distribution

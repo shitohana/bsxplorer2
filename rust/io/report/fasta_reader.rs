@@ -1,8 +1,10 @@
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
+use crate::utils::types::Strand;
 use bio::io::fasta::*;
 use hashbrown::HashMap;
 use log::{debug, info};
 use num::{PrimInt, ToPrimitive, Unsigned};
+use serde::Serialize;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{BufRead, Read, Seek};
@@ -37,7 +39,7 @@ where
         region_coordinates: RegionCoordinates<N>,
     ) -> Result<Vec<u8>, Box<dyn Error>>
     where
-        N: PrimInt + Unsigned + Display,
+        N: PrimInt + Unsigned + Display + Serialize,
     {
         if let Some(seq_data) = self.get_record_metadata(region_coordinates.chr()) {
             if seq_data.len < region_coordinates.end().to_u64().unwrap() {
@@ -149,7 +151,7 @@ where
         &mut self.coverage
     }
 
-    pub fn get_seq_until<N: num::PrimInt + num::Unsigned>(
+    pub fn get_seq_until<N: PrimInt + Unsigned + Display + Serialize>(
         &mut self,
         position: &GenomicPosition<N>,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -161,6 +163,7 @@ where
             chr.to_string(),
             fetch_start.to_u32().unwrap(),
             fetch_end.to_u32().unwrap(),
+            Strand::None,
         );
         let sequence = self.inner.fetch_region(read_region)?;
         Ok(sequence)
@@ -373,7 +376,7 @@ mod tests {
                 len: 200,
             },
         ]);
-        let (start, end) = coverage.shift_to("chr2", 100).unwrap();
+        let (_start, _end) = coverage.shift_to("chr2", 100).unwrap();
     }
 
     #[test]

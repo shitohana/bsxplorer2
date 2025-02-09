@@ -1,6 +1,6 @@
 use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
 use crate::io::bsx::multiple_reader::MultiBsxFileReader;
-use crate::io::bsx::region_read::BsxFileReader;
+use crate::io::bsx::read::BsxFileReader;
 use crate::tools::dmr::meth_region::{MethylatedRegionOwned, MethylatedRegionView};
 use crate::tools::dmr::penalty_segment::PenaltySegmentModel;
 use crate::tools::dmr::{utils, DMRegion, DmrModel, FilterConfig, ReaderMetadata};
@@ -19,7 +19,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub struct MethyLassoConfig {
+pub struct DmrConfig {
     pub context: Context,
     pub n_missing: usize,
     pub min_coverage: i16,
@@ -28,7 +28,7 @@ pub struct MethyLassoConfig {
     pub segment_model: PenaltySegmentModel,
 }
 
-impl MethyLassoConfig {
+impl DmrConfig {
     pub fn new(
         context: Context,
         n_missing: usize,
@@ -55,7 +55,7 @@ impl MethyLassoConfig {
         }
     }
 
-    pub fn try_finish<F, R>(&self, readers: Vec<(R, F)>) -> anyhow::Result<MethyLassoDmrIterator<R>>
+    pub fn try_finish<F, R>(&self, readers: Vec<(R, F)>) -> anyhow::Result<DmrIterator<R>>
     where
         F: Read + Seek + Send + Sync + 'static,
         R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + Send + 'static,
@@ -115,7 +115,7 @@ impl MethyLassoConfig {
             sender.send(None).unwrap();
         });
 
-        let out = MethyLassoDmrIterator {
+        let out = DmrIterator {
             config: config_copy,
             ref_idset,
             group_pair: group_order,
@@ -131,7 +131,7 @@ impl MethyLassoConfig {
     }
 }
 
-impl Default for MethyLassoConfig {
+impl Default for DmrConfig {
     fn default() -> Self {
         Self {
             context: Context::CG,
@@ -144,11 +144,11 @@ impl Default for MethyLassoConfig {
     }
 }
 
-pub struct MethyLassoDmrIterator<R>
+pub struct DmrIterator<R>
 where
     R: Display + Eq + Hash + Clone + Default,
 {
-    config: MethyLassoConfig,
+    config: DmrConfig,
     group_pair: (R, R),
     ref_idset: RefIDSet<Arc<String>>,
     leftover: Option<(MethylatedRegionOwned, MethylatedRegionOwned)>,
@@ -159,7 +159,7 @@ where
     _join_handle: std::thread::JoinHandle<()>,
 }
 
-impl<R> MethyLassoDmrIterator<R>
+impl<R> DmrIterator<R>
 where
     R: Display + Eq + Hash + Clone + Default + std::fmt::Debug,
 {
@@ -185,7 +185,7 @@ where
     }
 }
 
-impl<R> DmrModel<R> for MethyLassoDmrIterator<R>
+impl<R> DmrModel<R> for DmrIterator<R>
 where
     R: Display + Eq + Hash + Clone + Default + std::fmt::Debug,
 {
@@ -293,42 +293,54 @@ where
         &self.receiver
     }
 
-    fn process_last_leftover(&mut self) {
+    fn process_last_leftover(&mut self) -> Option<DMRegion> {
         if let Some(leftover) = self.leftover.take() {
-            let p_value = Self::t_test(
+            let region = Self::t_test(
                 self.last_chr.clone(),
                 leftover.0.as_view(),
                 leftover.1.as_view(),
             );
-            self.regions_cache.push(p_value);
+            Some(region)
+        } else {
+            None
         }
     }
 }
 
-impl<R> Iterator for MethyLassoDmrIterator<R>
+impl<R> Iterator for DmrIterator<R>
 where
     R: Display + Eq + Hash + Clone + Default + Debug,
 {
     type Item = (usize, DMRegion);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(region) = self.region_cache().pop() {
-            Some((self.current_block(), region))
-        } else {
-            if let Ok(new_group) = self.receiver().recv() {
-                match new_group {
-                    Some(group) => {
-                        self.reader_metadata_mut().current_block += 1;
-                        if let Err(e) = self.process_group(group) {
-                            error!("Error processing group: {}", e);
-                        }
-                    }
-                    None => {}
-                }
-            } else {
-                self.process_last_leftover()
+        loop {
+            // Try to pop from region cache first
+            if let Some(region) = self.region_cache().pop() {
+                return Some((self.current_block(), region));
             }
-            self.next()
+
+            // Try to receive a new group
+            match self.receiver().recv() {
+                Ok(Some(group)) => {
+                    self.reader_metadata_mut().current_block += 1;
+                    if let Err(e) = self.process_group(group) {
+                        error!("Error processing group: {}", e);
+                    }
+                }
+                Ok(None) => {
+                    // No more groups; process the last leftover and break
+                    return self
+                        .process_last_leftover()
+                        .map(|region| (self.current_block(), region));
+                }
+                Err(_) => {
+                    // Handle the case where receiving fails (e.g., channel closed)
+                    return self
+                        .process_last_leftover()
+                        .map(|region| (self.current_block(), region));
+                }
+            }
         }
     }
 }

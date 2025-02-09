@@ -10,7 +10,6 @@ use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 #[cfg(feature = "python")]
 use pyo3_polars::error::PyPolarsErr;
 use std::error::Error;
-use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;

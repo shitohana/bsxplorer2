@@ -1,4 +1,4 @@
-use crate::io::bsx::region_read::BsxFileReader;
+use crate::io::bsx::read::BsxFileReader;
 use bio_types::annot::contig::Contig;
 use bio_types::annot::loc::Loc;
 use bio_types::annot::pos::{Pos, SeqPosUnstranded};

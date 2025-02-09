@@ -3,10 +3,7 @@ use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::data_structs::region::{PyGenomicPosition, PyRegionCoordinates};
 use crate::tools::meth_stats::MethylationStats;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
-use crate::utils::{
-    decode_context, decode_strand, encode_context, encode_strand, get_categorical_dtype,
-    polars_schema,
-};
+use crate::utils::{decode_context, decode_strand, encode_context, encode_strand, polars_schema};
 #[cfg(feature = "python")]
 use crate::wrap_polars_result;
 use bio_types::annot::contig::Contig;
@@ -531,7 +528,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
             self
         } else {
             let mut boolean_chunked =
-                BooleanChunked::new("mask".into(), vec![false; self.0.height()]);
+                BooleanChunked::new("mask".into(), vec![true; self.0.height()]);
             if let Some(strand) = strand {
                 let mask = BooleanChunked::new(
                     "strand".into(),
@@ -826,19 +823,24 @@ mod tests {
         let encoded = EncodedBsxBatch::encode(batch.clone(), &chr_dtype).unwrap();
 
         let trimmed = encoded
-            .trim_region(&RegionCoordinates::new("1".to_string(), 4, 9))
+            .trim_region(&RegionCoordinates::new("1".to_string(), 4, 9, Strand::None))
             .unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 4);
         assert_eq!(trimmed.last_position().unwrap().position(), 9);
 
         let trimmed = encoded
-            .trim_region(&RegionCoordinates::new("1".to_string(), 1, 9))
+            .trim_region(&RegionCoordinates::new("1".to_string(), 1, 9, Strand::None))
             .unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 2);
         assert_eq!(trimmed.last_position().unwrap().position(), 9);
 
         let trimmed = encoded
-            .trim_region(&RegionCoordinates::new("1".to_string(), 4, 12))
+            .trim_region(&RegionCoordinates::new(
+                "1".to_string(),
+                4,
+                12,
+                Strand::None,
+            ))
             .unwrap();
         assert_eq!(trimmed.first_position().unwrap().position(), 4);
         assert_eq!(trimmed.last_position().unwrap().position(), 10);

@@ -23,16 +23,16 @@ use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 #[cfg(feature = "python")]
 use pyo3_polars::PyDataFrame;
+use serde::Serialize;
 use std::error::Error;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::thread::JoinHandle;
-
 /*
 TODO:
     Add decompression
@@ -214,14 +214,14 @@ where
 
 pub struct ContextData<N>
 where
-    N: PrimInt + Unsigned,
+    N: PrimInt + Unsigned + Serialize + Display,
 {
     positions: Vec<N>,
     contexts: Vec<Option<bool>>,
     strands: Vec<bool>,
 }
 
-impl<N: PrimInt + Unsigned> ContextData<N> {
+impl<N: PrimInt + Unsigned + Serialize + Display> ContextData<N> {
     pub fn len(&self) -> usize {
         self.contexts.len()
     }
