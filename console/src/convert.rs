@@ -12,7 +12,7 @@ use std::io::BufWriter;
 use std::path::PathBuf;
 
 #[derive(Args, Debug, Clone)]
-pub(crate) struct ReportArgs {
+pub struct ReportArgs {
     #[arg(
         short = 't',
         long = "threads",
@@ -59,7 +59,7 @@ pub(crate) struct ReportArgs {
 }
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
-pub(crate) enum ConvertReportType {
+pub enum ConvertReportType {
     Bsx,
     Bismark,
     CgMap,
@@ -67,8 +67,8 @@ pub(crate) enum ConvertReportType {
     Coverage,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
-pub(crate) enum IpcCompression {
+#[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
+pub enum IpcCompression {
     LZ4,
     ZSTD,
     None,

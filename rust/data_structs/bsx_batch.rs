@@ -11,7 +11,7 @@ use bio_types::annot::loc::Loc;
 use bio_types::annot::pos::Pos;
 use bio_types::annot::refids::RefIDSet;
 use bio_types::strand::NoStrand;
-use itertools::Itertools;
+use itertools::{multiunzip, Itertools, MultiUnzip};
 use log::warn;
 use polars::prelude::*;
 #[cfg(feature = "python")]
@@ -449,7 +449,7 @@ impl EncodedBsxBatch {
             .0
             .lazy()
             .with_column(
-                when(col("count_total").lt(lit(threshold)))
+                when(col("count_total").lt(lit(threshold as u32)))
                     .then(lit(0))
                     .otherwise(col("count_total"))
                     .alias("count_total"),
@@ -510,6 +510,40 @@ impl EncodedBsxBatch {
 
     pub fn filter_mask(self, mask: &BooleanChunked) -> PolarsResult<Self> {
         Ok(unsafe { Self::new_unchecked(self.0.filter(mask)?) })
+    }
+
+    pub fn strip_contexts(self) -> PolarsResult<(Self, Self, Self)> {
+        let context_col = self.data().column("context")?.bool()?;
+        let cg_encoding = Context::CG.to_bool().unwrap();
+        let (cg_mask, chg_mask, chh_mask): (Vec<bool>, Vec<bool>, Vec<bool>) =
+            multiunzip(context_col.iter().map(|v| {
+                let (cg, chh) = if let Some(boolean) = v {
+                    (boolean && cg_encoding, false)
+                } else {
+                    (false, true)
+                };
+                (cg, cg == chh, chh)
+            }));
+        Ok((
+            unsafe {
+                Self::new_unchecked(
+                    self.0
+                        .filter(&BooleanChunked::new("mask".into(), cg_mask))?,
+                )
+            },
+            unsafe {
+                Self::new_unchecked(
+                    self.0
+                        .filter(&BooleanChunked::new("mask".into(), chg_mask))?,
+                )
+            },
+            unsafe {
+                Self::new_unchecked(
+                    self.0
+                        .filter(&BooleanChunked::new("mask".into(), chh_mask))?,
+                )
+            },
+        ))
     }
 }
 

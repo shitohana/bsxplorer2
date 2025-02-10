@@ -1,4 +1,4 @@
-use crate::tools::dmr::utils;
+use crate::tools::dmr::{tv1d_clone, utils};
 use log::debug;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -107,7 +107,7 @@ fn block_resampled_sure(
             let end = ((i + 1) * config.block_size).min(n);
             let block = &y[start..end];
             // Use the available tv_denoise and compute_sure functions on the block.
-            let denoised_block = tv1d::condat(block, lambda);
+            let denoised_block = tv1d_clone::condat(block, lambda);
             let sure_block = compute_sure(block, &denoised_block, sigma2, &config);
             sure_block
         })
@@ -135,7 +135,7 @@ fn refined_candidate_grid(
             let lambda =
                 lambda_min + (lambda_max - lambda_min) * (i as f64) / ((coarse_steps - 1) as f64);
             let sure = block_resampled_sure(y, lambda, sigma2, config);
-            let denoised = tv1d::condat(y, lambda);
+            let denoised = tv1d_clone::condat(y, lambda);
             (lambda, sure, denoised)
         })
         .collect();
@@ -160,7 +160,7 @@ fn refined_candidate_grid(
                 + (refined_lambda_max - refined_lambda_min) * (i as f64)
                     / ((config.refined_steps - 1) as f64);
             let sure = block_resampled_sure(y, lambda, sigma2, config);
-            let denoised = tv1d::condat(y, lambda);
+            let denoised = tv1d_clone::condat(y, lambda);
             (lambda, sure, denoised)
         })
         .collect();

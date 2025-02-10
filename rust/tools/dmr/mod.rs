@@ -4,6 +4,7 @@ pub mod dmr_fast;
 pub mod meth_region;
 pub mod penalty_segment;
 pub mod sure_segment;
+mod tv1d_clone;
 pub(crate) mod utils;
 
 use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;

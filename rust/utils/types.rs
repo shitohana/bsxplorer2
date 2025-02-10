@@ -141,13 +141,13 @@ impl IPCEncodedEnum for Strand {
     }
 }
 
-pub trait PosNum: PrimInt + Unsigned + Clone + Serialize + Display + Sync {}
+pub trait PosNum: PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash {}
 
-impl<T> PosNum for T where T: PrimInt + Unsigned + Clone + Serialize + Display + Sync {}
+impl<T> PosNum for T where T: PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash {}
 
-pub trait RefId: Eq + Hash + From<String> + Clone + Default {}
+pub trait RefId: Eq + Hash + From<String> + Clone + Default + Ord + Display {}
 
-impl<T> RefId for T where T: Eq + Hash + From<String> + Clone + Default {}
+impl<T> RefId for T where T: Eq + Hash + From<String> + Clone + Default + Ord + Display {}
 
 pub trait Data: Sized + Clone {}
 

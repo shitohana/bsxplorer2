@@ -1,6 +1,7 @@
-use crate::tools::dmr::utils;
+use crate::tools::dmr::{tv1d_clone, utils};
 use serde::Serialize;
 use statrs::statistics::Statistics;
+use std::{iter, ops};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PenaltySegmentModel {
@@ -52,7 +53,7 @@ impl PenaltySegmentModel {
         for i in 0..self.num_lambdas {
             let t = i as f64 / (self.num_lambdas - 1) as f64;
             let lambda = self.lambda_low * (lambda_high / self.lambda_low).powf(t);
-            let denoised = tv1d::condat(signal, lambda);
+            let denoised = tv1d_clone::condat(signal, lambda);
             let segments = self.get_segments(&denoised);
             let score = self.objective_function(signal, &denoised, &segments);
 

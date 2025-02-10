@@ -5,11 +5,8 @@ edition = "2021"
 authors = ["shitohana"]
 
 [workspace]
-members = ["console", "rust"]
+members = ["console", "rust", "web"]
 
 [[bin]]
 name = "bsxplorer"
 path = "src/main.rs"
-
-[dependencies]
-bsxplorer-lib = { path = "rust" }

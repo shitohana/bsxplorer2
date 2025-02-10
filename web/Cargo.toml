@@ -1,0 +1,30 @@
+[package]
+name = "web"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bsxplorer-lib = { path = "../rust", features = ["plots"] }
+bsxplorer-ci = { path = "../console" }
+
+yew = { version = "0.21", features = ["csr"]}
+yew-plotly = { version = "0.3.0" }
+yew-router = "0.18.0"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6.5"
+js-sys = "0.3"
+stylist = { version = "0.13.0", features = ["yew"] }
+plotly = {version = "0.12.1", default-features = false, features = ["wasm", "wasm-bindgen"]}
+web-sys = { version = "0.3.72", features = ["css", "HtmlSelectElement", "FileSystemDirectoryHandle"] }
+gloo-timers = "0.3.0"
+
+# when enabled, the wasm build takes forever so we disable it
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

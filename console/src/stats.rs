@@ -1,11 +1,13 @@
 use crate::dmr_fast::init_pbar;
 use _lib::data_structs::bsx_batch::BsxBatchMethods;
-use _lib::data_structs::region::RegionCoordinates;
+use _lib::data_structs::region_data::RegionData;
 use _lib::exports::itertools::Itertools;
+use _lib::exports::plotly::Plot;
 use _lib::io::bsx::read::BsxFileReader;
 use _lib::io::bsx::region_read::RegionReader;
+use _lib::plots::{LinePlot, LinePlotData};
 use _lib::tools::meth_stats::{MethylationStatFlat, MethylationStats};
-use _lib::utils::types::{IPCEncodedEnum, Strand};
+use _lib::utils::types::{Context, IPCEncodedEnum, Strand};
 use clap::{Args, ValueEnum};
 use console::style;
 use serde::{Serialize, Serializer};
@@ -94,7 +96,6 @@ pub(crate) fn run(args: StatsArgs) {
             pbar.set_message("Done.");
         }
         StatsMode::Regions => {
-            use _lib::data_structs::region::RegionCoordinates;
             use _lib::utils::types::Strand;
 
             let pbar = init_pbar(0).expect("Error: failed to create progress bar.");
@@ -131,9 +132,12 @@ pub(crate) fn run(args: StatsArgs) {
                                     BioStrand::Unknown => Strand::None,
                                 })
                                 .unwrap_or(Strand::None);
-                            let region_coordinates =
-                                RegionCoordinates::new(chr, *start, *end, strand);
-                            region_coordinates
+                            let attributes = HashMap::from_iter(
+                                r.attributes()
+                                    .into_iter()
+                                    .map(|(k, v)| (k.clone(), v.join(", "))),
+                            );
+                            RegionData::new(chr, *start, *end, strand, (), attributes)
                         })
                         .collect_vec()
                 }
@@ -160,9 +164,7 @@ pub(crate) fn run(args: StatsArgs) {
                                     BioStrand::Unknown => Strand::None,
                                 })
                                 .unwrap_or(Strand::None);
-                            let region_coordinates =
-                                RegionCoordinates::new(chr, start, end, strand);
-                            region_coordinates
+                            RegionData::new(chr, start, end, strand, (), Default::default())
                         })
                         .collect_vec()
                 }
@@ -183,17 +185,19 @@ pub(crate) fn run(args: StatsArgs) {
                 .from_path(&args.output)
                 .expect("Error: failed to create output file.");
 
-            for (region, mut batch) in region_reader {
-                let mut stats = batch
+            for region_data in region_reader {
+                let mut stats = region_data
+                    .data()
                     .get_methylation_stats()
                     .expect("Error: failed to get methylation stats.");
                 stats.finalize_methylation();
                 let stats_row: MethylationStatFlat = stats.into();
+
                 let stats_row = RegionRow {
-                    chr: region.chr.clone(),
-                    start: region.start,
-                    end: region.end,
-                    strand: region.strand,
+                    chr: region_data.chr().clone(),
+                    start: region_data.start(),
+                    end: region_data.end(),
+                    strand: region_data.strand(),
                     mean_methylation: stats_row.mean_methylation,
                     methylation_var: stats_row.methylation_var,
                     mean_coverage: stats_row.mean_coverage,

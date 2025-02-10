@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-bsxplorer-lib = { path = "../rust" }
+bsxplorer-lib = { path = "../rust", features = ["plots"] }
 
 clap = { version = "4.1", features = ["derive"] }
 wild = "2.0"
@@ -16,3 +16,10 @@ bincode = { version = "1.3.3" }
 csv = {version = "1.3.1"}
 serde_json = "1.0.132"
 serde = { version = "1.0.132", features = ["derive"] }
+
+[[bin]]
+name = "bsxplorer"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"

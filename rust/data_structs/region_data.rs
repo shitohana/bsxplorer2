@@ -4,12 +4,11 @@ use crate::utils::types::{Context, Data, PosNum, RefId, Strand};
 use itertools::Itertools;
 use polars::prelude::PolarsResult;
 use rayon::prelude::*;
-use std::alloc::GlobalAlloc;
 use std::collections::HashMap;
-use std::fmt::Display;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 
-struct RegionData<R, N, T>
+#[derive(Clone, Eq, PartialEq)]
+pub struct RegionData<R, N, T>
 where
     R: RefId,
     N: PosNum,
@@ -21,6 +20,12 @@ where
     strand: Strand,
     data: T,
     attributes: HashMap<String, String>,
+}
+
+impl<R: RefId, N: PosNum, T: Data> Hash for RegionData<R, N, T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (self.chr.clone(), self.start, self.end, self.strand).hash(state)
+    }
 }
 
 impl<R, N> From<RegionCoordinates<N>> for RegionData<R, N, ()>
@@ -91,6 +96,17 @@ where
         self.end.clone() - self.start.clone()
     }
 
+    pub fn with_data<T2: Data>(self, data: T2) -> RegionData<R, N, T2> {
+        RegionData {
+            chr: self.chr,
+            start: self.start,
+            end: self.end,
+            strand: self.strand,
+            data,
+            attributes: self.attributes,
+        }
+    }
+
     pub fn new(
         chr: R,
         start: N,
@@ -141,6 +157,11 @@ where
     pub fn into_data(self) -> T {
         self.data
     }
+
+    pub fn drain_data(self) -> (RegionData<R, N, ()>, T) {
+        let data = self.data.clone();
+        (self.with_data(()), data)
+    }
 }
 
 impl<R, N, T> RegionData<R, N, T>
@@ -158,8 +179,13 @@ where
             strand: self.strand,
         }
     }
+    pub fn as_region(&self) -> RegionCoordinates<N> {
+        RegionCoordinates::new(self.chr.clone().into(), self.start, self.end, self.strand)
+    }
 }
 
+/// ## Notes
+/// Region strand handling is the responsibility of the caller
 impl<R, N> RegionData<R, N, EncodedBsxBatch>
 where
     R: RefId,
@@ -197,22 +223,50 @@ where
     }
     pub fn discrete_density(&self, resolution: usize) -> PolarsResult<Vec<f32>> {
         let sort_indices = self.discretize(resolution)?;
-        let meth_density = self.meth_density()?;
+        let cum_meth_density = self.meth_density()?.into_iter().enumerate().fold(
+            vec![0.0; self.size()],
+            |mut acc, (idx, new)| {
+                acc[idx] = new;
+                if idx > 0 {
+                    acc[idx] += acc[idx - 1]
+                };
+                acc
+            },
+        );
         let mut density = vec![0.0; resolution];
-        for (idx, val) in sort_indices.into_iter().zip(meth_density.into_iter()) {
-            density[idx] = val;
+        for (idx, bound_idx) in sort_indices.into_iter().enumerate() {
+            density[idx] = cum_meth_density[bound_idx];
         }
         Ok(density)
     }
     pub fn discrete_counts(&self, resolution: usize) -> PolarsResult<Vec<(i16, i16)>> {
         let sort_indices = self.discretize(resolution)?;
-        let counts_meth = self.counts_meth()?;
-        let counts_total = self.counts_total()?;
+        let cum_counts_meth = self.counts_meth()?.into_iter().enumerate().fold(
+            vec![0; self.size()],
+            |mut acc, (idx, new)| {
+                acc[idx] = new;
+                if idx > 0 {
+                    acc[idx] += acc[idx - 1]
+                };
+                acc
+            },
+        );
+        let cum_counts_total = self.counts_total()?.into_iter().enumerate().fold(
+            vec![0; self.size()],
+            |mut acc, (idx, new)| {
+                acc[idx] = new;
+                if idx > 0 {
+                    acc[idx] += acc[idx - 1]
+                };
+                acc
+            },
+        );
         let mut counts = vec![(0, 0); resolution];
-        for (idx, (meth, total)) in sort_indices
-            .into_iter()
-            .zip(counts_meth.into_iter().zip(counts_total.into_iter()))
-        {
+        for (idx, (meth, total)) in sort_indices.into_iter().zip(
+            cum_counts_meth
+                .into_iter()
+                .zip(cum_counts_total.into_iter()),
+        ) {
             counts[idx] = (meth, total);
         }
         Ok(counts)
@@ -226,5 +280,14 @@ where
     pub fn filter(mut self, context: Context) -> Self {
         self.data = self.data.filter(Some(context), None);
         self
+    }
+    pub fn strip_contexts(self) -> anyhow::Result<(Self, Self, Self)> {
+        let (drained, data) = self.drain_data();
+        let (cg, chg, chh) = data.strip_contexts()?;
+        Ok((
+            drained.clone().with_data(cg),
+            drained.clone().with_data(chg),
+            drained.clone().with_data(chh),
+        ))
     }
 }

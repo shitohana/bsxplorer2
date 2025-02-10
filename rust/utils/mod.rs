@@ -164,3 +164,13 @@ pub fn decode_context(lazy_frame: LazyFrame, context_col: &str, result_name: &st
             .alias(result_name),
     )
 }
+
+pub(crate) fn f64_to_u64_scaled(value: f64) -> u64 {
+    (value * u64::MAX as f64) as u64
+}
+
+pub(crate) fn u64_to_f64_scaled(value: u64) -> f64 {
+    value as f64 / u64::MAX as f64
+}
+// < 0.5% error
+pub(crate) const GROUPING_POWER: u8 = 8;

@@ -67,7 +67,6 @@ impl AnnotationFileConf {
             .with_comment_prefix(Some(PlSmallStr::from(
                 self.comment_prefix.clone().unwrap_or("#".to_string()),
             )))
-            .with_try_parse_dates(false)
             .with_has_header(self.has_header.unwrap_or(false))
     }
 }

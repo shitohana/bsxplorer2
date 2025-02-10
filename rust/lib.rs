@@ -9,6 +9,8 @@
 pub mod data_structs;
 pub mod exports;
 pub mod io;
+#[cfg(feature = "plots")]
+pub mod plots;
 pub mod tools;
 pub mod utils;
 
