@@ -17,6 +17,7 @@ js-sys = "0.3"
 stylist = { version = "0.13.0", features = ["yew"] }
 plotly = {version = "0.12.1", default-features = false, features = ["wasm", "wasm-bindgen"]}
 web-sys = { version = "0.3.72", features = ["css", "HtmlSelectElement", "FileSystemDirectoryHandle"] }
+paste = "1.0.15"
 gloo-timers = "0.3.0"
 
 # when enabled, the wasm build takes forever so we disable it

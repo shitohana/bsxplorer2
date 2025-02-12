@@ -109,3 +109,327 @@ body {
 .settings-menu li:hover {
     background: #444;
 }
+/* Global Styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f7f8;
+    color: #333;
+    line-height: 1.6;
+}
+
+/* Container */
+.container {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Field Styling */
+.field {
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.field label {
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+    color: #555;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="file"],
+.field select {
+    padding: 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.field input:focus,
+.field select:focus {
+    outline: none;
+    border-color: #66afe9;
+    box-shadow: 0 0 5px rgba(102, 175, 233, 0.5);
+}
+
+/* Checkbox Field */
+.checkbox-field {
+    flex-direction: row;
+    align-items: center;
+}
+
+.checkbox-field input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+/* Item List */
+.item-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+}
+
+.item-list li {
+    background: #eef1f5;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.3s ease;
+}
+
+.item-list li:hover {
+    background: #dde2e8;
+}
+
+/* Buttons */
+button {
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 4px;
+    transition: background 0.3s ease, opacity 0.3s ease;
+}
+
+button:hover {
+    opacity: 0.9;
+}
+
+/* Submit Button */
+button.submit {
+    display: block;
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #fff;
+    background: linear-gradient(45deg, #36d1dc, #5b86e5);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+button.submit:hover:not(:disabled) {
+    background: linear-gradient(45deg, #5b86e5, #36d1dc);
+}
+
+button.submit:disabled {
+    background: #a8d0e6;
+    cursor: not-allowed;
+}
+
+/* Clear Button (and similar) */
+button.clear {
+    background: #ff6b6b;
+    color: #fff;
+}
+
+button.clear:hover {
+    background: #ff3b3b;
+}
+
+/* Error State */
+.error {
+    border-color: #e74c3c !important;
+}
+
+/* Custom Select Appearance */
+select {
+    appearance: none;
+    padding-right: 2rem;
+    background: #fff url('data:image/svg+xml;charset=UTF-8,<svg width="10" height="7" xmlns="http://www.w3.org/2000/svg"><path d="M0 0l5 7 5-7z" fill="%23999"/></svg>') no-repeat right 0.75rem center;
+    background-size: 10px 7px;
+}
+
+/* Button Container: Place buttons at opposite ends */
+.button-container {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2rem;
+}
+
+/* Shared Button Styles */
+.button-container button {
+    flex: 1;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s ease, transform 0.2s ease;
+}
+
+/* Deny Button (left) */
+.button-container button.deny {
+    background: #e74c3c;
+    color: #fff;
+    margin-right: 1rem;
+}
+
+.button-container button.deny:hover {
+    background: #c0392b;
+    transform: scale(1.03);
+}
+
+/* Confirm Button (right) */
+.button-container button.confirm {
+    background: #2ecc71;
+    color: #fff;
+}
+
+.button-container button.confirm:hover {
+    background: #27ae60;
+    transform: scale(1.03);
+}
+
+
+/* Paragraphs for configuration details */
+.container p {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Tooltip Styling */
+.tooltip-icon {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    background: #007bff;
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+}
+
+/* Tooltip Container */
+.tooltip-icon::after {
+    content: attr(data-tooltip);
+    visibility: hidden;
+    opacity: 0;
+    width: 220px;  /* Set width to allow wrapping */
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    padding: 8px;
+    border-radius: 6px;
+    position: absolute;
+    left: 50%;
+    bottom: 125%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+
+    /* Enable text wrapping */
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Show tooltip on hover */
+.tooltip-icon:hover::after {
+    visibility: visible;
+    opacity: 1;
+}
+
+.file-paths {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.file-path-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.file-path-entry input {
+    flex-grow: 1;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.file-path-entry .remove {
+    background: #ff6b6b;
+    color: white;
+    border: none;
+    padding: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.file-path-entry .remove:hover {
+    background: #ff3b3b;
+}
+
+.add {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.3s;
+}
+
+.add:hover {
+    background: #218838;
+}
+
+/* Error Popup Message */
+.error-popup {
+    position: absolute;
+    background: #ff6b6b;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    left: 10px;
+    top: -35px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(5px);
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+/* Show popup when error exists */
+.field:hover .error-popup {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* Error Input Styling */
+.error {
+    border: 2px solid #ff6b6b !important;
+    background-color: #ffe6e6;
+}
