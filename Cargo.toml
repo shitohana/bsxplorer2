@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["shitohana"]
 
 [workspace]
-members = ["console", "rust", "web"]
+members = ["console", "rust"]
 
 [[bin]]
 name = "bsxplorer"
