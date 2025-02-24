@@ -5,7 +5,6 @@ use bio::io::fasta::*;
 use hashbrown::HashMap;
 use log::{debug, info};
 use num::{PrimInt, ToPrimitive, Unsigned};
-use serde::Serialize;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{BufRead, Read, Seek};

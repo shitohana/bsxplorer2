@@ -40,6 +40,10 @@ uuid = { version="1.12.1" , features = ["serde"]}
 argmin = { version = "0.10.0", features = ["rayon"] }
 argmin-math = { version = "0.4.0", features = ["vec"]}
 adjustp = "0.1.6"
+once_cell = "1.20.3"
+
+# DMR
+crossbeam = "0.8.4"
 
 # Plots dependencies
 z_table = { version = "0.1.5", optional = true }
@@ -105,3 +109,6 @@ features = [
     "list_any_all",
     "search_sorted",
 ]
+
+[dependencies.polars-arrow-format]
+version = "0.1.0"

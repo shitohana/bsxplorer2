@@ -11,7 +11,7 @@ use bio_types::annot::loc::Loc;
 use bio_types::annot::pos::Pos;
 use bio_types::annot::refids::RefIDSet;
 use bio_types::strand::NoStrand;
-use itertools::{multiunzip, Itertools, MultiUnzip};
+use itertools::{multiunzip, Itertools};
 use log::warn;
 use polars::prelude::*;
 #[cfg(feature = "python")]

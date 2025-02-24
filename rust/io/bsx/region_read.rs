@@ -1,10 +1,7 @@
 use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
-use crate::io::bsx::ipc::IpcFileReader;
 use itertools::Itertools;
 use polars::error::PolarsResult;
-use polars::export::arrow::array::Array;
-use polars::export::arrow::record_batch::RecordBatchT;
 use polars::prelude::*;
 use rayon::prelude::*;
 use std::collections::btree_map::Cursor;

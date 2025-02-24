@@ -39,7 +39,6 @@ impl Ord for Context {
                 (Context::CHG, _) => Ordering::Greater,
                 (_, Context::CHG) => Ordering::Less,
                 (Context::CHH, _) => Ordering::Greater,
-                (_, Context::CHH) => Ordering::Less,
             }
         }
     }

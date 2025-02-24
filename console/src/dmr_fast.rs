@@ -15,9 +15,9 @@ use std::iter::repeat_n;
 use std::path::PathBuf;
 
 #[derive(Args, Debug, Clone)]
-pub(crate) struct FilterArgs {
+pub struct FilterArgs {
     #[clap(short, long, value_enum, default_value_t = DmrContext::CG, help_heading="FILTER ARGS", help = "Select cytosine methylation context.")]
-    pub(crate) context: DmrContext,
+    pub context: DmrContext,
     #[arg(
         short,
         long,
@@ -25,7 +25,7 @@ pub(crate) struct FilterArgs {
         help_heading = "FILTER ARGS",
         help = "Set missing values threshold. Cytosines with no data in > n_samples will be discarded."
     )]
-    pub(crate) n_missing: usize,
+    pub n_missing: usize,
     #[arg(
         short = 'v',
         long,
@@ -33,7 +33,7 @@ pub(crate) struct FilterArgs {
         help_heading = "FILTER ARGS",
         help = "Cytosines with coverage below threshold will be discarded."
     )]
-    pub(crate) min_coverage: i16,
+    pub min_coverage: i16,
     #[arg(
         short,
         long,
@@ -41,7 +41,7 @@ pub(crate) struct FilterArgs {
         help_heading = "FILTER ARGS",
         help = "DMRs with cytosine count below threshold will be discarded."
     )]
-    pub(crate) min_cytosines: usize,
+    pub min_cytosines: usize,
     #[arg(
         short,
         long,
@@ -49,7 +49,7 @@ pub(crate) struct FilterArgs {
         help_heading = "FILTER ARGS",
         help = "DMRs with difference between samples below threshold will be discarded."
     )]
-    pub(crate) diff_threshold: f64,
+    pub diff_threshold: f64,
     #[arg(
         short = 'q',
         long,
@@ -183,7 +183,7 @@ pub fn run(
     run_dmr(Box::new(dmr_iterator), progress_bar, filters, output);
 }
 
-pub(crate) fn init_pbar(total: usize) -> _lib::exports::anyhow::Result<ProgressBar> {
+pub fn init_pbar(total: usize) -> _lib::exports::anyhow::Result<ProgressBar> {
     let progress_bar = ProgressBar::new(total as u64);
     progress_bar.set_style(
         ProgressStyle::default_bar()
@@ -194,7 +194,7 @@ pub(crate) fn init_pbar(total: usize) -> _lib::exports::anyhow::Result<ProgressB
     Ok(progress_bar)
 }
 
-pub(crate) fn init(
+pub fn init(
     group_a: Vec<String>,
     group_b: Vec<String>,
     output: PathBuf,
@@ -252,7 +252,7 @@ pub(crate) fn init(
     Ok((sample_paths, sample_labels))
 }
 
-pub(crate) fn run_dmr(
+pub fn run_dmr(
     iterator: Box<dyn Iterator<Item = (usize, DMRegion)>>,
     mut progress_bar: Option<ProgressBar>,
     filters: FilterArgs,

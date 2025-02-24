@@ -10,7 +10,6 @@ mod inner {
     use num::ToPrimitive;
     use plotly::color::{NamedColor, Rgba};
     use plotly::common::{Fill, Line, Mode};
-    use plotly::plot::Traces;
     use plotly::{Plot, Scatter};
     use statrs::distribution::{ContinuousCDF, Normal};
     use std::collections::BTreeMap;

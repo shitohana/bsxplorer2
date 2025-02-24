@@ -1,7 +1,6 @@
 use crate::tools::dmr::{tv1d_clone, utils};
 use serde::Serialize;
 use statrs::statistics::Statistics;
-use std::{iter, ops};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PenaltySegmentModel {

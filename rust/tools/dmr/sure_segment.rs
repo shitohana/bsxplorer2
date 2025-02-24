@@ -47,11 +47,14 @@ impl Default for SureSegmentModelConfig {
 fn robust_noise_variance(y: &[f64]) -> f64 {
     // Compute absolute differences between adjacent points.
     let mut diffs: Vec<f64> = y.windows(2).map(|w| (w[1] - w[0]).abs()).collect();
+    if diffs.len() < 1 {
+        return 0.0;
+    }
     // Sort the differences to compute the median.
     diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median = if diffs.len() % 2 == 0 {
         let mid = diffs.len() / 2;
-        (diffs[mid - 1] + diffs[mid]) / 2.0
+        (diffs[mid.saturating_sub(1)] + diffs[mid]) / 2.0
     } else {
         diffs[diffs.len() / 2]
     };

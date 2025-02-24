@@ -9,7 +9,6 @@ use crate::utils::wrap_box_result;
 use crate::utils::{first_position, last_position};
 use itertools::Itertools;
 use log::debug;
-use num::{PrimInt, Unsigned};
 use polars::df;
 use polars::error::PolarsResult;
 use polars::frame::DataFrame;
@@ -24,9 +23,7 @@ use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 #[cfg(feature = "python")]
 use pyo3_polars::PyDataFrame;
-use serde::Serialize;
 use std::error::Error;
-use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
 use std::path::PathBuf;

@@ -3,6 +3,7 @@ pub mod dmr_binom;
 pub mod dmr_fast;
 pub mod convert;
 pub mod stats;
+mod dmr_metilene;
 
 use crate::convert::{ConvertReportType, IpcCompression, ReportArgs};
 use crate::dmr_binom::SegmentationArgs2;
@@ -11,10 +12,22 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use glob::glob;
 use wild::ArgsOs;
+use _lib::utils::types::Context;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub(crate) enum DmrContext {
     CG, CHG, CHH
+}
+
+
+impl DmrContext {
+    pub fn to_lib(&self) -> Context {
+        match self {
+            DmrContext::CG => Context::CG,
+            DmrContext::CHG => Context::CHG,
+            DmrContext::CHH => Context::CHH,
+        }
+    }
 }
 
 pub(crate) fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
@@ -104,6 +117,28 @@ enum Commands {
         #[clap(flatten)]
         segmentation: SegmentationArgs2,
     },
+    #[command(
+        about = DMR_ABOUT, 
+        name = "metilene",
+    )]
+    Metilene {
+        #[arg(value_parser, short='A', long, required = true, help = "Paths to BSX files of the first sample group.")]
+        group_a: Vec<String>,
+        #[arg(value_parser, short='B', long, required = true, help = "Paths to BSX files of the second sample group.")]
+        group_b: Vec<String>,
+        #[arg(short='o', long, required = true, help = "Prefix for the generated output files.")]
+        output: PathBuf,
+        #[clap(flatten)]
+        filters: FilterArgs,
+        #[arg(short, long, required = false, default_value_t = false, help = "Automatically confirm selected paths.")]
+        force: bool,
+        #[arg(long, required = false, default_value_t = true, help = "Display progress bar (Disable if you need clean pipeline logs).")]
+        progress: bool,
+        #[arg(long, required = false, default_value_t = 1, help = "Number of threads to use.")]
+        threads: usize,
+        #[clap(flatten)]
+        segmentation: dmr_metilene::SegmentationArgs,
+    },
 
     #[command(
         name = "convert",
@@ -163,6 +198,17 @@ fn main() {
             threads,
             progress,
         } => dmr_binom::run(filters, segmentation, group_a, group_b, output, force, threads, progress),
+
+        Commands::Metilene {
+            filters,
+            segmentation,
+            group_a,
+            group_b,
+            output ,
+            force,
+            threads,
+            progress,
+        } => dmr_metilene::run(filters, segmentation, group_a, group_b, output, force, threads, progress),
 
         Commands::Convert {
             input,
