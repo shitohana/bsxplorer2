@@ -20,6 +20,3 @@ serde = { version = "1.0.132", features = ["derive"] }
 [[bin]]
 name = "bsxplorer"
 path = "src/main.rs"
-
-[lib]
-path = "src/lib.rs"

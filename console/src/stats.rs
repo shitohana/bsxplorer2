@@ -1,13 +1,10 @@
-use crate::dmr_fast::init_pbar;
-use _lib::data_structs::bsx_batch::BsxBatchMethods;
+use crate::utils::init_pbar;
 use _lib::data_structs::region_data::RegionData;
 use _lib::exports::itertools::Itertools;
-use _lib::exports::plotly::Plot;
 use _lib::io::bsx::read::BsxFileReader;
 use _lib::io::bsx::region_read::RegionReader;
-use _lib::plots::{LinePlot, LinePlotData};
 use _lib::tools::meth_stats::{MethylationStatFlat, MethylationStats};
-use _lib::utils::types::{Context, IPCEncodedEnum, Strand};
+use _lib::utils::types::{IPCEncodedEnum, Strand};
 use clap::{Args, ValueEnum};
 use console::style;
 use serde::{Serialize, Serializer};

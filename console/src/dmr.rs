@@ -1,8 +1,11 @@
-use crate::dmr_fast::{init, init_pbar};
-use crate::DmrContext;
+use crate::utils::init_pbar;
+use crate::{expand_wildcards, DmrContext};
+use _lib::exports::anyhow::anyhow;
 use clap::Args;
 use console::style;
+use dialoguer::Confirm;
 use std::fs::File;
+use std::iter::repeat_n;
 use std::path::PathBuf;
 
 #[derive(Args, Debug, Clone)]
@@ -104,6 +107,64 @@ pub(crate) struct MetileneArgs {
     seg_pvalue: f64,
 }
 
+pub fn init(
+    group_a: Vec<String>,
+    group_b: Vec<String>,
+    output: PathBuf,
+    force: bool,
+    threads: usize,
+) -> _lib::exports::anyhow::Result<(Vec<String>, Vec<String>)> {
+    _lib::exports::rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build_global()?;
+    let a_paths = expand_wildcards(group_a);
+    let b_paths = expand_wildcards(group_b);
+
+    if !force {
+        let prompt = format!("Do you want to proceed with the following paths?\n\nGroup A: {:?}\nGroup B: {:?}\nOutput:{:?}", a_paths, b_paths, output);
+        let confirmed = Confirm::new()
+            .with_prompt(prompt)
+            .default(true)
+            .interact()
+            .unwrap_or(false);
+
+        if !confirmed {
+            println!("{}", style("Process aborted by the user.").red());
+            return Err(anyhow!("User aborted the process."));
+        }
+    }
+
+    for path in a_paths.iter().chain(b_paths.iter()) {
+        if !path.exists() {
+            eprintln!("Path {} does not exist.", style(path.display()).red());
+        }
+        if !path.is_file() {
+            eprintln!("Path {} is not a file.", style(path.display()).red());
+        }
+    }
+
+    if output.is_dir() {
+        eprintln!(
+            "Output path {} is a directory.",
+            style(output.display()).red()
+        );
+    }
+
+    let left_labels = repeat_n("A".to_string(), a_paths.len());
+    let right_labels = repeat_n("B".to_string(), b_paths.len());
+
+    let sample_paths = a_paths
+        .into_iter()
+        .chain(b_paths.into_iter())
+        .map(|p| p.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    let sample_labels = left_labels
+        .into_iter()
+        .chain(right_labels.into_iter())
+        .collect::<Vec<_>>();
+    Ok((sample_paths, sample_labels))
+}
+
 pub fn run(
     args: MetileneArgs,
     group_a: Vec<String>,
@@ -121,7 +182,7 @@ pub fn run(
         };
     let context = args.context.to_lib();
 
-    let run_config = _lib::tools::metilene::DmrConfig {
+    let run_config = _lib::tools::dmr::config::DmrConfig {
         context,
         n_missing: args.n_missing,
         min_coverage: args.min_coverage,
