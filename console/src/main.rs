@@ -128,8 +128,6 @@ enum Commands {
         group_b: Vec<String>,
         #[arg(short='o', long, required = true, help = "Prefix for the generated output files.")]
         output: PathBuf,
-        #[clap(flatten)]
-        filters: FilterArgs,
         #[arg(short, long, required = false, default_value_t = false, help = "Automatically confirm selected paths.")]
         force: bool,
         #[arg(long, required = false, default_value_t = true, help = "Display progress bar (Disable if you need clean pipeline logs).")]
@@ -137,7 +135,7 @@ enum Commands {
         #[arg(long, required = false, default_value_t = 1, help = "Number of threads to use.")]
         threads: usize,
         #[clap(flatten)]
-        segmentation: dmr_metilene::SegmentationArgs,
+        segmentation: dmr_metilene::MetileneArgs,
     },
 
     #[command(
@@ -200,15 +198,14 @@ fn main() {
         } => dmr_binom::run(filters, segmentation, group_a, group_b, output, force, threads, progress),
 
         Commands::Metilene {
-            filters,
-            segmentation,
+            segmentation: command_args,
             group_a,
             group_b,
             output ,
             force,
             threads,
             progress,
-        } => dmr_metilene::run(filters, segmentation, group_a, group_b, output, force, threads, progress),
+        } => dmr_metilene::run(command_args, group_a, group_b, output, force, threads, progress),
 
         Commands::Convert {
             input,

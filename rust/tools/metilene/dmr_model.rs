@@ -2,8 +2,8 @@ use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
 use crate::io::bsx::multiple_reader::MultiBsxFileReader;
 use crate::io::bsx::read::BsxFileReader;
 use crate::tools::dmr::{DMRegion, FilterConfig, ReaderMetadata};
-use crate::tools::metilene::ks2d::mann_whitney_u;
-use crate::tools::metilene::{recurse_segmentation, PreSegmentOwned};
+use crate::tools::metilene::{tv_recurse_segment, PreSegmentOwned};
+use crate::utils::mann_whitney_u;
 use crate::utils::types::Context;
 use anyhow::anyhow;
 use bio_types::annot::refids::RefIDSet;
@@ -11,7 +11,7 @@ use itertools::Itertools;
 use log::error;
 use rayon::prelude::*;
 use statrs::statistics::Statistics;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::io::{Read, Seek};
@@ -25,9 +25,13 @@ pub struct DmrConfig {
     pub min_coverage: i16,
     pub diff_threshold: f64,
     pub min_cpgs: usize,
-    pub valley: f64,
-    pub trend_threshold: f64,
     pub max_dist: u64,
+    pub initial_l: f64,
+    pub l_min: f64,
+    pub l_coef: f64,
+    pub seg_tolerance: f64,
+    pub merge_pvalue: f64,
+    pub seg_pvalue: f64,
 }
 
 impl DmrConfig {
@@ -56,8 +60,7 @@ impl DmrConfig {
                 .map(|(id, (group, _))| (id.clone(), group.clone())),
         );
         let group_order = {
-            let group_set: HashSet<R> =
-                HashSet::from_iter(group_mapping.values().map(|x| x.clone()));
+            let group_set = BTreeMap::from_iter(group_mapping.values().map(|x| (x.to_string(), x)));
             if group_set.len() != 2 {
                 return Err(anyhow!(
                     "There should be only two groups of samples! ({:?})",
@@ -65,7 +68,10 @@ impl DmrConfig {
                 ));
             }
             let groups_vec = group_set.into_iter().collect_vec();
-            (groups_vec[0].clone(), groups_vec[1].clone())
+            (
+                groups_vec[0].clone().1.clone(),
+                groups_vec[1].clone().1.clone(),
+            )
         };
         let readers_mapping: HashMap<uuid::Uuid, BsxFileReader<F>> = HashMap::from_iter(
             sample_mapping
@@ -120,9 +126,13 @@ impl DmrConfig {
         min_coverage: i16,
         diff_threshold: f64,
         min_cpgs: usize,
-        valley: f64,
-        trend_threshold: f64,
         max_dist: u64,
+        initial_l: f64,
+        l_min: f64,
+        l_coef: f64,
+        seg_tolerance: f64,
+        merge_pvalue: f64,
+        seg_pvalue: f64,
     ) -> Self {
         Self {
             context,
@@ -130,9 +140,13 @@ impl DmrConfig {
             min_coverage,
             diff_threshold,
             min_cpgs,
-            valley,
-            trend_threshold,
             max_dist,
+            initial_l,
+            l_min,
+            l_coef,
+            seg_tolerance,
+            merge_pvalue,
+            seg_pvalue,
         }
     }
 }
@@ -144,10 +158,14 @@ impl Default for DmrConfig {
             n_missing: 0,
             min_coverage: 5,
             diff_threshold: 0.1,
-            min_cpgs: 5,
-            valley: 0.7,
-            trend_threshold: 0.5,
+            min_cpgs: 10,
             max_dist: 100,
+            initial_l: 2.0,
+            l_min: 1e-3,
+            l_coef: 1.5,
+            seg_tolerance: 1e-6,
+            merge_pvalue: 1e-3,
+            seg_pvalue: 1e-2,
         }
     }
 }
@@ -308,16 +326,19 @@ where
         let mut new_cache = initial_segments
             .into_par_iter()
             .map(|segment| {
-                let result = recurse_segmentation(
-                    segment.to_view(),
+                let result = tv_recurse_segment(
+                    segment.to_view().clone(),
+                    self.config.initial_l,
+                    self.config.l_min,
+                    self.config.l_coef,
                     self.config.min_cpgs,
-                    self.config.trend_threshold,
-                    self.config.valley,
                     self.config.diff_threshold,
+                    self.config.seg_tolerance,
+                    self.config.merge_pvalue,
                 );
                 result
                     .into_iter()
-                    .filter(|s| s.pvalue.is_some())
+                    // .filter(|s| s.pvalue.is_some())
                     .map(|segment| {
                         let a_mean = segment.group_a().mean();
                         let b_mean = segment.group_b().mean();
@@ -327,7 +348,7 @@ where
                                 mann_whitney_u(segment.group_a(), segment.group_b());
                             u_test_pval
                         } else {
-                            segment.pvalue.unwrap()
+                            segment.pvalue.unwrap_or(1.0)
                         };
 
                         DMRegion::new(
@@ -340,6 +361,11 @@ where
                             segment.size(),
                         )
                     })
+                    .filter(|dmr| dmr.end != dmr.start)
+                    .filter(|dmr| {
+                        dmr.meth_diff.abs() >= self.config.diff_threshold
+                            && dmr.p_value <= self.config.seg_pvalue
+                    })
                     .collect_vec()
             })
             .flatten()
@@ -351,12 +377,15 @@ where
 
     fn process_last_leftover(&mut self) -> anyhow::Result<bool> {
         if let Some(leftover) = self.leftover.take() {
-            let result = recurse_segmentation(
-                leftover.to_view(),
+            let result = tv_recurse_segment(
+                leftover.to_view().clone(),
+                self.config.initial_l,
+                self.config.l_min,
+                self.config.l_coef,
                 self.config.min_cpgs,
-                self.config.trend_threshold,
-                self.config.valley,
                 self.config.diff_threshold,
+                self.config.seg_tolerance,
+                self.config.merge_pvalue,
             );
             let mut new_cache = result
                 .into_iter()
@@ -382,9 +411,15 @@ where
                         segment.size(),
                     )
                 })
+                .filter(|dmr| dmr.end != dmr.start)
+                .filter(|dmr| {
+                    dmr.meth_diff.abs() >= self.config.diff_threshold
+                        && dmr.p_value <= self.config.seg_pvalue
+                })
                 .collect_vec();
 
             self.regions_cache.append(&mut new_cache);
+            self.regions_cache.sort_by_key(|d| d.start);
             Ok(true)
         } else {
             Ok(false)
@@ -401,7 +436,11 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             // Try to pop from region cache first
-            if let Some(region) = self.region_cache().pop() {
+            if let Some(region) = if self.regions_cache.len() > 0 {
+                Some(self.region_cache().remove(0))
+            } else {
+                None
+            } {
                 return Some((self.current_block(), region));
             }
 

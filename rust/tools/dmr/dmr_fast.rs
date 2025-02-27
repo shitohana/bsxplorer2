@@ -5,6 +5,7 @@ use crate::tools::dmr::meth_region::{MethylatedRegionOwned, MethylatedRegionView
 use crate::tools::dmr::penalty_segment::PenaltySegmentModel;
 use crate::tools::dmr::{utils, DMRegion, DmrModel, FilterConfig, ReaderMetadata};
 use crate::utils::types::Context;
+use crate::utils::{ks2d_2sample, mann_whitney_u};
 use anyhow::anyhow;
 use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
@@ -163,12 +164,31 @@ impl<R> DmrIterator<R>
 where
     R: Display + Eq + Hash + Clone + Default + std::fmt::Debug,
 {
-    fn t_test(
+    fn u_test(
         chr: Arc<String>,
         left: MethylatedRegionView,
         right: MethylatedRegionView,
     ) -> DMRegion {
-        let p_value = utils::welch_t_test(&left.density, &right.density);
+        let (_, p_value) = mann_whitney_u(&left.density, &right.density);
+        DMRegion::new(
+            chr,
+            left.positions.first().cloned().unwrap_or(0),
+            left.positions.last().cloned().unwrap_or(0),
+            p_value,
+            left.density.mean(),
+            right.density.mean(),
+            left.size(),
+        )
+    }
+
+    fn ks_test(
+        chr: Arc<String>,
+        left: MethylatedRegionView,
+        right: MethylatedRegionView,
+    ) -> DMRegion {
+        let (_d, p_value) =
+            ks2d_2sample(left.positions, left.density, right.positions, right.density);
+
         DMRegion::new(
             chr,
             left.positions.first().cloned().unwrap_or(0),
@@ -225,7 +245,7 @@ where
     ) -> (MethylatedRegionOwned, MethylatedRegionOwned) {
         if let Some((leftover_left, leftover_right)) = self.leftover.take() {
             if new_chr != self.last_chr {
-                self.regions_cache.push(Self::t_test(
+                self.regions_cache.push(Self::u_test(
                     self.last_chr.clone(),
                     leftover_left.as_view(),
                     leftover_right.as_view(),
@@ -278,7 +298,7 @@ where
             .clone()
             .into_par_iter()
             .zip(right.clone().into_par_iter())
-            .map(|(left, right)| Self::t_test(chr.clone(), left, right))
+            .map(|(left, right)| Self::ks_test(chr.clone(), left, right))
             .collect::<Vec<DMRegion>>();
 
         self.regions_cache.append(&mut new_cache);
@@ -295,7 +315,7 @@ where
 
     fn process_last_leftover(&mut self) -> Option<DMRegion> {
         if let Some(leftover) = self.leftover.take() {
-            let region = Self::t_test(
+            let region = Self::ks_test(
                 self.last_chr.clone(),
                 leftover.0.as_view(),
                 leftover.1.as_view(),
