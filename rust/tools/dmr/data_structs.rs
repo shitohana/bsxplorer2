@@ -12,7 +12,6 @@ pub struct SegmentView<'a> {
     pub(crate) rel_start: usize,
     pub(crate) rel_end: usize,
     parent: Arc<&'a SegmentOwned>,
-    mds_cumsum: Vec<f64>,
 }
 
 impl<'a> SegmentView<'a> {
@@ -22,15 +21,10 @@ impl<'a> SegmentView<'a> {
         rel_end: usize,
         parent: Arc<&'a SegmentOwned>,
     ) -> SegmentView<'a> {
-        let iter = &parent.mds_cumsum[rel_start..rel_end];
-        let first = iter.first().cloned().unwrap_or(0.0);
-        let mds_cumsum = iter.into_iter().map(|x| *x - first).collect::<Vec<_>>();
-
         SegmentView {
             pvalue,
             rel_start,
             rel_end,
-            mds_cumsum,
             parent,
         }
     }
@@ -42,9 +36,6 @@ impl<'a> SegmentView<'a> {
         }
     }
 
-    pub fn mds_cumsum(&self) -> &[f64] {
-        &self.mds_cumsum
-    }
     pub fn mds_orig(&self) -> &[f64] {
         &self.parent.mds_orig[self.rel_start..self.rel_end]
     }
@@ -102,7 +93,6 @@ impl<'a> SegmentView<'a> {
             positions: self.positions().to_vec(),
             group_a: self.group_a().to_vec(),
             group_b: self.group_b().to_vec(),
-            mds_cumsum: self.mds_cumsum().to_vec(),
             mds_orig: self.mds_orig().to_vec(),
         }
     }
@@ -149,7 +139,6 @@ impl Ord for SegmentView<'_> {
 pub struct SegmentOwned {
     group_a: Vec<f64>,
     group_b: Vec<f64>,
-    mds_cumsum: Vec<f64>,
     mds_orig: Vec<f64>,
     positions: Vec<u64>,
 }
@@ -162,15 +151,10 @@ impl SegmentOwned {
             .map(|(a, b)| a - b)
             .collect_vec();
         assert_eq!(positions.len(), mds_orig.len());
-        let mut cum = Vec::with_capacity(mds_orig.len());
-        for &val in mds_orig.iter() {
-            cum.push(cum.last().unwrap_or(&0.0) + val);
-        }
 
         Self {
             group_a,
             group_b,
-            mds_cumsum: cum,
             mds_orig,
             positions,
         }
@@ -184,22 +168,15 @@ impl SegmentOwned {
         } else {
             let mut res = split_idxs.into_iter().fold(Vec::new(), |mut acc, idx| {
                 // TODO not sure here
-                let first_cumsum = self.mds_cumsum.get(idx).cloned().unwrap_or(0.0);
                 let positions = self.positions.drain(idx..).collect_vec();
                 let group_a = self.group_a.drain(idx..).collect_vec();
                 let group_b = self.group_b.drain(idx..).collect_vec();
                 let mds_orig = self.mds_orig.drain(idx..).collect_vec();
-                let mds_cumsum = self
-                    .mds_cumsum
-                    .drain(idx..)
-                    .map(|v| v - first_cumsum)
-                    .collect_vec();
 
                 acc.push(Self {
                     positions,
                     group_a,
                     group_b,
-                    mds_cumsum,
                     mds_orig,
                 });
                 acc
@@ -214,7 +191,6 @@ impl SegmentOwned {
         self.group_b.append(&mut other.group_b);
         self.mds_orig.append(&mut other.mds_orig);
         self.positions.append(&mut other.positions);
-        self.mds_cumsum.append(&mut other.mds_cumsum);
         self
     }
 
@@ -244,10 +220,6 @@ impl SegmentOwned {
 
     pub fn group_b(&self) -> &Vec<f64> {
         &self.group_b
-    }
-
-    pub fn mds_cumsum(&self) -> &Vec<f64> {
-        &self.mds_cumsum
     }
 
     pub fn mds_orig(&self) -> &Vec<f64> {

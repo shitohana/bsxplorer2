@@ -76,7 +76,7 @@ pub fn tautstring<T>(input: &[T], lambda: T) -> Vec<T>
 where
     T: num::Num
         + num::FromPrimitive
-        + cmp::PartialOrd
+        + PartialOrd
         + ops::AddAssign<T>
         + ops::SubAssign<T>
         + num::Float
@@ -227,8 +227,9 @@ where
         }
         i += 1;
     }
-    assert!(
-        input.len() == output.len(),
+    assert_eq!(
+        input.len(),
+        output.len(),
         "Input and output must have the same length."
     );
     output
@@ -253,12 +254,7 @@ where
 /// Panics if input vector's length is `0` or `lambda` is less than `0`.
 pub fn condat<T>(input: &[T], lambda: T) -> Vec<T>
 where
-    T: num::Num
-        + num::FromPrimitive
-        + cmp::PartialOrd
-        + ops::Neg<Output = T>
-        + ops::AddAssign<T>
-        + Copy,
+    T: num::Num + num::FromPrimitive + PartialOrd + ops::Neg<Output = T> + ops::AddAssign<T> + Copy,
 {
     assert!(
         input.len() > 0,
@@ -334,8 +330,9 @@ where
                 output.extend(
                     iter::repeat(segment_lower_bound).take(current_input_index - segment_start + 1),
                 );
-                assert!(
-                    input.len() == output.len(),
+                assert_eq!(
+                    input.len(),
+                    output.len(),
                     "Input and output must have the same length."
                 );
                 return output;

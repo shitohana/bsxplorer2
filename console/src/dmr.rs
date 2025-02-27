@@ -10,7 +10,14 @@ use std::path::PathBuf;
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct MetileneArgs {
-    #[clap(short, long, value_enum, default_value_t = DmrContext::CG, help_heading="FILTER ARGS", help = "Select cytosine methylation context.")]
+    #[clap(
+        short,
+        long,
+        value_enum,
+        default_value_t = DmrContext::CG,
+        help_heading = "FILTER ARGS",
+        help = "Select cytosine methylation context. Only cytosines in this context will be used for DMR calling. CG/CHG/CHH."
+    )]
     pub context: DmrContext,
 
     #[arg(
@@ -18,7 +25,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 0,
         help_heading = "FILTER ARGS",
-        help = "Set missing values threshold. Cytosines with no data in > n_samples will be discarded."
+        help = "Set missing values threshold. Cytosines with no data in more than specified number of samples will be discarded."
     )]
     pub n_missing: usize,
 
@@ -27,7 +34,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 5,
         help_heading = "FILTER ARGS",
-        help = "Cytosines with coverage below threshold will be discarded."
+        help = "Set coverage threshold. Cytosines with coverage below this value in any of the samples will be discarded."
     )]
     pub min_coverage: i16,
 
@@ -36,7 +43,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 10,
         help_heading = "FILTER ARGS",
-        help = "DMRs with cytosine count below threshold will be discarded."
+        help = "Set minimum number of cytosines threshold. DMRs with cytosine count below this value will be discarded."
     )]
     pub min_cytosines: usize,
 
@@ -45,7 +52,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 0.05,
         help_heading = "FILTER ARGS",
-        help = "DMRs with difference between samples below threshold will be discarded."
+        help = "Set minimum difference threshold. DMRs with an absolute difference in methylation proportion between the two groups smaller than this value will be discarded."
     )]
     pub diff_threshold: f64,
 
@@ -54,7 +61,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 100,
         help_heading = "SEGMENTATION ARGS",
-        help = "Maximum distance between adjacent cytosines in a segment."
+        help = "Maximum distance between adjacent cytosines in a segment.  Cytosines further apart than this distance will be in separate segments."
     )]
     max_dist: u32,
 
@@ -62,7 +69,8 @@ pub(crate) struct MetileneArgs {
         short = 'L',
         long,
         default_value_t = 2.0,
-        help_heading = "SEGMENTATION ARGS"
+        help_heading = "SEGMENTATION ARGS",
+        help = "Initial regularization parameter for the Condat algorithm.  Larger values result in stronger smoothing."
     )]
     initial_l: f64,
 
@@ -70,14 +78,16 @@ pub(crate) struct MetileneArgs {
         short = 'l',
         long,
         default_value_t = 1e-3,
-        help_heading = "SEGMENTATION ARGS"
+        help_heading = "SEGMENTATION ARGS",
+        help = "Minimum value for the regularization parameter.  The regularization parameter is decreased during segmentation until it is smaller than this value."
     )]
     l_min: f64,
 
     #[arg(
         long = "coef",
         default_value_t = 1.5,
-        help_heading = "SEGMENTATION ARGS"
+        help_heading = "SEGMENTATION ARGS",
+        help = "Coefficient by which `initial_l` is divided in each iteration of the segmentation algorithm. Smaller values perform more segmentation iterations."
     )]
     l_coef: f64,
 
@@ -85,7 +95,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 1e-6,
         help_heading = "SEGMENTATION ARGS",
-        help = "Tolerance of segment identifying after denoising step (should be low)."
+        help = "Tolerance for merging adjacent segments after the Total Variation denoising step (Condat's algorithm).  Smaller values result in more segments being merged. Should be very small to avoid over-segmentation after denoising."
     )]
     tolerance: f64,
 
@@ -93,7 +103,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 1e-2,
         help_heading = "SEGMENTATION ARGS",
-        help = "Welch t-Test P-value for segments merging step. Smaller p-value -> more iterations, less falsely merged segments."
+        help = "Mann-Whitney U-test P-value threshold for merging adjacent segments during recursive segmentation. Smaller p-values result in more iterations and fewer falsely merged segments."
     )]
     merge_p: f64,
 
@@ -102,7 +112,7 @@ pub(crate) struct MetileneArgs {
         long,
         default_value_t = 0.05,
         help_heading = "FILTER ARGS",
-        help = "P-value for DMR identification."
+        help = "P-value threshold for DMR identification using 2D-Kolmogorov-Smirnov test. Segments with a p-value smaller than specified will be reported as DMRs."
     )]
     seg_pvalue: f64,
 }

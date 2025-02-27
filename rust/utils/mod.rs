@@ -2,6 +2,9 @@ use crate::data_structs::region::GenomicPosition;
 use itertools::Itertools;
 use polars::datatypes::PlIndexMap;
 use polars::prelude::*;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::statistics::Statistics;
 use std::sync::Arc;
 
 pub mod types;
@@ -43,11 +46,7 @@ macro_rules! polars_schema {
         }
     };
 }
-use num::ToPrimitive;
 pub(crate) use polars_schema;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use statrs::distribution::{ContinuousCDF, Normal};
-use statrs::statistics::Statistics;
 
 pub fn array_to_schema(array: &[(&str, DataType)]) -> Schema {
     Schema::from(PlIndexMap::from_iter(

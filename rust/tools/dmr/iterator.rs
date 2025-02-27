@@ -1,36 +1,41 @@
 use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
-use crate::io::bsx::multiple_reader::MultiBsxFileReader;
-use crate::io::bsx::read::BsxFileReader;
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::{tv_recurse_segment, FilterConfig};
 use crate::utils::mann_whitney_u;
-use crate::utils::types::Context;
 use anyhow::anyhow;
 use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 use log::error;
 use rayon::prelude::*;
 use statrs::statistics::Statistics;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::io::{Read, Seek};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
+/// An iterator over differentially methylated regions (DMRs).
 pub struct DmrIterator<R>
 where
     R: Display + Eq + Hash + Clone + Default,
 {
+    /// Configuration for DMR analysis.
     pub(crate) config: DmrConfig,
+    /// Pair of sample groups being compared.
     pub(crate) group_pair: (R, R),
+    /// Set of reference IDs.
     pub(crate) ref_idset: RefIDSet<Arc<String>>,
+    /// Leftover segment from the previous batch.
     pub(crate) leftover: Option<SegmentOwned>,
+    /// Cache of DMRs.
     pub(crate) regions_cache: Vec<DMRegion>,
+    /// Last chromosome processed.
     pub(crate) last_chr: Arc<String>,
+    /// Receiver for encoded BSx batch groups.
     pub(crate) receiver: Receiver<Option<EncodedBsxBatchGroup<R>>>,
+    /// Metadata about the reader.
     pub(crate) reader_stat: ReaderMetadata,
+    /// Join handle for the reader thread.
     pub(crate) _join_handle: std::thread::JoinHandle<()>,
 }
 
@@ -38,43 +43,55 @@ impl<R> DmrIterator<R>
 where
     R: Display + Eq + Hash + Clone + Default + Debug,
 {
+    /// Returns the total number of blocks processed.
     pub fn blocks_total(&self) -> usize {
         self.reader_metadata().blocks_total
     }
 
+    /// Returns the current block being processed.
     fn current_block(&self) -> usize {
         self.reader_metadata().current_block
     }
 
+    /// Returns a reference to the reader metadata.
     fn reader_metadata(&self) -> &ReaderMetadata {
         &self.reader_stat
     }
+    /// Returns a mutable reference to the reader metadata.
     fn reader_metadata_mut(&mut self) -> &mut ReaderMetadata {
         &mut self.reader_stat
     }
+    /// Returns the filter configuration.
     fn filter_config(&self) -> FilterConfig {
         self.config.filter_config()
     }
+    /// Returns a reference to the group pair.
     fn group_pair(&self) -> &(R, R) {
         &self.group_pair
     }
+    /// Returns a mutable reference to the reference ID set.
     fn ref_idset(&mut self) -> &mut RefIDSet<Arc<String>> {
         &mut self.ref_idset
     }
+    /// Returns the last chromosome processed.
     fn last_chr(&self) -> Arc<String> {
         self.last_chr.clone()
     }
+    /// Sets the last chromosome processed.
     fn set_last_chr(&mut self, chr: Arc<String>) {
         self.last_chr = chr;
     }
+    /// Returns a mutable reference to the region cache.
     fn region_cache(&mut self) -> &mut Vec<DMRegion> {
         &mut self.regions_cache
     }
 
+    /// Returns a reference to the receiver.
     fn receiver(&mut self) -> &Receiver<Option<EncodedBsxBatchGroup<R>>> {
         &self.receiver
     }
 
+    /// Checks if the group has exactly two sample groups.
     fn check_groups(&self, group: &EncodedBsxBatchGroup<R>) -> anyhow::Result<()> {
         if !(group
             .labels()
@@ -90,6 +107,7 @@ where
         Ok(())
     }
 
+    /// Divides the group into two subgroups based on the group pair.
     fn divide_groups(
         &self,
         group: EncodedBsxBatchGroup<R>,
@@ -111,6 +129,7 @@ where
         Ok((group_left, group_right))
     }
 
+    /// Applies filters to the group.
     fn apply_filters(
         &self,
         group: EncodedBsxBatchGroup<R>,
@@ -121,6 +140,7 @@ where
             .filter_n_missing(self.filter_config().n_missing)
     }
 
+    /// Processes a single batch group.
     fn process_group(&mut self, group: EncodedBsxBatchGroup<R>) -> anyhow::Result<()> {
         // Check if the group has exactly two sample groups
         self.check_groups(&group)?;
@@ -160,15 +180,12 @@ where
         presegmented.append(&mut segment.split_by_dist(self.config.max_dist));
 
         self.set_last_chr(new_chr.clone());
-        self.update_cache(new_chr.clone(), presegmented)?;
+        self.update_cache(presegmented)?;
         Ok(())
     }
 
-    fn update_cache(
-        &mut self,
-        chr: Arc<String>,
-        initial_segments: Vec<SegmentOwned>,
-    ) -> anyhow::Result<()> {
+    /// Updates the cache with new segments.
+    fn update_cache(&mut self, initial_segments: Vec<SegmentOwned>) -> anyhow::Result<()> {
         let mut initial_segments = initial_segments;
         self.leftover = Some(initial_segments.pop().unwrap());
 
@@ -187,7 +204,7 @@ where
                 );
                 result
                     .into_iter()
-                    // .filter(|s| s.pvalue.is_some())
+                    // .filter(|s| s.pvalue.is_some()) //NOTE: this filter is redundant, as pvalue is checked below
                     .map(|segment| {
                         let a_mean = segment.group_a().mean();
                         let b_mean = segment.group_b().mean();
@@ -224,6 +241,7 @@ where
         Ok(())
     }
 
+    /// Processes the last leftover segment.
     fn process_last_leftover(&mut self) -> anyhow::Result<bool> {
         if let Some(leftover) = self.leftover.take() {
             let result = tv_recurse_segment(
@@ -282,6 +300,7 @@ where
 {
     type Item = (usize, DMRegion);
 
+    /// Returns the next DMR in the iterator.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             // Try to pop from region cache first

@@ -1,3 +1,18 @@
+//! Module contains BsxBatches which represent single chromosome methylation data
+//!
+//! BsxBatch stores data in [DataFrame] with
+//! * Non-null chr and position
+//! * Single unique chromosome
+//! * Ascending sorted positions
+//!
+//! Module contains two main structs:
+//! 1. [BsxBatch] struct for storing non-encoded data
+//! 2. [EncodedBsxBatch] struct for storing encoded data (context and strand encoded as boolean)
+//!
+//! and [BsxBatchMethods] trait
+//!
+//! Both BsxBatch and EncodedBsxBatch can be filtered using context and/or strand
+//!
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 #[cfg(feature = "python")]
 use crate::data_structs::region::{PyGenomicPosition, PyRegionCoordinates};
@@ -34,10 +49,16 @@ use std::ops::BitAnd;
 pub struct BsxBatch(DataFrame);
 
 impl BsxBatch {
+    /// Creates new [BsxBatch] without checks
+    ///
+    /// # Safety
+    ///
+    /// * input [DataFrame] is expected to follow format
     pub(crate) unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         BsxBatch(data_frame)
     }
 
+    /// Returns expected column names of dataframe
     pub(crate) const fn col_names() -> &'static [&'static str] {
         &[
             "chr",
@@ -50,6 +71,7 @@ impl BsxBatch {
         ]
     }
 
+    /// Returns expected types of columns
     pub(crate) const fn col_types() -> &'static [DataType] {
         &[
             DataType::String,
@@ -62,21 +84,25 @@ impl BsxBatch {
         ]
     }
 
+    /// Returns name of chr column
     #[inline(always)]
     pub(crate) const fn chr_col() -> &'static str {
         "chr"
     }
 
+    /// Returns name of position column
     #[inline(always)]
     pub(crate) const fn pos_col() -> &'static str {
         "position"
     }
 
+    /// Returns expected schema of [BsxBatch]
     pub fn schema() -> Schema {
         use crate::utils::schema_from_arrays;
         schema_from_arrays(Self::col_names(), Self::col_types())
     }
 
+    /// Returns expected schema of [BsxBatch] as [PlHashMap]
     pub fn hashmap() -> PlHashMap<&'static str, DataType> {
         use crate::utils::hashmap_from_arrays;
         hashmap_from_arrays(Self::col_names(), Self::col_types())
@@ -84,6 +110,9 @@ impl BsxBatch {
 }
 
 impl BsxBatchMethods for BsxBatch {
+    /// Filters [BsxBatch] by `context` and `strand`
+    ///
+    /// If both `context` and `strand` are [None], returns [BsxBatch]
     fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
     where
         Self: Sized,
@@ -102,11 +131,13 @@ impl BsxBatchMethods for BsxBatch {
         }
     }
 
+    /// Returns reference to inner [DataFrame]
     #[inline]
     fn data(&self) -> &DataFrame {
         &self.0
     }
 
+    /// Returns mutable reference to inner [DataFrame]
     #[inline]
     fn data_mut(&mut self) -> &mut DataFrame {
         &mut self.0
@@ -198,14 +229,32 @@ impl BsxBatch {
     }
 }
 
+/// Encoded version of [BsxBatch]
+///
+/// Encodes
+/// 1. `context` as [bool]
+/// 2. `strand` as [bool]
+///
+/// Other types are also downcasted
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "python", pyclass)]
 pub struct EncodedBsxBatch(DataFrame);
 
 impl EncodedBsxBatch {
+    /// Creates new [EncodedBsxBatch] without checks
+    ///
+    /// # Safety
+    ///
+    /// * input [DataFrame] is expected to follow format
     pub(crate) unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         EncodedBsxBatch(data_frame)
     }
+
+    /// Encodes [BsxBatch] into [EncodedBsxBatch]
+    ///
+    /// Performs
+    /// 1. Encoding of `context` and `strand`
+    /// 2. Downcasting of column types
     pub fn encode(batch: BsxBatch, chr_dtype: &DataType) -> PolarsResult<Self> {
         let batch_data = DataFrame::from(batch);
         let target_schema = Self::get_hashmap(chr_dtype);
@@ -223,6 +272,12 @@ impl EncodedBsxBatch {
 
         Ok(Self(result))
     }
+
+    /// Decodes [EncodedBsxBatch] into [BsxBatch]
+    ///
+    /// Performs
+    /// 1. Decoding of `context` and `strand`
+    /// 2. Upcasting of column types
     pub fn decode(self) -> PolarsResult<BsxBatch> {
         let batch_data = DataFrame::from(self);
         let target_schema = BsxBatch::hashmap();
@@ -237,6 +292,7 @@ impl EncodedBsxBatch {
         Ok(BsxBatch(result))
     }
 
+    /// Returns expected schema of [EncodedBsxBatch]
     pub(crate) fn get_schema(chr_dtype: &DataType) -> Schema {
         polars_schema![
             "chr" => chr_dtype.clone(),
@@ -249,6 +305,7 @@ impl EncodedBsxBatch {
         ]
     }
 
+    /// Returns expected schema of [EncodedBsxBatch] as [PlHashMap]
     pub(crate) fn get_hashmap(chr_dtype: &DataType) -> PlHashMap<&str, DataType> {
         PlHashMap::from_iter([
             ("chr", chr_dtype.clone()),
@@ -261,6 +318,11 @@ impl EncodedBsxBatch {
         ])
     }
 
+    /// Trims [EncodedBsxBatch] by `region_coordinates`
+    ///
+    /// Returns [PolarsError] if
+    /// 1. Chromosome names do not match
+    /// 2. Batch does not contain region data
     pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> PolarsResult<Self>
     where
         Self: Sized,
@@ -300,22 +362,26 @@ impl EncodedBsxBatch {
         }
     }
 
+    /// Returns expected schema of inner [DataFrame]
     #[allow(dead_code)]
     #[inline]
     pub(crate) fn schema(&self) -> Schema {
         self.data().schema()
     }
+    /// Returns expected column names of inner [DataFrame]
     #[inline]
     pub(crate) fn col_names() -> &'static [&'static str] {
         BsxBatch::col_names()
     }
 
     // TODO: add checks
+    /// Vertically stacks with other [EncodedBsxBatch]
     pub fn vstack(self, other: Self) -> PolarsResult<Self> {
         let new = self.0.vstack(&other.0)?;
         unsafe { Ok(Self::new_unchecked(new)) }
     }
 
+    /// Get methylation stats for [EncodedBsxBatch]
     pub fn get_methylation_stats(&self) -> PolarsResult<MethylationStats> {
         let density_col = self.data().column("density")?;
         let mean_methylation = density_col
@@ -386,6 +452,8 @@ impl EncodedBsxBatch {
             strand_methylation,
         ))
     }
+
+    /// Returns chromosome name from chromosome column
     pub fn chr(&self) -> PolarsResult<String> {
         let chr_col = self.data().column("chr")?.categorical()?;
         let chr = chr_col.get_rev_map().get(
@@ -397,6 +465,7 @@ impl EncodedBsxBatch {
         Ok(chr.to_string())
     }
 
+    /// Returns first available position
     pub fn first_seq_pos(
         &self,
         refid_set: &mut Option<RefIDSet<Arc<String>>>,
@@ -410,6 +479,7 @@ impl EncodedBsxBatch {
         Ok(Pos::new(chr, pos as isize, NoStrand::Unknown))
     }
 
+    /// Returns last available position
     pub fn last_seq_pos(
         &self,
         refid_set: &mut Option<RefIDSet<Arc<String>>>,
@@ -423,6 +493,7 @@ impl EncodedBsxBatch {
         Ok(Pos::new(chr, pos as isize, NoStrand::Unknown))
     }
 
+    /// Creates [Contig] from [EncodedBsxBatch]
     pub fn as_contig(
         &self,
         refid_set: &mut Option<RefIDSet<Arc<String>>>,
@@ -468,6 +539,7 @@ impl EncodedBsxBatch {
         Ok(Self(data))
     }
 
+    /// Returns methylation density values
     pub fn get_density_vals(&self) -> PolarsResult<Vec<f32>> {
         Ok(self
             .0
@@ -478,6 +550,7 @@ impl EncodedBsxBatch {
             .collect())
     }
 
+    /// Returns position values
     pub fn get_position_vals(&self) -> PolarsResult<Vec<u32>> {
         Ok(self
             .0
@@ -488,6 +561,7 @@ impl EncodedBsxBatch {
             .collect())
     }
 
+    /// Returns methylated counts
     pub fn get_counts_m(&self) -> PolarsResult<Vec<i16>> {
         Ok(self
             .0
@@ -498,6 +572,7 @@ impl EncodedBsxBatch {
             .collect())
     }
 
+    /// Returns total counts
     pub fn get_counts_total(&self) -> PolarsResult<Vec<i16>> {
         Ok(self
             .0
@@ -508,10 +583,12 @@ impl EncodedBsxBatch {
             .collect())
     }
 
+    /// Filter [EncodedBsxBatch] by mask
     pub fn filter_mask(self, mask: &BooleanChunked) -> PolarsResult<Self> {
         Ok(unsafe { Self::new_unchecked(self.0.filter(mask)?) })
     }
 
+    /// Split [EncodedBsxBatch] into three batches by context (CG, CHG, CHH)
     pub fn strip_contexts(self) -> PolarsResult<(Self, Self, Self)> {
         let context_col = self.data().column("context")?.bool()?;
         let cg_encoding = Context::CG.to_bool().unwrap();
@@ -554,6 +631,9 @@ impl From<EncodedBsxBatch> for DataFrame {
 }
 
 impl BsxBatchMethods for EncodedBsxBatch {
+    /// Filters [EncodedBsxBatch] by `context` and `strand`
+    ///
+    /// If both `context` and `strand` are [None], returns [EncodedBsxBatch]
     fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
     where
         Self: Sized,
@@ -595,13 +675,16 @@ impl BsxBatchMethods for EncodedBsxBatch {
         }
     }
 
+    /// Returns reference to inner [DataFrame]
     fn data(&self) -> &DataFrame {
         &self.0
     }
+
+    /// Returns mutable reference to inner [DataFrame]
     fn data_mut(&mut self) -> &mut DataFrame {
         &mut self.0
     }
-
+    /// Returns first [GenomicPosition]
     fn first_position(&self) -> Result<GenomicPosition<u64>, PolarsError> {
         let chr_col = self.data().column("chr")?.categorical()?;
         let chr = chr_col
@@ -611,6 +694,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
         Ok(GenomicPosition::new(chr.to_string(), pos as u64))
     }
 
+    /// Returns last [GenomicPosition]
     fn last_position(&self) -> Result<GenomicPosition<u64>, PolarsError> {
         let chr_col = self.data().column("chr")?.categorical()?;
         let chr = chr_col
@@ -621,27 +705,46 @@ impl BsxBatchMethods for EncodedBsxBatch {
     }
 }
 
+/// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
 pub trait BsxBatchMethods {
+    /// Filters [BsxBatch] by `context` and `strand`
+    ///
+    /// If both `context` and `strand` are [None], returns [BsxBatch]
     fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
     where
         Self: Sized;
 
+    /// Returns reference to inner [DataFrame]
     fn data(&self) -> &DataFrame;
 
+    /// Returns mutable reference to inner [DataFrame]
     fn data_mut(&mut self) -> &mut DataFrame;
 
+    /// Checks if chromosome column contains only one chromosome
     fn check_chr_unique(&self) -> bool {
         self.data().column("chr").unwrap().unique().unwrap().len() == 1
     }
 
+    /// Returns first [GenomicPosition]
     fn first_position(&self) -> PolarsResult<GenomicPosition<u64>> {
         use crate::utils::first_position;
         first_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
     }
+    /// Returns last [GenomicPosition]
     fn last_position(&self) -> PolarsResult<GenomicPosition<u64>> {
         use crate::utils::last_position;
         last_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
     }
+
+    /// Extends [BsxBatch] by other
+    ///
+    /// Prints warning if first position of other is not less than last of self,
+    /// but still sorts data by position.
+    ///
+    /// Returns error if
+    /// 1. Chromosome names do not match
+    /// 2. Chromosome columns non-unique
+    /// 3. Resulting data still contains duplicates
     fn extend(&mut self, other: &Self) -> PolarsResult<()>
     where
         Self: Sized,
@@ -685,6 +788,7 @@ pub trait BsxBatchMethods {
         self.data_mut().extend(other.data())
     }
 
+    /// Returns number of rows
     fn height(&self) -> usize {
         self.data().height()
     }

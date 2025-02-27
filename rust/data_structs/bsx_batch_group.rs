@@ -1,3 +1,9 @@
+//! This module provides functionalities for grouping and analyzing multiple `EncodedBsxBatch` instances.
+//!
+//! It includes the `EncodedBsxBatchGroup` struct, which represents a collection of `EncodedBsxBatch`
+//! instances, optionally associated with labels. This allows for operations on groups of batches,
+//! such as filtering, aggregating statistics, and splitting into subgroups. The module also provides
+//! utility functions for checking data consistency across batches and performing various analyses.
 use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use anyhow::anyhow;
@@ -26,18 +32,44 @@ macro_rules! check_eq_batches {
     };
 }
 
+/// Represents a group of encoded BSX batches.
+///
+/// This struct holds multiple `EncodedBsxBatch` instances, potentially associated with labels.
+/// It provides methods for filtering, aggregating, and analyzing the batches as a group.
 pub struct EncodedBsxBatchGroup<R: Display + Eq> {
+    /// The collection of encoded BSX batches.
     batches: Vec<EncodedBsxBatch>,
+    /// Optional labels associated with each batch.
     labels: Option<Vec<R>>,
 }
 
 impl<R: Display + Eq> EncodedBsxBatchGroup<R> {
+    /// Returns a reference to the optional labels associated with the batches.
     pub fn labels(&self) -> &Option<Vec<R>> {
         &self.labels
     }
 }
-
-impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
+#[allow(dead_code)]
+impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R>
+where
+    R: Display + Eq + Hash + Clone + Default,
+{
+    /// Attempts to create a new `EncodedBsxBatchGroup`.
+    ///
+    /// This function performs several checks to ensure data consistency across the batches:
+    /// - It verifies that the input `batches` vector is not empty.
+    /// - It checks if all batches have the same height (number of rows).
+    /// - It ensures that all non-empty batches have the same contig.
+    /// - If labels are provided, it verifies that the number of labels matches the number of batches.
+    ///
+    /// # Arguments
+    ///
+    /// * `batches` - A vector of `EncodedBsxBatch` instances.
+    /// * `labels` - An optional vector of labels, one for each batch.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the new `EncodedBsxBatchGroup` if successful, or an error if any of the checks fail.
     pub fn try_new(batches: Vec<EncodedBsxBatch>, labels: Option<Vec<R>>) -> anyhow::Result<Self> {
         if batches.is_empty() {
             return Err(anyhow!("Empty batches group"));
@@ -65,6 +97,12 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         Ok(EncodedBsxBatchGroup { batches, labels })
     }
 
+    /// Creates a new `EncodedBsxBatchGroup` without performing any consistency checks.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it bypasses the checks performed by `try_new`.
+    /// It should only be used when the caller can guarantee that the input batches are consistent.
     unsafe fn new_unchecked(batches: Vec<EncodedBsxBatch>) -> Self {
         Self {
             batches,
@@ -197,20 +235,33 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         self.filter_mask(&mask)
     }
 
+    /// Extracts and returns the data from each batch as a vector of `DataFrame`s.
     pub fn take_data(self) -> Vec<DataFrame> {
         self.batches.into_iter().map(DataFrame::from).collect()
     }
 
+    /// Returns the number of samples (batches) in the group.
     #[inline]
     pub fn n_samples(&self) -> usize {
         self.batches.len()
     }
 
+    /// Returns the height (number of rows) of the batches in the group.
+    /// Assumes that all batches have the same height.
     #[inline]
     pub fn height(&self) -> usize {
         self.batches[0].height()
     }
 
+    /// Splits the `EncodedBsxBatchGroup` into multiple groups based on the associated labels.
+    ///
+    /// This function iterates through the batches and their corresponding labels (if present),
+    /// and groups the batches based on the labels. Batches with the same label are placed into the same group.
+    ///
+    /// # Returns
+    ///
+    /// Returns a HashMap where the keys are the unique labels and the values are `EncodedBsxBatchGroup` instances
+    /// containing the batches associated with that label.
     pub fn split_groups(self) -> HashMap<R, EncodedBsxBatchGroup<R>> {
         let mut out = HashMap::<R, Vec<EncodedBsxBatch>>::new();
         let batches_len = self.batches.len();
@@ -226,11 +277,21 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         )
     }
 
+    /// Returns a reference to the underlying vector of `EncodedBsxBatch` instances.
     #[inline]
     pub fn batches(&self) -> &Vec<EncodedBsxBatch> {
         &self.batches
     }
 
+    /// Calculates the average methylation density for each methylation site across all batches.
+    ///
+    /// # Arguments
+    ///
+    /// * `na_rm` - If true, missing values (NaN) are ignored in the calculation. If false, NaN values propagate.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a vector of average densities (one for each methylation site), or an error if the underlying data is invalid.
     pub fn get_average_density(&self, na_rm: bool) -> anyhow::Result<Vec<f64>> {
         let density_cols = self
             .batches
@@ -255,6 +316,12 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         Ok(res)
     }
 
+    /// Calculates the sum of methylated counts (`count_m`) for each methylation site across all batches.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a vector of summed methylated counts (one for each methylation site), or an error if the underlying data is invalid.
+
     pub fn get_sum_counts_m(&self) -> anyhow::Result<Vec<u32>> {
         let count_m_cols = self
             .batches
@@ -278,6 +345,11 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         Ok(res)
     }
 
+    /// Calculates the sum of total counts (`count_total`) for each methylation site across all batches.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a vector of summed total counts (one for each methylation site), or an error if the underlying data is invalid.
     pub fn get_sum_counts_total(&self) -> anyhow::Result<Vec<u32>> {
         let count_m_cols = self
             .batches
@@ -301,10 +373,24 @@ impl<R: Display + Eq + Hash + Clone + Default> EncodedBsxBatchGroup<R> {
         Ok(res)
     }
 
+    /// Retrieves the genomic positions of the methylation sites.
+    ///
+    /// Assumes that all batches have the same positions.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a vector of genomic positions (one for each methylation site), or an error if the underlying data is invalid.
     pub fn get_positions(&self) -> anyhow::Result<Vec<u32>> {
         Ok(self.batches[0].get_position_vals()?)
     }
 
+    /// Retrieves the chromosome (contig) name.
+    ///
+    /// Assumes that all batches have the same chromosome.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the chromosome name, or an error if the underlying data is invalid.
     pub fn get_chr(&self) -> anyhow::Result<String> {
         Ok(self.batches[0].chr()?)
     }

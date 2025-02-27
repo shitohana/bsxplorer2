@@ -103,7 +103,6 @@ impl Ord for Strand {
                 (Strand::Reverse, _) => Ordering::Greater,
                 (_, Strand::Reverse) => Ordering::Less,
                 (Strand::None, _) => Ordering::Greater,
-                (_, Strand::None) => Ordering::Less,
             }
         }
     }

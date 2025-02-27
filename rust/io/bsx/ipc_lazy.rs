@@ -106,4 +106,4 @@ impl<R: Read + Seek> LazyIpcFileReader<R> {
     }
 }
 
-pub(crate) const CONTINUATION_MARKER: [u8; 4] = [0xff; 4];
+const CONTINUATION_MARKER: [u8; 4] = [0xff; 4];

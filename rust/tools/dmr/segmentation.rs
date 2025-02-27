@@ -5,7 +5,26 @@ use crate::utils::types::Context;
 use itertools::{izip, Itertools};
 use std::collections::BTreeSet;
 
+/// Splits a segment based on the distance between positions.
+///
+/// Returns a vector of indices where the distance between consecutive positions
+/// is greater than or equal to `max_dist`.
+///
+/// # Arguments
+///
+/// * `positions` - A slice of unsigned 64-bit integers representing positions.
+/// * `max_dist` - The maximum allowed distance between consecutive positions.
+///
+/// # Returns
+///
+/// A vector of indices where the segment should be split.
+/// # Panics
+///
+/// * If `positions` is empty.  This should be handled gracefully.
 pub fn arg_split_segment(positions: &[u64], max_dist: u64) -> Vec<usize> {
+    if positions.is_empty() {
+        return Vec::new(); // Return an empty vector instead of panicking.
+    }
     (1..positions.len())
         .into_iter()
         .filter_map(|i| {
@@ -18,6 +37,28 @@ pub fn arg_split_segment(positions: &[u64], max_dist: u64) -> Vec<usize> {
         .collect()
 }
 
+/// Recursively segments a [SegmentView] using Total Variation (TV) regularization.
+///
+/// This function applies the Condat algorithm to smooth the data within the segment
+/// and identifies sub-segments based on the smoothed differences between the two groups.
+/// It recursively processes these sub-segments until a stopping criterion is met.
+///
+/// # Arguments
+///
+/// * `segment` - The `SegmentView` to segment.
+/// * `initial_l` - The initial regularization parameter for the Condat algorithm.
+/// * `l_min` - The minimum value for the regularization parameter.
+/// * `l_coef` - The coefficient by which `initial_l` is divided in each iteration.
+/// * `min_cpg` - The minimum number of CpGs required for a segment to be considered valid.
+/// * `diff_threshold` - The threshold for the smoothed difference between groups.
+/// * `seg_tolerance` -  The tolerance for merging adjacent segments with similar values
+///                      after the TV-filtering step of Condat.
+/// * `merge_pvalue` - The p-value threshold for merging adjacent segments.
+///
+/// # Returns
+///
+/// A `BTreeSet` of `SegmentView`s representing the segmented regions. The `BTreeSet`
+/// ensures the Segments are sorted and non-overlapping.
 pub fn tv_recurse_segment(
     segment: SegmentView,
     mut initial_l: f64,
@@ -28,13 +69,21 @@ pub fn tv_recurse_segment(
     seg_tolerance: f64,
     merge_pvalue: f64,
 ) -> BTreeSet<SegmentView> {
+    assert!(
+        l_coef > 1.0,
+        "l division coefficient must be bigger, than 1"
+    );
+
     let mut result: Vec<SegmentView> = Vec::new();
     let mut segment_queue = vec![segment.clone()];
+    let mut iterations = 0;
+    const MAX_ITERATIONS: usize = 1000;
 
     loop {
-        if segment_queue.is_empty() {
+        if segment_queue.is_empty() || iterations > MAX_ITERATIONS {
             break;
         }
+        iterations += 1;
 
         let mut cur_seg = segment_queue.pop().unwrap();
         cur_seg.init_pvalue();
@@ -45,7 +94,7 @@ pub fn tv_recurse_segment(
         )
         .map(|(a, b)| {
             let diff = a - b;
-            if diff > diff_threshold {
+            if diff.abs() > diff_threshold {
                 diff
             } else {
                 0.0
@@ -54,8 +103,8 @@ pub fn tv_recurse_segment(
         .collect_vec();
 
         let new_segments = extract_segments(&diff_smoothed, seg_tolerance)
-            .into_iter()
-            .map(|(start, end, _)| cur_seg.slice(start, end))
+            .iter()
+            .map(|(start, end, _)| cur_seg.slice(*start, *end))
             .map(|mut s| {
                 s.init_pvalue();
                 s
@@ -81,6 +130,10 @@ pub fn tv_recurse_segment(
             segment_queue.append(&mut better_segments);
         }
 
+        if l_coef <= 0.0 {
+            //prevent infinite loop if l_coef is negative or 0.
+            break;
+        }
         initial_l /= l_coef;
         if initial_l < l_min {
             break;
@@ -108,10 +161,29 @@ pub fn tv_recurse_segment(
     BTreeSet::from_iter(merged)
 }
 
+/// Extracts segments from a slice of floats based on a tolerance.
+///
+/// This function identifies contiguous regions in `x` where the difference
+/// between consecutive values does not exceed `tolerance`.
+///
+/// # Arguments
+///
+/// * `x` - A slice of floats.
+/// * `tolerance` - The maximum allowed difference between consecutive values.
+///
+/// # Returns
+///
+/// A vector of tuples, where each tuple contains:
+///   - The start index of the segment.
+///   - The end index of the segment.
+///   - The value of the segment (the value at the start index).
 fn extract_segments(x: &[f64], tolerance: f64) -> Vec<(usize, usize, f64)> {
     let mut segments = Vec::new();
     if x.is_empty() {
         return segments;
+    }
+    if x.len() == 1 {
+        return vec![(0, 0, x[0])];
     }
     let mut start = 0;
     let mut current_val = x[0];
@@ -126,18 +198,33 @@ fn extract_segments(x: &[f64], tolerance: f64) -> Vec<(usize, usize, f64)> {
     segments
 }
 
-/// Merge adjacent segments if the t–test on their underlying data does not show a significant difference.
-/// The t–test is performed on the original noisy data from each segment.
-/// If the p–value exceeds p_threshold, the segments are merged.
+/// Merge adjacent segments if the Mann-Whitney U test on their underlying data
+/// does not show a significant difference.
+///
+/// The test is performed on the original, unsmoothed methylation data from each segment.
+/// If the p-value exceeds `p_threshold`, the segments are merged.
+///
+/// # Arguments
+///
+/// * `segments` - A vector of `SegmentView`s representing the segments to merge.
+/// * `p_threshold` - The p-value threshold for merging.
+///
+/// # Returns
+///
+/// A vector of `SegmentView`s representing the merged segments.
 fn merge_adjacent_segments(segments: Vec<SegmentView>, p_threshold: f64) -> Vec<SegmentView> {
     if segments.is_empty() {
         return vec![];
     }
     let mut merged_segments = Vec::new();
-    let mut prev_seg = segments[0].clone();
+    let mut sorted_segments = segments;
+    sorted_segments.sort_by_key(|s| s.rel_start);
+    let mut prev_seg = sorted_segments[0].clone();
 
-    for cur_seg in segments.iter().skip(1) {
-        if cur_seg.rel_start.saturating_sub(prev_seg.rel_end) < 2 {
+    for cur_seg in sorted_segments.iter().skip(1) {
+        // Check for overlap or adjacency.  If rel_start <= prev_seg.rel_end, they are
+        // adjacent or overlapping.
+        if cur_seg.rel_start <= prev_seg.rel_end {
             let (_ustat, p_value) = mann_whitney_u(prev_seg.mds_orig(), cur_seg.mds_orig());
             // If the difference is not significant, merge the segments.
             if p_value > p_threshold {
@@ -156,6 +243,18 @@ fn merge_adjacent_segments(segments: Vec<SegmentView>, p_threshold: f64) -> Vec<
 }
 
 /// Iteratively merge segments until no further merging occurs.
+///
+/// This function repeatedly calls `merge_adjacent_segments` until the number
+/// of segments remains constant, indicating that no further merging is possible.
+///
+/// # Arguments
+///
+/// * `segments` - A vector of `SegmentView`s representing the segments to merge.
+/// * `p_threshold` - The p-value threshold for merging.
+///
+/// # Returns
+///
+/// A vector of `SegmentView`s representing the final merged segments.
 pub fn merge_segments(segments: Vec<SegmentView>, p_threshold: f64) -> Vec<SegmentView> {
     let mut current_segments = segments.to_vec();
     loop {
@@ -169,8 +268,12 @@ pub fn merge_segments(segments: Vec<SegmentView>, p_threshold: f64) -> Vec<Segme
     current_segments
 }
 
+/// Configuration for filtering data.
 pub struct FilterConfig {
+    /// The context to consider (e.g., CpG, CHG, CHH).
     pub context: Context,
+    /// The maximum number of missing values allowed.
     pub n_missing: usize,
+    /// The minimum coverage required.
     pub min_coverage: i16,
 }

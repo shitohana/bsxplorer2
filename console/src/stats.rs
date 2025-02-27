@@ -84,7 +84,8 @@ pub(crate) fn run(args: StatsArgs) {
                 pbar.inc(1);
             }
             initial_stats.finalize_methylation();
-            let json = serde_json::to_string_pretty(&initial_stats).expect("Serialization failed");
+            let json = _lib::exports::serde_json::to_string_pretty(&initial_stats)
+                .expect("Serialization failed");
             let mut file =
                 File::create(&args.output).expect("Error: failed to create output file.");
             file.write_all(json.as_bytes())

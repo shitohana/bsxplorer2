@@ -15,7 +15,9 @@ pub mod plots;
 pub mod tools;
 pub mod utils;
 
+#[cfg(feature = "python")]
 use crate::io::bsx;
+#[cfg(feature = "python")]
 use crate::io::report::schema;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;

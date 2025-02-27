@@ -219,7 +219,7 @@ impl RegionAssembler {
                 affected_regions
                     .par_iter()
                     .map(|region_data| {
-                        let mut batch = data_ref.trim_region(&region_data.as_region());
+                        let batch = data_ref.trim_region(&region_data.as_region());
                         batch.map(|mut df| {
                             if matches!(region_data.strand(), Strand::None) {
                                 df = df.filter(None, Some(region_data.strand()))
