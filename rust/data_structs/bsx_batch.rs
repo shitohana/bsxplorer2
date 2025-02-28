@@ -323,7 +323,7 @@ impl EncodedBsxBatch {
     /// Returns [PolarsError] if
     /// 1. Chromosome names do not match
     /// 2. Batch does not contain region data
-    pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> PolarsResult<Self>
+    pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
@@ -332,12 +332,11 @@ impl EncodedBsxBatch {
         let height = self.height();
 
         match batch_first.partial_cmp(&region_coordinates.end_gpos()) {
-            None => Err(PolarsError::ComputeError(
-                "Chromosome does not match".into(),
-            )),
+            None => Err(PolarsError::ComputeError("Chromosome does not match".into()).into()),
             Some(Ordering::Greater) => Err(PolarsError::ComputeError(
                 "Batch does not contain region information".into(),
-            )),
+            )
+            .into()),
             _ => {
                 let start_shift = pos_col
                     .iter()
@@ -355,9 +354,10 @@ impl EncodedBsxBatch {
                     start.extend(vec![false; height - end_shift]);
                     start
                 });
-                self.data()
+                Ok(self
+                    .data()
                     .filter(&mask)
-                    .map(|df| unsafe { Self::new_unchecked(df) })
+                    .map(|df| unsafe { Self::new_unchecked(df) })?)
             }
         }
     }
@@ -685,7 +685,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
         &mut self.0
     }
     /// Returns first [GenomicPosition]
-    fn first_position(&self) -> Result<GenomicPosition<u64>, PolarsError> {
+    fn first_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
         let chr_col = self.data().column("chr")?.categorical()?;
         let chr = chr_col
             .get_rev_map()
@@ -695,7 +695,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
     }
 
     /// Returns last [GenomicPosition]
-    fn last_position(&self) -> Result<GenomicPosition<u64>, PolarsError> {
+    fn last_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
         let chr_col = self.data().column("chr")?.categorical()?;
         let chr = chr_col
             .get_rev_map()
@@ -726,12 +726,12 @@ pub trait BsxBatchMethods {
     }
 
     /// Returns first [GenomicPosition]
-    fn first_position(&self) -> PolarsResult<GenomicPosition<u64>> {
+    fn first_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
         use crate::utils::first_position;
         first_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
     }
     /// Returns last [GenomicPosition]
-    fn last_position(&self) -> PolarsResult<GenomicPosition<u64>> {
+    fn last_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
         use crate::utils::last_position;
         last_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
     }
@@ -745,22 +745,20 @@ pub trait BsxBatchMethods {
     /// 1. Chromosome names do not match
     /// 2. Chromosome columns non-unique
     /// 3. Resulting data still contains duplicates
-    fn extend(&mut self, other: &Self) -> PolarsResult<()>
+    fn extend(&mut self, other: &Self) -> anyhow::Result<()>
     where
         Self: Sized,
     {
         if !(self.check_chr_unique() && other.check_chr_unique()) {
-            return Err(PolarsError::ComputeError(
-                "Chromosomes in batches non-unique".into(),
-            ));
+            return Err(
+                PolarsError::ComputeError("Chromosomes in batches non-unique".into()).into(),
+            );
         }
         let self_pos = self.last_position()?;
         let other_pos = self.first_position()?;
 
         if self_pos.chr() != other_pos.chr() {
-            return Err(PolarsError::ComputeError(
-                "Chromosomes in batches differ".into(),
-            ));
+            return Err(PolarsError::ComputeError("Chromosomes in batches differ".into()).into());
         }
         if self_pos.position() >= other_pos.position() {
             warn!("First position in other batch ({}) must be less than last position in the current ({})", other_pos, self_pos);
@@ -779,13 +777,13 @@ pub trait BsxBatchMethods {
                     self.data().height()
                 );
                 println!("{}", self.data());
-                return Err(PolarsError::ComputeError(
-                    "Position values are duplicated".into(),
-                ));
+                return Err(
+                    PolarsError::ComputeError("Position values are duplicated".into()).into(),
+                );
             }
         }
 
-        self.data_mut().extend(other.data())
+        Ok(self.data_mut().extend(other.data())?)
     }
 
     /// Returns number of rows

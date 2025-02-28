@@ -31,7 +31,7 @@ mod report_read_utils {
         let chr = last_position.clone().chr().to_string();
         let chr_coverage = *reader
             .coverage()
-            .get(chr.to_string())
+            .get(chr.as_str())
             .expect("Chromosome not found in index");
 
         // To ensure we capture all contexts
@@ -88,7 +88,7 @@ mod report_read_utils {
     pub(crate) fn align_data_with_context<N: PosNum>(
         data_frame: &DataFrame,
         context_data: ContextData<N>,
-    ) -> PolarsResult<DataFrame> {
+    ) -> anyhow::Result<DataFrame> {
         let data_join_columns = [BsxBatch::pos_col()];
         let context_join_columns = [ContextData::<N>::position_col()];
         let chr = utils::first_position(data_frame, BsxBatch::chr_col(), BsxBatch::pos_col())?
@@ -120,7 +120,7 @@ mod report_read_utils {
         context_df_lazy = utils::decode_context(context_df_lazy, "context", "context");
         context_df_lazy = utils::decode_strand(context_df_lazy, "strand", "strand");
 
-        context_df_lazy
+        Ok(context_df_lazy
             .collect()?
             .join(
                 &data_frame.drop_many(drop_columns),
@@ -131,6 +131,6 @@ mod report_read_utils {
             .lazy()
             .cast(BsxBatch::hashmap(), true)
             .collect()?
-            .select(BsxBatch::col_names().iter().cloned())
+            .select(BsxBatch::col_names().iter().cloned())?)
     }
 }

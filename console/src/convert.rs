@@ -11,15 +11,25 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
+use crate::{init_logger, init_rayon_threads, UtilsArgs};
+
 #[derive(Args, Debug, Clone)]
 pub struct ReportArgs {
+    #[arg(help = "Path of the input file.")]
+    input: PathBuf,
     #[arg(
-        short = 't',
-        long = "threads",
-        help = "Number of threads to use.",
-        help_heading = "REPORT ARGS"
+        short = 'o',
+        long,
+        required = true,
+        help = "Path for the generated output file."
     )]
-    n_threads: Option<usize>,
+    output: PathBuf,
+    #[clap(short='f', long = "from", required = true, value_enum, default_value_t = ConvertReportType::Bismark)]
+    from_type: ConvertReportType,
+    #[clap(short='i', long = "into", required = true, value_enum, default_value_t = ConvertReportType::Bsx)]
+    into_type: ConvertReportType,
+    #[clap(short='C', long = "compression", required = false, value_enum, default_value_t = IpcCompression::ZSTD)]
+    ipc_compression: IpcCompression,
     #[arg(
         long,
         default_value_t = false,
@@ -74,67 +84,67 @@ pub enum IpcCompression {
     None,
 }
 
-pub fn run(
-    input: PathBuf,
-    output: PathBuf,
-    from_type: ConvertReportType,
-    into_type: ConvertReportType,
-    ipc_compression: IpcCompression,
-    report: ReportArgs,
-) {
-    if from_type == into_type {
+pub(crate) fn run(args: ReportArgs, utils: UtilsArgs) {
+    init_rayon_threads(utils.threads).expect("Failed to initialyze global thread pool");
+    init_logger(utils.verbose).expect("Failed to initialize logger");
+
+    if args.from_type == args.into_type {
         println!(
             "{}. Nothing to be done.",
             style("From report type matches into report type.")
         )
     }
     if matches!(
-        from_type,
+        args.from_type,
         ConvertReportType::BedGraph | ConvertReportType::Coverage
-    ) && !(report.fasta_path.is_some() && report.fai_path.is_some())
+    ) && !(args.fasta_path.is_some() && args.fai_path.is_some())
     {
         eprintln!(
             "For {:?} report type conversion, both {}",
-            from_type,
+            args.from_type,
             style("fasta_path and fai_path must be set").red()
         )
     }
-    if matches!(into_type, ConvertReportType::Bsx)
-        && !(report.fasta_path.is_some() || report.fai_path.is_some())
+    if matches!(args.into_type, ConvertReportType::Bsx)
+        && !(args.fasta_path.is_some() || args.fai_path.is_some())
     {
         eprintln!(
             "For {:?} report type conversion, either of {}",
-            into_type,
+            args.into_type,
             style("fasta_path and fai_path must be set").red()
         )
     }
-    if !input.exists() {
-        eprintln!("Path {} does not exist.", style(input.display()).red());
+    if !args.input.exists() {
+        eprintln!("Path {} does not exist.", style(args.input.display()).red());
     }
-    if !input.is_file() {
-        eprintln!("Path {} is not a file.", style(input.display()).red());
+    if !args.input.is_file() {
+        eprintln!("Path {} is not a file.", style(args.input.display()).red());
     }
-    if output.is_dir() {
+    if args.output.is_dir() {
         eprintln!(
             "Output path {} is a directory.",
-            style(output.display()).red()
+            style(args.output.display()).red()
         );
     }
 
-    let sink = BufWriter::new(File::create(output.clone()).unwrap_or_else(|e| {
+    let sink = BufWriter::new(File::create(args.output.clone()).unwrap_or_else(|e| {
         panic!(
             "Could not create output file {}: {}",
-            output.to_string_lossy(),
+            args.output.to_string_lossy(),
             e
         )
     }));
 
-    match from_type {
+    match args.from_type {
         ConvertReportType::Bismark
         | ConvertReportType::BedGraph
         | ConvertReportType::CgMap
         | ConvertReportType::Coverage => {
-            let spinner = ProgressBar::new_spinner();
+            let spinner = if utils.progress {
+                ProgressBar::new_spinner()
+            } else {
+                ProgressBar::hidden()
+            };
             spinner.set_style(
                 ProgressStyle::default_spinner()
                     .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
@@ -143,15 +153,14 @@ pub fn run(
             );
             spinner.set_message("Processing...");
 
-            let report_schema = match from_type {
+            let report_schema = match args.from_type {
                 ConvertReportType::Bismark => ReportTypeSchema::Bismark,
                 ConvertReportType::Coverage => ReportTypeSchema::Coverage,
                 ConvertReportType::BedGraph => ReportTypeSchema::BedGraph,
                 ConvertReportType::CgMap => ReportTypeSchema::CgMap,
                 ConvertReportType::Bsx => unreachable!(),
             };
-            let (fasta_path, fai_path) = match (report.fasta_path.clone(), report.fai_path.clone())
-            {
+            let (fasta_path, fai_path) = match (args.fasta_path.clone(), args.fai_path.clone()) {
                 (Some(fasta_path), Some(fai_path)) => (Some(fasta_path), Some(fai_path)),
                 _ => (None, None),
             };
@@ -159,56 +168,64 @@ pub fn run(
             let report_reader = ReportReaderBuilder {
                 report_type: report_schema,
                 rechunk: true,
-                n_threads: report.n_threads,
-                low_memory: report.low_memory,
+                n_threads: Some(utils.threads),
+                low_memory: args.low_memory,
                 n_rows: None,
                 row_index: None,
-                chunk_size: report.chunk_size,
+                chunk_size: args.chunk_size,
                 skip_rows_after_header: 0,
                 fasta_path,
                 fai_path,
-                batch_per_read: report.batch_per_read,
-                batch_size: report.batch_size,
+                batch_per_read: args.batch_per_read,
+                batch_size: args.batch_size,
             }
-            .try_finish(File::open(input.clone()).unwrap_or_else(|e| {
-                panic!("Could not open file {}: {}", input.to_string_lossy(), e)
+            .try_finish(File::open(args.input.clone()).unwrap_or_else(|e| {
+                panic!(
+                    "Could not open file {}: {}",
+                    args.input.to_string_lossy(),
+                    e
+                )
             }))
             .unwrap_or_else(|e| {
-                panic!("Could not create reader {}: {}", input.to_string_lossy(), e)
+                panic!(
+                    "Could not create reader {}: {}",
+                    args.input.to_string_lossy(),
+                    e
+                )
             });
 
-            if into_type == ConvertReportType::Bsx {
-                let compression = match ipc_compression {
+            if args.into_type == ConvertReportType::Bsx {
+                let compression = match args.ipc_compression {
                     IpcCompression::LZ4 => Some(PolarsIpcCompression::LZ4),
                     IpcCompression::ZSTD => Some(PolarsIpcCompression::ZSTD),
                     IpcCompression::None => None,
                 };
 
-                let mut writer = if report.fai_path.is_some() {
+                let mut writer = if args.fai_path.is_some() {
                     BsxIpcWriter::try_from_sink_and_fai(
                         sink,
-                        report.fai_path.clone().unwrap(),
+                        args.fai_path.clone().unwrap(),
                         compression,
                         None,
                     )
                     .unwrap_or_else(|e| {
                         panic!(
                             "Could not create output file {}: {}",
-                            output.to_string_lossy(),
+                            args.output.to_string_lossy(),
                             e
                         )
                     })
-                } else if report.fasta_path.is_some() {
+                } else if args.fasta_path.is_some() {
                     BsxIpcWriter::try_from_sink_and_fasta(
                         sink,
-                        report.fasta_path.clone().unwrap(),
+                        args.fasta_path.clone().unwrap(),
                         compression,
                         None,
                     )
                     .unwrap_or_else(|e| {
                         panic!(
                             "Could not create output file {}: {}",
-                            output.to_string_lossy(),
+                            args.output.to_string_lossy(),
                             e
                         )
                     })
@@ -226,7 +243,7 @@ pub fn run(
                 }
                 writer.close().expect("Could not close writer");
             } else {
-                let into_report_schema = match into_type {
+                let into_report_schema = match args.into_type {
                     ConvertReportType::Bismark => ReportTypeSchema::Bismark,
                     ConvertReportType::Coverage => ReportTypeSchema::Coverage,
                     ConvertReportType::BedGraph => ReportTypeSchema::BedGraph,
@@ -234,18 +251,14 @@ pub fn run(
                     ConvertReportType::Bsx => unreachable!(),
                 };
 
-                let mut writer = ReportWriter::try_new(
-                    sink,
-                    into_report_schema,
-                    report.n_threads.unwrap_or_default(),
-                )
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Could not create output writer {}: {}",
-                        output.to_string_lossy(),
-                        e
-                    )
-                });
+                let mut writer = ReportWriter::try_new(sink, into_report_schema, utils.threads)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Could not create output writer {}: {}",
+                            args.output.to_string_lossy(),
+                            e
+                        )
+                    });
 
                 for (idx, batch) in report_reader.enumerate() {
                     let position = batch.last_position().expect("Error getting the position");
@@ -257,11 +270,15 @@ pub fn run(
                 }
             }
 
-            spinner.finish_with_message(format!("Done: {}", style(output.display()).green()));
+            spinner.finish_with_message(format!("Done: {}", style(args.output.display()).green()));
         }
         ConvertReportType::Bsx => {
-            let reader = BsxFileReader::new(File::open(input.clone()).unwrap_or_else(|e| {
-                panic!("Could not open file {}: {}", input.to_string_lossy(), e)
+            let reader = BsxFileReader::new(File::open(args.input.clone()).unwrap_or_else(|e| {
+                panic!(
+                    "Could not open file {}: {}",
+                    args.input.to_string_lossy(),
+                    e
+                )
             }));
 
             let pb = ProgressBar::new(reader.blocks_total() as u64);
@@ -277,7 +294,7 @@ pub fn run(
             // Set the initial message
             pb.set_message("Processing...");
 
-            let into_report_schema = match into_type {
+            let into_report_schema = match args.into_type {
                 ConvertReportType::Bismark => ReportTypeSchema::Bismark,
                 ConvertReportType::Coverage => ReportTypeSchema::Coverage,
                 ConvertReportType::BedGraph => ReportTypeSchema::BedGraph,
@@ -285,15 +302,14 @@ pub fn run(
                 ConvertReportType::Bsx => unreachable!(),
             };
 
-            let mut writer =
-                ReportWriter::try_new(sink, into_report_schema, report.n_threads.unwrap_or(1))
-                    .unwrap_or_else(|e| {
-                        panic!(
-                            "Could not create output writer {}: {}",
-                            output.to_string_lossy(),
-                            e
-                        )
-                    });
+            let mut writer = ReportWriter::try_new(sink, into_report_schema, utils.threads)
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Could not create output writer {}: {}",
+                        args.output.to_string_lossy(),
+                        e
+                    )
+                });
 
             for batch in reader {
                 let batch = batch.expect("Could not decode ipc batch");
@@ -306,7 +322,7 @@ pub fn run(
                     .expect("Could not write batch");
             }
 
-            pb.finish_with_message(format!("Done: {}", style(output.display()).green()));
+            pb.finish_with_message(format!("Done: {}", style(args.output.display()).green()));
         }
     }
 }

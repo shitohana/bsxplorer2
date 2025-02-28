@@ -227,7 +227,7 @@ impl RegionAssembler {
                             (region_data.clone(), df)
                         })
                     })
-                    .collect::<PolarsResult<Vec<_>>>()
+                    .collect::<anyhow::Result<Vec<_>>>()
                     .expect("Failed to trim data");
 
             // Update the cache using a single write lock.

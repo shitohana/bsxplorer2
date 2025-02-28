@@ -1,53 +1,12 @@
 #![feature(path_add_extension)]
 pub mod convert;
-pub mod stats;
 mod dmr;
+pub mod stats;
 pub mod utils;
-use crate::convert::{ConvertReportType, IpcCompression, ReportArgs};
-use clap::{Parser, Subcommand, ValueEnum};
-use std::path::PathBuf;
-use glob::glob;
+use crate::convert::ReportArgs;
+use clap::{Parser, Subcommand};
+pub(crate) use utils::*;
 use wild::ArgsOs;
-use _lib::utils::types::Context;
-
-#[derive(Debug, Clone, ValueEnum)]
-pub(crate) enum DmrContext {
-    CG, CHG, CHH
-}
-
-
-impl DmrContext {
-    pub fn to_lib(&self) -> Context {
-        match self {
-            DmrContext::CG => Context::CG,
-            DmrContext::CHG => Context::CHG,
-            DmrContext::CHH => Context::CHH,
-        }
-    }
-}
-
-pub(crate) fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
-    let mut expanded_paths = Vec::new();
-
-    for path in paths {
-        if path.contains('*') || path.contains('?') {
-            // Expand wildcard using glob
-            match glob(&path) {
-                Ok(matches) => {
-                    for entry in matches.filter_map(Result::ok) {
-                        expanded_paths.push(entry);
-                    }
-                }
-                Err(e) => eprintln!("Error processing wildcard '{}': {}", path, e),
-            }
-        } else {
-            // If not a wildcard, push the path as-is
-            expanded_paths.push(PathBuf::from(path));
-        }
-    }
-
-    expanded_paths
-}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -66,24 +25,14 @@ const CONVERT_ABOUT: &'static str = "BSXplorer report type conversion tool";
 #[derive(Subcommand, Debug)]
 enum Commands {
     #[command(
-        about = DMR_ABOUT, 
+        about = DMR_ABOUT,
         name = "dmr",
     )]
     Dmr {
-        #[arg(value_parser, short='A', long, required = true, help = "Paths to BSX files of the first sample group.")]
-        group_a: Vec<String>,
-        #[arg(value_parser, short='B', long, required = true, help = "Paths to BSX files of the second sample group.")]
-        group_b: Vec<String>,
-        #[arg(short='o', long, required = true, help = "Prefix for the generated output files.")]
-        output: PathBuf,
-        #[arg(short, long, required = false, default_value_t = false, help = "Automatically confirm selected paths.")]
-        force: bool,
-        #[arg(long, required = false, default_value_t = true, help = "Display progress bar (Disable if you need clean pipeline logs).")]
-        progress: bool,
-        #[arg(long, required = false, default_value_t = 1, help = "Number of threads to use.")]
-        threads: usize,
         #[clap(flatten)]
-        segmentation: dmr::MetileneArgs,
+        utils: UtilsArgs,
+        #[clap(flatten)]
+        args: dmr::DmrArgs,
     },
 
     #[command(
@@ -92,18 +41,10 @@ enum Commands {
         after_help = include_str!("strings/convert_ahelp.txt"),
     )]
     Convert {
-        #[arg(help = "Path of the input file.")]
-        input: PathBuf,
-        #[arg(short='o', long, required = true, help = "Path for the generated output file.")]
-        output: PathBuf,
-        #[clap(short='f', long = "from", required = true, value_enum, default_value_t = ConvertReportType::Bismark)]
-        from_type: ConvertReportType,
-        #[clap(short='i', long = "into", required = true, value_enum, default_value_t = ConvertReportType::Bsx)]
-        into_type: ConvertReportType,
-        #[clap(short='C', long = "compression", required = false, value_enum, default_value_t = IpcCompression::ZSTD)]
-        ipc_compression: IpcCompression,
         #[clap(flatten)]
-        report: ReportArgs,
+        args: ReportArgs,
+        #[clap(flatten)]
+        utils: UtilsArgs,
     },
 
     #[command(
@@ -114,35 +55,20 @@ enum Commands {
     Stats {
         #[clap(flatten)]
         stats: stats::StatsArgs,
-    }
+        #[clap(flatten)]
+        utils: UtilsArgs,
+    },
 }
-
 
 fn main() {
     let args: ArgsOs = wild::args_os();
     let cli = Cli::parse_from(args);
     // Dispatch the command based on the provided subcommand.
     match cli.command {
-        Commands::Dmr {
-            segmentation: command_args,
-            group_a,
-            group_b,
-            output ,
-            force,
-            threads,
-            progress,
-        } => dmr::run(command_args, group_a, group_b, output, force, threads, progress),
+        Commands::Dmr { args, utils } => dmr::run(args, utils),
 
-        Commands::Convert {
-            input,
-            output,
-            from_type,
-            into_type,
-            ipc_compression,
-            report
-        } => convert::run(input, output, from_type, into_type, ipc_compression, report),
+        Commands::Convert { args, utils } => convert::run(args, utils),
 
-        Commands::Stats { stats } => stats::run(stats),
+        Commands::Stats { stats, utils } => stats::run(stats, utils),
     }
 }
-

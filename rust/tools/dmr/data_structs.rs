@@ -1,5 +1,5 @@
 use crate::tools::dmr::segmentation;
-use crate::utils::ks2d_2sample;
+use crate::utils::mann_whitney_u;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize, Serializer};
 use statrs::statistics::Statistics;
@@ -31,9 +31,13 @@ impl<'a> SegmentView<'a> {
 
     pub fn init_pvalue(&mut self) {
         if self.pvalue.is_none() {
-            let (_, prob) = self.ks_test();
+            let (_, prob) = self.mann_whitney();
             self.pvalue = Some(prob)
         }
+    }
+
+    fn mann_whitney(&self) -> (f64, f64) {
+        mann_whitney_u(self.group_a(), self.group_b())
     }
 
     pub fn mds_orig(&self) -> &[f64] {
@@ -45,6 +49,8 @@ impl<'a> SegmentView<'a> {
     pub fn group_b(&self) -> &[f64] {
         &self.parent.group_b[self.rel_start..self.rel_end]
     }
+
+    #[allow(dead_code)]
     pub fn mean_diff(&self) -> f64 {
         self.group_a().mean() - self.group_b().mean()
     }
@@ -54,6 +60,7 @@ impl<'a> SegmentView<'a> {
     pub fn end_pos(&self) -> u64 {
         self.parent.positions[self.rel_end - 1]
     }
+    #[allow(dead_code)]
     pub fn positions(&self) -> &[u64] {
         &self.parent.positions[self.rel_start..self.rel_end]
     }
@@ -79,15 +86,7 @@ impl<'a> SegmentView<'a> {
         SegmentView::new(None, self.rel_start, other.rel_end, self.parent.clone())
     }
 
-    pub fn ks_test(&self) -> (f64, f64) {
-        ks2d_2sample(
-            self.positions(),
-            self.group_a(),
-            self.positions(),
-            self.group_b(),
-        )
-    }
-
+    #[allow(dead_code)]
     pub fn to_owned(&self) -> SegmentOwned {
         SegmentOwned {
             positions: self.positions().to_vec(),
@@ -198,36 +197,8 @@ impl SegmentOwned {
         SegmentView::new(None, 0, self.mds_orig.len(), Arc::new(self))
     }
 
-    pub fn slice(&self, start: usize, end: usize) -> SegmentView {
-        SegmentView::new(None, start, end, Arc::new(self))
-    }
-
-    pub fn length(&self) -> u64 {
-        self.positions
-            .first()
-            .cloned()
-            .unwrap_or(0)
-            .saturating_sub(self.positions.last().cloned().unwrap_or(0))
-    }
-
     pub fn size(&self) -> usize {
         self.positions.len()
-    }
-
-    pub fn group_a(&self) -> &Vec<f64> {
-        &self.group_a
-    }
-
-    pub fn group_b(&self) -> &Vec<f64> {
-        &self.group_b
-    }
-
-    pub fn mds_orig(&self) -> &Vec<f64> {
-        &self.mds_orig
-    }
-
-    pub fn positions(&self) -> &Vec<u64> {
-        &self.positions
     }
 }
 
@@ -286,6 +257,7 @@ impl DMRegion {
         self.meth_left - self.meth_right
     }
 
+    #[allow(dead_code)]
     fn meth_mean(&self) -> f64 {
         (self.meth_left + self.meth_right) / 2.0
     }

@@ -72,6 +72,7 @@ use std::ops;
 ///
 /// # Panics
 /// Panics if input vector's length is `0` or `lambda` is less than `0`.
+#[allow(dead_code)]
 pub fn tautstring<T>(input: &[T], lambda: T) -> Vec<T>
 where
     T: num::Num

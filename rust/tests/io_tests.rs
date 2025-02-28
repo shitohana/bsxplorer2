@@ -22,10 +22,8 @@ use rand_chacha::ChaCha8Rng;
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::Display;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Write};
@@ -603,7 +601,7 @@ where
 #[test]
 fn report_reading() {
     #[allow(unused_results)]
-    pretty_env_logger::try_init();
+    let _ = pretty_env_logger::try_init();
     // let chunk_size = 10_000;
     let report_schemas = [
         ReportTypeSchema::BedGraph,
@@ -632,7 +630,7 @@ fn report_reading() {
 #[test]
 fn bsx_io() {
     #[allow(unused_results)]
-    pretty_env_logger::try_init();
+    let _ = pretty_env_logger::try_init();
     // let chunk_size = 10_000;
     let config = TestReportConfig {
         seed: Some(1234),

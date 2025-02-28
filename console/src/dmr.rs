@@ -1,15 +1,48 @@
 use crate::utils::init_pbar;
-use crate::{expand_wildcards, DmrContext};
+use crate::{expand_wildcards, init_logger, init_rayon_threads, DmrContext, UtilsArgs};
 use _lib::exports::anyhow::anyhow;
 use clap::Args;
 use console::style;
 use dialoguer::Confirm;
+use indicatif::ProgressBar;
 use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
 
 #[derive(Args, Debug, Clone)]
-pub(crate) struct MetileneArgs {
+pub(crate) struct DmrArgs {
+    #[arg(
+        value_parser,
+        short = 'A',
+        long,
+        required = true,
+        help = "Paths to BSX files of the first sample group."
+    )]
+    group_a: Vec<String>,
+    #[arg(
+        value_parser,
+        short = 'B',
+        long,
+        required = true,
+        help = "Paths to BSX files of the second sample group."
+    )]
+    group_b: Vec<String>,
+    #[arg(
+        short = 'o',
+        long,
+        required = true,
+        help = "Prefix for the generated output files."
+    )]
+    output: PathBuf,
+    #[arg(
+        short,
+        long,
+        required = false,
+        default_value_t = false,
+        help = "Automatically confirm selected paths."
+    )]
+    force: bool,
+
     #[clap(
         short,
         long,
@@ -123,10 +156,11 @@ pub fn init(
     output: PathBuf,
     force: bool,
     threads: usize,
+    logger: bool,
 ) -> _lib::exports::anyhow::Result<(Vec<String>, Vec<String>)> {
-    _lib::exports::rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build_global()?;
+    init_rayon_threads(threads)?;
+    init_logger(logger)?;
+
     let a_paths = expand_wildcards(group_a);
     let b_paths = expand_wildcards(group_b);
 
@@ -175,21 +209,19 @@ pub fn init(
     Ok((sample_paths, sample_labels))
 }
 
-pub fn run(
-    args: MetileneArgs,
-    group_a: Vec<String>,
-    group_b: Vec<String>,
-    output: PathBuf,
-    force: bool,
-    threads: usize,
-    progress: bool,
-) {
-    let (sample_paths, sample_labels) =
-        if let Ok(result) = init(group_a, group_b, output.clone(), force, threads) {
-            result
-        } else {
-            return;
-        };
+pub fn run(args: DmrArgs, utils: UtilsArgs) {
+    let (sample_paths, sample_labels) = if let Ok(result) = init(
+        args.group_a,
+        args.group_b,
+        args.output.clone(),
+        args.force,
+        utils.threads,
+        utils.verbose,
+    ) {
+        result
+    } else {
+        return;
+    };
     let context = args.context.to_lib();
 
     let run_config = _lib::tools::dmr::config::DmrConfig {
@@ -216,18 +248,18 @@ pub fn run(
         .try_finish(labeled)
         .expect("Failed to initialize DMR iterator");
 
-    let mut progress_bar = if progress {
+    let progress_bar = if utils.progress {
         let progress_bar =
             init_pbar(dmr_iterator.blocks_total()).expect("Failed to initialize progress bar");
-
-        Some(progress_bar)
+        progress_bar
     } else {
-        None
+        ProgressBar::hidden()
     };
 
     let mut last_batch_idx = 0;
 
-    let all_segments_path = output
+    let all_segments_path = args
+        .output
         .with_added_extension("segments")
         .with_added_extension("tsv");
 
@@ -239,30 +271,28 @@ pub fn run(
 
     let mut dmr_count = 0;
     for (batch_idx, dmr) in dmr_iterator {
-        if let Some(progress_bar) = progress_bar.as_mut() {
-            if batch_idx != last_batch_idx {
-                progress_bar.inc(batch_idx as u64 - last_batch_idx as u64);
-                last_batch_idx = batch_idx;
-            }
+        if batch_idx != last_batch_idx {
+            progress_bar.inc(batch_idx as u64 - last_batch_idx as u64);
+            last_batch_idx = batch_idx;
+        }
 
-            progress_bar.set_message(format!(
-                "{}{}",
-                style(format!("{}:", dmr.chr.as_str())).blue(),
-                style(format!("{}-{}", dmr.start, dmr.end)).green(),
-            ));
+        progress_bar.set_message(format!(
+            "{}{}",
+            style(format!("{}:", dmr.chr.as_str())).blue(),
+            style(format!("{}-{}", dmr.start, dmr.end)).green(),
+        ));
 
-            if dmr.n_cytosines >= args.min_cytosines {
-                dmr_count += 1;
-                csv_writer
-                    .serialize(dmr)
-                    .expect("Failed to write DMR to file");
-            }
+        if dmr.n_cytosines >= args.min_cytosines {
+            dmr_count += 1;
+            csv_writer
+                .serialize(dmr)
+                .expect("Failed to write DMR to file");
         }
     }
 
     csv_writer.flush().expect("Failed to write DMRs to file");
 
-    progress_bar.map(|pb| pb.finish());
+    progress_bar.finish();
     println!(
         "{}",
         style(format!("Found {} DMRs.", dmr_count)).green().bold()

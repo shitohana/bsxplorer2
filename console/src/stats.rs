@@ -1,4 +1,5 @@
 use crate::utils::init_pbar;
+use crate::{init_logger, init_rayon_threads, UtilsArgs};
 use _lib::data_structs::region_data::RegionData;
 use _lib::exports::itertools::Itertools;
 use _lib::io::bsx::read::BsxFileReader;
@@ -63,8 +64,10 @@ enum AnnotationFormat {
     Bed,
 }
 
-pub(crate) fn run(args: StatsArgs) {
+pub(crate) fn run(args: StatsArgs, utils: UtilsArgs) {
     init(&args);
+    init_rayon_threads(utils.threads).expect("Failed to create global thread pool");
+    init_logger(utils.verbose).expect("Failed to set up logger");
 
     match args.mode {
         StatsMode::Genomewide => {
@@ -75,6 +78,7 @@ pub(crate) fn run(args: StatsArgs) {
             let mut initial_stats = MethylationStats::new();
             let pbar =
                 init_pbar(reader.blocks_total()).expect("Error: failed to create progress bar.");
+
             for batch in reader {
                 let batch = batch.expect("Error: failed to read batch.");
                 let batch_stats = batch
