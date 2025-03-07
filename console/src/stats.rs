@@ -1,11 +1,11 @@
 use crate::utils::init_pbar;
 use crate::{init_logger, init_rayon_threads, UtilsArgs};
-use _lib::data_structs::region_data::RegionData;
-use _lib::exports::itertools::Itertools;
-use _lib::io::bsx::read::BsxFileReader;
-use _lib::io::bsx::region_read::RegionReader;
-use _lib::tools::meth_stats::{MethylationStatFlat, MethylationStats};
-use _lib::utils::types::{IPCEncodedEnum, Strand};
+use bsxplorer2::data_structs::region_data::RegionData;
+use bsxplorer2::exports::itertools::Itertools;
+use bsxplorer2::io::bsx::read::BsxFileReader;
+use bsxplorer2::io::bsx::region_read::RegionReader;
+use bsxplorer2::tools::meth_stats::{MethylationStatFlat, MethylationStats};
+use bsxplorer2::utils::types::{IPCEncodedEnum, Strand};
 use clap::{Args, ValueEnum};
 use console::style;
 use serde::{Serialize, Serializer};
@@ -88,7 +88,7 @@ pub(crate) fn run(args: StatsArgs, utils: UtilsArgs) {
                 pbar.inc(1);
             }
             initial_stats.finalize_methylation();
-            let json = _lib::exports::serde_json::to_string_pretty(&initial_stats)
+            let json = bsxplorer2::exports::serde_json::to_string_pretty(&initial_stats)
                 .expect("Serialization failed");
             let mut file =
                 File::create(&args.output).expect("Error: failed to create output file.");
@@ -98,15 +98,15 @@ pub(crate) fn run(args: StatsArgs, utils: UtilsArgs) {
             pbar.set_message("Done.");
         }
         StatsMode::Regions => {
-            use _lib::utils::types::Strand;
+            use bsxplorer2::utils::types::Strand;
 
             let pbar = init_pbar(0).expect("Error: failed to create progress bar.");
             pbar.set_message("Reading annotation...");
 
             let annotation = match args.format {
                 AnnotationFormat::Gff => {
-                    use _lib::exports::bio::bio_types::strand::Strand as BioStrand;
-                    use _lib::exports::bio::io::gff::*;
+                    use bsxplorer2::exports::bio::bio_types::strand::Strand as BioStrand;
+                    use bsxplorer2::exports::bio::io::gff::*;
 
                     let mut reader = Reader::from_file(&args.annot_path.unwrap(), GffType::GFF3)
                         .expect("Error: failed to open annotation file.");
@@ -144,8 +144,8 @@ pub(crate) fn run(args: StatsArgs, utils: UtilsArgs) {
                         .collect_vec()
                 }
                 AnnotationFormat::Bed => {
-                    use _lib::exports::bio::bio_types::strand::Strand as BioStrand;
-                    use _lib::exports::bio::io::bed::*;
+                    use bsxplorer2::exports::bio::bio_types::strand::Strand as BioStrand;
+                    use bsxplorer2::exports::bio::io::bed::*;
 
                     let mut reader = Reader::from_file(&args.annot_path.unwrap())
                         .expect("Error: failed to open annotation file.");
@@ -258,7 +258,7 @@ struct RegionRow {
 }
 
 fn init(args: &StatsArgs) {
-    _lib::exports::rayon::ThreadPoolBuilder::new()
+    bsxplorer2::exports::rayon::ThreadPoolBuilder::new()
         .num_threads(args.threads)
         .build_global()
         .expect("Error: failed to initialize thread pool.");

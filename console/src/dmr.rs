@@ -1,15 +1,15 @@
 use crate::utils::init_pbar;
 use crate::{expand_wildcards, init_logger, init_rayon_threads, DmrContext, UtilsArgs};
-use _lib::exports::anyhow::anyhow;
+use bsxplorer2::exports::anyhow::anyhow;
+use bsxplorer2::tools::dmr::DMRegion;
 use clap::{Args, ValueEnum};
 use console::style;
 use dialoguer::Confirm;
 use indicatif::ProgressBar;
+use serde::Serialize;
 use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
-use serde::Serialize;
-use _lib::tools::dmr::DMRegion;
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct DmrArgs {
@@ -150,14 +150,14 @@ pub(crate) struct DmrArgs {
         help = "Adjusted P-value threshold for DMR identification using 2D-Kolmogorov-Smirnov test. Segments with a p-value smaller than specified will be reported as DMRs."
     )]
     padj: f64,
-    
+
     #[clap(
         long="pmethod",
         value_enum,
         default_value_t = PadjMethod::BH,
         help_heading = "FILTER ARGS",
     )]
-    pmethod: PadjMethod
+    pmethod: PadjMethod,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -165,7 +165,7 @@ pub(crate) enum PadjMethod {
     Bonf,
     BH,
     BY,
-    None
+    None,
 }
 
 pub fn init(
@@ -175,7 +175,7 @@ pub fn init(
     force: bool,
     threads: usize,
     logger: bool,
-) -> _lib::exports::anyhow::Result<(Vec<String>, Vec<String>)> {
+) -> bsxplorer2::exports::anyhow::Result<(Vec<String>, Vec<String>)> {
     init_rayon_threads(threads)?;
     init_logger(logger)?;
 
@@ -240,9 +240,9 @@ pub fn run(args: DmrArgs, utils: UtilsArgs) {
     } else {
         return;
     };
-    let context = args.context.to_lib();
+    let context = args.context.tobsxplorer2();
 
-    let run_config = _lib::tools::dmr::config::DmrConfig {
+    let run_config = bsxplorer2::tools::dmr::config::DmrConfig {
         context,
         n_missing: args.n_missing,
         min_coverage: args.min_coverage,
@@ -311,16 +311,17 @@ pub fn run(args: DmrArgs, utils: UtilsArgs) {
     csv_writer.flush().expect("Failed to write DMRs to file");
 
     progress_bar.finish();
-    
+
     let all_segments = csv::ReaderBuilder::default()
         .delimiter(b'\t')
         .has_headers(true)
-        .from_path(all_segments_path).unwrap()
+        .from_path(all_segments_path)
+        .unwrap()
         .deserialize::<DMRegion>()
         .collect::<Result<Vec<_>, _>>()
         .expect("Failed to deserialize DMR segments file");
-    
-    use _lib::exports::adjustp;
+
+    use bsxplorer2::exports::adjustp;
     let padj = if !matches!(args.pmethod, PadjMethod::None) {
         adjustp::adjust(
             &all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>(),
@@ -328,14 +329,15 @@ pub fn run(args: DmrArgs, utils: UtilsArgs) {
                 PadjMethod::BH => adjustp::Procedure::BenjaminiHochberg,
                 PadjMethod::Bonf => adjustp::Procedure::Bonferroni,
                 PadjMethod::BY => adjustp::Procedure::BenjaminiYekutieli,
-                _ => unreachable!()
-            }
+                _ => unreachable!(),
+            },
         )
-    } else{
+    } else {
         all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>()
     };
-    
-    let filtered = all_segments.into_iter()
+
+    let filtered = all_segments
+        .into_iter()
         .zip(padj)
         .map(|(dmr, p)| DmrFilteredRow::from_dmr(dmr, p))
         .filter(|dmr| dmr.padj <= args.padj)
@@ -343,7 +345,7 @@ pub fn run(args: DmrArgs, utils: UtilsArgs) {
         .filter(|dmr| dmr.n_cytosines >= args.min_cytosines)
         .collect::<Vec<_>>();
     let dmr_count = filtered.len();
-    
+
     let filtered_path = args
         .output
         .with_added_extension("filtered")
@@ -354,11 +356,13 @@ pub fn run(args: DmrArgs, utils: UtilsArgs) {
         .has_headers(true)
         .from_path(&filtered_path)
         .expect("Failed to open output file");
-    
-    filtered.iter().for_each(|dmr| csv_writer.serialize(dmr).unwrap());
+
+    filtered
+        .iter()
+        .for_each(|dmr| csv_writer.serialize(dmr).unwrap());
 
     csv_writer.flush().expect("Failed to write DMRs to file");
-    
+
     println!(
         "{}",
         style(format!("Found {} DMRs.", dmr_count)).green().bold()
@@ -382,7 +386,7 @@ struct DmrFilteredRow {
 impl DmrFilteredRow {
     fn from_dmr(dmr: DMRegion, padj: f64) -> Self {
         Self {
-            padj, 
+            padj,
             chr: dmr.chr,
             start: dmr.start,
             end: dmr.end,

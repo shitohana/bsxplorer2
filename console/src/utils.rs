@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use _lib::{
+use bsxplorer2::{
     exports::{anyhow, rayon},
     utils::types::Context,
 };
@@ -8,7 +8,7 @@ use clap::{Args, ValueEnum};
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
 
-pub fn init_pbar(total: usize) -> _lib::exports::anyhow::Result<ProgressBar> {
+pub fn init_pbar(total: usize) -> bsxplorer2::exports::anyhow::Result<ProgressBar> {
     let progress_bar = ProgressBar::new(total as u64);
     progress_bar.set_style(
         ProgressStyle::default_bar()
@@ -27,7 +27,7 @@ pub(crate) enum DmrContext {
 }
 
 impl DmrContext {
-    pub fn to_lib(&self) -> Context {
+    pub fn tobsxplorer2(&self) -> Context {
         match self {
             DmrContext::CG => Context::CG,
             DmrContext::CHG => Context::CHG,
@@ -87,7 +87,7 @@ pub(crate) struct UtilsArgs {
 #[inline]
 pub(crate) fn init_logger(logger: bool) -> anyhow::Result<()> {
     if logger {
-        Ok(_lib::exports::pretty_env_logger::try_init()?)
+        Ok(bsxplorer2::exports::pretty_env_logger::try_init()?)
     } else {
         Ok(())
     }

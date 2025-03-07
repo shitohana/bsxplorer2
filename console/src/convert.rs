@@ -1,9 +1,9 @@
-use _lib::data_structs::bsx_batch::BsxBatchMethods;
-use _lib::io::bsx::read::BsxFileReader;
-use _lib::io::bsx::write::{BsxIpcWriter, PolarsIpcCompression};
-use _lib::io::report::read::ReportReaderBuilder;
-use _lib::io::report::schema::ReportTypeSchema;
-use _lib::io::report::write::ReportWriter;
+use bsxplorer2::data_structs::bsx_batch::BsxBatchMethods;
+use bsxplorer2::io::bsx::read::BsxFileReader;
+use bsxplorer2::io::bsx::write::{BsxIpcWriter, PolarsIpcCompression};
+use bsxplorer2::io::report::read::ReportReaderBuilder;
+use bsxplorer2::io::report::schema::ReportTypeSchema;
+use bsxplorer2::io::report::write::ReportWriter;
 use clap::{Args, ValueEnum};
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
