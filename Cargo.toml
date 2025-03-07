@@ -9,4 +9,4 @@ members = [ "console", "rust"]
 
 [[bin]]
 name = "bsxplorer"
-path = "src/main.rs"
+path = "console/src/main.rs"

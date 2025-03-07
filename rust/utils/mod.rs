@@ -13,43 +13,8 @@ use crate::data_structs::region::GenomicPosition;
 
 pub mod types;
 
-// ======================= Python Bindings =======================
-#[cfg(feature = "python")]
-mod python {
-    #[macro_export]
-    macro_rules! wrap_polars_result {
-        ($expression: expr) => {{
-            match $expression {
-                Ok(v) => Ok(v),
-                Err(e) => Err(PyPolarsErr::from(e).into()),
-            }
-        }};
-    }
-
-    #[macro_export]
-    macro_rules! wrap_box_result {
-        ($error: ty, $expression: expr) => {{
-            match $expression {
-                Ok(v) => Ok(v),
-                Err(e) => Err(<$error>::new_err(e.to_string())),
-            }
-        }};
-    }
-    pub use {wrap_box_result, wrap_polars_result};
-}
-#[cfg(feature = "python")]
-pub(crate) use python::{wrap_box_result, wrap_polars_result};
-
 // ======================= Schema Utilities =======================
 /// Macro for creating Polars schemas with a more concise syntax
-///
-/// # Example
-/// ```
-/// let schema = polars_schema! {
-///     "id" => DataType::UInt32,
-///     "name" => DataType::String
-/// };
-/// ```
 macro_rules! polars_schema {
     ( $($name: expr => $dtype: expr),* ) => {
         {

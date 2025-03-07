@@ -2,30 +2,26 @@
 mod inner {
     use crate::data_structs::bsx_batch::EncodedBsxBatch;
     use crate::data_structs::region_data::RegionData;
+    use crate::plots::BsxPlot;
     use crate::utils::types::{PosNum, RefId, Strand};
     use crate::utils::{f64_to_u64_scaled, u64_to_f64_scaled, GROUPING_POWER};
     use anyhow::anyhow;
     use histogram::{Bucket, Histogram};
     use itertools::{izip, Itertools};
     use num::ToPrimitive;
-    use plotly::color::{NamedColor, Rgba};
-    use plotly::common::{Fill, Line, Mode};
+    use plotly::common::{ErrorData, Mode};
+    use plotly::layout::Axis;
     use plotly::{Plot, Scatter};
     use statrs::distribution::{ContinuousCDF, Normal};
     use std::collections::BTreeMap;
 
     fn bucket_middle(bucket: &Bucket) -> u64 {
-        ((bucket.start() + 1) / 2 + bucket.end() / 2)
+        bucket.start() / 2 + bucket.end() / 2
     }
 
     type BoxPlotPoints = (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>);
 
-    pub trait LinePlot {
-        fn add_region_data<R: RefId, N: PosNum>(
-            &mut self,
-            region_data: &RegionData<R, N, EncodedBsxBatch>,
-        ) -> anyhow::Result<()>;
-
+    pub trait LinePlot: BsxPlot {
         fn hist_iter(&self) -> impl Iterator<Item = &Histogram>;
         fn size(&self) -> usize;
 
@@ -122,7 +118,7 @@ mod inner {
 
         fn x_ticks(&self) -> Vec<f64>;
 
-        fn plot_mean(&self, plot: &mut Plot, label: impl AsRef<str>, ci_prob: Option<f64>) {
+        fn plot(&self, plot: &mut Plot, label: impl AsRef<str>, ci_prob: Option<f64>) {
             let (mean, ci) = if let Some(confidence) = ci_prob {
                 let res = self.confidence_interval(confidence);
                 (res.0, Some(res.1))
@@ -130,39 +126,20 @@ mod inner {
                 (self.mean(), None)
             };
             let ticks = self.x_ticks();
-
-            let main_trace = Scatter::new(ticks.clone(), mean.clone())
+            let mut main_trace = Scatter::new(ticks.clone(), mean.clone())
                 .name(&label)
                 .mode(Mode::Lines);
 
-            if let Some(interval) = ci {
-                let upper_line = mean
-                    .iter()
-                    .zip(interval.iter())
-                    .map(|(x, i)| x + i)
-                    .collect_vec();
-                let lower_line = mean
-                    .iter()
-                    .zip(interval.iter())
-                    .map(|(x, i)| x - i)
-                    .collect_vec();
-                let upper_trace = Scatter::new(ticks.clone(), upper_line)
-                    .mode(Mode::Lines)
-                    .line(Line::new().color(NamedColor::Transparent))
-                    .name(&label)
-                    .show_legend(false);
+            if let Some(ci) = ci {
+                let error_data = ErrorData::default()
+                    .array(ci)
+                    .symmetric(true)
+                    .visible(true)
+                    .copy_ystyle(true);
 
-                let lower_line = Scatter::new(ticks, lower_line)
-                    .mode(Mode::Lines)
-                    .fill(Fill::ToNextY)
-                    .fill_color(Rgba::new(0, 100, 80, 0.2))
-                    .line(Line::new().color(NamedColor::Transparent))
-                    .name(&label)
-                    .show_legend(false);
-
-                plot.add_trace(upper_trace);
-                plot.add_trace(lower_line);
+                main_trace = main_trace.error_y(error_data)
             }
+
             plot.add_trace(main_trace)
         }
     }
@@ -172,7 +149,7 @@ mod inner {
         discrete_hist: Vec<Histogram>,
     }
 
-    impl LinePlot for LinePlotData {
+    impl BsxPlot for LinePlotData {
         fn add_region_data<R: RefId, N: PosNum>(
             &mut self,
             region_data: &RegionData<R, N, EncodedBsxBatch>,
@@ -183,7 +160,9 @@ mod inner {
             };
             self.add_density(&discrete_density)
         }
+    }
 
+    impl LinePlot for LinePlotData {
         fn hist_iter(&self) -> impl Iterator<Item = &Histogram> {
             self.discrete_hist.iter()
         }
@@ -239,7 +218,7 @@ mod inner {
         bin_width: u32,
     }
 
-    impl<R: RefId, N: PosNum> LinePlot for GenomeWideLinePlotData<R, N> {
+    impl<R: RefId, N: PosNum> BsxPlot for GenomeWideLinePlotData<R, N> {
         fn add_region_data<A: RefId, B: PosNum>(
             &mut self,
             data: &RegionData<A, B, EncodedBsxBatch>,
@@ -261,7 +240,9 @@ mod inner {
             }
             Ok(())
         }
+    }
 
+    impl<R: RefId, N: PosNum> LinePlot for GenomeWideLinePlotData<R, N> {
         fn hist_iter(&self) -> impl Iterator<Item = &Histogram> {
             self.bins_hist.values()
         }
@@ -291,6 +272,32 @@ mod inner {
                 .keys()
                 .map(|(ref_id, v)| (ref_id, v.to_f64().unwrap()))
                 .collect_vec()
+        }
+
+        pub fn draw_x_labels(&self, plot: &mut Plot) {
+            let mut x_ticks = Vec::new();
+            let mut seen_chr = Vec::new();
+
+            for (chr, tick) in self.bins_hist.keys() {
+                if !seen_chr.contains(chr) {
+                    x_ticks.push(tick.clone());
+                    seen_chr.push(chr.clone());
+                }
+            }
+
+            x_ticks.push(self.bins_hist.last_key_value().unwrap().0.clone().1);
+            let x_ticks = x_ticks
+                .windows(2)
+                .map(|arr| (arr[0] + arr[1]).to_f64().unwrap() / 2.0)
+                .collect_vec();
+            let mut layout = plot.layout().clone();
+            layout = layout.x_axis(
+                Axis::default()
+                    .tick_values(x_ticks)
+                    .tick_text(seen_chr.into_iter().map(|chr| chr.to_string()).collect()),
+            );
+
+            plot.set_layout(layout);
         }
     }
 }

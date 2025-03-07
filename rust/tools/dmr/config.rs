@@ -77,7 +77,7 @@ impl DmrConfig {
 
         let config_copy = self.clone();
 
-        let (sender, receiver) = std::sync::mpsc::sync_channel(10);
+        let (sender, receiver) = crossbeam::channel::bounded(10);
         let last_chr = Arc::new(String::new());
         let ref_idset = RefIDSet::new();
 
@@ -96,9 +96,8 @@ impl DmrConfig {
                     .collect();
                 let data = batches.into_iter().map(|(_, batch)| batch).collect();
                 let group = EncodedBsxBatchGroup::try_new(data, Some(labels)).unwrap();
-                sender.send(Some(group)).unwrap();
+                sender.send(group).unwrap();
             }
-            sender.send(None).unwrap();
         });
 
         let out = DmrIterator {

@@ -1,13 +1,15 @@
 use crate::utils::init_pbar;
 use crate::{expand_wildcards, init_logger, init_rayon_threads, DmrContext, UtilsArgs};
 use _lib::exports::anyhow::anyhow;
-use clap::Args;
+use clap::{Args, ValueEnum};
 use console::style;
 use dialoguer::Confirm;
 use indicatif::ProgressBar;
 use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
+use serde::Serialize;
+use _lib::tools::dmr::DMRegion;
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct DmrArgs {
@@ -145,9 +147,25 @@ pub(crate) struct DmrArgs {
         long,
         default_value_t = 0.05,
         help_heading = "FILTER ARGS",
-        help = "P-value threshold for DMR identification using 2D-Kolmogorov-Smirnov test. Segments with a p-value smaller than specified will be reported as DMRs."
+        help = "Adjusted P-value threshold for DMR identification using 2D-Kolmogorov-Smirnov test. Segments with a p-value smaller than specified will be reported as DMRs."
     )]
-    seg_pvalue: f64,
+    padj: f64,
+    
+    #[clap(
+        long="pmethod",
+        value_enum,
+        default_value_t = PadjMethod::BH,
+        help_heading = "FILTER ARGS",
+    )]
+    pmethod: PadjMethod
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub(crate) enum PadjMethod {
+    Bonf,
+    BH,
+    BY,
+    None
 }
 
 pub fn init(
@@ -236,7 +254,7 @@ pub fn run(args: DmrArgs, utils: UtilsArgs) {
         l_coef: args.l_coef,
         seg_tolerance: args.tolerance,
         merge_pvalue: args.merge_p,
-        seg_pvalue: args.seg_pvalue,
+        seg_pvalue: args.padj,
     };
 
     let files = sample_paths
@@ -293,8 +311,87 @@ pub fn run(args: DmrArgs, utils: UtilsArgs) {
     csv_writer.flush().expect("Failed to write DMRs to file");
 
     progress_bar.finish();
+    
+    let all_segments = csv::ReaderBuilder::default()
+        .delimiter(b'\t')
+        .has_headers(true)
+        .from_path(all_segments_path).unwrap()
+        .deserialize::<DMRegion>()
+        .collect::<Result<Vec<_>, _>>()
+        .expect("Failed to deserialize DMR segments file");
+    
+    use _lib::exports::adjustp;
+    let padj = if !matches!(args.pmethod, PadjMethod::None) {
+        adjustp::adjust(
+            &all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>(),
+            match args.pmethod {
+                PadjMethod::BH => adjustp::Procedure::BenjaminiHochberg,
+                PadjMethod::Bonf => adjustp::Procedure::Bonferroni,
+                PadjMethod::BY => adjustp::Procedure::BenjaminiYekutieli,
+                _ => unreachable!()
+            }
+        )
+    } else{
+        all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>()
+    };
+    
+    let filtered = all_segments.into_iter()
+        .zip(padj)
+        .map(|(dmr, p)| DmrFilteredRow::from_dmr(dmr, p))
+        .filter(|dmr| dmr.padj <= args.padj)
+        .filter(|dmr| dmr.meth_diff.abs() >= args.diff_threshold)
+        .filter(|dmr| dmr.n_cytosines >= args.min_cytosines)
+        .collect::<Vec<_>>();
+    let dmr_count = filtered.len();
+    
+    let filtered_path = args
+        .output
+        .with_added_extension("filtered")
+        .with_added_extension("tsv");
+
+    let mut csv_writer = csv::WriterBuilder::default()
+        .delimiter(b'\t')
+        .has_headers(true)
+        .from_path(&filtered_path)
+        .expect("Failed to open output file");
+    
+    filtered.iter().for_each(|dmr| csv_writer.serialize(dmr).unwrap());
+
+    csv_writer.flush().expect("Failed to write DMRs to file");
+    
     println!(
         "{}",
         style(format!("Found {} DMRs.", dmr_count)).green().bold()
     );
+}
+
+#[derive(Debug, Serialize)]
+struct DmrFilteredRow {
+    chr: String,
+    start: u32,
+    end: u32,
+    n_cytosines: usize,
+    padj: f64,
+    p_utest: f64,
+    group_a: f64,
+    group_b: f64,
+    meth_diff: f64,
+    meth_mean: f64,
+}
+
+impl DmrFilteredRow {
+    fn from_dmr(dmr: DMRegion, padj: f64) -> Self {
+        Self {
+            padj, 
+            chr: dmr.chr,
+            start: dmr.start,
+            end: dmr.end,
+            n_cytosines: dmr.n_cytosines,
+            p_utest: dmr.p_value,
+            group_a: dmr.meth_left,
+            group_b: dmr.meth_right,
+            meth_diff: dmr.meth_diff,
+            meth_mean: dmr.meth_mean,
+        }
+    }
 }

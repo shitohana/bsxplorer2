@@ -14,21 +14,9 @@ use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 use std::thread::JoinHandle;
 
-#[cfg(feature = "python")]
-use crate::data_structs::region::PyRegionCoordinates;
 use crate::data_structs::region_data::RegionData;
 use crate::io::bsx::read::{BSXIndex, BsxFileReader};
 use crate::utils::types::Strand;
-#[cfg(feature = "python")]
-use crate::utils::wrap_polars_result;
-#[cfg(feature = "python")]
-use crate::wrap_box_result;
-#[cfg(feature = "python")]
-use pyo3::exceptions::PyIOError;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
-#[cfg(feature = "python")]
-use pyo3_polars::error::PyPolarsErr;
 
 /// Structure, that holds chromosome-wise index of batches from BSXplorer
 /// IPC file.
@@ -296,7 +284,6 @@ impl From<LinkedReadPlan> for RegionAssembler {
     }
 }
 
-#[cfg_attr(feature = "python", pyclass)]
 pub struct RegionReader {
     assembler: RegionAssembler,
     _read_thread: JoinHandle<()>,
@@ -354,24 +341,6 @@ impl Iterator for RegionReader {
         }
     }
 }
-
-// #[cfg(feature = "python")]
-// #[pymethods]
-// impl RegionReader {
-//     #[new]
-//     fn new_py(path: String, regions: Vec<PyRegionCoordinates>) -> PyResult<Self> {
-//         let handle = File::open(path)?;
-//         let regions = regions
-//             .into_iter()
-//             .map(RegionCoordinates::from)
-//             .collect_vec();
-//         wrap_box_result!(PyIOError, Self::try_new(handle, &regions))
-//     }
-//
-//     fn __next__(&mut self) -> Option<(PyRegionCoordinates, EncodedBsxBatch)> {
-//         self.next().map(|(index, batch)| (index.into(), batch))
-//     }
-// }
 
 pub fn df_to_regions(
     data_frame: &DataFrame,

@@ -9,6 +9,7 @@ pub use serde;
 pub use serde_json;
 pub use statrs;
 pub use tempfile;
+pub use adjustp;
 
 #[cfg(feature = "plots")]
 pub use plotly;

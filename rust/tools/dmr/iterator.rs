@@ -32,7 +32,7 @@ where
     /// Last chromosome processed.
     pub(crate) last_chr: Arc<String>,
     /// Receiver for encoded BSx batch groups.
-    pub(crate) receiver: Receiver<Option<EncodedBsxBatchGroup<R>>>,
+    pub(crate) receiver: crossbeam::channel::Receiver<EncodedBsxBatchGroup<R>>,
     /// Metadata about the reader.
     pub(crate) reader_stat: ReaderMetadata,
     /// Join handle for the reader thread.
@@ -87,7 +87,7 @@ where
     }
 
     /// Returns a reference to the receiver.
-    fn receiver(&mut self) -> &Receiver<Option<EncodedBsxBatchGroup<R>>> {
+    fn receiver(&mut self) -> &crossbeam::channel::Receiver<EncodedBsxBatchGroup<R>> {
         &self.receiver
     }
 
@@ -209,13 +209,7 @@ where
                         let a_mean = segment.group_a().mean();
                         let b_mean = segment.group_b().mean();
 
-                        let pval = if (b_mean - a_mean).abs() > self.config.diff_threshold {
-                            let (_, u_test_pval) =
-                                mann_whitney_u(segment.group_a(), segment.group_b());
-                            u_test_pval
-                        } else {
-                            segment.pvalue.unwrap_or(1.0)
-                        };
+                        let (_, pval) = mann_whitney_u(segment.group_a(), segment.group_b());
 
                         DMRegion::new(
                             self.last_chr.clone(),
@@ -228,10 +222,11 @@ where
                         )
                     })
                     .filter(|dmr| dmr.end != dmr.start)
-                    .filter(|dmr| {
-                        dmr.meth_diff.abs() >= self.config.diff_threshold
-                            && dmr.p_value <= self.config.seg_pvalue
-                    })
+                    // DISABLE PREFILTERING
+                    // .filter(|dmr| {
+                    //     dmr.meth_diff.abs() >= self.config.diff_threshold
+                    //         && dmr.p_value <= self.config.seg_pvalue
+                    // })
                     .collect_vec()
             })
             .flatten()
@@ -279,10 +274,10 @@ where
                     )
                 })
                 .filter(|dmr| dmr.end != dmr.start)
-                .filter(|dmr| {
-                    dmr.meth_diff.abs() >= self.config.diff_threshold
-                        && dmr.p_value <= self.config.seg_pvalue
-                })
+                // .filter(|dmr| {
+                //     dmr.meth_diff.abs() >= self.config.diff_threshold
+                //         && dmr.p_value <= self.config.seg_pvalue
+                // })
                 .collect_vec();
 
             self.regions_cache.append(&mut new_cache);
@@ -314,22 +309,11 @@ where
 
             // Try to receive a new group
             match self.receiver().recv() {
-                Ok(Some(group)) => {
+                Ok(group) => {
                     self.reader_metadata_mut().current_block += 1;
                     if let Err(e) = self.process_group(group) {
                         error!("Error processing group: {}", e);
                     }
-                }
-                Ok(None) => {
-                    // No more groups; process the last leftover and break
-                    return if self
-                        .process_last_leftover()
-                        .expect("Error processing last leftover")
-                    {
-                        self.next()
-                    } else {
-                        None
-                    };
                 }
                 Err(_) => {
                     // Handle the case where receiving fails (e.g., channel closed)

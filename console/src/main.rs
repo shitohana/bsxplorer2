@@ -5,6 +5,7 @@ pub mod stats;
 pub mod utils;
 use crate::convert::ReportArgs;
 use clap::{Parser, Subcommand};
+use serde::Serialize;
 pub(crate) use utils::*;
 use wild::ArgsOs;
 
@@ -63,7 +64,6 @@ enum Commands {
 fn main() {
     let args: ArgsOs = wild::args_os();
     let cli = Cli::parse_from(args);
-    // Dispatch the command based on the provided subcommand.
     match cli.command {
         Commands::Dmr { args, utils } => dmr::run(args, utils),
 

@@ -102,15 +102,6 @@ where
     /// # Returns
     ///
     /// Returns a Result containing the new `EncodedBsxBatchGroup` if successful, or an error if any of the checks fail.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::{EncodedBsxBatch, EncodedBsxBatchGroup};
-    /// # let batches = vec![/* some EncodedBsxBatch instances */];
-    /// let labels = vec!["sample1", "sample2", "sample3"];
-    /// let batch_group = EncodedBsxBatchGroup::try_new(batches, Some(labels));
-    /// ```
     pub fn try_new(batches: Vec<EncodedBsxBatch>, labels: Option<Vec<R>>) -> anyhow::Result<Self> {
         if batches.is_empty() {
             return Err(anyhow!("Cannot create batch group: Empty batches provided"));
@@ -259,15 +250,6 @@ where
     /// # Returns
     ///
     /// A new `EncodedBsxBatchGroup` containing only the rows with the specified context.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::{EncodedBsxBatchGroup, Context};
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Keep only CpG methylation sites
-    /// let cpg_only = batch_group.filter_context(Context::CpG);
-    /// ```
     pub fn filter_context(self, context: Context) -> anyhow::Result<Self> {
         let context_bool = context.to_bool();
         let df0 = &self.batches[0];
@@ -304,14 +286,6 @@ where
     ///
     /// A new `EncodedBsxBatchGroup` containing only the rows with the specified strand.
     ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::{EncodedBsxBatchGroup, Strand};
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Keep only methylation sites on the positive strand
-    /// let positive_strand_only = batch_group.filter_strand(Strand::Positive);
-    /// ```
     pub fn filter_strand(self, strand: Strand) -> anyhow::Result<Self> {
         let strand_bool = strand.to_bool();
         let df0 = &self.batches[0];
@@ -347,15 +321,7 @@ where
     /// # Returns
     ///
     /// A new `EncodedBsxBatchGroup` with low-coverage sites marked.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Mark sites with fewer than 5 reads as low coverage
-    /// let filtered_group = batch_group.mark_low_counts(5);
-    /// ```
+
     pub fn mark_low_counts(self, threshold: i16) -> anyhow::Result<Self> {
         info!(
             "Marking methylation sites with coverage below {} as low-count",
@@ -398,15 +364,6 @@ where
     /// # Returns
     ///
     /// A new `EncodedBsxBatchGroup` with sites having too many missing values removed.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Keep only sites that have at most 2 missing values across all samples
-    /// let filtered_group = batch_group.filter_n_missing(2);
-    /// ```
     pub fn filter_n_missing(self, n_missing: usize) -> anyhow::Result<Self> {
         let mut threshold = n_missing;
         if threshold > self.n_samples() {
@@ -481,15 +438,6 @@ where
     /// # Returns
     ///
     /// A vector of Polars DataFrames, one for each batch.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// let dataframes = batch_group.take_data();
-    /// // Now you can work with the raw DataFrames
-    /// ```
     pub fn take_data(self) -> Vec<DataFrame> {
         info!(
             "Extracting {} DataFrames from batch group",
@@ -531,16 +479,6 @@ where
     ///
     /// A HashMap where the keys are the unique labels and the values are `EncodedBsxBatchGroup` instances
     /// containing the batches associated with that label.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Split a batch group by treatment labels
-    /// let groups_by_treatment = batch_group.split_groups();
-    /// // Now you can access the "control" group, "treatment" group, etc.
-    /// ```
     pub fn split_groups(self) -> HashMap<R, EncodedBsxBatchGroup<R>> {
         info!("Splitting batch group by labels into separate groups");
 
@@ -587,15 +525,6 @@ where
     /// # Returns
     ///
     /// A Result containing a vector of average densities (one for each methylation site).
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Calculate average methylation density, ignoring missing values
-    /// let avg_densities = batch_group.get_average_density(true);
-    /// ```
     pub fn get_average_density(&self, na_rm: bool) -> anyhow::Result<Vec<f64>> {
         info!(
             "Calculating average methylation density across {} batches (na_rm={})",
@@ -642,15 +571,6 @@ where
     /// # Returns
     ///
     /// A Result containing a vector of summed methylated counts (one for each methylation site).
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Get the total methylated read counts for each site
-    /// let total_meth_counts = batch_group.get_sum_counts_m();
-    /// ```
     pub fn get_sum_counts_m(&self) -> anyhow::Result<Vec<u32>> {
         info!(
             "Calculating sum of methylated counts across {} batches",
@@ -690,15 +610,6 @@ where
     /// # Returns
     ///
     /// A Result containing a vector of summed total counts (one for each methylation site).
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Get the total read counts for each site
-    /// let total_read_counts = batch_group.get_sum_counts_total();
-    /// ```
     pub fn get_sum_counts_total(&self) -> anyhow::Result<Vec<u32>> {
         info!(
             "Calculating sum of total counts across {} batches",
@@ -737,15 +648,6 @@ where
     /// # Returns
     ///
     /// A Result containing a vector of genomic positions (one for each methylation site).
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Get the genomic positions of all methylation sites
-    /// let positions = batch_group.get_positions();
-    /// ```
     pub fn get_positions(&self) -> anyhow::Result<Vec<u32>> {
         debug!("Retrieving genomic positions from batch group");
         self.batches[0]
@@ -760,15 +662,6 @@ where
     /// # Returns
     ///
     /// A Result containing the chromosome name.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use your_crate::EncodedBsxBatchGroup;
-    /// # let batch_group: EncodedBsxBatchGroup<String> = /* ... */;
-    /// // Get the chromosome/contig name
-    /// let chromosome = batch_group.get_chr();
-    /// ```
     pub fn get_chr(&self) -> anyhow::Result<String> {
         debug!("Retrieving chromosome name from batch group");
         self.batches[0]

@@ -1,6 +1,4 @@
 use num::{PrimInt, Unsigned};
-#[cfg(feature = "python")]
-use pyo3::pyclass;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::Display;
@@ -15,7 +13,6 @@ pub trait IPCEncodedEnum {
 
 pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "python", pyclass)]
 pub enum Context {
     CG,
     CHG,
@@ -79,7 +76,6 @@ impl IPCEncodedEnum for Context {
 }
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "python", pyclass)]
 pub enum Strand {
     Forward,
     Reverse,

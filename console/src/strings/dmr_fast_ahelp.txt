@@ -1,4 +1,0 @@
-DMRs are identified using MethyLasso (doi: 10.1093/nar/gkae880) fused-lasso algorithm.
-
-This algorithm uses a Welch t-test to identify differentially methylated regions.
-Lambda is optimized using weighted penalties for segment counts and segment lengths.

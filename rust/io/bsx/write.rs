@@ -1,7 +1,5 @@
 use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
 use crate::utils::get_categorical_dtype;
-#[cfg(feature = "python")]
-use crate::utils::wrap_polars_result;
 use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
@@ -9,8 +7,6 @@ use polars::datatypes::DataType;
 use polars::error::PolarsResult;
 use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
-#[cfg(feature = "python")]
-use pyo3_polars::error::PyPolarsErr;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -212,127 +208,3 @@ impl<W: Write> Drop for BsxIpcWriter<W> {
         }
     }
 }
-
-#[cfg(feature = "python")]
-mod python {
-    use super::*;
-    use crate::utils::wrap_box_result;
-    use crate::wrap_polars_result;
-    use pyo3::exceptions::PyIOError;
-    use pyo3::prelude::*;
-    use std::fs::File;
-    use std::io::BufWriter;
-
-    /// Python-exposed enumeration for IPC compression options.
-    #[pyclass(name = "IpcCompression")]
-    #[derive(Clone)]
-    pub enum PyIpcCompression {
-        /// ZSTD compression algorithm
-        ZSTD,
-        /// LZ4 compression algorithm
-        LZ4,
-    }
-
-    impl From<PyIpcCompression> for IpcCompression {
-        fn from(value: PyIpcCompression) -> Self {
-            match value {
-                PyIpcCompression::ZSTD => IpcCompression::ZSTD,
-                PyIpcCompression::LZ4 => IpcCompression::LZ4,
-            }
-        }
-    }
-
-    /// Python-exposed BSX writer for IPC-formatted sequence data.
-    #[pyclass(name = "BsxWriter")]
-    pub struct PyBsxIpcWriter {
-        /// The wrapped Rust writer implementation
-        inner: BsxIpcWriter<BufWriter<File>>,
-    }
-
-    #[pymethods]
-    impl PyBsxIpcWriter {
-        /// Creates a new BSX writer for Python.
-        ///
-        /// # Arguments
-        /// * `path` - Output file path for the IPC file
-        /// * `fai_path` - Path to FASTA index file to extract chromosome names
-        /// * `compression` - Optional compression algorithm to use
-        ///
-        /// # Returns
-        /// A new PyBsxIpcWriter or raises a PyIOError on failure
-        #[new]
-        fn new(
-            path: String,
-            fai_path: String,
-            compression: Option<PyIpcCompression>,
-        ) -> PyResult<Self> {
-            debug!(
-                "Creating Python BsxWriter to {} using index {}",
-                path, fai_path
-            );
-
-            // Create the file
-            let file = match File::create(PathBuf::from(&path)) {
-                Ok(f) => f,
-                Err(e) => {
-                    let error_msg = format!("Failed to create output file {}: {}", path, e);
-                    warn!("{}", error_msg);
-                    return Err(PyIOError::new_err(error_msg));
-                }
-            };
-
-            let res = BsxIpcWriter::try_from_sink_and_fai(
-                BufWriter::new(file),
-                fai_path.into(),
-                compression.map(|c| c.into()),
-                None,
-            );
-
-            let inner = match wrap_box_result!(PyIOError, res) {
-                Ok(inner) => inner,
-                Err(e) => {
-                    warn!("Failed to create BsxIpcWriter: {}", e);
-                    return Err(e);
-                }
-            };
-
-            Ok(Self { inner })
-        }
-
-        /// Writes a BSX batch to the output file.
-        ///
-        /// # Arguments
-        /// * `batch` - The BSX batch to write
-        ///
-        /// # Returns
-        /// None on success, or raises an exception on error
-        fn write_batch(&mut self, batch: BsxBatch) -> PyResult<()> {
-            debug!("Python interface: writing batch");
-            wrap_polars_result!(self.inner.write_batch(batch))
-        }
-
-        /// Writes an encoded BSX batch to the output file.
-        ///
-        /// # Arguments
-        /// * `batch` - The encoded BSX batch to write
-        ///
-        /// # Returns
-        /// None on success, or raises an exception on error
-        fn write_encoded_batch(&mut self, batch: EncodedBsxBatch) -> PyResult<()> {
-            debug!("Python interface: writing encoded batch");
-            wrap_polars_result!(self.inner.write_encoded_batch(batch))
-        }
-
-        /// Closes the writer and finalizes the output file.
-        ///
-        /// # Returns
-        /// None on success, or raises an exception on error
-        fn close(&mut self) -> PyResult<()> {
-            info!("Python interface: closing BsxWriter");
-            wrap_polars_result!(self.inner.close())
-        }
-    }
-}
-
-#[cfg(feature = "python")]
-pub use python::{PyBsxIpcWriter, PyIpcCompression};
