@@ -60,7 +60,7 @@ pub(crate) struct DmrArgs {
         long,
         default_value_t = 0,
         help_heading = "FILTER ARGS",
-        help = "Set missing values threshold. Cytosines with no data in more than specified number of samples will be discarded."
+        help = "Set missing values threshold. Cytosines with no data_structs in more than specified number of samples will be discarded."
     )]
     pub n_missing: usize,
 

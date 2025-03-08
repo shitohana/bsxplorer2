@@ -1,3 +1,4 @@
+pub use adjustp;
 pub use anyhow;
 pub use bio;
 pub use itertools;
@@ -9,7 +10,6 @@ pub use serde;
 pub use serde_json;
 pub use statrs;
 pub use tempfile;
-pub use adjustp;
 
 #[cfg(feature = "plots")]
 pub use plotly;

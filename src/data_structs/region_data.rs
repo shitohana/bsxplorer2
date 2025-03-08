@@ -7,7 +7,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-/// Represents data associated with a genomic region.
+/// Represents data_structs associated with a genomic region.
 #[derive(Clone, Eq, PartialEq)]
 pub struct RegionData<R, N, T>
 where
@@ -23,14 +23,14 @@ where
     end: N,
     /// The strand of the region.
     strand: Strand,
-    /// The associated data.
+    /// The associated data_structs.
     data: T,
     /// Optional attributes associated with the region.
     attributes: HashMap<String, String>,
 }
 
 impl<R: RefId, N: PosNum, T: Data> Hash for RegionData<R, N, T> {
-    /// Hashes the region data based on chromosome, start, end, and strand.
+    /// Hashes the region data_structs based on chromosome, start, end, and strand.
     fn hash<H: Hasher>(&self, state: &mut H) {
         (self.chr.clone(), self.start, self.end, self.strand).hash(state)
     }
@@ -41,7 +41,7 @@ where
     R: RefId,
     N: PosNum,
 {
-    /// Creates a new `RegionData` from region coordinates with no data.
+    /// Creates a new `RegionData` from region coordinates with no data_structs.
     fn from(region: RegionCoordinates<N>) -> Self {
         RegionData {
             chr: region.chr.into(),
@@ -80,7 +80,7 @@ where
         self.strand
     }
 
-    /// Returns a reference to the associated data.
+    /// Returns a reference to the associated data_structs.
     pub fn data(&self) -> &T {
         &self.data
     }
@@ -105,7 +105,7 @@ where
         self.strand = strand;
     }
 
-    /// Sets the associated data.
+    /// Sets the associated data_structs.
     pub fn set_data(&mut self, data: T) {
         self.data = data;
     }
@@ -115,7 +115,7 @@ where
         self.end.clone() - self.start.clone()
     }
 
-    /// Creates a new `RegionData` with the same region information but different data.
+    /// Creates a new `RegionData` with the same region information but different data_structs.
     pub fn with_data<T2: Data>(self, data: T2) -> RegionData<R, N, T2> {
         RegionData {
             chr: self.chr,
@@ -177,12 +177,12 @@ where
         })
     }
 
-    /// Consumes the `RegionData` and returns the associated data.
+    /// Consumes the `RegionData` and returns the associated data_structs.
     pub fn into_data(self) -> T {
         self.data
     }
 
-    /// Separates the region data from the associated data, returning both.
+    /// Separates the region data_structs from the associated data_structs, returning both.
     pub fn drain_data(self) -> (RegionData<R, N, ()>, T) {
         let data = self.data.clone();
         (self.with_data(()), data)
@@ -226,7 +226,7 @@ where
     pub fn get_positions(&self) -> PolarsResult<Vec<u32>> {
         self.data.get_position_vals()
     }
-    /// Returns the number of data points in the associated data.
+    /// Returns the number of data_structs points in the associated data_structs.
     pub fn size(&self) -> usize {
         self.data.height()
     }
@@ -312,12 +312,12 @@ where
     pub fn counts_total(&self) -> PolarsResult<Vec<i16>> {
         self.data.get_counts_total()
     }
-    /// Filters the data based on the provided context.
+    /// Filters the data_structs based on the provided context.
     pub fn filter(mut self, context: Context) -> Self {
         self.data = self.data.filter(Some(context), None);
         self
     }
-    /// Separates the data by context (CG, CHG, CHH).
+    /// Separates the data_structs by context (CG, CHG, CHH).
     pub fn strip_contexts(self) -> anyhow::Result<(Self, Self, Self)> {
         let (drained, data) = self.drain_data();
         let (cg, chg, chh) = data.strip_contexts()?;

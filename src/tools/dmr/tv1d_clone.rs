@@ -24,7 +24,7 @@
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-//! Total variation denoising algorithms for 1D data.
+//! Total variation denoising algorithms for 1D data_structs.
 
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
@@ -51,7 +51,7 @@ use std::ops;
 ///
 /// The algorithm was implemented by Condat L. in C, which was then
 /// implemented in Rust here. The algorithm can be understood as
-/// assuming the input values as a string of data points, which is
+/// assuming the input values as a string of data_structs points, which is
 /// transformed taut.
 ///
 /// Note that this algorithm is based on the running sum of the input
@@ -281,7 +281,7 @@ where
     let twolambda = T::from_u8(2).expect("Unable to transform `2` to T.") * lambda;
     let minlambda = -lambda;
 
-    // `umin` and `umax` are used for keeping track of previous data
+    // `umin` and `umax` are used for keeping track of previous data_structs
     // points we have seen, and will be used to decide whether
     // `segment_lower_bound` and `segment_upper_bound` should be
     // adjusted.

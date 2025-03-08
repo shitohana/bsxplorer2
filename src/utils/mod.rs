@@ -31,7 +31,7 @@ pub(crate) use polars_schema;
 /// Converts an array of name-datatype pairs to a Polars Schema
 ///
 /// # Arguments
-/// * `array` - Slice of tuples containing column name and data type
+/// * `array` - Slice of tuples containing column name and data_structs type
 ///
 /// # Returns
 /// A Polars Schema constructed from the provided array
@@ -42,7 +42,7 @@ pub fn array_to_schema(array: &[(&str, DataType)]) -> Schema {
     ))
 }
 
-/// Creates a categorical data type from a list of categories
+/// Creates a categorical data_structs type from a list of categories
 ///
 /// # Arguments
 /// * `categories` - Vector of strings representing the categories
@@ -51,7 +51,7 @@ pub fn array_to_schema(array: &[(&str, DataType)]) -> Schema {
 /// A DataType::Enum with the provided categories
 pub fn get_categorical_dtype(categories: Vec<String>) -> DataType {
     debug!(
-        "Creating categorical data type with {} categories",
+        "Creating categorical data_structs type with {} categories",
         categories.len()
     );
     let categories = polars::export::arrow::array::Utf8ViewArray::from_vec(
@@ -62,14 +62,14 @@ pub fn get_categorical_dtype(categories: Vec<String>) -> DataType {
     DataType::Enum(Some(rev_mapping), CategoricalOrdering::Physical)
 }
 
-/// Creates a schema from separate arrays of names and data types
+/// Creates a schema from separate arrays of names and data_structs types
 ///
 /// # Arguments
 /// * `names` - Array of column names
-/// * `dtypes` - Array of data types corresponding to the names
+/// * `dtypes` - Array of data_structs types corresponding to the names
 ///
 /// # Returns
-/// A Polars Schema with the provided column names and data types
+/// A Polars Schema with the provided column names and data_structs types
 pub(crate) fn schema_from_arrays(names: &[&str], dtypes: &[DataType]) -> Schema {
     if names.len() != dtypes.len() {
         warn!(
@@ -81,14 +81,14 @@ pub(crate) fn schema_from_arrays(names: &[&str], dtypes: &[DataType]) -> Schema 
     Schema::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
 }
 
-/// Creates a hashmap from separate arrays of names and data types
+/// Creates a hashmap from separate arrays of names and data_structs types
 ///
 /// # Arguments
 /// * `names` - Array of column names
-/// * `dtypes` - Array of data types corresponding to the names
+/// * `dtypes` - Array of data_structs types corresponding to the names
 ///
 /// # Returns
-/// A PlHashMap with column names as keys and data types as values
+/// A PlHashMap with column names as keys and data_structs types as values
 pub(crate) fn hashmap_from_arrays<'a>(
     names: &[&'a str],
     dtypes: &[DataType],
@@ -107,7 +107,7 @@ pub(crate) fn hashmap_from_arrays<'a>(
 /// Extracts the first genomic position from a DataFrame
 ///
 /// # Arguments
-/// * `data` - The DataFrame containing position data
+/// * `data_structs` - The DataFrame containing position data_structs
 /// * `chr_col` - Name of the chromosome column
 /// * `pos_col` - Name of the position column
 ///
@@ -148,7 +148,7 @@ pub(crate) fn first_position(
 /// Extracts the last genomic position from a DataFrame
 ///
 /// # Arguments
-/// * `data` - The DataFrame containing position data
+/// * `data_structs` - The DataFrame containing position data_structs
 /// * `chr_col` - Name of the chromosome column
 /// * `pos_col` - Name of the position column
 ///
@@ -470,7 +470,7 @@ where
     }
 
     debug!(
-        "Calculating Pearson correlation for {} data points",
+        "Calculating Pearson correlation for {} data_structs points",
         x.len()
     );
 

@@ -5,7 +5,7 @@ use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;
 use std::io::Write;
 
-/// `ReportWriter` provides functionality to write report data to a sink
+/// `ReportWriter` provides functionality to write report data_structs to a sink
 /// in CSV format based on a specified schema.
 ///
 /// # Type Parameters
@@ -49,7 +49,7 @@ impl<W: Write> ReportWriter<W> {
         Ok(Self { schema, writer })
     }
 
-    /// Writes a batch of data to the destination.
+    /// Writes a batch of data_structs to the destination.
     ///
     /// This method converts the provided BSX batch to the report format
     /// according to the schema and writes it.
@@ -71,7 +71,7 @@ impl<W: Write> ReportWriter<W> {
                 e
             })?;
 
-        debug!("Rechunking converted data for better performance");
+        debug!("Rechunking converted data_structs for better performance");
         converted.rechunk_mut();
 
         debug!("Writing batch to destination");

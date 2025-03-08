@@ -4,7 +4,7 @@ use bsxplorer2::data_structs::region_data::RegionData;
 use bsxplorer2::exports::itertools::Itertools;
 use bsxplorer2::io::bsx::read::BsxFileReader;
 use bsxplorer2::io::bsx::region_read::RegionReader;
-use bsxplorer2::tools::meth_stats::{MethylationStatFlat, MethylationStats};
+use bsxplorer2::tools::stats::{MethylationStatFlat, MethylationStats};
 use bsxplorer2::utils::types::{IPCEncodedEnum, Strand};
 use clap::{Args, ValueEnum};
 use console::style;

@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 pub use polars::prelude::IpcCompression as PolarsIpcCompression;
 
-/// Writer for BSX data in Arrow IPC format.
+/// Writer for BSX data_structs in Arrow IPC format.
 /// Handles serialization of BSX batches to Arrow IPC format with optional compression.
 pub struct BsxIpcWriter<W>
 where
@@ -21,7 +21,7 @@ where
 {
     /// Underlying Arrow IPC writer that handles the actual serialization
     writer: polars::io::ipc::BatchedWriter<W>,
-    /// Schema defining the structure of the BSX data
+    /// Schema defining the structure of the BSX data_structs
     schema: Schema,
 }
 
@@ -32,7 +32,7 @@ where
     /// Creates a new BSX IPC writer with the given sink, chromosome names, compression settings and metadata.
     ///
     /// # Arguments
-    /// * `sink` - The destination to write the IPC data to
+    /// * `sink` - The destination to write the IPC data_structs to
     /// * `chr_names` - List of chromosome names to use for categorical encoding
     /// * `compression` - Optional compression algorithm to use
     /// * `custom_metadata` - Optional custom metadata to include in the IPC file
@@ -84,7 +84,7 @@ where
     /// This extracts chromosome names from the FASTA index file.
     ///
     /// # Arguments
-    /// * `sink` - The destination to write the IPC data to
+    /// * `sink` - The destination to write the IPC data_structs to
     /// * `fai_path` - Path to the FASTA index file (.fai)
     /// * `compression` - Optional compression algorithm to use
     /// * `custom_metadata` - Optional custom metadata to include in the IPC file
@@ -124,7 +124,7 @@ where
     /// This creates a FASTA index file if it doesn't exist, then extracts chromosome names.
     ///
     /// # Arguments
-    /// * `sink` - The destination to write the IPC data to
+    /// * `sink` - The destination to write the IPC data_structs to
     /// * `fasta_path` - Path to the FASTA file
     /// * `compression` - Optional compression algorithm to use
     /// * `custom_metadata` - Optional custom metadata to include in the IPC file
@@ -190,7 +190,7 @@ where
         self.writer.finish()
     }
 
-    /// Returns the chromosome data type used by this writer.
+    /// Returns the chromosome data_structs type used by this writer.
     ///
     /// # Returns
     /// Reference to the chromosome DataType

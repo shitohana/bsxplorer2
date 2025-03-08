@@ -1,26 +1,22 @@
-//! Module contains BsxBatches which represent single chromosome methylation data
+//! Module contains BsxBatches which represent single chromosome methylation data_structs
 //!
-//! BsxBatch stores data in [DataFrame] with
+//! BsxBatch stores data_structs in [DataFrame] with
 //! * Non-null chr and position
 //! * Single unique chromosome
 //! * Ascending sorted positions
 //!
 //! Module contains two main structs:
-//! 1. [BsxBatch] struct for storing non-encoded data
-//! 2. [EncodedBsxBatch] struct for storing encoded data (context and strand encoded as boolean)
+//! 1. [BsxBatch] struct for storing non-encoded data_structs
+//! 2. [EncodedBsxBatch] struct for storing encoded data_structs (context and strand encoded as boolean)
 //!
 //! and [BsxBatchMethods] trait
 //!
 //! Both BsxBatch and EncodedBsxBatch can be filtered using context and/or strand
 //!
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
-#[cfg(feature = "python")]
-use crate::data_structs::region::{PyGenomicPosition, PyRegionCoordinates};
-use crate::tools::meth_stats::MethylationStats;
+use crate::tools::stats::MethylationStats;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use crate::utils::{decode_context, decode_strand, encode_context, encode_strand, polars_schema};
-#[cfg(feature = "python")]
-use crate::wrap_polars_result;
 use bio_types::annot::contig::Contig;
 use bio_types::annot::loc::Loc;
 use bio_types::annot::pos::Pos;
@@ -29,12 +25,6 @@ use bio_types::strand::NoStrand;
 use itertools::{multiunzip, Itertools};
 use log::warn;
 use polars::prelude::*;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
-#[cfg(feature = "python")]
-use pyo3_polars::error::PyPolarsErr;
-#[cfg(feature = "python")]
-use pyo3_polars::{PyDataFrame, PySchema};
 use statrs::statistics::Statistics;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -322,7 +312,7 @@ impl EncodedBsxBatch {
     ///
     /// Returns [PolarsError] if
     /// 1. Chromosome names do not match
-    /// 2. Batch does not contain region data
+    /// 2. Batch does not contain region data_structs
     pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> anyhow::Result<Self>
     where
         Self: Sized,
@@ -739,12 +729,12 @@ pub trait BsxBatchMethods {
     /// Extends [BsxBatch] by other
     ///
     /// Prints warning if first position of other is not less than last of self,
-    /// but still sorts data by position.
+    /// but still sorts data_structs by position.
     ///
     /// Returns error if
     /// 1. Chromosome names do not match
     /// 2. Chromosome columns non-unique
-    /// 3. Resulting data still contains duplicates
+    /// 3. Resulting data_structs still contains duplicates
     fn extend(&mut self, other: &Self) -> anyhow::Result<()>
     where
         Self: Sized,

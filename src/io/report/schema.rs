@@ -12,7 +12,7 @@ use pyo3_polars::PySchema;
 
 /// Represents different methylation report file formats supported by the application.
 ///
-/// Each format has its own column structure and data types that need to be handled
+/// Each format has its own column structure and data_structs types that need to be handled
 /// differently during import and transformation operations.
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "python", pyclass)]
@@ -52,9 +52,9 @@ impl ReportTypeSchema {
         }
     }
 
-    /// Returns the data types for each column in the report format.
+    /// Returns the data_structs types for each column in the report format.
     ///
-    /// The order of data types corresponds to the order of column names returned by `col_names()`.
+    /// The order of data_structs types corresponds to the order of column names returned by `col_names()`.
     const fn col_types(&self) -> &[DataType] {
         match self {
             Self::Bismark => &[
@@ -132,7 +132,7 @@ impl ReportTypeSchema {
 
     /// Indicates whether this report type needs alignment when processing.
     ///
-    /// Some report formats contain range data that requires special alignment handling.
+    /// Some report formats contain range data_structs that requires special alignment handling.
     pub const fn need_align(&self) -> bool {
         match self {
             Self::Bismark | Self::CgMap => false,
@@ -142,13 +142,13 @@ impl ReportTypeSchema {
 
     /// Creates a Polars Schema for this report format.
     ///
-    /// The schema defines the column names and their corresponding data types.
+    /// The schema defines the column names and their corresponding data_structs types.
     pub fn schema(&self) -> Schema {
         debug!("Creating schema for {:?} report format", self);
         schema_from_arrays(self.col_names(), self.col_types())
     }
 
-    /// Creates a HashMap mapping column names to their data types for this report format.
+    /// Creates a HashMap mapping column names to their data_structs types for this report format.
     pub fn hashmap(&self) -> PlHashMap<&str, DataType> {
         trace!("Creating column type HashMap for {:?} report format", self);
         hashmap_from_arrays(self.col_names(), self.col_types())
@@ -181,7 +181,7 @@ impl ReportTypeSchema {
 
     /// Returns a function that converts a DataFrame from the current report format to BsxBatch format.
     ///
-    /// The returned function transforms data from the specific report format into the standard
+    /// The returned function transforms data_structs from the specific report format into the standard
     /// internal format (BsxBatch), handling column renames, type conversions, and calculated fields.
     ///
     /// # Returns
@@ -208,7 +208,7 @@ impl ReportTypeSchema {
                     )
                     // Select only the columns needed for BsxBatch format
                     .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
@@ -238,7 +238,7 @@ impl ReportTypeSchema {
                         .alias("strand")])
                     // Select only the columns needed for BsxBatch format
                     .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
@@ -269,7 +269,7 @@ impl ReportTypeSchema {
                     ])
                     // Select only the columns needed for BsxBatch format
                     .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
@@ -305,7 +305,7 @@ impl ReportTypeSchema {
                     ])
                     // Select only the columns needed for BsxBatch format
                     .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
@@ -347,7 +347,7 @@ impl ReportTypeSchema {
                     .with_column(col("context").alias("trinuc"))
                     // Select only the columns needed for Bismark format
                     .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
             }
@@ -365,7 +365,7 @@ impl ReportTypeSchema {
                     .with_column(col("context").alias("dinuc"))
                     // Select only the columns needed for CgMap format
                     .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
             }
@@ -378,7 +378,7 @@ impl ReportTypeSchema {
                     .drop_nans(Some(vec![col("density")]))
                     // Select only the columns needed for BedGraph format
                     .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
             }
@@ -393,7 +393,7 @@ impl ReportTypeSchema {
                     .with_column((col("count_total") - col("count_m")).alias("count_um"))
                     // Select only the columns needed for Coverage format
                     .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data types
+                    // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
             }

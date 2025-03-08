@@ -39,7 +39,7 @@ pub fn arg_split_segment(positions: &[u64], max_dist: u64) -> Vec<usize> {
 
 /// Recursively segments a [SegmentView] using Total Variation (TV) regularization.
 ///
-/// This function applies the Condat algorithm to smooth the data within the segment
+/// This function applies the Condat algorithm to smooth the data_structs within the segment
 /// and identifies sub-segments based on the smoothed differences between the two groups.
 /// It recursively processes these sub-segments until a stopping criterion is met.
 ///
@@ -198,10 +198,10 @@ fn extract_segments(x: &[f64], tolerance: f64) -> Vec<(usize, usize, f64)> {
     segments
 }
 
-/// Merge adjacent segments if the Mann-Whitney U test on their underlying data
+/// Merge adjacent segments if the Mann-Whitney U test on their underlying data_structs
 /// does not show a significant difference.
 ///
-/// The test is performed on the original, unsmoothed methylation data from each segment.
+/// The test is performed on the original, unsmoothed methylation data_structs from each segment.
 /// If the p-value exceeds `p_threshold`, the segments are merged.
 ///
 /// # Arguments
@@ -268,7 +268,7 @@ pub fn merge_segments(segments: Vec<SegmentView>, p_threshold: f64) -> Vec<Segme
     current_segments
 }
 
-/// Configuration for filtering data.
+/// Configuration for filtering data_structs.
 pub struct FilterConfig {
     /// The context to consider (e.g., CpG, CHG, CHH).
     pub context: Context,

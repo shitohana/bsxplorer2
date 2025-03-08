@@ -67,7 +67,7 @@ impl BSXBTree {
         Some(self.0.get(&chr)?.lower_bound(Included(&start)))
     }
 
-    /// Get all batch indexes, which contain data about specified region
+    /// Get all batch indexes, which contain data_structs about specified region
     pub fn get_region(&self, coordinates: &RegionCoordinates<u64>) -> Option<Vec<usize>> {
         let mut lower_bound =
             self.get_lower_bound(coordinates.chr.to_string(), coordinates.start())?;
@@ -202,7 +202,7 @@ impl RegionAssembler {
         let affected_regions = self.read_plan.remove_batch(batch_idx);
 
         if let Some(affected_regions) = affected_regions {
-            // Collect trimmed data in parallel.
+            // Collect trimmed data_structs in parallel.
             let trimmed_results: Vec<(RegionData<String, u64, ()>, EncodedBsxBatch)> =
                 affected_regions
                     .par_iter()
@@ -216,7 +216,7 @@ impl RegionAssembler {
                         })
                     })
                     .collect::<anyhow::Result<Vec<_>>>()
-                    .expect("Failed to trim data");
+                    .expect("Failed to trim data_structs");
 
             // Update the cache using a single write lock.
             {

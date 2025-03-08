@@ -3,7 +3,7 @@
 //! It includes the `EncodedBsxBatchGroup` struct, which represents a collection of `EncodedBsxBatch`
 //! instances, optionally associated with labels. This allows for operations on groups of batches,
 //! such as filtering, aggregating statistics, and splitting into subgroups. The module also provides
-//! utility functions for checking data consistency across batches and performing various analyses.
+//! utility functions for checking data_structs consistency across batches and performing various analyses.
 //!
 //! The module supports operations like:
 //! - Filtering batches by context or strand
@@ -88,7 +88,7 @@ where
 {
     /// Attempts to create a new `EncodedBsxBatchGroup` with validation.
     ///
-    /// This function performs several checks to ensure data consistency across the batches:
+    /// This function performs several checks to ensure data_structs consistency across the batches:
     /// - It verifies that the input `batches` vector is not empty.
     /// - It checks if all batches have the same height (number of rows).
     /// - It ensures that all non-empty batches have the same contig.
@@ -173,11 +173,11 @@ where
     /// Performs an expensive validation check of full positions, strands and contexts consistency between batches.
     ///
     /// This is a more thorough check than what's done in `try_new`, and verifies that all batches
-    /// have identical positions, strands, and contexts in their data frames.
+    /// have identical positions, strands, and contexts in their data_structs frames.
     ///
     /// # Returns
     ///
-    /// Returns `true` if all batches have consistent data, `false` otherwise.
+    /// Returns `true` if all batches have consistent data_structs, `false` otherwise.
     fn check_expensive(&self) -> bool {
         debug!(
             "Performing expensive consistency check on {} batches",
@@ -194,7 +194,7 @@ where
         if result {
             debug!("Expensive consistency check passed");
         } else {
-            warn!("Expensive consistency check failed - batches have inconsistent data");
+            warn!("Expensive consistency check failed - batches have inconsistent data_structs");
         }
 
         result
@@ -261,7 +261,7 @@ where
             let mask_iter = df0
                 .data()
                 .column("context")
-                .with_context(|| "Failed to get 'context' column from batch data")?
+                .with_context(|| "Failed to get 'context' column from batch data_structs")?
                 .bool()
                 .with_context(|| "Failed to convert 'context' column to boolean")?
                 .iter()
@@ -296,7 +296,7 @@ where
             let mask_iter = df0
                 .data()
                 .column("strand")
-                .with_context(|| "Failed to get 'strand' column from batch data")?
+                .with_context(|| "Failed to get 'strand' column from batch data_structs")?
                 .bool()
                 .with_context(|| "Failed to convert 'strand' column to boolean")?
                 .iter()
@@ -431,9 +431,9 @@ where
         self.filter_mask(&mask)
     }
 
-    /// Extracts and returns the data from each batch as a vector of `DataFrame`s.
+    /// Extracts and returns the data_structs from each batch as a vector of `DataFrame`s.
     ///
-    /// This method consumes the batch group and returns the underlying data.
+    /// This method consumes the batch group and returns the underlying data_structs.
     ///
     /// # Returns
     ///

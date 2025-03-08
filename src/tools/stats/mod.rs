@@ -19,10 +19,10 @@ where
     sorted_map.serialize(serializer)
 }
 
-/// Represents comprehensive methylation statistics for DNA sequencing data.
+/// Represents comprehensive methylation statistics for DNA sequencing data_structs.
 ///
 /// Stores information about methylation levels, variance, coverage distribution,
-/// and context-specific (CG, CHG, CHH) and strand-specific methylation data.
+/// and context-specific (CG, CHG, CHH) and strand-specific methylation data_structs.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MethylationStats {
     /// Overall mean methylation level across all analyzed positions
@@ -186,7 +186,7 @@ impl From<MethylationStats> for MethylationStatFlat {
 impl MethylationStats {
     /// Creates an empty methylation statistics instance with all values initialized to zero.
     ///
-    /// This is useful as a starting point before aggregating data from multiple sources.
+    /// This is useful as a starting point before aggregating data_structs from multiple sources.
     pub fn new() -> Self {
         debug!("Creating new empty MethylationStats");
         Self {
@@ -210,7 +210,7 @@ impl MethylationStats {
     ///
     /// # Returns
     ///
-    /// A new MethylationStats instance with the provided data, handling NaN values gracefully.
+    /// A new MethylationStats instance with the provided data_structs, handling NaN values gracefully.
     pub fn from_data(
         mean_methylation: f64,
         variance_methylation: f64,
@@ -219,7 +219,7 @@ impl MethylationStats {
         strand_methylation: HashMap<Strand, (f64, u32)>,
     ) -> MethylationStats {
         debug!(
-            "Creating MethylationStats from data with mean: {}, variance: {}",
+            "Creating MethylationStats from data_structs with mean: {}, variance: {}",
             mean_methylation, variance_methylation
         );
 
@@ -348,7 +348,7 @@ impl MethylationStats {
                 );
             } else {
                 debug!(
-                    "No data for context {:?}, keeping sum at {}",
+                    "No data_structs for context {:?}, keeping sum at {}",
                     context, *sum_methylation
                 );
             }
@@ -364,7 +364,7 @@ impl MethylationStats {
                 );
             } else {
                 debug!(
-                    "No data for strand {:?}, keeping sum at {}",
+                    "No data_structs for strand {:?}, keeping sum at {}",
                     strand, *sum_methylation
                 );
             }
@@ -392,10 +392,10 @@ impl MethylationStats {
     ///
     /// # Returns
     ///
-    /// The mean methylation level, or 0.0 if no coverage data is available.
+    /// The mean methylation level, or 0.0 if no coverage data_structs is available.
     pub fn mean_methylation(&self) -> f64 {
         if self.total_coverage() == 0 {
-            debug!("No coverage data, returning 0.0 for mean methylation");
+            debug!("No coverage data_structs, returning 0.0 for mean methylation");
             0.0
         } else {
             trace!(
@@ -414,7 +414,7 @@ impl MethylationStats {
     ///
     /// # Returns
     ///
-    /// A new MethylationStats instance containing the merged data.
+    /// A new MethylationStats instance containing the merged data_structs.
     pub fn merge_multiple(stats_list: &[MethylationStats]) -> Self {
         info!("Merging {} MethylationStats instances", stats_list.len());
 

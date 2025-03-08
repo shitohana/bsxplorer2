@@ -19,7 +19,7 @@ pub type BSXIndex = HashMap<String, BTreeMap<u64, usize>>;
 
 /// Reader for BSX files
 ///
-/// Provides functionality to read and process BSX files containing genomic data.
+/// Provides functionality to read and process BSX files containing genomic data_structs.
 /// The reader implements the Iterator trait for sequential batch processing.
 pub struct BsxFileReader<R: Read + Seek> {
     /// The underlying IPC file reader that handles the low-level Arrow format

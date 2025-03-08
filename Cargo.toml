@@ -16,9 +16,7 @@ default = ["plots"]
 plots = ["plotly", "z_table", "yew", "yew-plotly"]
 
 [dev-dependencies]
-rand = { version = "=0.8.5", features = ["std", "std_rng"] }
 rand_chacha = "=0.3.1"
-rand_distr = "=0.4.3"
 
 [dependencies]
 # Utility
@@ -46,6 +44,9 @@ serde_json = "1"
 # Stats
 adjustp = "0.1.6"
 histogram = "0.11.2"
+rand = { version = "=0.8.5", features = ["std", "std_rng"] }
+rand_distr = "=0.4.3"
+rand_xoshiro = "0.7.0"
 ndarray = "0.16.1"
 statrs = "0.18.0"
 

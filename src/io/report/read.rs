@@ -31,7 +31,7 @@ TODO:
 pub struct ReportReaderBuilder {
     /// Type of report to read, determines the schema and parsing strategy
     pub report_type: ReportTypeSchema,
-    /// Whether to rechunk the data after reading
+    /// Whether to rechunk the data_structs after reading
     pub rechunk: bool,
     /// Number of threads to use for reading
     pub n_threads: Option<usize>,
@@ -64,7 +64,7 @@ impl ReportReaderBuilder {
         }
     }
 
-    /// Set whether to rechunk the data after reading
+    /// Set whether to rechunk the data_structs after reading
     pub fn with_rechunk(mut self, rechunk: bool) -> Self {
         self.rechunk = rechunk;
         self
@@ -249,7 +249,7 @@ where
     }
 }
 
-/// Structure to hold context data for positions
+/// Structure to hold context data_structs for positions
 pub struct ContextData<N>
 where
     N: PosNum,
@@ -263,12 +263,12 @@ where
 }
 
 impl<N: PosNum> ContextData<N> {
-    /// Get the number of positions in this context data
+    /// Get the number of positions in this context data_structs
     pub fn len(&self) -> usize {
         self.contexts.len()
     }
 
-    /// Check if the context data is empty
+    /// Check if the context data_structs is empty
     pub fn is_empty(&self) -> bool {
         self.contexts.is_empty()
     }
@@ -282,7 +282,7 @@ impl<N: PosNum> ContextData<N> {
         }
     }
 
-    /// Filter the context data based on a predicate function on positions
+    /// Filter the context data_structs based on a predicate function on positions
     pub(crate) fn filter<F: Fn(N) -> bool>(&self, predicate: F) -> Self {
         let mut new_self = Self::new();
         for (idx, pos) in self.positions.iter().enumerate() {
@@ -293,7 +293,7 @@ impl<N: PosNum> ContextData<N> {
         new_self
     }
 
-    /// Get the column names for this context data
+    /// Get the column names for this context data_structs
     #[allow(dead_code)]
     pub(crate) fn col_names() -> &'static [&'static str] {
         &["position", "context", "strand"]
@@ -313,14 +313,14 @@ impl<N: PosNum> ContextData<N> {
         }
     }
 
-    /// Add a row to the context data
+    /// Add a row to the context data_structs
     pub(crate) fn add_row(&mut self, position: N, context: Option<bool>, strand: bool) {
         self.positions.push(position);
         self.strands.push(strand);
         self.contexts.push(context);
     }
 
-    /// Create context data from a DNA sequence starting at the given position
+    /// Create context data_structs from a DNA sequence starting at the given position
     pub fn from_sequence(seq: &[u8], start: GenomicPosition<N>) -> Self {
         let start_pos = start.position();
         let fw_bound: usize = seq.len() - 2;
@@ -383,7 +383,7 @@ impl<N: PosNum> ContextData<N> {
         self.strands.shrink_to_fit();
     }
 
-    /// Convert the context data to a DataFrame
+    /// Convert the context data_structs to a DataFrame
     pub fn into_dataframe(self) -> PolarsResult<DataFrame> {
         df![
             "position" => self.positions.iter().map(|x| x.to_u64().unwrap()).collect_vec(),
@@ -413,7 +413,7 @@ pub(in crate::io::report) type ReadQueueItem = (DataFrame, bool);
 
 /// Reader for processing bisulfite sequencing reports
 pub struct ReportReader {
-    /// Thread that reads the data
+    /// Thread that reads the data_structs
     _join_handle: JoinHandle<()>,
     /// Channel to receive batches from the reader thread
     receiver: Receiver<ReadQueueItem>,
@@ -453,7 +453,7 @@ impl ReportReader {
         }
     }
 
-    /// Extend the cache with a new batch of data
+    /// Extend the cache with a new batch of data_structs
     /// Item must has single chromosome
     fn extend_cache(&mut self, item: ReadQueueItem) -> Result<(), Box<dyn Error>> {
         let context_data = if let Some(reader) = self.fasta_reader.as_mut() {
@@ -482,7 +482,7 @@ impl ReportReader {
         Ok(())
     }
 
-    /// Get a chunk of data from the cache
+    /// Get a chunk of data_structs from the cache
     /// It is caller responsibility to check, if cache size is enough
     fn get_chunk(&mut self) -> Result<DataFrame, Box<dyn Error>> {
         if let Some(cache) = self.batch_cache.as_mut() {
@@ -532,7 +532,7 @@ impl ReportReader {
 impl Iterator for ReportReader {
     type Item = BsxBatch;
 
-    /// Get the next batch of data
+    /// Get the next batch of data_structs
     fn next(&mut self) -> Option<Self::Item> {
         if self
             .batch_cache
@@ -551,7 +551,7 @@ impl Iterator for ReportReader {
         } else {
             match self.receiver.recv() {
                 Ok(data) => {
-                    debug!("Received data with {} rows", data.0.height());
+                    debug!("Received data_structs with {} rows", data.0.height());
                     match self.extend_cache(data) {
                         Ok(_) => self.next(),
                         Err(e) => {
@@ -575,7 +575,7 @@ impl Iterator for ReportReader {
     }
 }
 
-/// Thread function for reading data from a CSV file
+/// Thread function for reading data_structs from a CSV file
 fn reader_thread<R>(
     reader: CsvReader<R>,
     send_channel: SyncSender<ReadQueueItem>,
@@ -639,7 +639,7 @@ fn reader_thread<R>(
 
                     // Return cached
                     if let Err(e) = send_channel.send(item) {
-                        debug!("Could not send data to main thread: {}", e);
+                        debug!("Could not send data_structs to main thread: {}", e);
                         break;
                     }
                 }
@@ -651,7 +651,7 @@ fn reader_thread<R>(
             if let Some(cached_batch_data) = cached_batch.take() {
                 let item = (cached_batch_data, true);
                 if let Err(e) = send_channel.send(item) {
-                    debug!("Could not send final data to main thread: {}", e);
+                    debug!("Could not send final data_structs to main thread: {}", e);
                 }
             }
             break;
@@ -659,7 +659,7 @@ fn reader_thread<R>(
     }
 }
 
-/// Partition a batch of data by chromosome
+/// Partition a batch of data_structs by chromosome
 /// It is caller responsibility to validate schema
 fn partition_batch(
     batch: DataFrame,
