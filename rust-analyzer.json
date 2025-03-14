@@ -1,0 +1,15 @@
+{
+  "diagnostics": {
+    "disabled": [
+      "unused-imports",
+      "unused-variables"
+    ]
+  },
+  "check": {
+    "ignore": [
+      "unused-imports",
+      "unused-variables",
+      "dead-code"
+    ]
+  }
+}
