@@ -1,25 +1,45 @@
-use anyhow::anyhow;
-use polars::export::arrow::io::ipc::read::{
-    read_file_dictionaries, read_file_metadata, Dictionaries, FileMetadata, OutOfSpecKind,
-};
-use polars::prelude::*;
-use polars_arrow_format::ipc::planus::ReadAsRoot;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 use std::io::{Read, Seek, SeekFrom};
 
+use anyhow::anyhow;
+use polars::export::arrow::io::ipc::read::{read_file_dictionaries,
+                                           read_file_metadata,
+                                           Dictionaries,
+                                           FileMetadata,
+                                           OutOfSpecKind};
+use polars::prelude::*;
+use polars_arrow_format::ipc::planus::ReadAsRoot;
+
 pub struct LazyIpcFileReader<R: Read + Seek> {
-    handle: R,
-    metadata: FileMetadata,
-    dictionaries: Option<Dictionaries>,
-    current_block: usize,
-    blocks_total: usize,
-    data_scratch: Vec<u8>,
+    handle:          R,
+    metadata:        FileMetadata,
+    dictionaries:    Option<Dictionaries>,
+    current_block:   usize,
+    blocks_total:    usize,
+    data_scratch:    Vec<u8>,
     message_scratch: Vec<u8>,
 }
 
 impl<R: Read + Seek> LazyIpcFileReader<R> {
     pub fn try_new(mut handle: R) -> anyhow::Result<Self> {
-        let metadata = read_file_metadata(&mut handle)
-            .map_err(|e| anyhow!("Could not read IPC file metadata").context(e))?;
+        let metadata = read_file_metadata(&mut handle).map_err(|e| {
+            anyhow!("Could not read IPC file metadata").context(e)
+        })?;
         let blocks_total = metadata.blocks.len();
 
         Ok(Self {
@@ -33,25 +53,17 @@ impl<R: Read + Seek> LazyIpcFileReader<R> {
         })
     }
 
-    pub fn arrow_schema(&self) -> &ArrowSchema {
-        &self.metadata.schema
-    }
+    pub fn arrow_schema(&self) -> &ArrowSchema { &self.metadata.schema }
 
     pub fn polars_schema(&self) -> Schema {
         Schema::from_arrow_schema(self.arrow_schema())
     }
 
-    pub fn metadata(&self) -> &FileMetadata {
-        &self.metadata
-    }
+    pub fn metadata(&self) -> &FileMetadata { &self.metadata }
 
-    pub fn blocks_total(&self) -> usize {
-        self.blocks_total
-    }
+    pub fn blocks_total(&self) -> usize { self.blocks_total }
 
-    pub fn current_block(&self) -> usize {
-        self.current_block
-    }
+    pub fn current_block(&self) -> usize { self.current_block }
 
     fn read_dictionaries(&mut self) -> PolarsResult<()> {
         if self.dictionaries.is_none() {
@@ -68,7 +80,8 @@ impl<R: Read + Seek> LazyIpcFileReader<R> {
         &mut self,
         offset: u64,
     ) -> anyhow::Result<polars_arrow_format::ipc::MessageRef> {
-        self.handle.seek(SeekFrom::Start(offset))?;
+        self.handle
+            .seek(SeekFrom::Start(offset))?;
         let mut meta_buf = [0; 4];
         self.handle.read_exact(&mut meta_buf)?;
         if meta_buf == CONTINUATION_MARKER {
@@ -80,30 +93,37 @@ impl<R: Read + Seek> LazyIpcFileReader<R> {
             .map_err(|_| anyhow!(OutOfSpecKind::UnexpectedNegativeInteger))?;
 
         self.message_scratch.clear();
-        self.message_scratch.try_reserve(meta_len)?;
+        self.message_scratch
+            .try_reserve(meta_len)?;
         self.handle
             .by_ref()
             .take(meta_len as u64)
             .read_to_end(&mut self.message_scratch)?;
 
-        Ok(
-            polars_arrow_format::ipc::MessageRef::read_as_root(&self.message_scratch)
-                .map_err(|err| anyhow!(OutOfSpecKind::InvalidFlatbufferMessage(err)))?,
+        Ok(polars_arrow_format::ipc::MessageRef::read_as_root(
+            &self.message_scratch,
         )
+        .map_err(|err| anyhow!(OutOfSpecKind::InvalidFlatbufferMessage(err)))?)
     }
 
     fn get_record_batch(
-        message: polars_arrow_format::ipc::MessageRef,
+        message: polars_arrow_format::ipc::MessageRef
     ) -> anyhow::Result<polars_arrow_format::ipc::RecordBatchRef> {
         let header = message
             .header()
-            .map_err(|err| polars_err!(oos = OutOfSpecKind::InvalidFlatbufferHeader(err)))?
-            .ok_or_else(|| polars_err!(oos = OutOfSpecKind::MissingMessageHeader))?;
+            .map_err(|err| {
+                polars_err!(oos = OutOfSpecKind::InvalidFlatbufferHeader(err))
+            })?
+            .ok_or_else(|| {
+                polars_err!(oos = OutOfSpecKind::MissingMessageHeader)
+            })?;
         match header {
-            polars_arrow_format::ipc::MessageHeaderRef::RecordBatch(batch) => Ok(batch),
+            polars_arrow_format::ipc::MessageHeaderRef::RecordBatch(batch) => {
+                Ok(batch)
+            },
             _ => Err(anyhow!(OutOfSpecKind::UnexpectedMessageType)),
         }
     }
 }
 
-const CONTINUATION_MARKER: [u8; 4] = [0xff; 4];
+const CONTINUATION_MARKER: [u8; 4] = [0xFF; 4];

@@ -1,19 +1,37 @@
-use crate::data_structs::bsx_batch::BsxBatch;
-use crate::utils::{hashmap_from_arrays, schema_from_arrays};
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
+use std::ops::Div;
+
 use itertools::Itertools;
 use log::{debug, trace, warn};
 use polars::prelude::*;
-use std::ops::Div;
-
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(feature = "python")]
 use pyo3_polars::PySchema;
 
-/// Represents different methylation report file formats supported by the application.
+use crate::data_structs::bsx_batch::BsxBatch;
+use crate::utils::{hashmap_from_arrays, schema_from_arrays};
+
+/// Represents different methylation report file formats supported by the
+/// application.
 ///
-/// Each format has its own column structure and data_structs types that need to be handled
-/// differently during import and transformation operations.
+/// Each format has its own column structure and data_structs types that need to
+/// be handled differently during import and transformation operations.
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "python", pyclass)]
 pub enum ReportTypeSchema {
@@ -34,75 +52,94 @@ impl ReportTypeSchema {
     /// in files of that format.
     pub const fn col_names(&self) -> &[&'static str] {
         match self {
-            Self::Bismark => &[
-                "chr", "position", "strand", "count_m", "count_um", "context", "trinuc",
-            ],
-            Self::Coverage => &["chr", "start", "end", "density", "count_m", "count_um"],
-            Self::CgMap => &[
-                "chr",
-                "nuc",
-                "position",
-                "context",
-                "dinuc",
-                "density",
-                "count_m",
-                "count_total",
-            ],
+            Self::Bismark => {
+                &[
+                    "chr", "position", "strand", "count_m", "count_um",
+                    "context", "trinuc",
+                ]
+            },
+            Self::Coverage => {
+                &["chr", "start", "end", "density", "count_m", "count_um"]
+            },
+            Self::CgMap => {
+                &[
+                    "chr",
+                    "nuc",
+                    "position",
+                    "context",
+                    "dinuc",
+                    "density",
+                    "count_m",
+                    "count_total",
+                ]
+            },
             Self::BedGraph => &["chr", "start", "end", "density"],
         }
     }
 
     /// Returns the data_structs types for each column in the report format.
     ///
-    /// The order of data_structs types corresponds to the order of column names returned by `col_names()`.
+    /// The order of data_structs types corresponds to the order of column names
+    /// returned by `col_names()`.
     const fn col_types(&self) -> &[DataType] {
         match self {
-            Self::Bismark => &[
-                DataType::String, // chr
-                DataType::UInt64, // position
-                DataType::String, // strand
-                DataType::UInt32, // count_m
-                DataType::UInt32, // count_um
-                DataType::String, // context
-                DataType::String, // trinuc
-            ],
-            Self::CgMap => &[
-                DataType::String,  // chr
-                DataType::String,  // nuc
-                DataType::UInt64,  // position
-                DataType::String,  // context
-                DataType::String,  // dinuc
-                DataType::Float64, // density
-                DataType::UInt32,  // count_m
-                DataType::UInt32,  // count_total
-            ],
-            Self::BedGraph => &[
-                DataType::String,  // chr
-                DataType::UInt64,  // start
-                DataType::UInt64,  // end
-                DataType::Float64, // density
-            ],
-            Self::Coverage => &[
-                DataType::String,  // chr
-                DataType::UInt64,  // start
-                DataType::UInt64,  // end
-                DataType::Float64, // density
-                DataType::UInt32,  // count_m
-                DataType::UInt32,  // count_um
-            ],
+            Self::Bismark => {
+                &[
+                    DataType::String, // chr
+                    DataType::UInt64, // position
+                    DataType::String, // strand
+                    DataType::UInt32, // count_m
+                    DataType::UInt32, // count_um
+                    DataType::String, // context
+                    DataType::String, // trinuc
+                ]
+            },
+            Self::CgMap => {
+                &[
+                    DataType::String,  // chr
+                    DataType::String,  // nuc
+                    DataType::UInt64,  // position
+                    DataType::String,  // context
+                    DataType::String,  // dinuc
+                    DataType::Float64, // density
+                    DataType::UInt32,  // count_m
+                    DataType::UInt32,  // count_total
+                ]
+            },
+            Self::BedGraph => {
+                &[
+                    DataType::String,  // chr
+                    DataType::UInt64,  // start
+                    DataType::UInt64,  // end
+                    DataType::Float64, // density
+                ]
+            },
+            Self::Coverage => {
+                &[
+                    DataType::String,  // chr
+                    DataType::UInt64,  // start
+                    DataType::UInt64,  // end
+                    DataType::Float64, // density
+                    DataType::UInt32,  // count_m
+                    DataType::UInt32,  // count_um
+                ]
+            },
         }
     }
 
     /// Returns the name of the chromosome column for this report type.
     pub const fn chr_col(&self) -> &'static str {
         match self {
-            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => "chr",
+            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => {
+                "chr"
+            },
         }
     }
 
     /// Returns the name of the position column for this report type.
     ///
-    /// Different report formats may use different column names to represent the genomic position.
+    /// Different report formats may use different column names to represent the
+    /// genomic position.
     pub const fn position_col(&self) -> &'static str {
         match self {
             Self::Coverage | Self::BedGraph => "start",
@@ -132,7 +169,8 @@ impl ReportTypeSchema {
 
     /// Indicates whether this report type needs alignment when processing.
     ///
-    /// Some report formats contain range data_structs that requires special alignment handling.
+    /// Some report formats contain range data_structs that requires special
+    /// alignment handling.
     pub const fn need_align(&self) -> bool {
         match self {
             Self::Bismark | Self::CgMap => false,
@@ -142,13 +180,15 @@ impl ReportTypeSchema {
 
     /// Creates a Polars Schema for this report format.
     ///
-    /// The schema defines the column names and their corresponding data_structs types.
+    /// The schema defines the column names and their corresponding data_structs
+    /// types.
     pub fn schema(&self) -> Schema {
         debug!("Creating schema for {:?} report format", self);
         schema_from_arrays(self.col_names(), self.col_types())
     }
 
-    /// Creates a HashMap mapping column names to their data_structs types for this report format.
+    /// Creates a HashMap mapping column names to their data_structs types for
+    /// this report format.
     pub fn hashmap(&self) -> PlHashMap<&str, DataType> {
         trace!("Creating column type HashMap for {:?} report format", self);
         hashmap_from_arrays(self.col_names(), self.col_types())
@@ -156,8 +196,8 @@ impl ReportTypeSchema {
 
     /// Creates CSV read options configured for this report format.
     ///
-    /// The returned options are configured with appropriate settings for parsing
-    /// files of this specific report type.
+    /// The returned options are configured with appropriate settings for
+    /// parsing files of this specific report type.
     pub fn read_options(&self) -> CsvReadOptions {
         debug!("Configuring CSV read options for {:?} format", self);
         let mut read_options = CsvReadOptions::default()
@@ -179,32 +219,40 @@ impl ReportTypeSchema {
         read_options
     }
 
-    /// Returns a function that converts a DataFrame from the current report format to BsxBatch format.
+    /// Returns a function that converts a DataFrame from the current report
+    /// format to BsxBatch format.
     ///
-    /// The returned function transforms data_structs from the specific report format into the standard
-    /// internal format (BsxBatch), handling column renames, type conversions, and calculated fields.
+    /// The returned function transforms data_structs from the specific report
+    /// format into the standard internal format (BsxBatch), handling column
+    /// renames, type conversions, and calculated fields.
     ///
     /// # Returns
-    /// A function that takes a DataFrame and returns a PolarsResult<DataFrame> in BsxBatch format.
-    /// The returned DataFrame will contain all the columns required by BsxBatch, but some fields may
-    /// be NULL or placeholder values depending on the source format.
+    /// A function that takes a DataFrame and returns a PolarsResult<DataFrame>
+    /// in BsxBatch format. The returned DataFrame will contain all the
+    /// columns required by BsxBatch, but some fields may be NULL or
+    /// placeholder values depending on the source format.
     pub fn bsx_mutate(&self) -> fn(DataFrame) -> PolarsResult<DataFrame> {
         debug!("Creating bsx_mutate function for {:?} format", self);
         match self {
-            ReportTypeSchema::Bismark => |df: DataFrame| {
-                debug!("Converting Bismark format to BsxBatch format");
-                trace!("Input DataFrame shape: {}x{}", df.height(), df.width());
+            ReportTypeSchema::Bismark => {
+                |df: DataFrame| {
+                    debug!("Converting Bismark format to BsxBatch format");
+                    trace!(
+                        "Input DataFrame shape: {}x{}",
+                        df.height(),
+                        df.width()
+                    );
 
-                let result = df
+                    let result = df
                     .lazy()
                     // Calculate total count by adding methylated and unmethylated counts
                     .with_column((col("count_m") + col("count_um")).alias("count_total"))
                     // Calculate methylation density as the ratio of methylated to total count
                     .with_column(
-                        (col("count_m")
+                        col("count_m")
                             .cast(DataType::Float64)
-                            .div(col("count_total")))
-                        .alias("density"),
+                            .div(col("count_total"))
+                            .alias("density"),
                     )
                     // Select only the columns needed for BsxBatch format
                     .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
@@ -212,22 +260,32 @@ impl ReportTypeSchema {
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
-                match &result {
-                    Ok(df) => trace!(
-                        "Transformed DataFrame shape: {}x{}",
+                    match &result {
+                        Ok(df) => {
+                            trace!(
+                                "Transformed DataFrame shape: {}x{}",
+                                df.height(),
+                                df.width()
+                            )
+                        },
+                        Err(e) => {
+                            warn!("Error converting Bismark format: {}", e)
+                        },
+                    }
+
+                    result
+                }
+            },
+            ReportTypeSchema::CgMap => {
+                |df: DataFrame| {
+                    debug!("Converting CgMap format to BsxBatch format");
+                    trace!(
+                        "Input DataFrame shape: {}x{}",
                         df.height(),
                         df.width()
-                    ),
-                    Err(e) => warn!("Error converting Bismark format: {}", e),
-                }
+                    );
 
-                result
-            },
-            ReportTypeSchema::CgMap => |df: DataFrame| {
-                debug!("Converting CgMap format to BsxBatch format");
-                trace!("Input DataFrame shape: {}x{}", df.height(), df.width());
-
-                let result = df
+                    let result = df
                     .lazy()
                     // Determine strand based on nucleotide (C is +, G is -)
                     .with_columns([when(col("nuc").eq(lit("C")))
@@ -242,22 +300,30 @@ impl ReportTypeSchema {
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
-                match &result {
-                    Ok(df) => trace!(
-                        "Transformed DataFrame shape: {}x{}",
+                    match &result {
+                        Ok(df) => {
+                            trace!(
+                                "Transformed DataFrame shape: {}x{}",
+                                df.height(),
+                                df.width()
+                            )
+                        },
+                        Err(e) => warn!("Error converting CgMap format: {}", e),
+                    }
+
+                    result
+                }
+            },
+            ReportTypeSchema::BedGraph => {
+                |df: DataFrame| {
+                    debug!("Converting BedGraph format to BsxBatch format");
+                    trace!(
+                        "Input DataFrame shape: {}x{}",
                         df.height(),
                         df.width()
-                    ),
-                    Err(e) => warn!("Error converting CgMap format: {}", e),
-                }
+                    );
 
-                result
-            },
-            ReportTypeSchema::BedGraph => |df: DataFrame| {
-                debug!("Converting BedGraph format to BsxBatch format");
-                trace!("Input DataFrame shape: {}x{}", df.height(), df.width());
-
-                let result = df
+                    let result = df
                     .lazy()
                     // Add required columns with placeholder values
                     .with_columns([
@@ -273,22 +339,32 @@ impl ReportTypeSchema {
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
-                match &result {
-                    Ok(df) => trace!(
-                        "Transformed DataFrame shape: {}x{}",
+                    match &result {
+                        Ok(df) => {
+                            trace!(
+                                "Transformed DataFrame shape: {}x{}",
+                                df.height(),
+                                df.width()
+                            )
+                        },
+                        Err(e) => {
+                            warn!("Error converting BedGraph format: {}", e)
+                        },
+                    }
+
+                    result
+                }
+            },
+            ReportTypeSchema::Coverage => {
+                |df: DataFrame| {
+                    debug!("Converting Coverage format to BsxBatch format");
+                    trace!(
+                        "Input DataFrame shape: {}x{}",
                         df.height(),
                         df.width()
-                    ),
-                    Err(e) => warn!("Error converting BedGraph format: {}", e),
-                }
+                    );
 
-                result
-            },
-            ReportTypeSchema::Coverage => |df: DataFrame| {
-                debug!("Converting Coverage format to BsxBatch format");
-                trace!("Input DataFrame shape: {}x{}", df.height(), df.width());
-
-                let result = df
+                    let result = df
                     .lazy()
                     // Calculate total count by adding methylated and unmethylated counts
                     .with_column((col("count_m") + col("count_um")).alias("count_total"))
@@ -298,10 +374,10 @@ impl ReportTypeSchema {
                         lit(".").alias("strand"),
                         lit(NULL).alias("context"),
                         // Recalculate density for consistency
-                        (col("count_m")
+                        col("count_m")
                             .cast(DataType::Float64)
-                            .div(col("count_total")))
-                        .alias("density"),
+                            .div(col("count_total"))
+                            .alias("density"),
                     ])
                     // Select only the columns needed for BsxBatch format
                     .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
@@ -309,31 +385,40 @@ impl ReportTypeSchema {
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
 
-                match &result {
-                    Ok(df) => trace!(
-                        "Transformed DataFrame shape: {}x{}",
-                        df.height(),
-                        df.width()
-                    ),
-                    Err(e) => warn!("Error converting Coverage format: {}", e),
-                }
+                    match &result {
+                        Ok(df) => {
+                            trace!(
+                                "Transformed DataFrame shape: {}x{}",
+                                df.height(),
+                                df.width()
+                            )
+                        },
+                        Err(e) => {
+                            warn!("Error converting Coverage format: {}", e)
+                        },
+                    }
 
-                result
+                    result
+                }
             },
         }
     }
 
-    /// Converts a DataFrame from BsxBatch format back to the original report format.
+    /// Converts a DataFrame from BsxBatch format back to the original report
+    /// format.
     ///
-    /// This is the inverse operation of `bsx_mutate()`, transforming from the internal
-    /// representation back to the specific report format.
+    /// This is the inverse operation of `bsx_mutate()`, transforming from the
+    /// internal representation back to the specific report format.
     ///
     /// # Parameters
     /// * `df` - A DataFrame in BsxBatch format
     ///
     /// # Returns
     /// A PolarsResult<DataFrame> in the original report format
-    pub fn report_mutate_from_bsx(&self, df: DataFrame) -> PolarsResult<DataFrame> {
+    pub fn report_mutate_from_bsx(
+        &self,
+        df: DataFrame,
+    ) -> PolarsResult<DataFrame> {
         debug!("Converting from BsxBatch to {:?} format", self);
         trace!("Input DataFrame shape: {}x{}", df.height(), df.width());
 
@@ -350,7 +435,7 @@ impl ReportTypeSchema {
                     // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
-            }
+            },
             ReportTypeSchema::CgMap => {
                 debug!("Transforming to CgMap format");
                 df.lazy()
@@ -368,7 +453,7 @@ impl ReportTypeSchema {
                     // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
-            }
+            },
             ReportTypeSchema::BedGraph => {
                 debug!("Transforming to BedGraph format");
                 df.lazy()
@@ -381,7 +466,7 @@ impl ReportTypeSchema {
                     // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
-            }
+            },
             ReportTypeSchema::Coverage => {
                 debug!("Transforming to Coverage format");
                 df.lazy()
@@ -396,15 +481,17 @@ impl ReportTypeSchema {
                     // Ensure all columns have the correct data_structs types
                     .cast(self.hashmap(), true)
                     .collect()
-            }
+            },
         };
 
         match &result {
-            Ok(df) => trace!(
-                "Transformed DataFrame shape: {}x{}",
-                df.height(),
-                df.width()
-            ),
+            Ok(df) => {
+                trace!(
+                    "Transformed DataFrame shape: {}x{}",
+                    df.height(),
+                    df.width()
+                )
+            },
             Err(e) => warn!("Error converting from BsxBatch: {}", e),
         }
 
@@ -470,7 +557,9 @@ mod report_schema_test {
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();
         assert_eq!(bsx_batch, output_df);
-        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        let reverse_transform = report_type
+            .report_mutate_from_bsx(bsx_batch)
+            .unwrap();
         assert_eq!(reverse_transform, input_df);
     }
 
@@ -512,7 +601,9 @@ mod report_schema_test {
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();
         assert_eq!(bsx_batch, output_df);
-        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        let reverse_transform = report_type
+            .report_mutate_from_bsx(bsx_batch)
+            .unwrap();
         assert_eq!(reverse_transform, input_df);
     }
 
@@ -551,7 +642,9 @@ mod report_schema_test {
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();
         assert_eq!(bsx_batch, output_df);
-        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        let reverse_transform = report_type
+            .report_mutate_from_bsx(bsx_batch)
+            .unwrap();
         assert_eq!(reverse_transform, input_df);
     }
 
@@ -589,7 +682,9 @@ mod report_schema_test {
         let mutate_func = report_type.bsx_mutate();
         let bsx_batch = mutate_func(input_df.clone()).unwrap();
         assert_eq!(bsx_batch, output_df);
-        let reverse_transform = report_type.report_mutate_from_bsx(bsx_batch).unwrap();
+        let reverse_transform = report_type
+            .report_mutate_from_bsx(bsx_batch)
+            .unwrap();
         assert_eq!(reverse_transform, input_df);
     }
 }

@@ -1,24 +1,43 @@
-use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
-use crate::utils::get_categorical_dtype;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
 use polars::datatypes::DataType;
 use polars::error::PolarsResult;
 use polars::export::arrow::datatypes::Metadata;
-use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
-use std::io::Write;
-use std::path::PathBuf;
-use std::sync::Arc;
-
 pub use polars::prelude::IpcCompression as PolarsIpcCompression;
+use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
+
+use crate::data_structs::bsx_batch::{BsxBatch,
+                                     BsxBatchMethods,
+                                     EncodedBsxBatch};
+use crate::utils::get_categorical_dtype;
 
 /// Writer for BSX data_structs in Arrow IPC format.
-/// Handles serialization of BSX batches to Arrow IPC format with optional compression.
+/// Handles serialization of BSX batches to Arrow IPC format with optional
+/// compression.
 pub struct BsxIpcWriter<W>
 where
-    W: Write,
-{
+    W: Write, {
     /// Underlying Arrow IPC writer that handles the actual serialization
     writer: polars::io::ipc::BatchedWriter<W>,
     /// Schema defining the structure of the BSX data_structs
@@ -29,13 +48,15 @@ impl<W> BsxIpcWriter<W>
 where
     W: Write,
 {
-    /// Creates a new BSX IPC writer with the given sink, chromosome names, compression settings and metadata.
+    /// Creates a new BSX IPC writer with the given sink, chromosome names,
+    /// compression settings and metadata.
     ///
     /// # Arguments
     /// * `sink` - The destination to write the IPC data_structs to
     /// * `chr_names` - List of chromosome names to use for categorical encoding
     /// * `compression` - Optional compression algorithm to use
-    /// * `custom_metadata` - Optional custom metadata to include in the IPC file
+    /// * `custom_metadata` - Optional custom metadata to include in the IPC
+    ///   file
     ///
     /// # Returns
     /// A new `BsxIpcWriter` or an error if initialization fails
@@ -44,7 +65,7 @@ where
         chr_names: Vec<String>,
         compression: Option<IpcCompression>,
         custom_metadata: Option<Arc<Metadata>>,
-    ) -> anyhow::Result<BsxIpcWriter<W>> {
+    ) -> Result<BsxIpcWriter<W>> {
         debug!(
             "Creating new BsxIpcWriter with {} chromosome names",
             chr_names.len()
@@ -54,7 +75,7 @@ where
         }
 
         let opts = IpcWriterOptions {
-            compression: compression.clone(),
+            compression:    compression.clone(),
             maintain_order: true,
         };
 
@@ -87,7 +108,8 @@ where
     /// * `sink` - The destination to write the IPC data_structs to
     /// * `fai_path` - Path to the FASTA index file (.fai)
     /// * `compression` - Optional compression algorithm to use
-    /// * `custom_metadata` - Optional custom metadata to include in the IPC file
+    /// * `custom_metadata` - Optional custom metadata to include in the IPC
+    ///   file
     ///
     /// # Returns
     /// A new `BsxIpcWriter` or an error if initialization fails
@@ -102,8 +124,10 @@ where
             fai_path
         );
 
-        let index = bio::io::fasta::Index::from_file(&fai_path)
-            .with_context(|| format!("Failed to read FASTA index from {:?}", fai_path))?;
+        let index =
+            bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
+                format!("Failed to read FASTA index from {:?}", fai_path)
+            })?;
 
         let chr_names = index
             .sequences()
@@ -116,18 +140,25 @@ where
             chr_names.len()
         );
         Self::try_new(sink, chr_names, compression, custom_metadata)
-            .with_context(|| format!("Failed to create writer from FASTA index at {:?}", fai_path))
+            .with_context(|| {
+                format!(
+                    "Failed to create writer from FASTA index at {:?}",
+                    fai_path
+                )
+            })
     }
 
     /// Creates a writer from a sink and FASTA file path.
     ///
-    /// This creates a FASTA index file if it doesn't exist, then extracts chromosome names.
+    /// This creates a FASTA index file if it doesn't exist, then extracts
+    /// chromosome names.
     ///
     /// # Arguments
     /// * `sink` - The destination to write the IPC data_structs to
     /// * `fasta_path` - Path to the FASTA file
     /// * `compression` - Optional compression algorithm to use
-    /// * `custom_metadata` - Optional custom metadata to include in the IPC file
+    /// * `custom_metadata` - Optional custom metadata to include in the IPC
+    ///   file
     ///
     /// # Returns
     /// A new `BsxIpcWriter` or an error if initialization fails
@@ -140,14 +171,24 @@ where
         info!("Creating BsxIpcWriter from FASTA file: {:?}", fasta_path);
 
         // Create index if it doesn't exist
-        noodles::fasta::fs::index(fasta_path.clone())
-            .with_context(|| format!("Failed to index FASTA file {:?}", fasta_path))?;
+        noodles::fasta::fs::index(fasta_path.clone()).with_context(|| {
+            format!("Failed to index FASTA file {:?}", fasta_path)
+        })?;
 
         debug!("FASTA index created or verified");
-        let index_path = fasta_path.as_path().with_added_extension("fai");
+        let index_path = fasta_path
+            .as_path()
+            .with_added_extension("fai");
         debug!("Using FASTA index at: {:?}", index_path);
-        Self::try_from_sink_and_fai(sink, index_path, compression, custom_metadata)
-            .with_context(|| format!("Failed to create writer from FASTA file {:?}", fasta_path))
+        Self::try_from_sink_and_fai(
+            sink,
+            index_path,
+            compression,
+            custom_metadata,
+        )
+        .with_context(|| {
+            format!("Failed to create writer from FASTA file {:?}", fasta_path)
+        })
     }
 
     /// Writes an encoded BSX batch to the output.
@@ -157,7 +198,10 @@ where
     ///
     /// # Returns
     /// Success or a Polars error if the write fails
-    pub fn write_encoded_batch(&mut self, batch: EncodedBsxBatch) -> PolarsResult<()> {
+    pub fn write_encoded_batch(
+        &mut self,
+        batch: EncodedBsxBatch,
+    ) -> PolarsResult<()> {
         debug!("Writing encoded batch to IPC file");
         self.writer.write_batch(batch.data())
     }
@@ -169,14 +213,18 @@ where
     ///
     /// # Returns
     /// Success or a Polars error if encoding or writing fails
-    pub fn write_batch(&mut self, batch: BsxBatch) -> PolarsResult<()> {
+    pub fn write_batch(
+        &mut self,
+        batch: BsxBatch,
+    ) -> PolarsResult<()> {
         debug!("Encoding and writing batch to IPC file");
-        let encoded = match EncodedBsxBatch::encode(batch, self.get_chr_dtype()) {
+        let encoded = match EncodedBsxBatch::encode(batch, self.get_chr_dtype())
+        {
             Ok(encoded) => encoded,
             Err(e) => {
                 warn!("Failed to encode BSX batch: {}", e);
                 return Err(e);
-            }
+            },
         };
         self.write_encoded_batch(encoded)
     }

@@ -1,7 +1,25 @@
-use crate::utils::array_to_schema;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
+use std::path::Path;
+
 use itertools::Itertools;
 use polars::prelude::*;
-use std::path::Path;
+
+use crate::utils::array_to_schema;
 
 pub const ANNOTATION_SCHEMA: [(&str, DataType); 6] = [
     ("chr", DataType::String),
@@ -15,17 +33,17 @@ pub const ANNOTATION_SCHEMA: [(&str, DataType); 6] = [
 /// Struct of settings for annotation file reading.
 #[derive(Default, Clone)]
 pub struct AnnotationFileConf {
-    chr_col: usize,
-    start_col: usize,
-    end_col: usize,
-    id_col: Option<usize>,
-    strand_col: Option<usize>,
-    type_col: Option<usize>,
+    chr_col:        usize,
+    start_col:      usize,
+    end_col:        usize,
+    id_col:         Option<usize>,
+    strand_col:     Option<usize>,
+    type_col:       Option<usize>,
     comment_prefix: Option<String>,
-    separator: Option<u8>,
-    has_header: Option<bool>,
-    read_filters: Option<Expr>,
-    regex: Option<Expr>,
+    separator:      Option<u8>,
+    has_header:     Option<bool>,
+    read_filters:   Option<Expr>,
+    regex:          Option<Expr>,
 }
 
 impl AnnotationFileConf {
@@ -49,8 +67,13 @@ impl AnnotationFileConf {
 
     /// Filter non specified column indices and create a vector
     pub fn col_indices(&self) -> Vec<usize> {
-        self.indexes().iter().flatten().cloned().collect::<Vec<_>>()
+        self.indexes()
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>()
     }
+
     /// Filter unspecified columns and get their names vector
     pub fn col_names(&self) -> Vec<String> {
         let all = Self::all_colnames();
@@ -61,11 +84,16 @@ impl AnnotationFileConf {
             .collect()
     }
 
-    pub fn into_reader(self, file: String) -> LazyCsvReader {
+    pub fn into_reader(
+        self,
+        file: String,
+    ) -> LazyCsvReader {
         LazyCsvReader::new(file)
             .with_separator(self.separator.unwrap_or(b'\t'))
             .with_comment_prefix(Some(PlSmallStr::from(
-                self.comment_prefix.clone().unwrap_or("#".to_string()),
+                self.comment_prefix
+                    .clone()
+                    .unwrap_or("#".to_string()),
             )))
             .with_has_header(self.has_header.unwrap_or(false))
     }
@@ -77,12 +105,12 @@ pub struct AnnotationBuilder {
 
 impl AnnotationBuilder {
     /// Schema of internal representation of annotation file
-    pub fn schema() -> Schema {
-        array_to_schema(&ANNOTATION_SCHEMA)
-    }
+    pub fn schema() -> Schema { array_to_schema(&ANNOTATION_SCHEMA) }
 
     pub fn new(mut raw: LazyFrame) -> AnnotationBuilder {
-        let schema = raw.collect_schema().expect("schema generation failed");
+        let schema = raw
+            .collect_schema()
+            .expect("schema generation failed");
         if schema.get("chr").is_none()
             || schema.get("start").is_none()
             || schema.get("end").is_none()
@@ -93,22 +121,29 @@ impl AnnotationBuilder {
     }
 
     /// Finish mutating LazyFrame. Consumes self and collects DataFrame.
-    pub fn finish(self) -> PolarsResult<DataFrame> {
-        self.raw.collect()
-    }
+    pub fn finish(self) -> PolarsResult<DataFrame> { self.raw.collect() }
 
-    pub fn filter(mut self, predicate: Expr) -> AnnotationBuilder {
+    pub fn filter(
+        mut self,
+        predicate: Expr,
+    ) -> AnnotationBuilder {
         self.raw = self.raw.filter(predicate);
         self
     }
 
-    pub fn with_columns<E: AsRef<[Expr]>>(mut self, exprs: E) -> AnnotationBuilder {
+    pub fn with_columns<E: AsRef<[Expr]>>(
+        mut self,
+        exprs: E,
+    ) -> AnnotationBuilder {
         self.raw = self.raw.with_columns(exprs);
         self
     }
 
     /// Read annotation from custom annotation format.
-    pub fn from_custom(file: &str, configuration: AnnotationFileConf) -> Self {
+    pub fn from_custom(
+        file: &str,
+        configuration: AnnotationFileConf,
+    ) -> Self {
         assert!(Path::new(file).exists());
         let self_schema = Self::schema();
 
@@ -129,23 +164,41 @@ impl AnnotationBuilder {
         let raw = {
             // Rearrange columns
             let mut df = raw.select({
-                itertools::izip!(&configuration.col_indices(), &configuration.col_names())
-                    .map(|(idx, name)| -> Expr {
-                        let old_name = schema_cols.get(*idx).unwrap().clone();
-                        let target_type = { self_schema.get_field(name).unwrap().dtype };
-                        let expr = col(old_name).cast(target_type).alias(name);
-                        expr
-                    })
-                    .collect::<Vec<_>>()
+                itertools::izip!(
+                    &configuration.col_indices(),
+                    &configuration.col_names()
+                )
+                .map(|(idx, name)| -> Expr {
+                    let old_name = schema_cols.get(*idx).unwrap().clone();
+                    let target_type = {
+                        self_schema
+                            .get_field(name)
+                            .unwrap()
+                            .dtype
+                    };
+                    let expr = col(old_name)
+                        .cast(target_type)
+                        .alias(name);
+                    expr
+                })
+                .collect::<Vec<_>>()
             });
 
             if configuration.read_filters.is_some() {
                 // Apply filters if present
-                df = df.filter(configuration.read_filters.unwrap_or(lit(true)))
+                df = df.filter(
+                    configuration
+                        .read_filters
+                        .unwrap_or(lit(true)),
+                )
             }
 
             if configuration.regex.is_some() {
-                df = df.with_column(col("id").str().extract(configuration.regex.unwrap(), 1))
+                df = df.with_column(
+                    col("id")
+                        .str()
+                        .extract(configuration.regex.unwrap(), 1),
+                )
             }
 
             df
@@ -155,21 +208,18 @@ impl AnnotationBuilder {
     }
 
     pub fn from_gff(file: &str) -> Self {
-        Self::from_custom(
-            file,
-            AnnotationFileConf {
-                chr_col: 0,
-                start_col: 3,
-                end_col: 4,
-                id_col: Some(8),
-                strand_col: Some(6),
-                type_col: Some(2),
-                comment_prefix: Some("#".to_string()),
-                separator: Some(b'\t'),
-                has_header: Some(false),
-                read_filters: None,
-                regex: Some(lit("^ID=([^;]+)")),
-            },
-        )
+        Self::from_custom(file, AnnotationFileConf {
+            chr_col:        0,
+            start_col:      3,
+            end_col:        4,
+            id_col:         Some(8),
+            strand_col:     Some(6),
+            type_col:       Some(2),
+            comment_prefix: Some("#".to_string()),
+            separator:      Some(b'\t'),
+            has_header:     Some(false),
+            read_filters:   None,
+            regex:          Some(lit("^ID=([^;]+)")),
+        })
     }
 }

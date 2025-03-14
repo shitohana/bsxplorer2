@@ -1,0 +1,31 @@
+blank_lines_lower_bound = 0
+blank_lines_upper_bound = 2
+brace_style = "PreferSameLine"
+chain_width = 40
+combine_control_expr = false
+wrap_comments = true
+condense_wildcard_suffixes = true
+control_brace_style = "ClosingNextLine"
+fn_args_layout = "Vertical"
+fn_params_layout = "Vertical"
+fn_single_line = true
+force_multiline_blocks = true
+format_strings = true
+hex_literal_case = "Upper"
+imports_indent = "Visual"
+imports_layout = "HorizontalVertical"
+indent_style = "Block"
+match_block_trailing_comma = true
+max_width = 80
+merge_derives = true
+imports_granularity = "Module"
+normalize_comments = true
+overflow_delimited_expr = true
+reorder_impl_items = true
+reorder_imports = true
+group_imports = "StdExternalCrate"
+struct_field_align_threshold = 20
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+

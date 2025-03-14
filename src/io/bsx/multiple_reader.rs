@@ -1,9 +1,19 @@
-use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
-use crate::io::bsx::read::BsxFileReader;
-use anyhow::{Context, Result};
-use itertools::Itertools;
-use log::{debug, info, warn};
-use serde::Serialize;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -11,19 +21,26 @@ use std::io;
 use std::io::{Read, Seek};
 use std::sync::{Arc, Mutex, RwLock};
 
+use anyhow::{Context, Result};
+use itertools::Itertools;
+use log::{debug, info, warn};
+use serde::Serialize;
+
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::io::bsx::read::BsxFileReader;
+
 /// A reader for multiple BSX files that handles concurrent batch reading
 /// across multiple files with synchronized batch indexing.
 pub struct MultiBsxFileReader<M, R>
 where
     M: Hash + Serialize + Eq + Send + Sync + Debug + 'static,
-    R: Read + Seek + Send + Sync + 'static,
-{
+    R: Read + Seek + Send + Sync + 'static, {
     /// Current batch index position in the readers
     current_batch_idx: usize,
     /// Map of metadata keys to their corresponding file readers
-    readers: HashMap<Arc<M>, Arc<RwLock<BsxFileReader<R>>>>,
+    readers:           HashMap<Arc<M>, Arc<RwLock<BsxFileReader<R>>>>,
     /// Cached vector of keys for fast iteration
-    _keys_bound: Vec<Arc<M>>,
+    _keys_bound:       Vec<Arc<M>>,
 }
 
 impl<M, R> MultiBsxFileReader<M, R>
@@ -44,11 +61,15 @@ where
     /// * If the readers have different numbers of batches
     pub fn try_new(readers: HashMap<M, BsxFileReader<R>>) -> Result<Self> {
         if readers.is_empty() {
-            return Err(io::Error::from(io::ErrorKind::InvalidInput))
-                .context("Cannot create MultiBsxFileReader with empty readers map");
+            return Err(io::Error::from(io::ErrorKind::InvalidInput)).context(
+                "Cannot create MultiBsxFileReader with empty readers map",
+            );
         }
 
-        let batch_counts = readers.values().map(|r| r.blocks_total()).collect_vec();
+        let batch_counts = readers
+            .values()
+            .map(|r| r.blocks_total())
+            .collect_vec();
         debug!("Reader batch counts: {:?}", batch_counts);
 
         if !batch_counts.iter().all_equal() {
@@ -64,11 +85,14 @@ where
             batch_counts[0]
         );
 
-        let readers: HashMap<Arc<M>, Arc<RwLock<BsxFileReader<R>>>> = HashMap::from_iter(
-            readers
-                .into_iter()
-                .map(|(key, reader)| (Arc::new(key), Arc::new(RwLock::new(reader)))),
-        );
+        let readers: HashMap<Arc<M>, Arc<RwLock<BsxFileReader<R>>>> =
+            HashMap::from_iter(
+                readers
+                    .into_iter()
+                    .map(|(key, reader)| {
+                        (Arc::new(key), Arc::new(RwLock::new(reader)))
+                    }),
+            );
 
         let _keys_bound = readers.keys().cloned().collect_vec();
 
@@ -83,7 +107,10 @@ where
     ///
     /// # Arguments
     /// * `batch_idx` - The batch index to set
-    fn set_batch(&mut self, batch_idx: usize) {
+    fn set_batch(
+        &mut self,
+        batch_idx: usize,
+    ) {
         debug!("Setting batch index to {}", batch_idx);
         self.current_batch_idx = batch_idx;
     }
@@ -92,9 +119,7 @@ where
     ///
     /// # Returns
     /// * `usize` - Current batch index
-    pub fn current_batch_idx(&self) -> usize {
-        self.current_batch_idx
-    }
+    pub fn current_batch_idx(&self) -> usize { self.current_batch_idx }
 
     /// Retrieves a batch from all readers at the specified index
     ///
@@ -102,7 +127,8 @@ where
     /// * `batch_idx` - The batch index to retrieve
     ///
     /// # Returns
-    /// * `Result<Option<Vec<(Arc<M>, EncodedBsxBatch)>>>` - Vector of (metadata, batch) pairs or None if no batches remain
+    /// * `Result<Option<Vec<(Arc<M>, EncodedBsxBatch)>>>` - Vector of
+    ///   (metadata, batch) pairs or None if no batches remain
     ///
     /// # Errors
     /// * If batches are missing from some readers
@@ -128,7 +154,10 @@ where
 
                 s.spawn(move |_| {
                     debug!("Spawned thread for reader {:?}", thread_id);
-                    let batch = reader.write().unwrap().get_batch(batch_idx);
+                    let batch = reader
+                        .write()
+                        .unwrap()
+                        .get_batch(batch_idx);
                     let mut results = batch_results.lock().unwrap();
                     debug!("Thread for reader {:?} completed", thread_id);
                     results.push((thread_id, batch));
@@ -139,11 +168,19 @@ where
         let batch_results = Arc::try_unwrap(batch_results)
             .expect("Arc::try_unwrap failed - this is a bug")
             .into_inner()
-            .expect("Mutex was poisoned - this indicates a panic in a reader thread")
+            .expect(
+                "Mutex was poisoned - this indicates a panic in a reader \
+                 thread",
+            )
             .into_iter()
             .filter(|(_, batch)| batch.is_some())
             .map(|(key, batch)| (key, batch.unwrap()))
-            .filter(|(_, batch)| batch.as_ref().map(|b| b.height() > 0).unwrap_or(false))
+            .filter(|(_, batch)| {
+                batch
+                    .as_ref()
+                    .map(|b| b.height() > 0)
+                    .unwrap_or(false)
+            })
             .collect_vec();
 
         if batch_results.is_empty() {
@@ -153,7 +190,8 @@ where
 
         if batch_results.len() != self.readers.len() {
             warn!(
-                "Batch {} missing from some readers. Got {} of {} expected batches",
+                "Batch {} missing from some readers. Got {} of {} expected \
+                 batches",
                 batch_idx,
                 batch_results.len(),
                 self.readers.len()

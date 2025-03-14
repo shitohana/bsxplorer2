@@ -1,3 +1,29 @@
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
+use std::collections::{BTreeMap, HashMap};
+use std::fmt::Display;
+use std::hash::Hash;
+use std::io::{Read, Seek};
+use std::sync::Arc;
+
+use anyhow::anyhow;
+use bio_types::annot::refids::RefIDSet;
+use itertools::Itertools;
+
 use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
 use crate::io::bsx::multiple_reader::MultiBsxFileReader;
 use crate::io::bsx::read::BsxFileReader;
@@ -5,45 +31,46 @@ use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
 use crate::tools::dmr::DmrIterator;
 use crate::utils::types::Context;
-use anyhow::anyhow;
-use bio_types::annot::refids::RefIDSet;
-use itertools::Itertools;
-use std::collections::{BTreeMap, HashMap};
-use std::fmt::Display;
-use std::hash::Hash;
-use std::io::{Read, Seek};
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct DmrConfig {
-    pub context: Context,
-    pub n_missing: usize,
-    pub min_coverage: i16,
+    pub context:        Context,
+    pub n_missing:      usize,
+    pub min_coverage:   i16,
     pub diff_threshold: f64,
-    pub min_cpgs: usize,
-    pub max_dist: u64,
-    pub initial_l: f64,
-    pub l_min: f64,
-    pub l_coef: f64,
-    pub seg_tolerance: f64,
-    pub merge_pvalue: f64,
-    pub seg_pvalue: f64,
+    pub min_cpgs:       usize,
+    pub max_dist:       u64,
+    pub initial_l:      f64,
+    pub l_min:          f64,
+    pub l_coef:         f64,
+    pub seg_tolerance:  f64,
+    pub merge_pvalue:   f64,
+    pub seg_pvalue:     f64,
 }
 
 impl DmrConfig {
     pub fn filter_config(&self) -> FilterConfig {
         FilterConfig {
-            context: self.context,
-            n_missing: self.n_missing,
+            context:      self.context,
+            n_missing:    self.n_missing,
             min_coverage: self.min_coverage,
         }
     }
 
-    pub fn try_finish<F, R>(&self, readers: Vec<(R, F)>) -> anyhow::Result<DmrIterator<R>>
+    pub fn try_finish<F, R>(
+        &self,
+        readers: Vec<(R, F)>,
+    ) -> anyhow::Result<DmrIterator<R>>
     where
         F: Read + Seek + Send + Sync + 'static,
-        R: Display + Eq + Hash + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
+        R: Display
+            + Eq
+            + Hash
+            + Clone
+            + Default
+            + std::fmt::Debug
+            + Send
+            + 'static, {
         let sample_mapping: HashMap<uuid::Uuid, (R, F)> = HashMap::from_iter(
             readers
                 .into_iter()
@@ -56,7 +83,11 @@ impl DmrConfig {
                 .map(|(id, (group, _))| (id.clone(), group.clone())),
         );
         let group_order = {
-            let group_set = BTreeMap::from_iter(group_mapping.values().map(|x| (x.to_string(), x)));
+            let group_set = BTreeMap::from_iter(
+                group_mapping
+                    .values()
+                    .map(|x| (x.to_string(), x)),
+            );
             if group_set.len() != 2 {
                 return Err(anyhow!(
                     "There should be only two groups of samples! ({:?})",
@@ -69,11 +100,12 @@ impl DmrConfig {
                 groups_vec[1].clone().1.clone(),
             )
         };
-        let readers_mapping: HashMap<uuid::Uuid, BsxFileReader<F>> = HashMap::from_iter(
-            sample_mapping
-                .into_iter()
-                .map(|(id, (_, handle))| (id, BsxFileReader::new(handle))),
-        );
+        let readers_mapping: HashMap<uuid::Uuid, BsxFileReader<F>> =
+            HashMap::from_iter(
+                sample_mapping
+                    .into_iter()
+                    .map(|(id, (_, handle))| (id, BsxFileReader::new(handle))),
+            );
 
         let config_copy = self.clone();
 
@@ -82,8 +114,8 @@ impl DmrConfig {
         let ref_idset = RefIDSet::new();
 
         let group_mapping_clone = group_mapping.clone();
-        let mut multi_reader =
-            MultiBsxFileReader::try_new(readers_mapping).map_err(|e| anyhow!("{:?}", e))?;
+        let mut multi_reader = MultiBsxFileReader::try_new(readers_mapping)
+            .map_err(|e| anyhow!("{:?}", e))?;
         let reader_stat = ReaderMetadata::new(multi_reader.blocks_total());
 
         let join_handle = std::thread::spawn(move || {
@@ -94,8 +126,12 @@ impl DmrConfig {
                     .iter()
                     .map(|(id, _)| group_mapping.get(id).unwrap().clone())
                     .collect();
-                let data = batches.into_iter().map(|(_, batch)| batch).collect();
-                let group = EncodedBsxBatchGroup::try_new(data, Some(labels)).unwrap();
+                let data = batches
+                    .into_iter()
+                    .map(|(_, batch)| batch)
+                    .collect();
+                let group =
+                    EncodedBsxBatchGroup::try_new(data, Some(labels)).unwrap();
                 sender.send(group).unwrap();
             }
         });
@@ -149,18 +185,18 @@ impl DmrConfig {
 impl Default for DmrConfig {
     fn default() -> Self {
         Self {
-            context: Context::CG,
-            n_missing: 0,
-            min_coverage: 5,
+            context:        Context::CG,
+            n_missing:      0,
+            min_coverage:   5,
             diff_threshold: 0.1,
-            min_cpgs: 10,
-            max_dist: 100,
-            initial_l: 2.0,
-            l_min: 1e-3,
-            l_coef: 1.5,
-            seg_tolerance: 1e-6,
-            merge_pvalue: 1e-3,
-            seg_pvalue: 1e-2,
+            min_cpgs:       10,
+            max_dist:       100,
+            initial_l:      2.0,
+            l_min:          1e-3,
+            l_coef:         1.5,
+            seg_tolerance:  1e-6,
+            merge_pvalue:   1e-3,
+            seg_pvalue:     1e-2,
         }
     }
 }

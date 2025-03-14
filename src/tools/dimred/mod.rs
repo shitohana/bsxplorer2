@@ -1,404 +1,609 @@
-use rand::{thread_rng, Rng};
-use rand::distributions::{Distribution, Uniform};
-use rand_xoshiro::Xoshiro256Plus;
-use rand_xoshiro::rand_core::{RngCore, SeedableRng};
-use rayon::prelude::*;
-use std::cmp;
-use rand_distr::Normal;
+/// ****************************************************************************
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***************************************************************************
 
-/// Represents a random convolutional kernel for the ROCKET algorithm
-#[derive(Clone, Debug)]
-pub struct RandomKernel {
-    /// Kernel weights
-    pub weights: Vec<f32>,
-    /// Dilation factor (spacing between kernel elements)
-    pub dilation: usize,
-    /// Whether to use padding
-    pub padding: bool,
+/// ****************************************************************************
+/// * Copyright (c) 2025
+/// ***************************************************************************
+pub mod mle;
+
+use itertools::Itertools;
+use num::NumCast;
+
+enum DistanceMetric {
+    Eucledian,
+    Cosine,
+    Canberra,
+    Minkowsky(usize),
 }
 
-impl RandomKernel {
-    /// Calculate the effective length of the kernel considering dilation
-    pub fn effective_length(&self) -> usize {
-        if self.weights.len() <= 1 {
-            return self.weights.len();
-        }
-        (self.weights.len() - 1) * self.dilation + 1
-    }
+trait MetricAccumulator<N: num::Float>: Clone {
+    fn finalize(&self) -> N;
+    fn add_ppoints(
+        &mut self,
+        xi: N,
+        yi: N,
+    );
+}
 
-    /// Calculate the padding size if padding is enabled
-    pub fn padding_size(&self) -> usize {
-        if self.padding {
-            (self.effective_length() - 1) / 2
-        } else {
-            0
+#[derive(Clone)]
+struct MinkowskiAccum<N: num::Float> {
+    power:  usize,
+    powsum: N,
+}
+
+impl<N: num::Float> MinkowskiAccum<N> {
+    fn new(power: usize) -> Self {
+        Self {
+            power,
+            powsum: N::from(0.0).unwrap(),
         }
     }
 }
 
-/// Generates a set of random kernels with varying parameters
-///
-/// # Arguments
-/// * `count` - Number of kernels to generate
-/// * `max_input_length` - Maximum length of the input data_structs (used for dilation scaling)
-/// * `seed` - Optional random seed for reproducibility
-///
-/// # Returns
-/// A vector of RandomKernel structs
-pub fn generate_random_kernels(
-    count: usize,
-    max_input_length: usize,
-    seed: Option<u64>
-) -> Vec<RandomKernel> {
-    // Initialize random number generator with seed if provided
-    // TODO change to seedable rng
-    let mut rng = rand::thread_rng();
-    // Distributions for sampling kernel parameters
-    let length_options = [7, 9, 11];
-    let length_dist = Uniform::from(0..length_options.len());
-    let mut normal_dist = Normal::new(0.0, 1.0).expect("Failed to generate normal distribution");
-    let bias_dist = Uniform::from(-1.0..1.0);
+impl<N: num::Float> MetricAccumulator<N> for MinkowskiAccum<N> {
+    fn finalize(&self) -> N {
+        self.powsum
+            .powf(N::from(1f64 / self.power as f64).unwrap())
+    }
 
-    (0..count)
-        .map(|_| {
-            // Randomly select kernel length
-            let length_idx = length_dist.sample(&mut rng);
-            let length = length_options[length_idx];
+    fn add_ppoints(
+        &mut self,
+        xi: N,
+        yi: N,
+    ) {
+        self.powsum = self.powsum + (xi - yi).abs().powi(self.power as i32)
+    }
+}
 
-            // Generate weights from normal distribution
-            let mut weights: Vec<f32> = (0..length)
-                .map(|_| normal_dist.sample(&mut rng) as f32)
-                .collect();
+#[derive(Clone)]
+struct CanberraAccum<N: num::Float> {
+    sum: N,
+}
 
-            // Mean center the weights
-            let mean: f32 = weights.iter().sum::<f32>() / weights.len() as f32;
-            for w in weights.iter_mut() {
-                *w -= mean;
-            }
+impl<N: num::Float> CanberraAccum<N> {
+    fn new() -> Self {
+        Self {
+            sum: N::from(0.0).unwrap(),
+        }
+    }
+}
 
-            // Add bias term (as the last element in weights)
-            let bias = bias_dist.sample(&mut rng) as f32;
-            weights.push(bias);
+impl<N: num::Float> MetricAccumulator<N> for CanberraAccum<N> {
+    fn finalize(&self) -> N { self.sum }
 
-            // Generate dilation - exponential scale
-            // A = log_2((input_length - 1) / (kernel_length - 1))
-            let a = if length > 1 && max_input_length > 1 {
-                (max_input_length as f64 - 1.0).log2() - (length as f64 - 1.0).log2()
-            } else {
-                0.0
+    fn add_ppoints(
+        &mut self,
+        xi: N,
+        yi: N,
+    ) {
+        self.sum = self.sum + (xi - yi).abs() / (xi.abs() + yi.abs());
+    }
+}
+
+#[derive(Clone)]
+struct EucledianAccum<N: num::Float> {
+    sqsum: N,
+}
+
+impl<N: num::Float> EucledianAccum<N> {
+    fn new() -> Self {
+        Self {
+            sqsum: N::from(0.0).unwrap(),
+        }
+    }
+}
+impl<N: num::Float> MetricAccumulator<N> for EucledianAccum<N> {
+    fn finalize(&self) -> N { self.sqsum.sqrt() }
+
+    fn add_ppoints(
+        &mut self,
+        xi: N,
+        yi: N,
+    ) {
+        self.sqsum = self.sqsum + (xi - yi).powi(2)
+    }
+}
+
+#[derive(Clone)]
+struct CosineAccum<N: num::Float> {
+    dot_prod:    N,
+    right_sqsum: N,
+    left_sqsum:  N,
+}
+
+impl<N: num::Float> CosineAccum<N> {
+    fn new() -> Self {
+        Self {
+            dot_prod:    N::from(0.0).unwrap(),
+            right_sqsum: N::from(0.0).unwrap(),
+            left_sqsum:  N::from(0.0).unwrap(),
+        }
+    }
+}
+
+impl<N: num::Float> MetricAccumulator<N> for CosineAccum<N> {
+    fn finalize(&self) -> N {
+        N::from(1.0).unwrap()
+            - self.dot_prod / (self.right_sqsum.sqrt() * self.left_sqsum.sqrt())
+    }
+
+    fn add_ppoints(
+        &mut self,
+        xi: N,
+        yi: N,
+    ) {
+        self.dot_prod = self.dot_prod + xi * yi;
+        self.right_sqsum = self.right_sqsum + xi.powi(2);
+        self.left_sqsum = self.left_sqsum + yi.powi(2);
+    }
+}
+
+struct MethCountsDataOwned {
+    positions:      Vec<u32>,
+    count_m:        Vec<u16>,
+    count_total:    Vec<u16>,
+    density:        Vec<f64>,
+    density_cumsum: Vec<f64>,
+}
+// TODO add pseudocounts
+// meth_pseudo = sum(methylated_reads) + α₀
+// total_pseudo = sum(total_reads) + α₀ + β₀
+// p_pseudo = meth_pseudo / total_pseudo
+/// BetaBinomial distribution parameters (alpha, beta)
+pub struct BetaBinomParams<N: num::Float>(pub N, pub N);
+
+impl<N: num::Float> BetaBinomParams<N> {
+    pub fn new(
+        alpha: N,
+        beta: N,
+    ) -> Self {
+        assert!(alpha > to_num(0), "Alpha must be positive");
+        assert!(beta > to_num(0), "Beta must be positive");
+        Self(alpha, beta)
+    }
+
+    /// Create a new BetaBinomial distribution from counts of successes and
+    /// total trials.
+    ///
+    /// # Arguments
+    ///
+    /// * `count_success` - A slice of counts of successes.
+    /// * `count_total` - A slice of counts of total trials.
+    /// * `confidence` - The desired confidence level.
+    /// * `precision` - The desired precision.
+    ///
+    /// # Returns
+    ///
+    /// A tuple (Self, bool) containing the BetaBinomial distribution parameters
+    /// and a boolean indicating if the sample size is adequate for
+    /// effective approximation.
+    pub fn from_counts<M: num::PrimInt>(
+        count_success: &[M],
+        count_total: &[M],
+        confidence: N,
+        precision: N,
+    ) -> (Self, bool) {
+        Self::from_data_n(
+            &count_success
+                .iter()
+                .cloned()
+                .map(to_num::<M, N>)
+                .collect_vec(),
+            &count_total
+                .iter()
+                .cloned()
+                .map(to_num::<M, N>)
+                .collect_vec(),
+            confidence,
+            precision,
+        )
+    }
+
+    /// Create a new BetaBinomial distribution from counts of successes and
+    /// total trials.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - A slice of counts of successes.
+    /// * `confidence` - The desired confidence level.
+    /// * `precision` - The desired precision.
+    ///
+    /// # Returns
+    ///
+    /// A tuple (Self, bool) containing the BetaBinomial distribution parameters
+    /// and a boolean indicating if the sample size is adequate for
+    /// effective approximation.
+    pub fn from_data_n(
+        data: &[N],
+        n_trials: &[N],
+        confidence: N,
+        precision: N,
+    ) -> (Self, bool) {
+        let n_elements = to_num(data.len());
+        let prop = data
+            .iter()
+            .zip(n_trials)
+            .map(|(s, t)| *s / *t)
+            .collect_vec();
+        let mean = prop
+            .iter()
+            .fold(to_num(0), |acc: N, p| acc + *p)
+            / n_elements;
+        let variance = prop
+            .iter()
+            .map(|val| val.powi(2))
+            .fold(to_num(0), |acc: N, x| acc + x)
+            / n_elements
+            - mean.powi(2);
+
+        Self::from_mean_var(mean, variance, n_trials, confidence, precision)
+    }
+
+    /// Create a new BetaBinomial distribution from counts of successes and
+    /// total trials.
+    ///
+    /// # Arguments
+    ///
+    /// * `mean` - The mean of the distribution.
+    /// * `variance` - The variance of the distribution.
+    /// * `confidence` - The desired confidence level.
+    /// * `precision` - The desired precision.
+    ///
+    /// # Returns
+    ///
+    /// A tuple (Self, bool) containing the BetaBinomial distribution parameters
+    /// and a boolean indicating if the sample size is adequate for
+    /// effective approximation.
+    pub fn from_mean_var(
+        mean: N,
+        variance: N,
+        trials: &[N],
+        confidence: N,
+        precision: N,
+    ) -> (Self, bool) {
+        let mean_trials = trials
+            .iter()
+            .fold(to_num(0), |acc: N, x| acc + *x)
+            / to_num(trials.len());
+        let binomial_var = mean * (to_num::<_, N>(1) - mean) / mean_trials;
+        // Extra-binomial variance component (overdispersion)
+        let extra_var: N = to_num(
+            (variance - binomial_var)
+                .to_f64()
+                .unwrap()
+                .max(0.0),
+        );
+
+        let (alpha_est, beta_est) = if extra_var > to_num(0) {
+            // Overdispersion factor
+            let phi = to_num::<_, N>(1) + extra_var / binomial_var;
+
+            // Estimate alpha and beta
+            let temp = {
+                let unbounded = if mean_trials > to_num(1) {
+                    (phi - to_num(1)) / (mean_trials - to_num(1))
+                }
+                else {
+                    to_num(PRECISION_LIMIT)
+                };
+                to_num(bound_prec(unbounded.to_f64().unwrap()))
             };
-            let x = rng.gen_range(0.0..=a);
-            let dilation = (2.0f64.powf(x)).floor() as usize;
-            dilation.max(1); // Ensure minimum dilation of 1
 
-            // Randomly decide whether to use padding
-            let padding = rng.gen_bool(0.5);
-
-            RandomKernel {
-                weights,
-                dilation,
-                padding,
-            }
-        })
-        .collect()
-}
-
-/// Applies a kernel to input values using convolution
-///
-/// # Arguments
-/// * `values` - Input methylation values (0.0 to 1.0)
-/// * `kernel` - The RandomKernel to apply
-///
-/// # Returns
-/// Vector of convolution results
-pub fn apply_kernel(values: &[f32], kernel: &RandomKernel) -> Vec<f32> {
-    if values.is_empty() || kernel.weights.is_empty() {
-        return Vec::new();
-    }
-
-    let kernel_len = kernel.weights.len() - 1; // Last element is bias
-    let dilation = kernel.dilation;
-    let bias = *kernel.weights.last().unwrap();
-    let padding_size = kernel.padding_size();
-
-    let output_len = if kernel.padding {
-        values.len()
-    } else {
-        values.len() - (kernel.effective_length() - 1)
-    };
-
-    if output_len <= 0 {
-        return Vec::new();
-    }
-
-    let mut result = Vec::with_capacity(output_len);
-
-    for i in 0..output_len {
-        let mut sum = bias;
-
-        for (j, &weight) in kernel.weights.iter().take(kernel_len).enumerate() {
-            let input_idx = i + j * dilation;
-
-            // Handle padding
-            if kernel.padding {
-                let adjusted_idx = input_idx as isize - padding_size as isize;
-                if adjusted_idx >= 0 && adjusted_idx < values.len() as isize {
-                    sum += values[adjusted_idx as usize] * weight;
-                }
-            } else if input_idx < values.len() {
-                sum += values[input_idx] * weight;
-            }
+            let a = mean * (to_num::<_, N>(1) - temp) / temp;
+            let b =
+                (to_num::<_, N>(1) - mean) * (to_num::<_, N>(1) - temp) / temp;
+            (a, b)
         }
+        else {
+            (
+                mean * to_num(MEAN_SCALE),
+                (to_num::<_, N>(1) - mean) * to_num(MEAN_SCALE),
+            )
+        };
 
-        result.push(sum);
+        let z: N =
+            to_num(z_table::lookup((1.0 + confidence.to_f32().unwrap()) / 2.0));
+        let factor = to_num::<_, N>(1) / alpha_est
+            + to_num::<_, N>(1) / beta_est
+            + to_num::<_, N>(1) / (alpha_est + beta_est);
+        let var_alpha = (alpha_est.powi(2)) * factor;
+        let var_beta = (beta_est.powi(2)) * factor;
+
+        let denominator = precision.powi(2) * alpha_est.powi(2);
+        let n_alpha: N = (to_num::<_, N>(z.powi(2)) * var_alpha) / denominator;
+        let n_beta: N = (to_num::<_, N>(z.powi(2)) * var_beta) / denominator;
+
+        let effective_n = n_alpha.max(n_beta).ceil();
+        let enough_samples = effective_n <= to_num(trials.len());
+
+        (BetaBinomParams::new(alpha_est, beta_est), enough_samples)
     }
-
-    result
 }
 
-/// Extracts features from the convolution result (max value and PPV)
-///
-/// # Arguments
-/// * `convolution_result` - Output from apply_kernel
-///
-/// # Returns
-/// (max_value, proportion_of_positive_values)
-pub fn extract_features_from_convolution(convolution_result: &[f32]) -> (f32, f32) {
-    if convolution_result.is_empty() {
-        return (0.0, 0.0);
-    }
+const PRECISION_LIMIT: f64 = 1e-6;
+const VARIANCE_MIN_RATIO: f64 = 1e-2;
+const MEAN_SCALE: u64 = 1000;
 
-    // Find maximum value
-    let max_value = convolution_result.iter()
-        .fold(std::f32::NEG_INFINITY, |a, &b| a.max(b));
-
-    // Calculate proportion of positive values (PPV)
-    let positive_count = convolution_result.iter()
-        .filter(|&&v| v > 0.0)
-        .count();
-
-    let ppv = positive_count as f32 / convolution_result.len() as f32;
-
-    (max_value, ppv)
-}
-
-/// Extracts features from input values using multiple kernels
-///
-/// # Arguments
-/// * `values` - Input methylation values (0.0 to 1.0)
-/// * `kernels` - Vector of RandomKernel to apply
-///
-/// # Returns
-/// Vector of features (alternating max value and PPV for each kernel)
-pub fn extract_features(values: &[f32], kernels: &[RandomKernel]) -> Vec<f32> {
-    let mut features = Vec::with_capacity(kernels.len() * 2);
-
-    for kernel in kernels {
-        let convolution = apply_kernel(values, kernel);
-        let (max_val, ppv) = extract_features_from_convolution(&convolution);
-        features.push(max_val);
-        features.push(ppv);
-    }
-
-    features
-}
-
-/// Parallel version of feature extraction using Rayon
-///
-/// # Arguments
-/// * `values` - Input methylation values (0.0 to 1.0)
-/// * `kernels` - Vector of RandomKernel to apply
-///
-/// # Returns
-/// Vector of features (alternating max value and PPV for each kernel)
-pub fn extract_features_parallel(values: &[f32], kernels: &[RandomKernel]) -> Vec<f32> {
-    // Process kernels in parallel, collect results
-    let results: Vec<(f32, f32)> = kernels.par_iter()
-        .map(|kernel| {
-            let convolution = apply_kernel(values, kernel);
-            extract_features_from_convolution(&convolution)
-        })
-        .collect();
-
-    // Flatten results into a single feature vector
-    let mut features = Vec::with_capacity(results.len() * 2);
-    for &(max_val, ppv) in &results {
-        features.push(max_val);
-        features.push(ppv);
-    }
-
-    features
-}
-
-/// Processes multiple samples in parallel
-///
-/// # Arguments
-/// * `samples` - Vector of samples, each a vector of methylation values
-/// * `kernels` - Vector of RandomKernel to apply
-///
-/// # Returns
-/// Vector of feature vectors, one per sample
-pub fn process_samples_parallel(
-    samples: &[Vec<f32>],
-    kernels: &[RandomKernel]
-) -> Vec<Vec<f32>> {
-    samples.par_iter()
-        .map(|sample| extract_features_parallel(sample, kernels))
-        .collect()
-}
-
-/// Processes chunks of methylation data_structs in a streaming fashion
-///
-/// # Arguments
-/// * `chunks_iterator` - Iterator yielding chunks of methylation data_structs
-/// * `kernels` - Vector of RandomKernel to apply
-///
-/// # Returns
-/// Combined feature vector
-pub fn process_streaming<I, T>(
-    chunks_iterator: I,
-    kernels: &[RandomKernel]
-) -> Vec<f32>
+fn to_num<F, T>(x: F) -> T
 where
-    I: Iterator<Item = T>,
-    T: AsRef<[f32]>,
-{
-    // Initialize with zeros
-    let feature_count = kernels.len() * 2;
-    let mut max_features = vec![std::f32::NEG_INFINITY; kernels.len()];
-    let mut positive_counts = vec![0usize; kernels.len()];
-    let mut total_counts = vec![0usize; kernels.len()];
-
-    // Process each chunk
-    for chunk in chunks_iterator {
-        let chunk_data = chunk.as_ref();
-
-        for (i, kernel) in kernels.iter().enumerate() {
-            let convolution = apply_kernel(chunk_data, kernel);
-
-            // Update max
-            if let Some(&chunk_max) = convolution.iter().max_by(|a, b| a.partial_cmp(b).unwrap_or(cmp::Ordering::Equal)) {
-                max_features[i] = max_features[i].max(chunk_max);
-            }
-
-            // Update PPV counts
-            let positive = convolution.iter().filter(|&&v| v > 0.0).count();
-            positive_counts[i] += positive;
-            total_counts[i] += convolution.len();
-        }
-    }
-
-    // Combine results
-    let mut features = Vec::with_capacity(feature_count);
-    for i in 0..kernels.len() {
-        features.push(max_features[i]);
-        features.push(if total_counts[i] > 0 {
-            positive_counts[i] as f32 / total_counts[i] as f32
-        } else {
-            0.0
-        });
-    }
-
-    features
+    T: NumCast,
+    F: num::ToPrimitive, {
+    T::from(x).unwrap()
 }
 
-/// Converts methylation counts to binary values using binomial test
-///
-/// # Arguments
-/// * `methylated_counts` - Vector of methylated read counts
-/// * `total_counts` - Vector of total read counts
-/// * `expected_rate` - Expected methylation rate (e.g., 0.5)
-/// * `alpha` - Significance level (e.g., 0.05)
-///
-/// # Returns
-/// Vector of methylation values (0.0 or 1.0 for binary, or ratio for non-significant)
-pub fn apply_binomial_test(
-    methylated_counts: &[u32],
-    total_counts: &[u32],
-    expected_rate: f64,
-    alpha: f64
-) -> Vec<f32> {
-    assert_eq!(methylated_counts.len(), total_counts.len(),
-               "Methylated and total count vectors must have same length");
+enum Trials<'a, N: num::Float> {
+    Single(N),
+    Multiple(&'a [N]),
+}
 
-    use statrs::distribution::{Binomial, DiscreteCDF};
-
-    methylated_counts.iter()
-        .zip(total_counts.iter())
-        .map(|(&meth, &total)| {
-            if total == 0 {
-                return 0.0;
-            }
-
-            let ratio = meth as f32 / total as f32;
-
-            // For small counts, just return the ratio
-            if total < 10 {
-                return ratio;
-            }
-
-            // Apply binomial test
-            let dist = Binomial::new(expected_rate, total as u64).unwrap();
-
-            // Two-tailed test
-            let lower_tail = dist.cdf(meth as u64);
-            let upper_tail = 1.0 - dist.cdf((meth as u64).saturating_sub(1));
-            let p_value = lower_tail.min(upper_tail) * 2.0;
-
-            if p_value <= alpha {
-                // Significantly different from expected - return binary value
-                if (meth as f64 / total as f64) > expected_rate {
-                    1.0
-                } else {
-                    0.0
-                }
-            } else {
-                // Not significantly different - return original ratio
-                ratio
-            }
-        })
-        .collect()
+fn bound_prec(value: f64) -> f64 {
+    value
+        .min(1.0 - PRECISION_LIMIT)
+        .max(PRECISION_LIMIT)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use assert_approx_eq::assert_approx_eq;
+
     use super::*;
-    
+
     #[test]
-    fn full_test() {
-        // Example methylation data (could be streaming in real application)
-        let methylated_counts: Vec<u32> = vec![5, 0, 10, 2, 8, 20, 0, 15];
-        let total_counts: Vec<u32> = vec![10, 10, 10, 10, 10, 20, 10, 15];
+    fn test_minkowski_accum() {
+        // Test with p=1 (Manhattan distance)
+        let mut accum = MinkowskiAccum::<f64>::new(1);
+        accum.add_ppoints(1.0, 4.0);
+        accum.add_ppoints(2.0, 6.0);
+        assert_approx_eq!(accum.finalize(), 7.0); // |1-4| + |2-6| = 3 + 4 = 7
 
-        // Convert to values (binary representation optional)
-        let use_binary = true;
-        let methylation_values = if use_binary {
-            apply_binomial_test(&methylated_counts, &total_counts, 0.5, 0.05)
-        } else {
-            methylated_counts.iter()
-                .zip(total_counts.iter())
-                .map(|(&m, &t)| if t > 0 { m as f32 / t as f32 } else { 0.0 })
-                .collect()
-        };
+        // Test with p=2 (Euclidean distance)
+        let mut accum = MinkowskiAccum::<f64>::new(2);
+        accum.add_ppoints(0.0, 3.0);
+        accum.add_ppoints(0.0, 4.0);
+        assert_approx_eq!(accum.finalize(), 5.0); // sqrt((0-3)^2 + (0-4)^2) =
+                                                  // sqrt(9 + 16) = 5
+    }
 
-        // Generate random kernels
-        let num_kernels = 1000;
-        let max_length = 100; // Adjust based on your data window size
-        let kernels = generate_random_kernels(num_kernels, max_length, Some(42));
+    #[test]
+    fn test_canberra_accum() {
+        let mut accum = CanberraAccum::<f64>::new();
+        accum.add_ppoints(1.0, 3.0);
+        accum.add_ppoints(2.0, 5.0);
+        // |1-3|/(|1|+|3|) + |2-5|/(|2|+|5|) = 2/4 + 3/7 = 0.5 + 0.428... = 0.928...
+        assert_approx_eq!(accum.finalize(), 0.5 + 3.0 / 7.0, 1e-10);
+    }
 
-        // Extract features using parallel processing
-        let features = extract_features_parallel(&methylation_values, &kernels);
+    #[test]
+    fn test_eucledian_accum() {
+        let mut accum = EucledianAccum::<f64>::new();
+        accum.add_ppoints(1.0, 4.0);
+        accum.add_ppoints(2.0, 6.0);
+        // sqrt((1-4)^2 + (2-6)^2) = sqrt(9 + 16) = sqrt(25) = 5
+        assert_approx_eq!(accum.finalize(), 5.0);
+    }
 
-        println!("Extracted {} features", features.len());
+    #[test]
+    fn test_cosine_accum() {
+        let mut accum = CosineAccum::<f64>::new();
+        accum.add_ppoints(1.0, 0.0);
+        accum.add_ppoints(0.0, 1.0);
+        // dot product = 0, |a| = 1, |b| = 1, cosine similarity = 0, distance =
+        // 1-0 = 1
+        assert_approx_eq!(accum.finalize(), 1.0);
 
-        // In a real application, you'd process multiple samples and compare them
-        // For example:
-        let sample1 = vec![0.1, 0.5, 0.8, 0.2, 0.9, 0.1, 0.3, 0.7];
-        let sample2 = vec![0.2, 0.6, 0.7, 0.3, 0.8, 0.2, 0.4, 0.6];
+        // Test case for identical vectors (should give distance 0)
+        let mut accum = CosineAccum::<f64>::new();
+        accum.add_ppoints(2.0, 2.0);
+        accum.add_ppoints(3.0, 3.0);
+        assert_approx_eq!(accum.finalize(), 0.0, 1e-10);
+    }
 
-        let samples = vec![sample1, sample2];
-        let all_features = process_samples_parallel(&samples, &kernels);
+    #[test]
+    fn test_with_different_numeric_types() {
+        // Test with f32
+        let mut accum = EucledianAccum::<f32>::new();
+        accum.add_ppoints(1.0, 4.0);
+        assert_approx_eq!(accum.finalize(), 3.0);
 
-        println!("Processed {} samples", all_features.len());
+        // Test with f64
+        let mut accum = EucledianAccum::<f64>::new();
+        accum.add_ppoints(1.0, 4.0);
+        assert_approx_eq!(accum.finalize(), 3.0);
+    }
+
+    #[test]
+    fn test_clone_functionality() {
+        let mut accum = EucledianAccum::<f64>::new();
+        accum.add_ppoints(1.0, 4.0);
+
+        let cloned = accum.clone();
+        assert_approx_eq!(cloned.finalize(), 3.0);
+
+        // Ensure original is unchanged
+        assert_approx_eq!(accum.finalize(), 3.0);
+
+        // Modify original after cloning
+        accum.add_ppoints(2.0, 6.0);
+        assert_approx_eq!(accum.finalize(), 5.0);
+
+        // Ensure clone is still the same
+        assert_approx_eq!(cloned.finalize(), 3.0);
+    }
+
+    #[test]
+    fn test_new() {
+        // Test valid parameters
+        let params = BetaBinomParams::<f64>::new(2.0, 3.0);
+        assert_eq!(params.0, 2.0);
+        assert_eq!(params.1, 3.0);
+
+        // Test with different numeric type
+        let params = BetaBinomParams::<f32>::new(2.0, 3.0);
+        assert_eq!(params.0, 2.0);
+        assert_eq!(params.1, 3.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Alpha must be positive")]
+    fn test_new_invalid_alpha() {
+        // This should panic with "Alpha must be positive"
+        BetaBinomParams::<f64>::new(0.0, 3.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Beta must be positive")]
+    fn test_new_invalid_beta() {
+        // This should panic with "Beta must be positive"
+        BetaBinomParams::<f64>::new(2.0, 0.0);
+    }
+    /// Helper function to generate beta-binomial distributed samples
+    /// alpha and beta are parameters of the beta distribution
+    /// n_trials is the number of trials for each sample
+    /// n_samples is the number of samples to generate
+    pub fn generate_beta_binomial_samples(
+        alpha: f64,
+        beta: f64,
+        n_trials: u32,
+        n_samples: usize,
+    ) -> (Vec<u32>, Vec<u32>) {
+        use rand::prelude::*;
+        use rand_distr::{Beta, Binomial};
+
+        let mut rng = thread_rng();
+        let beta_dist = Beta::new(alpha, beta).unwrap();
+
+        let mut successes = Vec::with_capacity(n_samples);
+        let mut totals = Vec::with_capacity(n_samples);
+
+        for _ in 0..n_samples {
+            // Sample p from Beta(alpha, beta)
+            let p = beta_dist.sample(&mut rng);
+
+            // Sample number of successes from Binomial(n_trials, p)
+            let binom = Binomial::new(n_trials as u64, p).unwrap();
+            let success_count = binom.sample(&mut rng) as u32;
+
+            successes.push(success_count);
+            totals.push(n_trials);
+        }
+        (successes, totals)
+    }
+
+    #[test]
+    fn test_from_counts() {
+        // Generate sample from beta-binomial with known parameters
+        let true_alpha = 25.0;
+        let true_beta = 15.0;
+        let n_trials = 30u32;
+        let n_samples = 100; // Large enough for estimation
+
+        let (successes, totals) = generate_beta_binomial_samples(
+            true_alpha, true_beta, n_trials, n_samples,
+        );
+
+        // Test with sufficient data
+        let (params, is_sufficient) =
+            BetaBinomParams::<f64>::from_counts(&successes, &totals, 0.95, 0.1);
+
+        // We should get a valid result with reasonable parameters
+        assert!(is_sufficient);
+        assert!(params.0 > 0.0); // Alpha should be positive
+        assert!(params.1 > 0.0); // Beta should be positive
+
+        // Alpha should be larger than beta since true_alpha > true_beta
+        assert!(params.0 > params.1);
+
+        // Test with insufficient data (should return false for is_sufficient)
+        let small_size = 5;
+        let (small_successes, small_totals) = generate_beta_binomial_samples(
+            true_alpha, true_beta, n_trials, small_size,
+        );
+
+        let (params, is_sufficient) = BetaBinomParams::<f64>::from_counts(
+            &small_successes,
+            &small_totals,
+            0.99, // Higher confidence
+            0.01, // Higher precision
+        );
+
+        // This should return false for is_sufficient
+        assert!(!is_sufficient);
+    }
+
+    #[test]
+    fn test_from_data_n() {
+        // Generate sample with known parameters
+        let true_alpha = 5.0;
+        let true_beta = 5.0;
+        let n_trials = 15u32;
+        let n_samples = 100;
+
+        let (successes, totals) = generate_beta_binomial_samples(
+            true_alpha, true_beta, n_trials, n_samples,
+        );
+
+        // Convert to floating point
+        let successes_f64: Vec<f64> = successes
+            .iter()
+            .map(|&x| x as f64)
+            .collect();
+        let totals_f64: Vec<f64> = totals
+            .iter()
+            .map(|&x| x as f64)
+            .collect();
+
+        let (params, is_sufficient) = BetaBinomParams::<f64>::from_data_n(
+            &successes_f64,
+            &totals_f64,
+            0.95,
+            0.1,
+        );
+
+        // Check that we got a valid result
+        assert!(is_sufficient);
+        assert!(params.0 > 0.0);
+        assert!(params.1 > 0.0);
+
+        // For symmetric distribution (alpha = beta), the estimated parameters
+        // should be roughly equal
+        let ratio = params.0 / params.1;
+        assert!(
+            ratio > 0.5 && ratio < 2.0,
+            "Estimated alpha/beta ratio should be close to 1 for symmetric \
+             distribution"
+        );
+    }
+
+    #[test]
+    fn test_from_mean_var() {
+        // Test case with moderate overdispersion
+        let mean = 0.5f64; // 70% success rate
+        let variance = 0.03f64; // Variance higher than binomial
+        let trials = vec![20.0f64; 100]; // 20 samples with 10 trials each
+
+        let (params, is_sufficient) = BetaBinomParams::<f64>::from_mean_var(
+            mean, variance, &trials, 0.95, 0.1,
+        );
+
+        // Check that we got a valid result
+        assert!(is_sufficient);
+        assert!(params.0 > 0.0);
+        assert!(params.1 > 0.0);
+    }
+
+    #[test]
+    fn test_bound_prec() {
+        // Test bounding of values
+        assert_approx_eq!(bound_prec(0.5), 0.5); // Within bounds
+        assert_approx_eq!(bound_prec(0.0), PRECISION_LIMIT); // Lower bound
+        assert_approx_eq!(bound_prec(1.0), 1.0 - PRECISION_LIMIT); // Upper bound
+        assert_approx_eq!(bound_prec(-1.0), PRECISION_LIMIT); // Below lower bound
+        assert_approx_eq!(bound_prec(2.0), 1.0 - PRECISION_LIMIT); // Above upper bound
     }
 }

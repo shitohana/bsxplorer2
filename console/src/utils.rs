@@ -1,18 +1,35 @@
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 use std::path::PathBuf;
 
-use bsxplorer2::{
-    exports::{anyhow, rayon},
-    utils::types::Context,
-};
+use bsxplorer2::exports::{anyhow, rayon};
+use bsxplorer2::utils::types::Context;
 use clap::{Args, ValueEnum};
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
 
-pub fn init_pbar(total: usize) -> bsxplorer2::exports::anyhow::Result<ProgressBar> {
+pub fn init_pbar(total: usize) -> anyhow::Result<ProgressBar> {
     let progress_bar = ProgressBar::new(total as u64);
     progress_bar.set_style(
         ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}, ETA: {eta}] [{bar:40.cyan/blue}] {pos:>5.green}/{len:5} {msg}")?
+            .template(
+                "{spinner:.green} [{elapsed_precise}, ETA: {eta}] \
+                 [{bar:40.cyan/blue}] {pos:>5.green}/{len:5} {msg}",
+            )?
             .progress_chars("#>-"),
     );
     progress_bar.set_message("Processing...");
@@ -47,10 +64,13 @@ pub(crate) fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
                     for entry in matches.filter_map(Result::ok) {
                         expanded_paths.push(entry);
                     }
-                }
-                Err(e) => eprintln!("Error processing wildcard '{}': {}", path, e),
+                },
+                Err(e) => {
+                    eprintln!("Error processing wildcard '{}': {}", path, e)
+                },
             }
-        } else {
+        }
+        else {
             // If not a wildcard, push the path as-is
             expanded_paths.push(PathBuf::from(path));
         }
@@ -65,7 +85,8 @@ pub(crate) struct UtilsArgs {
         long,
         required = false,
         default_value_t = true,
-        help = "Display progress bar (Disable if you need clean pipeline logs)."
+        help = "Display progress bar (Disable if you need clean pipeline \
+                logs)."
     )]
     pub(crate) progress: bool,
     #[arg(
@@ -74,21 +95,22 @@ pub(crate) struct UtilsArgs {
         default_value_t = 1,
         help = "Number of threads to use."
     )]
-    pub(crate) threads: usize,
+    pub(crate) threads:  usize,
     #[arg(
         long,
         required = false,
         default_value_t = false,
         help = "Verbose output."
     )]
-    pub(crate) verbose: bool,
+    pub(crate) verbose:  bool,
 }
 
 #[inline]
 pub(crate) fn init_logger(logger: bool) -> anyhow::Result<()> {
     if logger {
         Ok(bsxplorer2::exports::pretty_env_logger::try_init()?)
-    } else {
+    }
+    else {
         Ok(())
     }
 }

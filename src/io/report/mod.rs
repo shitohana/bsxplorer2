@@ -1,5 +1,22 @@
-use polars::prelude::*;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 use std::error::Error;
+
+use polars::prelude::*;
 
 pub mod fasta_reader;
 pub mod read;
@@ -7,15 +24,15 @@ pub mod schema;
 pub mod write;
 
 mod report_read_utils {
+    use std::io::{BufRead, Seek};
+
     use super::*;
     use crate::data_structs::bsx_batch::BsxBatch;
     use crate::data_structs::region::RegionCoordinates;
     use crate::io::report::read::{ContextData, ReadQueueItem};
     use crate::io::report::schema::ReportTypeSchema;
     use crate::utils;
-    use crate::utils::types::PosNum;
-    use crate::utils::types::Strand;
-    use std::io::{BufRead, Seek};
+    use crate::utils::types::{PosNum, Strand};
 
     pub(crate) fn get_context_data<R>(
         reader: &mut fasta_reader::FastaCoverageReader<R, u64>,
@@ -23,11 +40,13 @@ mod report_read_utils {
         report_schema: &ReportTypeSchema,
     ) -> Result<ContextData<u64>, Box<dyn Error>>
     where
-        R: BufRead + Seek,
-    {
+        R: BufRead + Seek, {
         let (data, is_end) = item;
-        let last_position =
-            utils::last_position(data, report_schema.chr_col(), report_schema.position_col())?;
+        let last_position = utils::last_position(
+            data,
+            report_schema.chr_col(),
+            report_schema.position_col(),
+        )?;
         let chr = last_position.clone().chr().to_string();
         let chr_coverage = *reader
             .coverage()
@@ -36,37 +55,52 @@ mod report_read_utils {
 
         // To ensure we capture all contexts
         let sequence_overhead = 3;
-        let fetch_start = if chr_coverage.read() == 0 || chr_coverage.read() < sequence_overhead {
+        let fetch_start = if chr_coverage.read() == 0
+            || chr_coverage.read() < sequence_overhead
+        {
             0
-        } else {
+        }
+        else {
             chr_coverage.read() - sequence_overhead
         };
-        let fetch_end = if last_position.position() as u64 + sequence_overhead
+        let fetch_end = if last_position.position() + sequence_overhead
             > chr_coverage.total()
             || *is_end
         {
             chr_coverage.total()
-        } else {
-            last_position.position() as u64 + sequence_overhead
+        }
+        else {
+            last_position.position() + sequence_overhead
         };
-        let fetch_region =
-            RegionCoordinates::new(chr.to_string(), fetch_start, fetch_end, Strand::None);
+        let fetch_region = RegionCoordinates::new(
+            chr.to_string(),
+            fetch_start,
+            fetch_end,
+            Strand::None,
+        );
 
-        let sequence = reader.inner_mut().fetch_region(fetch_region.clone())?;
-        let context_data = ContextData::from_sequence(&sequence, fetch_region.start_gpos() + 1)
-            .filter(|pos| pos > chr_coverage.read())
-            .filter(|pos| {
-                if !*is_end {
-                    pos <= last_position.position()
-                } else {
-                    true
-                }
-            });
+        let sequence = reader
+            .inner_mut()
+            .fetch_region(fetch_region.clone())?;
+        let context_data = ContextData::from_sequence(
+            &sequence,
+            fetch_region.start_gpos() + 1,
+        )
+        .filter(|pos| pos > chr_coverage.read())
+        .filter(|pos| {
+            if !*is_end {
+                pos <= last_position.position()
+            }
+            else {
+                true
+            }
+        });
         if !*is_end {
             reader
                 .coverage_mut()
                 .shift_to(fetch_region.chr(), last_position.position())?;
-        } else {
+        }
+        else {
             reader
                 .coverage_mut()
                 .shift_to(fetch_region.chr(), chr_coverage.total())?;
@@ -76,12 +110,12 @@ mod report_read_utils {
     }
 
     const JOIN_ARGS: JoinArgs = JoinArgs {
-        how: JoinType::Left,
-        validation: JoinValidation::OneToOne,
-        suffix: None,
-        slice: None,
-        join_nulls: false,
-        coalesce: JoinCoalesce::CoalesceColumns,
+        how:            JoinType::Left,
+        validation:     JoinValidation::OneToOne,
+        suffix:         None,
+        slice:          None,
+        join_nulls:     false,
+        coalesce:       JoinCoalesce::CoalesceColumns,
         maintain_order: MaintainOrderJoin::Left,
     };
 
@@ -91,20 +125,30 @@ mod report_read_utils {
     ) -> anyhow::Result<DataFrame> {
         let data_join_columns = [BsxBatch::pos_col()];
         let context_join_columns = [ContextData::<N>::position_col()];
-        let chr = utils::first_position(data_frame, BsxBatch::chr_col(), BsxBatch::pos_col())?
-            .chr()
-            .to_string();
+        let chr = utils::first_position(
+            data_frame,
+            BsxBatch::chr_col(),
+            BsxBatch::pos_col(),
+        )?
+        .chr()
+        .to_string();
 
         let context_df = context_data.into_dataframe()?;
         let mut context_df_lazy = context_df
             .lazy()
             .cast(
-                PlHashMap::from_iter(
-                    data_join_columns
-                        .iter()
-                        .cloned()
-                        .map(|name| (name, data_frame.schema().get(name).unwrap().clone())),
-                ),
+                PlHashMap::from_iter(data_join_columns.iter().cloned().map(
+                    |name| {
+                        (
+                            name,
+                            data_frame
+                                .schema()
+                                .get(name)
+                                .unwrap()
+                                .clone(),
+                        )
+                    },
+                )),
                 true,
             )
             .with_column(lit(chr).alias("chr"));
@@ -112,13 +156,16 @@ mod report_read_utils {
             .collect_schema()?
             .iter_names()
             .filter(|name| {
-                !data_join_columns.contains(&name.as_str()) && data_frame.column(name).is_ok()
+                !data_join_columns.contains(&name.as_str())
+                    && data_frame.column(name).is_ok()
             })
             .cloned()
             .collect::<Vec<_>>();
 
-        context_df_lazy = utils::decode_context(context_df_lazy, "context", "context");
-        context_df_lazy = utils::decode_strand(context_df_lazy, "strand", "strand");
+        context_df_lazy =
+            utils::decode_context(context_df_lazy, "context", "context");
+        context_df_lazy =
+            utils::decode_strand(context_df_lazy, "strand", "strand");
 
         Ok(context_df_lazy
             .collect()?

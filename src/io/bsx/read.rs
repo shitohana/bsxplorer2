@@ -1,5 +1,22 @@
-use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
-use crate::io::bsx::ipc::IpcFileReader;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
+use std::collections::{BTreeMap, HashMap};
+use std::io::{Read, Seek};
+
 use log::{debug, trace, warn};
 use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
@@ -7,8 +24,9 @@ use polars::export::arrow::record_batch::RecordBatchT;
 use polars::frame::DataFrame;
 #[cfg(feature = "python")]
 use pyo3::{pyclass, pymethods, PyRef, PyResult};
-use std::collections::{BTreeMap, HashMap};
-use std::io::{Read, Seek};
+
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::io::bsx::ipc::IpcFileReader;
 
 /// Chromosome indexing structure for BSX files
 ///
@@ -19,8 +37,9 @@ pub type BSXIndex = HashMap<String, BTreeMap<u64, usize>>;
 
 /// Reader for BSX files
 ///
-/// Provides functionality to read and process BSX files containing genomic data_structs.
-/// The reader implements the Iterator trait for sequential batch processing.
+/// Provides functionality to read and process BSX files containing genomic
+/// data_structs. The reader implements the Iterator trait for sequential batch
+/// processing.
 pub struct BsxFileReader<R: Read + Seek> {
     /// The underlying IPC file reader that handles the low-level Arrow format
     reader: IpcFileReader<R>,
@@ -59,8 +78,13 @@ impl<R: Read + Seek> BsxFileReader<R> {
         trace!("Processing record batch");
         batch
             .map(|batch| {
-                DataFrame::try_from((batch, self.reader.metadata().schema.as_ref()))
-                    .expect("Failed to create DataFrame from batch - schema mismatch")
+                DataFrame::try_from((
+                    batch,
+                    self.reader.metadata().schema.as_ref(),
+                ))
+                .expect(
+                    "Failed to create DataFrame from batch - schema mismatch",
+                )
             })
             .map(|df| {
                 trace!(
@@ -80,7 +104,10 @@ impl<R: Read + Seek> BsxFileReader<R> {
     /// # Returns
     ///
     /// The processed batch if it exists, None otherwise
-    pub fn get_batch(&mut self, batch_idx: usize) -> Option<PolarsResult<EncodedBsxBatch>> {
+    pub fn get_batch(
+        &mut self,
+        batch_idx: usize,
+    ) -> Option<PolarsResult<EncodedBsxBatch>> {
         debug!("Getting batch at index {}", batch_idx);
         self.reader
             .read_at(batch_idx)
@@ -104,7 +131,8 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
 
     /// Advances the iterator and returns the next batch
     ///
-    /// Returns None when there are no more batches or when an empty batch is encountered.
+    /// Returns None when there are no more batches or when an empty batch is
+    /// encountered.
     fn next(&mut self) -> Option<Self::Item> {
         trace!("Getting next batch from BsxFileReader");
         let next = self.reader.next();

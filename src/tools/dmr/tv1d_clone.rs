@@ -32,16 +32,17 @@
 extern crate num;
 
 mod utils {
-    pub fn sync_values(anchor_value: usize, values: &mut [&mut usize]) -> () {
+    pub fn sync_values(
+        anchor_value: usize,
+        values: &mut [&mut usize],
+    ) -> () {
         for value in values {
             **value = anchor_value;
         }
     }
 }
 
-use std::cmp;
-use std::iter;
-use std::ops;
+use std::{cmp, iter, ops};
 
 /// Denoises the input values based on a tautstring algorithm by
 /// Davies P. and Kovac A. in 2001 in the paper ["Local extremes,
@@ -73,7 +74,10 @@ use std::ops;
 /// # Panics
 /// Panics if input vector's length is `0` or `lambda` is less than `0`.
 #[allow(dead_code)]
-pub fn tautstring<T>(input: &[T], lambda: T) -> Vec<T>
+pub fn tautstring<T>(
+    input: &[T],
+    lambda: T,
+) -> Vec<T>
 where
     T: num::Num
         + num::FromPrimitive
@@ -81,8 +85,7 @@ where
         + ops::AddAssign<T>
         + ops::SubAssign<T>
         + num::Float
-        + num::ToPrimitive,
-{
+        + num::ToPrimitive, {
     assert!(
         input.len() > 0,
         "Input list should have at least one value."
@@ -156,35 +159,51 @@ where
         index_up[c_up] = i;
         slope_low[c_low] = lower_bound[i] - lower_bound[i - 1];
 
-        while (c_low > s_low + 1) && (slope_low[cmp::max(s_low, c_low - 1)] <= slope_low[c_low]) {
+        while (c_low > s_low + 1)
+            && (slope_low[cmp::max(s_low, c_low - 1)] <= slope_low[c_low])
+        {
             c_low -= 1;
             index_low[c_low] = i;
             if c_low > s_low + 1 {
-                slope_low[c_low] = (lower_bound[i] - lower_bound[index_low[c_low - 1]])
+                slope_low[c_low] = (lower_bound[i]
+                    - lower_bound[index_low[c_low - 1]])
                     / num::FromPrimitive::from_usize(i - index_low[c_low - 1])
-                        .expect("Unable to convert usize to num::FromPrimitive.");
-            } else {
+                        .expect(
+                            "Unable to convert usize to num::FromPrimitive.",
+                        );
+            }
+            else {
                 slope_low[c_low] = (lower_bound[i] - z[c])
-                    / num::FromPrimitive::from_usize(i - index[c])
-                        .expect("Unable to convert usize to num::FromPrimitive.");
+                    / num::FromPrimitive::from_usize(i - index[c]).expect(
+                        "Unable to convert usize to num::FromPrimitive.",
+                    );
             }
         }
 
         slope_up[c_up] = upper_bound[i] - upper_bound[i - 1];
-        while (c_up > s_up + 1) && (slope_up[cmp::max(c_up - 1, s_up)] >= slope_up[c_up]) {
+        while (c_up > s_up + 1)
+            && (slope_up[cmp::max(c_up - 1, s_up)] >= slope_up[c_up])
+        {
             c_up -= 1;
             index_up[c_up] = i;
             if c_up > s_up + 1 {
-                slope_up[c_up] = (upper_bound[i] - upper_bound[index_up[c_up - 1]])
+                slope_up[c_up] = (upper_bound[i]
+                    - upper_bound[index_up[c_up - 1]])
                     / num::FromPrimitive::from_usize(i - index_up[c_up - 1])
-                        .expect("Unable to convert usize to num::FromPrimitive.");
-            } else {
+                        .expect(
+                            "Unable to convert usize to num::FromPrimitive.",
+                        );
+            }
+            else {
                 slope_up[c_up] = (upper_bound[i] - z[c])
-                    / num::FromPrimitive::from_usize(i - index[c])
-                        .expect("Unable to convert usize to num::FromPrimitive.");
+                    / num::FromPrimitive::from_usize(i - index[c]).expect(
+                        "Unable to convert usize to num::FromPrimitive.",
+                    );
             }
         }
-        while (c_low == s_low + 1) && (c_up > s_up + 1) && (slope_low[c_low] >= slope_up[s_up + 1])
+        while (c_low == s_low + 1)
+            && (c_up > s_up + 1)
+            && (slope_low[c_low] >= slope_up[s_up + 1])
         {
             c += 1;
             s_up += 1;
@@ -195,7 +214,9 @@ where
                 / num::FromPrimitive::from_usize(i - index[c])
                     .expect("Unable to convert usize to num::FromPrimitive.");
         }
-        while (c_up == s_up + 1) && (c_low > s_low + 1) && (slope_up[c_up] <= slope_low[s_low + 1])
+        while (c_up == s_up + 1)
+            && (c_low > s_low + 1)
+            && (slope_up[c_up] <= slope_low[s_low + 1])
         {
             c += 1;
             s_low += 1;
@@ -253,10 +274,17 @@ where
 ///
 /// # Panics
 /// Panics if input vector's length is `0` or `lambda` is less than `0`.
-pub fn condat<T>(input: &[T], lambda: T) -> Vec<T>
+pub fn condat<T>(
+    input: &[T],
+    lambda: T,
+) -> Vec<T>
 where
-    T: num::Num + num::FromPrimitive + PartialOrd + ops::Neg<Output = T> + ops::AddAssign<T> + Copy,
-{
+    T: num::Num
+        + num::FromPrimitive
+        + PartialOrd
+        + ops::Neg<Output = T>
+        + ops::AddAssign<T>
+        + Copy, {
     assert!(
         input.len() > 0,
         "Input list should have at least one value."
@@ -278,7 +306,8 @@ where
     // segment.
     let mut segment_start = 0;
 
-    let twolambda = T::from_u8(2).expect("Unable to transform `2` to T.") * lambda;
+    let twolambda =
+        T::from_u8(2).expect("Unable to transform `2` to T.") * lambda;
     let minlambda = -lambda;
 
     // `umin` and `umax` are used for keeping track of previous data_structs
@@ -305,31 +334,48 @@ where
             if umin < num::zero() {
                 // Negative jump is necessary as `segment_lower_bound`
                 // is too high.
-                output.extend(iter::repeat(segment_lower_bound).take(kminus - segment_start + 1));
+                output.extend(
+                    iter::repeat(segment_lower_bound)
+                        .take(kminus - segment_start + 1),
+                );
                 segment_start = kminus + 1;
-                utils::sync_values(segment_start, &mut [&mut current_input_index, &mut kminus]);
+                utils::sync_values(segment_start, &mut [
+                    &mut current_input_index,
+                    &mut kminus,
+                ]);
                 segment_lower_bound = input[kminus];
                 umin = lambda;
                 umax = segment_lower_bound + umin - segment_upper_bound;
-            } else if umax > num::zero() {
+            }
+            else if umax > num::zero() {
                 // If `segment_upper_bound` is too low, jump up.
-                output.extend(iter::repeat(segment_upper_bound).take(kplus - segment_start + 1));
+                output.extend(
+                    iter::repeat(segment_upper_bound)
+                        .take(kplus - segment_start + 1),
+                );
                 segment_start = kplus + 1;
-                utils::sync_values(segment_start, &mut [&mut current_input_index, &mut kplus]);
+                utils::sync_values(segment_start, &mut [
+                    &mut current_input_index,
+                    &mut kplus,
+                ]);
                 segment_upper_bound = input[kplus];
                 umax = minlambda;
                 umin = segment_upper_bound + umax - segment_lower_bound;
-            } else {
+            }
+            else {
                 // `segment_lower_bound` and `segment_upper_bound` are
                 // not too high or not too low. Adjust the
                 // `segment_lower_bound` to reflect the difference
                 // between the current input value and value at the
                 // beginning of the segment, and extend the output.
                 segment_lower_bound += umin
-                    / num::FromPrimitive::from_usize(current_input_index - segment_start + 1)
-                        .expect("Unable to convert usize to num::FromPrimitive.");
+                    / num::FromPrimitive::from_usize(
+                        current_input_index - segment_start + 1,
+                    )
+                    .expect("Unable to convert usize to num::FromPrimitive.");
                 output.extend(
-                    iter::repeat(segment_lower_bound).take(current_input_index - segment_start + 1),
+                    iter::repeat(segment_lower_bound)
+                        .take(current_input_index - segment_start + 1),
                 );
                 assert_eq!(
                     input.len(),
@@ -338,7 +384,8 @@ where
                 );
                 return output;
             }
-        } else {
+        }
+        else {
             umin += input[current_input_index + 1] - segment_lower_bound;
             umax += input[current_input_index + 1] - segment_upper_bound;
             if umin < minlambda {
@@ -347,33 +394,43 @@ where
                 // negative jump. Next value becomes the
                 // `segment_lower_bound`, and `segment_upper_bound` is
                 // adjusted accordingly.
-                output.extend(iter::repeat(segment_lower_bound).take(kminus - segment_start + 1));
-                segment_start = kminus + 1;
-                utils::sync_values(
-                    segment_start,
-                    &mut [&mut current_input_index, &mut kminus, &mut kplus],
+                output.extend(
+                    iter::repeat(segment_lower_bound)
+                        .take(kminus - segment_start + 1),
                 );
+                segment_start = kminus + 1;
+                utils::sync_values(segment_start, &mut [
+                    &mut current_input_index,
+                    &mut kminus,
+                    &mut kplus,
+                ]);
                 segment_lower_bound = input[kplus];
                 segment_upper_bound = segment_lower_bound + twolambda;
                 umin = lambda;
                 umax = minlambda;
-            } else if umax > lambda {
+            }
+            else if umax > lambda {
                 // If next value (`input[current_input_index + 1]`is
                 // much larger than `segment_upper_bound`, make a
                 // negative jump. Next value becomes the
                 // `segment_upper_bound`, and `segment_lower_bound` is
                 // adjusted accordingly.
-                output.extend(iter::repeat(segment_upper_bound).take(kplus - segment_start + 1));
-                segment_start = kplus + 1;
-                utils::sync_values(
-                    segment_start,
-                    &mut [&mut current_input_index, &mut kminus, &mut kplus],
+                output.extend(
+                    iter::repeat(segment_upper_bound)
+                        .take(kplus - segment_start + 1),
                 );
+                segment_start = kplus + 1;
+                utils::sync_values(segment_start, &mut [
+                    &mut current_input_index,
+                    &mut kminus,
+                    &mut kplus,
+                ]);
                 segment_upper_bound = input[kplus];
                 segment_lower_bound = segment_upper_bound - twolambda;
                 umin = lambda;
                 umax = minlambda;
-            } else {
+            }
+            else {
                 // `segment_upper_bound` and `segment_lower_bound` are
                 // appropriate, and therefore no jump is necessary.
                 current_input_index += 1;
@@ -383,8 +440,12 @@ where
                     // higher.
                     kminus = current_input_index;
                     segment_lower_bound += (umin - lambda)
-                        / num::FromPrimitive::from_usize(kminus - segment_start + 1)
-                            .expect("Unable to convert usize to num::FromPrimitive.");
+                        / num::FromPrimitive::from_usize(
+                            kminus - segment_start + 1,
+                        )
+                        .expect(
+                            "Unable to convert usize to num::FromPrimitive.",
+                        );
                     umin = lambda;
                 }
                 if umax <= minlambda {
@@ -393,8 +454,12 @@ where
                     // lower.
                     kplus = current_input_index;
                     segment_upper_bound += (umax + lambda)
-                        / num::FromPrimitive::from_usize(kplus - segment_start + 1)
-                            .expect("Unable to convert usize to num::FromPrimitive.");
+                        / num::FromPrimitive::from_usize(
+                            kplus - segment_start + 1,
+                        )
+                        .expect(
+                            "Unable to convert usize to num::FromPrimitive.",
+                        );
                     umax = minlambda;
                 }
             }
@@ -419,8 +484,8 @@ mod tests {
         let output = tautstring(&input, 0.0);
         let output_expected = vec![1.0, 2.1, 5.2, 8.2, 1.4, 5.2, 6.2, 10.1];
         for i in 0..input.len() {
-            let output_data = output[i] as f64;
-            let expected_data = output_expected[i] as f64;
+            let output_data = output[i];
+            let expected_data = output_expected[i];
             assert!((output_data - expected_data).abs() <= 0.0001);
         }
     }
@@ -431,27 +496,29 @@ mod tests {
         let output = tautstring(&input, 100.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
-        let output_expected = vec![4.925, 4.925, 4.925, 4.925, 4.925, 4.925, 4.925, 4.925];
+        let output_expected =
+            vec![4.925, 4.925, 4.925, 4.925, 4.925, 4.925, 4.925, 4.925];
         for i in 0..input.len() {
-            let output_data = output[i] as f64;
-            let expected_data = output_expected[i] as f64;
+            let output_data = output[i];
+            let expected_data = output_expected[i];
             assert!((output_data - expected_data).abs() <= 0.0001);
         }
     }
 
     #[test]
     fn tautstring_test_moderate_lambda() {
-        let input = vec![111.0, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
+        let input =
+            vec![111.0, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
         let output = tautstring(&input, 5.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
         let output_expected = vec![
-            116.0, 412.100006, 155.199997, 248.199997, 861.400024, 675.200012, 436.200012,
-            315.100006,
+            116.0, 412.100006, 155.199997, 248.199997, 861.400024, 675.200012,
+            436.200012, 315.100006,
         ];
         for i in 0..input.len() {
-            let output_data = output[i] as f64;
-            let expected_data = output_expected[i] as f64;
+            let output_data = output[i];
+            let expected_data = output_expected[i];
             assert!((output_data - expected_data).abs() <= 0.0001);
         }
     }
@@ -487,18 +554,19 @@ mod tests {
 
     #[test]
     fn condat_test_large_lambda() {
-        let input = vec![111.0, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
+        let input =
+            vec![111.0, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
         let output = condat(&input, 700.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
         let output_expected = vec![
-            402.425049, 402.425049, 402.425049, 402.425049, 402.425049, 402.425049, 402.425049,
-            402.425049,
+            402.425049, 402.425049, 402.425049, 402.425049, 402.425049,
+            402.425049, 402.425049, 402.425049,
         ];
         println!("{:?}", output);
         for i in 0..input.len() {
-            let output_data = output[i] as f64;
-            let expected_data = output_expected[i] as f64;
+            let output_data = output[i];
+            let expected_data = output_expected[i];
             assert!((output_data - expected_data).abs() <= 0.0001);
         }
     }
@@ -510,11 +578,12 @@ mod tests {
         // The expected output is taken from the Laurent Condat's C
         // implementation.
         let output_expected = vec![
-            3.050000, 3.050000, 4.933333, 4.933333, 4.933333, 5.200000, 6.200000, 7.100000,
+            3.050000, 3.050000, 4.933333, 4.933333, 4.933333, 5.200000,
+            6.200000, 7.100000,
         ];
         for i in 0..input.len() {
-            let output_data = output[i] as f64;
-            let expected_data = output_expected[i] as f64;
+            let output_data = output[i];
+            let expected_data = output_expected[i];
             assert!((output_data - expected_data).abs() <= 0.000001);
         }
     }

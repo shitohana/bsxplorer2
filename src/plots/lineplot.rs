@@ -1,10 +1,20 @@
+/// ****************************************************************************
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***************************************************************************
+
+/// ****************************************************************************
+/// * Copyright (c) 2025
+/// ***************************************************************************
+
 #[cfg(feature = "plots")]
 mod inner {
-    use crate::data_structs::bsx_batch::EncodedBsxBatch;
-    use crate::data_structs::region_data::RegionData;
-    use crate::plots::BsxPlot;
-    use crate::utils::types::{PosNum, RefId, Strand};
-    use crate::utils::{f64_to_u64_scaled, u64_to_f64_scaled, GROUPING_POWER};
+    use std::collections::BTreeMap;
+
     use anyhow::anyhow;
     use histogram::{Bucket, Histogram};
     use itertools::{izip, Itertools};
@@ -13,7 +23,12 @@ mod inner {
     use plotly::layout::Axis;
     use plotly::{Plot, Scatter};
     use statrs::distribution::{ContinuousCDF, Normal};
-    use std::collections::BTreeMap;
+
+    use crate::data_structs::bsx_batch::EncodedBsxBatch;
+    use crate::data_structs::region_data::RegionData;
+    use crate::plots::BsxPlot;
+    use crate::utils::types::{PosNum, RefId, Strand};
+    use crate::utils::{f64_to_u64_scaled, u64_to_f64_scaled, GROUPING_POWER};
 
     fn bucket_middle(bucket: &Bucket) -> u64 {
         bucket.start() / 2 + bucket.end() / 2
@@ -31,16 +46,23 @@ mod inner {
                     let sum_density: f64 = hist
                         .iter()
                         .map(|bucket| {
-                            let u64_val = ((bucket.start() + 1) / 2 + bucket.end() / 2);
+                            let u64_val =
+                                (bucket.start() + 1) / 2 + bucket.end() / 2;
                             u64_to_f64_scaled(u64_val) * bucket.count() as f64
                         })
                         .sum();
-                    let counts: u64 = hist.iter().map(|bucket| bucket.count()).sum();
-                    sum_density as f64 / counts as f64
+                    let counts: u64 = hist
+                        .iter()
+                        .map(|bucket| bucket.count())
+                        .sum();
+                    sum_density / counts as f64
                 })
                 .collect_vec()
         }
-        fn std(&self, mean: &[f64]) -> Vec<f64> {
+        fn std(
+            &self,
+            mean: &[f64],
+        ) -> Vec<f64> {
             self.hist_iter()
                 .zip(mean.iter())
                 .map(|(hist, mean)| {
@@ -49,8 +71,10 @@ mod inner {
                     hist.iter().for_each(|bin| {
                         if bin.count() > 0 {
                             let count = bin.count() as f64;
-                            dev_sum +=
-                                count * (u64_to_f64_scaled(bucket_middle(&bin)) - mean).powi(2);
+                            dev_sum += count
+                                * (u64_to_f64_scaled(bucket_middle(&bin))
+                                    - mean)
+                                    .powi(2);
                             count_sum += count
                         }
                     });
@@ -58,7 +82,10 @@ mod inner {
                 })
                 .collect()
         }
-        fn confidence_interval(&self, confidence: f64) -> (Vec<f64>, Vec<f64>) {
+        fn confidence_interval(
+            &self,
+            confidence: f64,
+        ) -> (Vec<f64>, Vec<f64>) {
             let mean = self.mean();
             let std = self.std(&mean);
             let sample_size: Vec<u64> = self
@@ -77,7 +104,10 @@ mod inner {
             (mean, ci)
         }
 
-        fn percentile(&self, percentile: f64) -> Vec<f64> {
+        fn percentile(
+            &self,
+            percentile: f64,
+        ) -> Vec<f64> {
             self.hist_iter()
                 .map(|h| {
                     h.percentile(percentile)
@@ -118,11 +148,17 @@ mod inner {
 
         fn x_ticks(&self) -> Vec<f64>;
 
-        fn plot(&self, plot: &mut Plot, label: impl AsRef<str>, ci_prob: Option<f64>) {
+        fn plot(
+            &self,
+            plot: &mut Plot,
+            label: impl AsRef<str>,
+            ci_prob: Option<f64>,
+        ) {
             let (mean, ci) = if let Some(confidence) = ci_prob {
                 let res = self.confidence_interval(confidence);
                 (res.0, Some(res.1))
-            } else {
+            }
+            else {
                 (self.mean(), None)
             };
             let ticks = self.x_ticks();
@@ -154,7 +190,8 @@ mod inner {
             &mut self,
             region_data: &RegionData<R, N, EncodedBsxBatch>,
         ) -> anyhow::Result<()> {
-            let mut discrete_density = region_data.discrete_density(self.discrete_hist.len())?;
+            let mut discrete_density =
+                region_data.discrete_density(self.discrete_hist.len())?;
             if matches!(region_data.strand(), Strand::Reverse) {
                 discrete_density.reverse()
             };
@@ -167,9 +204,7 @@ mod inner {
             self.discrete_hist.iter()
         }
 
-        fn size(&self) -> usize {
-            self.discrete_hist.len()
-        }
+        fn size(&self) -> usize { self.discrete_hist.len() }
 
         fn x_ticks(&self) -> Vec<f64> {
             (0..self.discrete_hist.len())
@@ -206,7 +241,12 @@ mod inner {
         }
     }
 
-    pub fn add_line(plot: &mut Plot, x: &[f64], y: &[f64], label: impl AsRef<str>) {
+    pub fn add_line(
+        plot: &mut Plot,
+        x: &[f64],
+        y: &[f64],
+        label: impl AsRef<str>,
+    ) {
         let trace = Scatter::new(x.to_vec(), y.to_vec())
             .name(label)
             .mode(Mode::Lines);
@@ -233,7 +273,11 @@ mod inner {
                     .bins_hist
                     .entry((
                         format!("{ref_id}").into(),
-                        N::from((pos.to_f64().unwrap() / self.bin_width as f64).floor()).unwrap(),
+                        N::from(
+                            (pos.to_f64().unwrap() / self.bin_width as f64)
+                                .floor(),
+                        )
+                        .unwrap(),
                     ))
                     .or_insert(Histogram::new(GROUPING_POWER, 64)?);
                 entry.increment(f64_to_u64_scaled(density as f64))?
@@ -247,9 +291,7 @@ mod inner {
             self.bins_hist.values()
         }
 
-        fn size(&self) -> usize {
-            self.bins_hist.len()
-        }
+        fn size(&self) -> usize { self.bins_hist.len() }
 
         fn x_ticks(&self) -> Vec<f64> {
             (0..self.bins_hist.len())
@@ -274,7 +316,10 @@ mod inner {
                 .collect_vec()
         }
 
-        pub fn draw_x_labels(&self, plot: &mut Plot) {
+        pub fn draw_x_labels(
+            &self,
+            plot: &mut Plot,
+        ) {
             let mut x_ticks = Vec::new();
             let mut seen_chr = Vec::new();
 
@@ -285,7 +330,14 @@ mod inner {
                 }
             }
 
-            x_ticks.push(self.bins_hist.last_key_value().unwrap().0.clone().1);
+            x_ticks.push(
+                self.bins_hist
+                    .last_key_value()
+                    .unwrap()
+                    .0
+                    .clone()
+                    .1,
+            );
             let x_ticks = x_ticks
                 .windows(2)
                 .map(|arr| (arr[0] + arr[1]).to_f64().unwrap() / 2.0)
@@ -294,7 +346,12 @@ mod inner {
             layout = layout.x_axis(
                 Axis::default()
                     .tick_values(x_ticks)
-                    .tick_text(seen_chr.into_iter().map(|chr| chr.to_string()).collect()),
+                    .tick_text(
+                        seen_chr
+                            .into_iter()
+                            .map(|chr| chr.to_string())
+                            .collect(),
+                    ),
             );
 
             plot.set_layout(layout);

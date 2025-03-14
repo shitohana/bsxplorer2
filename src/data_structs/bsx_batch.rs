@@ -1,4 +1,18 @@
-//! Module contains BsxBatches which represent single chromosome methylation data_structs
+/*******************************************************************************
+ Copyright (c) 2025
+ The Prosperity Public License 3.0.0
+
+ Contributor: [shitohana](https://github.com/shitohana)
+
+ Source Code: https://github.com/shitohana/BSXplorer
+ ******************************************************************************/
+
+/// ****************************************************************************
+/// * Copyright (c) 2025
+/// ***************************************************************************
+
+//! Module contains BsxBatches which represent single chromosome methylation
+//! data_structs
 //!
 //! BsxBatch stores data_structs in [DataFrame] with
 //! * Non-null chr and position
@@ -7,16 +21,17 @@
 //!
 //! Module contains two main structs:
 //! 1. [BsxBatch] struct for storing non-encoded data_structs
-//! 2. [EncodedBsxBatch] struct for storing encoded data_structs (context and strand encoded as boolean)
+//! 2. [EncodedBsxBatch] struct for storing encoded data_structs (context and
+//! strand encoded as boolean)
 //!
 //! and [BsxBatchMethods] trait
 //!
-//! Both BsxBatch and EncodedBsxBatch can be filtered using context and/or strand
-//!
-use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
-use crate::tools::stats::MethylationStats;
-use crate::utils::types::{Context, IPCEncodedEnum, Strand};
-use crate::utils::{decode_context, decode_strand, encode_context, encode_strand, polars_schema};
+//! Both BsxBatch and EncodedBsxBatch can be filtered using context and/or
+//! strand
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::ops::BitAnd;
+
 use bio_types::annot::contig::Contig;
 use bio_types::annot::loc::Loc;
 use bio_types::annot::pos::Pos;
@@ -26,9 +41,16 @@ use itertools::{multiunzip, Itertools};
 use log::warn;
 use polars::prelude::*;
 use statrs::statistics::Statistics;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::ops::BitAnd;
+
+use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
+use crate::tools::stats::MethylationStats;
+use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+// noinspection ALL
+use crate::utils::{decode_context,
+                   decode_strand,
+                   encode_context,
+                   encode_strand,
+                   polars_schema};
 
 /// DataFrame with
 /// 1. Non-null chr and position
@@ -76,15 +98,11 @@ impl BsxBatch {
 
     /// Returns name of chr column
     #[inline(always)]
-    pub(crate) const fn chr_col() -> &'static str {
-        "chr"
-    }
+    pub(crate) const fn chr_col() -> &'static str { "chr" }
 
     /// Returns name of position column
     #[inline(always)]
-    pub(crate) const fn pos_col() -> &'static str {
-        "position"
-    }
+    pub(crate) const fn pos_col() -> &'static str { "position" }
 
     /// Returns expected schema of [BsxBatch]
     pub fn schema() -> Schema {
@@ -103,8 +121,11 @@ impl BsxBatchMethods for BsxBatch {
     /// Filters [BsxBatch] by `context` and `strand`
     ///
     /// If both `context` and `strand` are [None], returns [BsxBatch]
-    fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
-    where
+    fn filter(
+        self,
+        context: Option<Context>,
+        strand: Option<Strand>,
+    ) -> Self where
         Self: Sized,
     {
         if context.is_none() && strand.is_none() {
@@ -123,15 +144,11 @@ impl BsxBatchMethods for BsxBatch {
 
     /// Returns reference to inner [DataFrame]
     #[inline]
-    fn data(&self) -> &DataFrame {
-        &self.0
-    }
+    fn data(&self) -> &DataFrame { &self.0 }
 
     /// Returns mutable reference to inner [DataFrame]
     #[inline]
-    fn data_mut(&mut self) -> &mut DataFrame {
-        &mut self.0
-    }
+    fn data_mut(&mut self) -> &mut DataFrame { &mut self.0 }
 }
 
 impl TryFrom<DataFrame> for BsxBatch {
@@ -153,7 +170,8 @@ impl TryFrom<DataFrame> for BsxBatch {
             "count_m",
             "count_total",
         ] {
-            if data_casted.column(colname)?.null_count() != 0 {
+            if data_casted.column(colname)?.null_count() != 0
+            {
                 return Err(PolarsError::ComputeError(
                     format!("Nulls in {} col", colname).into(),
                 ));
@@ -161,11 +179,7 @@ impl TryFrom<DataFrame> for BsxBatch {
         }
 
         // Check sorted
-        if !data_casted
-            .column(Self::pos_col())?
-            .as_series()
-            .unwrap()
-            .is_sorted(SortOptions::default().with_order_descending(false))?
+        if !data_casted.column(Self::pos_col())?.as_series().unwrap().is_sorted(SortOptions::default().with_order_descending(false))?
         {
             return Err(PolarsError::ComputeError("Data is not sorted".into()));
         }
@@ -175,48 +189,7 @@ impl TryFrom<DataFrame> for BsxBatch {
 }
 
 impl From<BsxBatch> for DataFrame {
-    fn from(b: BsxBatch) -> Self {
-        b.0
-    }
-}
-
-#[cfg(feature = "python")]
-#[pymethods]
-impl BsxBatch {
-    #[getter]
-    fn get_data(&self) -> PyDataFrame {
-        PyDataFrame(self.data().clone())
-    }
-
-    #[new]
-    fn new_py(data: PyDataFrame) -> PyResult<Self> {
-        let data: DataFrame = data.into();
-        wrap_polars_result!(BsxBatch::try_from(data))
-    }
-
-    #[pyo3(name="filter", signature = (context=None, strand=None))]
-    fn filter_py(&self, context: Option<Context>, strand: Option<Strand>) -> Self {
-        self.clone().filter(context, strand)
-    }
-
-    #[getter]
-    fn get_first_position(&self) -> PyResult<PyGenomicPosition> {
-        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
-    }
-
-    #[getter]
-    fn get_last_position(&self) -> PyResult<PyGenomicPosition> {
-        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
-    }
-
-    #[getter]
-    fn get_height(&self) -> usize {
-        self.height()
-    }
-
-    fn __len__(&self) -> usize {
-        self.height()
-    }
+    fn from(b: BsxBatch) -> Self { b.0 }
 }
 
 /// Encoded version of [BsxBatch]
@@ -227,7 +200,6 @@ impl BsxBatch {
 ///
 /// Other types are also downcasted
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "python", pyclass)]
 pub struct EncodedBsxBatch(DataFrame);
 
 impl EncodedBsxBatch {
@@ -245,7 +217,10 @@ impl EncodedBsxBatch {
     /// Performs
     /// 1. Encoding of `context` and `strand`
     /// 2. Downcasting of column types
-    pub fn encode(batch: BsxBatch, chr_dtype: &DataType) -> PolarsResult<Self> {
+    pub fn encode(
+        batch: BsxBatch,
+        chr_dtype: &DataType,
+    ) -> PolarsResult<Self> {
         let batch_data = DataFrame::from(batch);
         let target_schema = Self::get_hashmap(chr_dtype);
 
@@ -254,9 +229,9 @@ impl EncodedBsxBatch {
         batch_lazy = encode_context(batch_lazy, "context");
         batch_lazy = encode_strand(batch_lazy, "strand");
 
-        batch_lazy = batch_lazy
-            .cast(target_schema, true)
-            .select(Self::col_names().iter().cloned().map(col).collect_vec());
+        batch_lazy = batch_lazy.cast(target_schema, true).select(
+            Self::col_names().iter().cloned().map(col).collect_vec(),
+        );
         let mut result = batch_lazy.collect()?;
         result.rechunk_mut();
 
@@ -274,9 +249,9 @@ impl EncodedBsxBatch {
         let mut batch_lazy = batch_data.lazy();
         batch_lazy = decode_context(batch_lazy, "context", "context");
         batch_lazy = decode_strand(batch_lazy, "strand", "strand");
-        batch_lazy = batch_lazy
-            .cast(target_schema, true)
-            .select(BsxBatch::col_names().iter().cloned().map(col).collect_vec());
+        batch_lazy = batch_lazy.cast(target_schema, true).select(
+            BsxBatch::col_names().iter().cloned().map(col).collect_vec(),
+        );
 
         let result = batch_lazy.collect()?;
         Ok(BsxBatch(result))
@@ -296,7 +271,9 @@ impl EncodedBsxBatch {
     }
 
     /// Returns expected schema of [EncodedBsxBatch] as [PlHashMap]
-    pub(crate) fn get_hashmap(chr_dtype: &DataType) -> PlHashMap<&str, DataType> {
+    pub(crate) fn get_hashmap(
+        chr_dtype: &DataType
+    ) -> PlHashMap<&str, DataType> {
         PlHashMap::from_iter([
             ("chr", chr_dtype.clone()),
             ("position", DataType::UInt32),
@@ -313,8 +290,10 @@ impl EncodedBsxBatch {
     /// Returns [PolarsError] if
     /// 1. Chromosome names do not match
     /// 2. Batch does not contain region data_structs
-    pub fn trim_region(&self, region_coordinates: &RegionCoordinates<u64>) -> anyhow::Result<Self>
-    where
+    pub fn trim_region(
+        &self,
+        region_coordinates: &RegionCoordinates<u64>,
+    ) -> anyhow::Result<Self> where
         Self: Sized,
     {
         let batch_first = self.first_position()?;
@@ -322,32 +301,28 @@ impl EncodedBsxBatch {
         let height = self.height();
 
         match batch_first.partial_cmp(&region_coordinates.end_gpos()) {
-            None => Err(PolarsError::ComputeError("Chromosome does not match".into()).into()),
-            Some(Ordering::Greater) => Err(PolarsError::ComputeError(
-                "Batch does not contain region information".into(),
-            )
-            .into()),
+            None => {
+                Err(PolarsError::ComputeError(
+                    "Chromosome does not match".into(),
+                ).into())
+            }
+            Some(Ordering::Greater) => {
+                Err(PolarsError::ComputeError(
+                    "Batch does not contain region information".into(),
+                ).into())
+            }
             _ => {
-                let start_shift = pos_col
-                    .iter()
-                    .position(|v| v.unwrap() >= region_coordinates.start() as u32)
-                    .unwrap_or(height - 1);
-                let end_shift = pos_col
-                    .iter()
-                    .skip(start_shift)
-                    .position(|v| v.unwrap() > region_coordinates.end() as u32)
-                    .map(|val| val + start_shift)
-                    .unwrap_or(height);
+                let start_shift = pos_col.iter().position(|v| {
+                    v.unwrap() >= region_coordinates.start() as u32
+                }).unwrap_or(height - 1);
+                let end_shift = pos_col.iter().skip(start_shift).position(|v| v.unwrap() > region_coordinates.end() as u32).map(|val| val + start_shift).unwrap_or(height);
                 let mask = BooleanChunked::from_iter({
                     let mut start = vec![false; start_shift];
                     start.extend(vec![true; end_shift - start_shift]);
                     start.extend(vec![false; height - end_shift]);
                     start
                 });
-                Ok(self
-                    .data()
-                    .filter(&mask)
-                    .map(|df| unsafe { Self::new_unchecked(df) })?)
+                Ok(self.data().filter(&mask).map(|df| unsafe { Self::new_unchecked(df) })?)
             }
         }
     }
@@ -355,9 +330,8 @@ impl EncodedBsxBatch {
     /// Returns expected schema of inner [DataFrame]
     #[allow(dead_code)]
     #[inline]
-    pub(crate) fn schema(&self) -> Schema {
-        self.data().schema()
-    }
+    pub(crate) fn schema(&self) -> Schema { self.data().schema() }
+
     /// Returns expected column names of inner [DataFrame]
     #[inline]
     pub(crate) fn col_names() -> &'static [&'static str] {
@@ -366,7 +340,10 @@ impl EncodedBsxBatch {
 
     // TODO: add checks
     /// Vertically stacks with other [EncodedBsxBatch]
-    pub fn vstack(self, other: Self) -> PolarsResult<Self> {
+    pub fn vstack(
+        self,
+        other: Self,
+    ) -> PolarsResult<Self> {
         let new = self.0.vstack(&other.0)?;
         unsafe { Ok(Self::new_unchecked(new)) }
     }
@@ -374,40 +351,30 @@ impl EncodedBsxBatch {
     /// Get methylation stats for [EncodedBsxBatch]
     pub fn get_methylation_stats(&self) -> PolarsResult<MethylationStats> {
         let density_col = self.data().column("density")?;
-        let mean_methylation = density_col
-            .f32()?
-            .iter()
-            .map(|v| v.unwrap_or(0.0) as f64)
-            .filter(|v| !v.is_nan())
-            .mean();
-        let variance_methylation = density_col
-            .f32()?
-            .iter()
-            .map(|v| v.unwrap_or(0.0) as f64)
-            .filter(|v| !v.is_nan())
-            .variance();
-        let coverage_distribution = self.data().column("count_total")?.i16()?.iter().fold(
-            HashMap::<u16, u32>::new(),
-            |mut counts, value| {
-                *counts.entry(value.unwrap() as u16).or_insert(0) += 1;
-                counts
-            },
-        );
+        let mean_methylation = density_col.f32()?.iter().map(|v| v.unwrap_or(0.0) as f64).filter(|v| !v.is_nan()).mean();
+        let variance_methylation = density_col.f32()?.iter().map(|v| v.unwrap_or(0.0) as f64).filter(|v| !v.is_nan()).variance();
+        let coverage_distribution = self.data().column("count_total")?.i16()?.iter().fold(HashMap::<u16, u32>::new(), |mut counts, value| {
+            *counts.entry(value.unwrap() as u16).or_insert(0) += 1;
+            counts
+        });
         let context_methylation = {
             let context_col = self.data().column("context")?;
 
-            let hashmap = itertools::izip!(context_col.bool()?.iter(), density_col.f32()?.iter())
-                .fold(
-                    HashMap::<Option<bool>, (f64, u32)>::new(),
-                    |mut stats, (context, density)| {
-                        if density.map(|v| !v.is_nan()).unwrap_or(true) {
-                            let (sum, count) = stats.entry(context).or_insert((0f64, 0));
-                            *sum += density.unwrap_or(0f32) as f64;
-                            *count += 1;
-                        }
-                        stats
-                    },
-                );
+            let hashmap = itertools::izip!(
+                context_col.bool()?.iter(),
+                density_col.f32()?.iter()
+            ).fold(
+                HashMap::<Option<bool>, (f64, u32)>::new(),
+                |mut stats, (context, density)| {
+                    if density.map(|v| !v.is_nan()).unwrap_or(true)
+                    {
+                        let (sum, count) = stats.entry(context).or_insert((0f64, 0));
+                        *sum += density.unwrap_or(0f32) as f64;
+                        *count += 1;
+                    }
+                    stats
+                },
+            );
 
             HashMap::<Context, (f64, u32)>::from_iter(
                 hashmap.into_iter().map(|(k, v)| (Context::from_bool(k), v)),
@@ -416,18 +383,21 @@ impl EncodedBsxBatch {
         let strand_methylation = {
             let strand_col = self.data().column("strand")?;
 
-            let hashmap = itertools::izip!(strand_col.bool()?.iter(), density_col.f32()?.iter())
-                .fold(
-                    HashMap::<Option<bool>, (f64, u32)>::new(),
-                    |mut stats, (strand, density)| {
-                        if density.map(|v| !v.is_nan()).unwrap_or(true) {
-                            let (sum, count) = stats.entry(strand).or_insert((0f64, 0));
-                            *sum += density.unwrap_or(0f32) as f64;
-                            *count += 1;
-                        }
-                        stats
-                    },
-                );
+            let hashmap = itertools::izip!(
+                strand_col.bool()?.iter(),
+                density_col.f32()?.iter()
+            ).fold(
+                HashMap::<Option<bool>, (f64, u32)>::new(),
+                |mut stats, (strand, density)| {
+                    if density.map(|v| !v.is_nan()).unwrap_or(true)
+                    {
+                        let (sum, count) = stats.entry(strand).or_insert((0f64, 0));
+                        *sum += density.unwrap_or(0f32) as f64;
+                        *count += 1;
+                    }
+                    stats
+                },
+            );
 
             HashMap::<Strand, (f64, u32)>::from_iter(
                 hashmap.into_iter().map(|(k, v)| (Strand::from_bool(k), v)),
@@ -446,12 +416,9 @@ impl EncodedBsxBatch {
     /// Returns chromosome name from chromosome column
     pub fn chr(&self) -> PolarsResult<String> {
         let chr_col = self.data().column("chr")?.categorical()?;
-        let chr = chr_col.get_rev_map().get(
-            chr_col
-                .physical()
-                .first()
-                .ok_or(PolarsError::ComputeError("Could not get first id".into()))?,
-        );
+        let chr = chr_col.get_rev_map().get(chr_col.physical().first().ok_or(
+            PolarsError::ComputeError("Could not get first id".into()),
+        )?);
         Ok(chr.to_string())
     }
 
@@ -504,77 +471,46 @@ impl EncodedBsxBatch {
         }
     }
 
-    /// Replaces low coverage methylation sites to count_total = 0, density = NaN
-    pub fn mark_low_counts(self, threshold: i16) -> PolarsResult<Self> {
-        let data = self
-            .0
-            .lazy()
-            .with_column(
-                when(col("count_total").lt(lit(threshold as u32)))
-                    .then(lit(0))
-                    .otherwise(col("count_total"))
-                    .alias("count_total"),
-            )
-            .with_columns([
-                when(col("count_total").eq(lit(0)))
-                    .then(lit(0))
-                    .otherwise(col("count_m"))
-                    .alias("count_m"),
-                when(col("count_total").eq(lit(0)))
-                    .then(lit(f64::NAN))
-                    .otherwise(col("density"))
-                    .alias("density"),
-            ])
-            .collect()?;
+    /// Replaces low coverage methylation sites to count_total = 0, density =
+    /// NaN
+    pub fn mark_low_counts(
+        self,
+        threshold: i16,
+    ) -> PolarsResult<Self> {
+        let data = self.0.lazy().with_column(
+            when(col("count_total").lt(lit(threshold as u32))).then(lit(0)).otherwise(col("count_total")).alias("count_total"),
+        ).with_columns([
+            when(col("count_total").eq(lit(0))).then(lit(0)).otherwise(col("count_m")).alias("count_m"),
+            when(col("count_total").eq(lit(0))).then(lit(f64::NAN)).otherwise(col("density")).alias("density"),
+        ]).collect()?;
         Ok(Self(data))
     }
 
     /// Returns methylation density values
     pub fn get_density_vals(&self) -> PolarsResult<Vec<f32>> {
-        Ok(self
-            .0
-            .column("density")?
-            .f32()?
-            .into_iter()
-            .map(|x| x.unwrap_or(f32::NAN))
-            .collect())
+        Ok(self.0.column("density")?.f32()?.into_iter().map(|x| x.unwrap_or(f32::NAN)).collect())
     }
 
     /// Returns position values
     pub fn get_position_vals(&self) -> PolarsResult<Vec<u32>> {
-        Ok(self
-            .0
-            .column("position")?
-            .u32()?
-            .into_iter()
-            .map(|x| x.unwrap())
-            .collect())
+        Ok(self.0.column("position")?.u32()?.into_iter().map(|x| x.unwrap()).collect())
     }
 
     /// Returns methylated counts
     pub fn get_counts_m(&self) -> PolarsResult<Vec<i16>> {
-        Ok(self
-            .0
-            .column("count_m")?
-            .i16()?
-            .into_iter()
-            .map(|x| x.unwrap_or(0))
-            .collect())
+        Ok(self.0.column("count_m")?.i16()?.into_iter().map(|x| x.unwrap_or(0)).collect())
     }
 
     /// Returns total counts
     pub fn get_counts_total(&self) -> PolarsResult<Vec<i16>> {
-        Ok(self
-            .0
-            .column("count_total")?
-            .i16()?
-            .into_iter()
-            .map(|x| x.unwrap_or(0))
-            .collect())
+        Ok(self.0.column("count_total")?.i16()?.into_iter().map(|x| x.unwrap_or(0)).collect())
     }
 
     /// Filter [EncodedBsxBatch] by mask
-    pub fn filter_mask(self, mask: &BooleanChunked) -> PolarsResult<Self> {
+    pub fn filter_mask(
+        self,
+        mask: &BooleanChunked,
+    ) -> PolarsResult<Self> {
         Ok(unsafe { Self::new_unchecked(self.0.filter(mask)?) })
     }
 
@@ -582,32 +518,34 @@ impl EncodedBsxBatch {
     pub fn strip_contexts(self) -> PolarsResult<(Self, Self, Self)> {
         let context_col = self.data().column("context")?.bool()?;
         let cg_encoding = Context::CG.to_bool().unwrap();
-        let (cg_mask, chg_mask, chh_mask): (Vec<bool>, Vec<bool>, Vec<bool>) =
-            multiunzip(context_col.iter().map(|v| {
-                let (cg, chh) = if let Some(boolean) = v {
-                    (boolean && cg_encoding, false)
-                } else {
-                    (false, true)
-                };
-                (cg, cg == chh, chh)
-            }));
+        let (cg_mask, chg_mask, chh_mask): (Vec<bool>, Vec<bool>, Vec<bool>) = multiunzip(context_col.iter().map(|v| {
+            let (cg, chh) = if let Some(boolean) = v {
+                (boolean && cg_encoding, false)
+            } else {
+                (false, true)
+            };
+            (cg, cg == chh, chh)
+        }));
         Ok((
             unsafe {
                 Self::new_unchecked(
-                    self.0
-                        .filter(&BooleanChunked::new("mask".into(), cg_mask))?,
+                    self.0.filter(&BooleanChunked::new("mask".into(), cg_mask))?,
                 )
             },
             unsafe {
                 Self::new_unchecked(
-                    self.0
-                        .filter(&BooleanChunked::new("mask".into(), chg_mask))?,
+                    self.0.filter(&BooleanChunked::new(
+                        "mask".into(),
+                        chg_mask,
+                    ))?,
                 )
             },
             unsafe {
                 Self::new_unchecked(
-                    self.0
-                        .filter(&BooleanChunked::new("mask".into(), chh_mask))?,
+                    self.0.filter(&BooleanChunked::new(
+                        "mask".into(),
+                        chh_mask,
+                    ))?,
                 )
             },
         ))
@@ -615,49 +553,35 @@ impl EncodedBsxBatch {
 }
 
 impl From<EncodedBsxBatch> for DataFrame {
-    fn from(batch: EncodedBsxBatch) -> Self {
-        batch.0
-    }
+    fn from(batch: EncodedBsxBatch) -> Self { batch.0 }
 }
 
 impl BsxBatchMethods for EncodedBsxBatch {
     /// Filters [EncodedBsxBatch] by `context` and `strand`
     ///
     /// If both `context` and `strand` are [None], returns [EncodedBsxBatch]
-    fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
-    where
+    fn filter(
+        self,
+        context: Option<Context>,
+        strand: Option<Strand>,
+    ) -> Self where
         Self: Sized,
     {
         if context.is_none() && strand.is_none() {
             self
         } else {
-            let mut boolean_chunked =
-                BooleanChunked::new("mask".into(), vec![true; self.0.height()]);
+            let mut boolean_chunked = BooleanChunked::new("mask".into(), vec![true; self.0.height()]);
             if let Some(strand) = strand {
                 let mask = BooleanChunked::new(
                     "strand".into(),
-                    self.0
-                        .column("strand")
-                        .unwrap()
-                        .bool()
-                        .unwrap()
-                        .into_iter()
-                        .map(|v| v == strand.to_bool())
-                        .collect_vec(),
+                    self.0.column("strand").unwrap().bool().unwrap().into_iter().map(|v| v == strand.to_bool()).collect_vec(),
                 );
                 boolean_chunked = boolean_chunked.bitand(mask);
             }
             if let Some(context) = context {
                 let mask = BooleanChunked::new(
                     "context".into(),
-                    self.0
-                        .column("context")
-                        .unwrap()
-                        .bool()
-                        .unwrap()
-                        .into_iter()
-                        .map(|v| v == context.to_bool())
-                        .collect_vec(),
+                    self.0.column("context").unwrap().bool().unwrap().into_iter().map(|v| v == context.to_bool()).collect_vec(),
                 );
                 boolean_chunked = boolean_chunked.bitand(mask);
             }
@@ -666,20 +590,15 @@ impl BsxBatchMethods for EncodedBsxBatch {
     }
 
     /// Returns reference to inner [DataFrame]
-    fn data(&self) -> &DataFrame {
-        &self.0
-    }
+    fn data(&self) -> &DataFrame { &self.0 }
 
     /// Returns mutable reference to inner [DataFrame]
-    fn data_mut(&mut self) -> &mut DataFrame {
-        &mut self.0
-    }
+    fn data_mut(&mut self) -> &mut DataFrame { &mut self.0 }
+
     /// Returns first [GenomicPosition]
     fn first_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
         let chr_col = self.data().column("chr")?.categorical()?;
-        let chr = chr_col
-            .get_rev_map()
-            .get(chr_col.physical().first().unwrap());
+        let chr = chr_col.get_rev_map().get(chr_col.physical().first().unwrap());
         let pos = self.data().column("position")?.u32()?.first().unwrap();
         Ok(GenomicPosition::new(chr.to_string(), pos as u64))
     }
@@ -687,9 +606,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
     /// Returns last [GenomicPosition]
     fn last_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
         let chr_col = self.data().column("chr")?.categorical()?;
-        let chr = chr_col
-            .get_rev_map()
-            .get(chr_col.physical().last().unwrap());
+        let chr = chr_col.get_rev_map().get(chr_col.physical().last().unwrap());
         let pos = self.data().column("position")?.u32()?.last().unwrap();
         Ok(GenomicPosition::new(chr.to_string(), pos as u64))
     }
@@ -700,8 +617,11 @@ pub trait BsxBatchMethods {
     /// Filters [BsxBatch] by `context` and `strand`
     ///
     /// If both `context` and `strand` are [None], returns [BsxBatch]
-    fn filter(self, context: Option<Context>, strand: Option<Strand>) -> Self
-    where
+    fn filter(
+        self,
+        context: Option<Context>,
+        strand: Option<Strand>,
+    ) -> Self where
         Self: Sized;
 
     /// Returns reference to inner [DataFrame]
@@ -735,41 +655,48 @@ pub trait BsxBatchMethods {
     /// 1. Chromosome names do not match
     /// 2. Chromosome columns non-unique
     /// 3. Resulting data_structs still contains duplicates
-    fn extend(&mut self, other: &Self) -> anyhow::Result<()>
-    where
+    fn extend(
+        &mut self,
+        other: &Self,
+    ) -> anyhow::Result<()> where
         Self: Sized,
     {
         if !(self.check_chr_unique() && other.check_chr_unique()) {
-            return Err(
-                PolarsError::ComputeError("Chromosomes in batches non-unique".into()).into(),
-            );
+            return Err(PolarsError::ComputeError(
+                "Chromosomes in batches non-unique".into(),
+            ).into());
         }
         let self_pos = self.last_position()?;
         let other_pos = self.first_position()?;
 
         if self_pos.chr() != other_pos.chr() {
-            return Err(PolarsError::ComputeError("Chromosomes in batches differ".into()).into());
+            return Err(PolarsError::ComputeError(
+                "Chromosomes in batches differ".into(),
+            ).into());
         }
         if self_pos.position() >= other_pos.position() {
-            warn!("First position in other batch ({}) must be less than last position in the current ({})", other_pos, self_pos);
+            warn!(
+                "First position in other batch ({}) must be less than last \
+                 position in the current ({})",
+                other_pos, self_pos
+            );
             self.data_mut().extend(other.data())?;
             self.data_mut().sort_in_place(
                 ["position"],
-                SortMultipleOptions::default()
-                    .with_order_descending(false)
-                    .with_multithreaded(true),
+                SortMultipleOptions::default().with_order_descending(false).with_multithreaded(true),
             )?;
 
-            if self.data().column("position")?.n_unique()? != self.data().height() {
+            if self.data().column("position")?.n_unique()? != self.data().height()
+            {
                 println!(
                     "{} != {}",
                     self.data().column("position")?.n_unique()?,
                     self.data().height()
                 );
                 println!("{}", self.data());
-                return Err(
-                    PolarsError::ComputeError("Position values are duplicated".into()).into(),
-                );
+                return Err(PolarsError::ComputeError(
+                    "Position values are duplicated".into(),
+                ).into());
             }
         }
 
@@ -777,16 +704,17 @@ pub trait BsxBatchMethods {
     }
 
     /// Returns number of rows
-    fn height(&self) -> usize {
-        self.data().height()
-    }
+    fn height(&self) -> usize { self.data().height() }
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl EncodedBsxBatch {
     #[new]
-    pub fn new_py(batch: BsxBatch, chr_names: Vec<String>) -> PyResult<EncodedBsxBatch> {
+    pub fn new_py(
+        batch: BsxBatch,
+        chr_names: Vec<String>,
+    ) -> PyResult<EncodedBsxBatch> {
         let chr_dtype = get_categorical_dtype(chr_names);
         wrap_polars_result!(Self::encode(batch, &chr_dtype))
     }
@@ -798,7 +726,10 @@ impl EncodedBsxBatch {
     }
 
     #[pyo3(name = "trim_region")]
-    pub fn trim_region_py(&self, region: PyRegionCoordinates) -> PyResult<Self> {
+    pub fn trim_region_py(
+        &self,
+        region: PyRegionCoordinates,
+    ) -> PyResult<Self> {
         let region_coordinates: RegionCoordinates<_> = region.into();
         wrap_polars_result!(self.trim_region(&region_coordinates))
     }
@@ -810,38 +741,43 @@ impl EncodedBsxBatch {
     }
 
     #[pyo3(name = "vstack")]
-    pub fn vstack_py(&self, other: &Self) -> PyResult<Self> {
+    pub fn vstack_py(
+        &self,
+        other: &Self,
+    ) -> PyResult<Self> {
         wrap_polars_result!(self.clone().vstack(other.clone()))
     }
 
     #[getter]
-    fn get_data(&self) -> PyDataFrame {
-        PyDataFrame(self.data().clone())
-    }
+    fn get_data(&self) -> PyDataFrame { PyDataFrame(self.data().clone()) }
 
     #[pyo3(name="filter", signature = (context=None, strand=None))]
-    fn filter_py(&self, context: Option<Context>, strand: Option<Strand>) -> Self {
+    fn filter_py(
+        &self,
+        context: Option<Context>,
+        strand: Option<Strand>,
+    ) -> Self {
         self.clone().filter(context, strand)
     }
 
     #[getter]
     fn get_first_position(&self) -> PyResult<PyGenomicPosition> {
-        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
+        wrap_polars_result!(self
+            .first_position()
+            .map(PyGenomicPosition::from))
     }
 
     #[getter]
     fn get_last_position(&self) -> PyResult<PyGenomicPosition> {
-        wrap_polars_result!(self.first_position().map(PyGenomicPosition::from))
+        wrap_polars_result!(self
+            .first_position()
+            .map(PyGenomicPosition::from))
     }
 
     #[getter]
-    fn get_height(&self) -> usize {
-        self.height()
-    }
+    fn get_height(&self) -> usize { self.height() }
 
-    fn __len__(&self) -> usize {
-        self.height()
-    }
+    fn __len__(&self) -> usize { self.height() }
 }
 
 #[cfg(test)]
@@ -859,14 +795,8 @@ mod tests {
                 "count_m" => [0,0,0],
                 "count_total" => [0,0,0],
                 "density" => [0, 1, 0]
-            ]
-            .unwrap()
-            .lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect()
-            .unwrap(),
-        )
-        .unwrap()
+            ].unwrap().lazy().cast(BsxBatch::hashmap(), true).collect().unwrap(),
+        ).unwrap()
     }
 
     #[test]
@@ -880,14 +810,8 @@ mod tests {
                 "count_m" => [0,0,0],
                 "count_total" => [0,0,0],
                 "density" => [0, 1, 0]
-            ]
-            .unwrap()
-            .lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect()
-            .unwrap(),
-        )
-        .unwrap();
+            ].unwrap().lazy().cast(BsxBatch::hashmap(), true).collect().unwrap(),
+        ).unwrap();
 
         assert!(!batch.check_chr_unique());
 
@@ -937,38 +861,54 @@ mod tests {
                 "count_m" => [0,0,0,0,0,0,0],
                 "count_total" => [0,0,0,0,0,0,0],
                 "density" => [0, 1, 0, 0, 1, 0, 0]
-            ]
-            .unwrap()
-            .lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect()
-            .unwrap(),
-        )
-        .unwrap();
+            ].unwrap().lazy().cast(BsxBatch::hashmap(), true).collect().unwrap(),
+        ).unwrap();
         let chr_dtype = get_categorical_dtype(vec!["1".into()]);
         let encoded = EncodedBsxBatch::encode(batch.clone(), &chr_dtype).unwrap();
 
-        let trimmed = encoded
-            .trim_region(&RegionCoordinates::new("1".to_string(), 4, 9, Strand::None))
-            .unwrap();
-        assert_eq!(trimmed.first_position().unwrap().position(), 4);
-        assert_eq!(trimmed.last_position().unwrap().position(), 9);
+        let trimmed = encoded.trim_region(&RegionCoordinates::new(
+            "1".to_string(),
+            4,
+            9,
+            Strand::None,
+        )).unwrap();
+        assert_eq!(
+            trimmed.first_position().unwrap().position(),
+            4
+        );
+        assert_eq!(
+            trimmed.last_position().unwrap().position(),
+            9
+        );
 
-        let trimmed = encoded
-            .trim_region(&RegionCoordinates::new("1".to_string(), 1, 9, Strand::None))
-            .unwrap();
-        assert_eq!(trimmed.first_position().unwrap().position(), 2);
-        assert_eq!(trimmed.last_position().unwrap().position(), 9);
+        let trimmed = encoded.trim_region(&RegionCoordinates::new(
+            "1".to_string(),
+            1,
+            9,
+            Strand::None,
+        )).unwrap();
+        assert_eq!(
+            trimmed.first_position().unwrap().position(),
+            2
+        );
+        assert_eq!(
+            trimmed.last_position().unwrap().position(),
+            9
+        );
 
-        let trimmed = encoded
-            .trim_region(&RegionCoordinates::new(
-                "1".to_string(),
-                4,
-                12,
-                Strand::None,
-            ))
-            .unwrap();
-        assert_eq!(trimmed.first_position().unwrap().position(), 4);
-        assert_eq!(trimmed.last_position().unwrap().position(), 10);
+        let trimmed = encoded.trim_region(&RegionCoordinates::new(
+            "1".to_string(),
+            4,
+            12,
+            Strand::None,
+        )).unwrap();
+        assert_eq!(
+            trimmed.first_position().unwrap().position(),
+            4
+        );
+        assert_eq!(
+            trimmed.last_position().unwrap().position(),
+            10
+        );
     }
 }

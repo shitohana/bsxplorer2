@@ -1,15 +1,19 @@
-pub use adjustp;
-pub use anyhow;
-pub use bio;
-pub use itertools;
-pub use log;
-pub use polars;
-pub use pretty_env_logger;
-pub use rayon;
-pub use serde;
-pub use serde_json;
-pub use statrs;
-pub use tempfile;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 
 #[cfg(feature = "plots")]
 pub use plotly;
@@ -18,3 +22,15 @@ pub use plotly;
 pub use yew;
 #[cfg(feature = "plots")]
 pub use yew_plotly;
+pub use {adjustp,
+         anyhow,
+         bio,
+         itertools,
+         log,
+         polars,
+         pretty_env_logger,
+         rayon,
+         serde,
+         serde_json,
+         statrs,
+         tempfile};

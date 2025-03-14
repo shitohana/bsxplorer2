@@ -1,8 +1,25 @@
-use num::{PrimInt, Unsigned};
-use serde::{Deserialize, Serialize};
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::Hash;
+
+use num::{PrimInt, Unsigned};
+use serde::{Deserialize, Serialize};
 
 pub trait IPCEncodedEnum {
     fn from_bool(value: Option<bool>) -> Self;
@@ -20,16 +37,23 @@ pub enum Context {
 }
 
 impl PartialOrd<Self> for Context {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(
+        &self,
+        other: &Self,
+    ) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Context {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(
+        &self,
+        other: &Self,
+    ) -> Ordering {
         if self == other {
             Ordering::Equal
-        } else {
+        }
+        else {
             match (self, other) {
                 (Context::CG, _) => Ordering::Greater,
                 (_, Context::CG) => Ordering::Less,
@@ -49,6 +73,7 @@ impl IPCEncodedEnum for Context {
             None => Context::CHH,
         }
     }
+
     fn to_bool(&self) -> Option<bool> {
         match self {
             Context::CG => Some(true),
@@ -83,16 +108,23 @@ pub enum Strand {
 }
 
 impl PartialOrd<Self> for Strand {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(
+        &self,
+        other: &Self,
+    ) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Strand {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(
+        &self,
+        other: &Self,
+    ) -> Ordering {
         if self == other {
             Ordering::Equal
-        } else {
+        }
+        else {
             match (self, other) {
                 (Strand::Forward, _) => Ordering::Greater,
                 (_, Strand::Forward) => Ordering::Less,
@@ -112,6 +144,7 @@ impl IPCEncodedEnum for Strand {
             None => Strand::None,
         }
     }
+
     fn to_bool(&self) -> Option<bool> {
         match self {
             Strand::Forward => Some(true),
@@ -119,6 +152,7 @@ impl IPCEncodedEnum for Strand {
             Strand::None => None,
         }
     }
+
     fn from_str(value: &str) -> Self {
         match value.to_lowercase().as_str() {
             "+" => Strand::Forward,
@@ -126,6 +160,7 @@ impl IPCEncodedEnum for Strand {
             _ => Strand::None,
         }
     }
+
     fn to_string(&self) -> String {
         match self {
             Strand::Forward => String::from("+"),
@@ -135,13 +170,23 @@ impl IPCEncodedEnum for Strand {
     }
 }
 
-pub trait PosNum: PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash {}
+pub trait PosNum:
+    PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash {
+}
 
-impl<T> PosNum for T where T: PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash {}
+impl<T> PosNum for T where
+    T: PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash
+{
+}
 
-pub trait RefId: Eq + Hash + From<String> + Clone + Default + Ord + Display {}
+pub trait RefId:
+    Eq + Hash + From<String> + Clone + Default + Ord + Display {
+}
 
-impl<T> RefId for T where T: Eq + Hash + From<String> + Clone + Default + Ord + Display {}
+impl<T> RefId for T where
+    T: Eq + Hash + From<String> + Clone + Default + Ord + Display
+{
+}
 
 pub trait Data: Sized + Clone {}
 

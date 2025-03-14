@@ -1,9 +1,19 @@
-use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
-use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
-use itertools::Itertools;
-use polars::error::PolarsResult;
-use polars::prelude::*;
-use rayon::prelude::*;
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 use std::collections::btree_map::Cursor;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
@@ -14,6 +24,13 @@ use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 use std::thread::JoinHandle;
 
+use itertools::Itertools;
+use polars::error::PolarsResult;
+use polars::prelude::*;
+use rayon::prelude::*;
+
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::data_structs::region_data::RegionData;
 use crate::io::bsx::read::{BSXIndex, BsxFileReader};
 use crate::utils::types::Strand;
@@ -25,7 +42,7 @@ pub struct BSXBTree(BSXIndex);
 
 impl BSXBTree {
     pub(crate) fn from_file<R: Read + Seek + Send>(
-        reader: &mut BsxFileReader<R>,
+        reader: &mut BsxFileReader<R>
     ) -> Result<Self, Box<dyn Error>> {
         let mut new = Self::empty();
 
@@ -41,41 +58,65 @@ impl BSXBTree {
         Ok(new)
     }
 
-    pub(crate) fn empty() -> Self {
-        Self(HashMap::new())
-    }
+    pub(crate) fn empty() -> Self { Self(HashMap::new()) }
 
     /// Insert node to a [BTreeMap].
-    pub(crate) fn insert(&mut self, pos: GenomicPosition<u64>, idx: usize) {
+    pub(crate) fn insert(
+        &mut self,
+        pos: GenomicPosition<u64>,
+        idx: usize,
+    ) {
         match self.0.get_mut(pos.chr()) {
             Some(btree) => {
                 btree.insert(pos.position(), idx);
-            }
+            },
             None => {
                 let mut btree = BTreeMap::new();
                 btree.insert(pos.position(), idx);
-                self.0.insert(pos.chr().to_string(), btree);
-            }
+                self.0
+                    .insert(pos.chr().to_string(), btree);
+            },
         };
     }
+
     /// Get batch, which starts exactly on specified position.
-    pub fn get_exact(&self, pos: GenomicPosition<u64>) -> Option<&usize> {
-        self.0.get(pos.chr())?.get(&pos.position())
+    pub fn get_exact(
+        &self,
+        pos: GenomicPosition<u64>,
+    ) -> Option<&usize> {
+        self.0
+            .get(pos.chr())?
+            .get(&pos.position())
     }
+
     /// Get cursor to the first batch, which has lower start position.
-    pub fn get_lower_bound(&self, chr: String, start: u64) -> Option<Cursor<'_, u64, usize>> {
-        Some(self.0.get(&chr)?.lower_bound(Included(&start)))
+    pub fn get_lower_bound(
+        &self,
+        chr: String,
+        start: u64,
+    ) -> Option<Cursor<'_, u64, usize>> {
+        Some(
+            self.0
+                .get(&chr)?
+                .lower_bound(Included(&start)),
+        )
     }
 
     /// Get all batch indexes, which contain data_structs about specified region
-    pub fn get_region(&self, coordinates: &RegionCoordinates<u64>) -> Option<Vec<usize>> {
-        let mut lower_bound =
-            self.get_lower_bound(coordinates.chr.to_string(), coordinates.start())?;
+    pub fn get_region(
+        &self,
+        coordinates: &RegionCoordinates<u64>,
+    ) -> Option<Vec<usize>> {
+        let mut lower_bound = self.get_lower_bound(
+            coordinates.chr.to_string(),
+            coordinates.start(),
+        )?;
         let mut batches = vec![lower_bound.prev()];
         while let Some((start_val, index)) = lower_bound.next() {
             if start_val > &coordinates.end() {
                 break;
-            } else {
+            }
+            else {
                 batches.push(Some((start_val, index)));
             }
         }
@@ -91,14 +132,14 @@ impl BSXBTree {
 
 #[derive(Clone)]
 pub struct LinkedReadPlan {
-    reg_mapping: HashMap<RegionData<String, u64, ()>, HashSet<usize>>,
+    reg_mapping:   HashMap<RegionData<String, u64, ()>, HashSet<usize>>,
     batch_mapping: BTreeMap<usize, HashSet<RegionData<String, u64, ()>>>,
 }
 
 impl LinkedReadPlan {
     fn new() -> Self {
         Self {
-            reg_mapping: HashMap::new(),
+            reg_mapping:   HashMap::new(),
             batch_mapping: BTreeMap::new(),
         }
     }
@@ -125,7 +166,11 @@ impl LinkedReadPlan {
         plan
     }
 
-    pub fn insert(&mut self, region: RegionData<String, u64, ()>, index: usize) {
+    pub fn insert(
+        &mut self,
+        region: RegionData<String, u64, ()>,
+        index: usize,
+    ) {
         self.reg_mapping
             .entry(region.clone())
             .or_insert_with(|| {
@@ -155,12 +200,16 @@ impl LinkedReadPlan {
                     .map(|regions| regions.remove(region));
             }
             Some(batches)
-        } else {
+        }
+        else {
             None
         }
     }
 
-    pub fn remove_batch(&mut self, index: usize) -> Option<HashSet<RegionData<String, u64, ()>>> {
+    pub fn remove_batch(
+        &mut self,
+        index: usize,
+    ) -> Option<HashSet<RegionData<String, u64, ()>>> {
         if let Some(regions) = self.batch_mapping.remove(&index) {
             for region in regions.iter() {
                 self.reg_mapping
@@ -168,24 +217,33 @@ impl LinkedReadPlan {
                     .map(|indices| indices.remove(&index));
             }
             Some(regions)
-        } else {
+        }
+        else {
             None
         }
     }
 
-    pub fn get_region(&self, region: &RegionData<String, u64, ()>) -> Option<&HashSet<usize>> {
+    pub fn get_region(
+        &self,
+        region: &RegionData<String, u64, ()>,
+    ) -> Option<&HashSet<usize>> {
         self.reg_mapping.get(region)
     }
 
-    pub fn get_batch(&self, index: usize) -> Option<&HashSet<RegionData<String, u64, ()>>> {
+    pub fn get_batch(
+        &self,
+        index: usize,
+    ) -> Option<&HashSet<RegionData<String, u64, ()>>> {
         self.batch_mapping.get(&index)
     }
 }
 
 struct RegionAssembler {
-    read_plan: LinkedReadPlan,
-    assemble_cache: Arc<RwLock<HashMap<RegionData<String, u64, ()>, Vec<EncodedBsxBatch>>>>,
-    output_queue: Arc<RwLock<VecDeque<RegionData<String, u64, EncodedBsxBatch>>>>,
+    read_plan:      LinkedReadPlan,
+    assemble_cache:
+        Arc<RwLock<HashMap<RegionData<String, u64, ()>, Vec<EncodedBsxBatch>>>>,
+    output_queue:
+        Arc<RwLock<VecDeque<RegionData<String, u64, EncodedBsxBatch>>>>,
 }
 
 impl RegionAssembler {
@@ -197,26 +255,32 @@ impl RegionAssembler {
         }
     }
 
-    pub fn consume_batch(&mut self, data: EncodedBsxBatch, batch_idx: usize) {
+    pub fn consume_batch(
+        &mut self,
+        data: EncodedBsxBatch,
+        batch_idx: usize,
+    ) {
         let data_ref = Arc::new(data);
         let affected_regions = self.read_plan.remove_batch(batch_idx);
 
         if let Some(affected_regions) = affected_regions {
             // Collect trimmed data_structs in parallel.
-            let trimmed_results: Vec<(RegionData<String, u64, ()>, EncodedBsxBatch)> =
-                affected_regions
-                    .par_iter()
-                    .map(|region_data| {
-                        let batch = data_ref.trim_region(&region_data.as_region());
-                        batch.map(|mut df| {
-                            if matches!(region_data.strand(), Strand::None) {
-                                df = df.filter(None, Some(region_data.strand()))
-                            };
-                            (region_data.clone(), df)
-                        })
+            let trimmed_results: Vec<(
+                RegionData<String, u64, ()>,
+                EncodedBsxBatch,
+            )> = affected_regions
+                .par_iter()
+                .map(|region_data| {
+                    let batch = data_ref.trim_region(&region_data.as_region());
+                    batch.map(|mut df| {
+                        if matches!(region_data.strand(), Strand::None) {
+                            df = df.filter(None, Some(region_data.strand()))
+                        };
+                        (region_data.clone(), df)
                     })
-                    .collect::<anyhow::Result<Vec<_>>>()
-                    .expect("Failed to trim data_structs");
+                })
+                .collect::<anyhow::Result<Vec<_>>>()
+                .expect("Failed to trim data_structs");
 
             // Update the cache using a single write lock.
             {
@@ -229,65 +293,70 @@ impl RegionAssembler {
                 }
             }
 
-            // Check for finished regions (those with no pending batches) and assemble.
-            affected_regions.par_iter().for_each(|region_data| {
-                let is_finished = self
-                    .read_plan
-                    .get_region(region_data)
-                    .map_or(false, |indices| indices.is_empty());
+            // Check for finished regions (those with no pending batches) and
+            // assemble.
+            affected_regions
+                .par_iter()
+                .for_each(|region_data| {
+                    let is_finished = self
+                        .read_plan
+                        .get_region(region_data)
+                        .map_or(false, |indices| indices.is_empty());
 
-                if is_finished {
-                    let region_batches = {
-                        let mut cache_write = self.assemble_cache.write().unwrap();
-                        cache_write
-                            .remove(region_data)
-                            .expect("Region marked as read, but missing in cache")
-                    };
+                    if is_finished {
+                        let region_batches = {
+                            let mut cache_write =
+                                self.assemble_cache.write().unwrap();
+                            cache_write.remove(region_data).expect(
+                                "Region marked as read, but missing in cache",
+                            )
+                        };
 
-                    // Sort and then vertically stack batches.
-                    let sorted_batches = region_batches
-                        .into_iter()
-                        .sorted_unstable_by_key(|b| b.first_position().unwrap().position())
-                        .collect_vec();
+                        // Sort and then vertically stack batches.
+                        let sorted_batches = region_batches
+                            .into_iter()
+                            .sorted_unstable_by_key(|b| {
+                                b.first_position().unwrap().position()
+                            })
+                            .collect_vec();
 
-                    let assembled = sorted_batches
-                        .into_iter()
-                        .reduce(|acc, df| acc.vstack(df).unwrap())
-                        .unwrap();
+                        let assembled = sorted_batches
+                            .into_iter()
+                            .reduce(|acc, df| acc.vstack(df).unwrap())
+                            .unwrap();
 
-                    self.output_queue
-                        .write()
-                        .unwrap()
-                        .push_front(region_data.clone().with_data(assembled));
-                }
-            });
+                        self.output_queue
+                            .write()
+                            .unwrap()
+                            .push_front(
+                                region_data.clone().with_data(assembled),
+                            );
+                    }
+                });
         }
     }
 
     fn try_get(&mut self) -> Option<RegionData<String, u64, EncodedBsxBatch>> {
-        self.output_queue.write().unwrap().pop_front()
+        self.output_queue
+            .write()
+            .unwrap()
+            .pop_front()
     }
 
     #[allow(dead_code)]
-    fn read_plan(&self) -> &LinkedReadPlan {
-        &self.read_plan
-    }
+    fn read_plan(&self) -> &LinkedReadPlan { &self.read_plan }
 
-    fn is_finished(&self) -> bool {
-        self.read_plan.batch_mapping.is_empty()
-    }
+    fn is_finished(&self) -> bool { self.read_plan.batch_mapping.is_empty() }
 }
 
 impl From<LinkedReadPlan> for RegionAssembler {
-    fn from(value: LinkedReadPlan) -> Self {
-        Self::new(value)
-    }
+    fn from(value: LinkedReadPlan) -> Self { Self::new(value) }
 }
 
 pub struct RegionReader {
-    assembler: RegionAssembler,
+    assembler:    RegionAssembler,
     _read_thread: JoinHandle<()>,
-    receiver: Receiver<(usize, EncodedBsxBatch)>,
+    receiver:     Receiver<(usize, EncodedBsxBatch)>,
 }
 
 impl RegionReader {
@@ -297,8 +366,10 @@ impl RegionReader {
     ) -> Result<Self, Box<dyn Error>> {
         let mut reader = BsxFileReader::new(handle);
 
-        let read_plan =
-            LinkedReadPlan::from_index_and_regions(BSXBTree::from_file(&mut reader)?, regions);
+        let read_plan = LinkedReadPlan::from_index_and_regions(
+            BSXBTree::from_file(&mut reader)?,
+            regions,
+        );
 
         let assembler = RegionAssembler::new(read_plan.clone());
         let read_plan_copy = Arc::new(read_plan.clone());
@@ -306,8 +377,9 @@ impl RegionReader {
         const BATCH_SIZE: usize = 10;
         let (sender, receiver) = mpsc::sync_channel(BATCH_SIZE);
 
-        let read_thread =
-            thread::spawn(move || region_reader_thread(reader, sender, read_plan_copy));
+        let read_thread = thread::spawn(move || {
+            region_reader_thread(reader, sender, read_plan_copy)
+        });
 
         Ok(Self {
             assembler,
@@ -327,16 +399,18 @@ impl Iterator for RegionReader {
             }
             match self.receiver.recv() {
                 Ok((index, batch)) => {
-                    self.assembler.consume_batch(batch, index);
+                    self.assembler
+                        .consume_batch(batch, index);
                     // Continue looping instead of making a recursive call.
-                }
+                },
                 Err(e) => {
                     if self.assembler.is_finished() {
                         return None;
-                    } else {
+                    }
+                    else {
                         panic!("{}", e)
                     }
-                }
+                },
             }
         }
     }
@@ -367,7 +441,9 @@ pub fn df_to_regions(
     data_casted = data_casted.drop_nulls(None::<&[String]>)?;
 
     let chr_col = data_casted.column(chr_colname)?.str()?;
-    let start_col = data_casted.column(start_colname)?.u64()?;
+    let start_col = data_casted
+        .column(start_colname)?
+        .u64()?;
     let pos_col = data_casted.column(end_colname)?.u64()?;
 
     Ok(itertools::izip!(
@@ -391,15 +467,21 @@ fn region_reader_thread<R: Read + Seek>(
     sender: SyncSender<(usize, EncodedBsxBatch)>,
     read_plan: Arc<LinkedReadPlan>,
 ) {
-    let batch_indices = read_plan.batch_mapping.keys().cloned().collect_vec();
+    let batch_indices = read_plan
+        .batch_mapping
+        .keys()
+        .cloned()
+        .collect_vec();
     for batch_idx in batch_indices {
         match reader.get_batch(batch_idx) {
             Some(Ok(batch)) => {
-                sender.send((batch_idx, batch)).expect("Failed to send");
-            }
+                sender
+                    .send((batch_idx, batch))
+                    .expect("Failed to send");
+            },
             None => {
                 continue;
-            }
+            },
             Some(Err(e)) => panic!("{:?}", e),
         }
     }
@@ -429,8 +511,9 @@ mod tests {
             400,
             Strand::None,
         ));
-        // As we compare only start of batch. This result gives us an information
-        // that this batch can not be anywhere else, rather than in 2nd batch
+        // As we compare only start of batch. This result gives us an
+        // information that this batch can not be anywhere else, rather
+        // than in 2nd batch
         assert_eq!(test, Some(vec![2, 2]));
     }
 }

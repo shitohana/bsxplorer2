@@ -5,11 +5,10 @@ edition = "2021"
 authors = ["shitohana"]
 
 [workspace]
-members = [ "console"]
+members = ["console"]
 
 [lib]
 path = "src/lib.rs"
-
 
 [features]
 default = ["plots"]
@@ -17,6 +16,13 @@ plots = ["plotly", "z_table", "yew", "yew-plotly"]
 
 [dev-dependencies]
 rand_chacha = "=0.3.1"
+quickcheck = "*"
+criterion = { version = "0.5.1", features = ["html_reports"] }
+plotters = { version = "0.3.7", default-features = false, features = [] }
+
+[[bench]]
+name = "beta_binom"
+harness = false
 
 [dependencies]
 # Utility
@@ -42,12 +48,15 @@ serde = "1.0.217"
 serde_json = "1"
 
 # Stats
+console = "0.15"
+
 adjustp = "0.1.6"
 histogram = "0.11.2"
 rand = { version = "=0.8.5", features = ["std", "std_rng"] }
 rand_distr = "=0.4.3"
 rand_xoshiro = "0.7.0"
-ndarray = "0.16.1"
+argmin = "0.10.0"
+ndarray = { version = "0.15.4", features = ["serde"] }
 statrs = "0.18.0"
 
 # Bio

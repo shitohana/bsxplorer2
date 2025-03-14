@@ -1,3 +1,22 @@
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
+use std::fmt;
+use std::sync::Arc;
+
 use anyhow::Context;
 use itertools::Itertools;
 use log::{debug, info, warn};
@@ -6,8 +25,6 @@ use polars::prelude::*;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use statrs::distribution::{ContinuousCDF, Normal};
 use statrs::statistics::Statistics;
-use std::fmt;
-use std::sync::Arc;
 
 use crate::data_structs::region::GenomicPosition;
 
@@ -38,7 +55,10 @@ pub(crate) use polars_schema;
 pub fn array_to_schema(array: &[(&str, DataType)]) -> Schema {
     debug!("Creating schema from array with {} elements", array.len());
     Schema::from(PlIndexMap::from_iter(
-        array.iter().cloned().map(|(k, v)| (PlSmallStr::from(k), v)),
+        array
+            .iter()
+            .cloned()
+            .map(|(k, v)| (PlSmallStr::from(k), v)),
     ))
 }
 
@@ -55,7 +75,10 @@ pub fn get_categorical_dtype(categories: Vec<String>) -> DataType {
         categories.len()
     );
     let categories = polars::export::arrow::array::Utf8ViewArray::from_vec(
-        categories.iter().map(String::as_str).collect_vec(),
+        categories
+            .iter()
+            .map(String::as_str)
+            .collect_vec(),
         ArrowDataType::Utf8View,
     );
     let rev_mapping = Arc::new(RevMapping::build_local(categories));
@@ -70,7 +93,10 @@ pub fn get_categorical_dtype(categories: Vec<String>) -> DataType {
 ///
 /// # Returns
 /// A Polars Schema with the provided column names and data_structs types
-pub(crate) fn schema_from_arrays(names: &[&str], dtypes: &[DataType]) -> Schema {
+pub(crate) fn schema_from_arrays(
+    names: &[&str],
+    dtypes: &[DataType],
+) -> Schema {
     if names.len() != dtypes.len() {
         warn!(
             "Mismatch between names and dtypes array lengths: {} vs {}",
@@ -78,7 +104,13 @@ pub(crate) fn schema_from_arrays(names: &[&str], dtypes: &[DataType]) -> Schema 
             dtypes.len()
         );
     }
-    Schema::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
+    Schema::from_iter(
+        names
+            .iter()
+            .cloned()
+            .map_into()
+            .zip(dtypes.iter().cloned()),
+    )
 }
 
 /// Creates a hashmap from separate arrays of names and data_structs types
@@ -100,7 +132,13 @@ pub(crate) fn hashmap_from_arrays<'a>(
             dtypes.len()
         );
     }
-    PlHashMap::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
+    PlHashMap::from_iter(
+        names
+            .iter()
+            .cloned()
+            .map_into()
+            .zip(dtypes.iter().cloned()),
+    )
 }
 
 // ======================= Genomic Position Utilities =======================
@@ -125,7 +163,9 @@ pub(crate) fn first_position(
 
     let chr = data
         .column(chr_col)
-        .with_context(|| format!("Failed to find chromosome column '{}'", chr_col))?
+        .with_context(|| {
+            format!("Failed to find chromosome column '{}'", chr_col)
+        })?
         .as_series()
         .unwrap()
         .first()
@@ -136,7 +176,9 @@ pub(crate) fn first_position(
 
     let pos = data
         .column(pos_col)
-        .with_context(|| format!("Failed to find position column '{}'", pos_col))?
+        .with_context(|| {
+            format!("Failed to find position column '{}'", pos_col)
+        })?
         .cast(&DataType::UInt64)?
         .u64()?
         .first()
@@ -166,7 +208,9 @@ pub(crate) fn last_position(
 
     let chr = data
         .column(chr_col)
-        .with_context(|| format!("Failed to find chromosome column '{}'", chr_col))?
+        .with_context(|| {
+            format!("Failed to find chromosome column '{}'", chr_col)
+        })?
         .as_series()
         .unwrap()
         .last()
@@ -177,7 +221,9 @@ pub(crate) fn last_position(
 
     let pos = data
         .column(pos_col)
-        .with_context(|| format!("Failed to find position column '{}'", pos_col))?
+        .with_context(|| {
+            format!("Failed to find position column '{}'", pos_col)
+        })?
         .cast(&DataType::UInt64)?
         .u64()?
         .last()
@@ -186,7 +232,8 @@ pub(crate) fn last_position(
     Ok(GenomicPosition::new(chr, pos))
 }
 
-// ======================= Data Encoding/Decoding Functions =======================
+// ======================= Data Encoding/Decoding Functions
+// =======================
 /// Encodes strand information as boolean values
 ///
 /// Converts "+" to true, "-" to false, and everything else to null
@@ -197,7 +244,10 @@ pub(crate) fn last_position(
 ///
 /// # Returns
 /// A LazyFrame with an additional "strand" column containing encoded values
-pub fn encode_strand(lazy_frame: LazyFrame, strand_col: &str) -> LazyFrame {
+pub fn encode_strand(
+    lazy_frame: LazyFrame,
+    strand_col: &str,
+) -> LazyFrame {
     info!("Encoding strand column '{}' to boolean values", strand_col);
     lazy_frame.with_column(
         when(col(strand_col).eq(lit("+")))
@@ -220,7 +270,10 @@ pub fn encode_strand(lazy_frame: LazyFrame, strand_col: &str) -> LazyFrame {
 ///
 /// # Returns
 /// A LazyFrame with the context column containing encoded values
-pub fn encode_context(lazy_frame: LazyFrame, context_col: &str) -> LazyFrame {
+pub fn encode_context(
+    lazy_frame: LazyFrame,
+    context_col: &str,
+) -> LazyFrame {
     info!(
         "Encoding context column '{}' to boolean values",
         context_col
@@ -247,7 +300,11 @@ pub fn encode_context(lazy_frame: LazyFrame, context_col: &str) -> LazyFrame {
 ///
 /// # Returns
 /// A LazyFrame with an additional column containing decoded strand values
-pub fn decode_strand(lazy_frame: LazyFrame, strand_col: &str, result_name: &str) -> LazyFrame {
+pub fn decode_strand(
+    lazy_frame: LazyFrame,
+    strand_col: &str,
+    result_name: &str,
+) -> LazyFrame {
     info!(
         "Decoding strand column '{}' to string column '{}'",
         strand_col, result_name
@@ -274,7 +331,11 @@ pub fn decode_strand(lazy_frame: LazyFrame, strand_col: &str, result_name: &str)
 ///
 /// # Returns
 /// A LazyFrame with an additional column containing decoded context values
-pub fn decode_context(lazy_frame: LazyFrame, context_col: &str, result_name: &str) -> LazyFrame {
+pub fn decode_context(
+    lazy_frame: LazyFrame,
+    context_col: &str,
+    result_name: &str,
+) -> LazyFrame {
     info!(
         "Decoding context column '{}' to string column '{}'",
         context_col, result_name
@@ -330,7 +391,12 @@ pub(crate) const GROUPING_POWER: u8 = 8;
 /// # Returns
 /// A tuple of (KS statistic, p-value).
 /// Small p-values indicate the samples are significantly different.
-pub fn ks2d_2sample<X, Y>(x1: &[X], y1: &[Y], x2: &[X], y2: &[Y]) -> (f64, f64)
+pub fn ks2d_2sample<X, Y>(
+    x1: &[X],
+    y1: &[Y],
+    x2: &[X],
+    y2: &[Y],
+) -> (f64, f64)
 where
     X: num::ToPrimitive
         + num::FromPrimitive
@@ -349,8 +415,7 @@ where
         + num::traits::NumOps
         + Sync
         + Send
-        + fmt::Debug,
-{
+        + fmt::Debug, {
     info!(
         "Performing 2D two-sample KS test: sample1={}, sample2={}",
         x1.len(),
@@ -379,8 +444,10 @@ where
     let d1 = (0..x1.len())
         .into_par_iter()
         .map(|i| {
-            let (fpp1, fmp1, fpm1, fmm1) = count_quads_generic(x1, y1, x1[i], y1[i]);
-            let (fpp2, fmp2, fpm2, fmm2) = count_quads_generic(x2, y2, x1[i], y1[i]);
+            let (fpp1, fmp1, fpm1, fmm1) =
+                count_quads_generic(x1, y1, x1[i], y1[i]);
+            let (fpp2, fmp2, fpm2, fmm2) =
+                count_quads_generic(x2, y2, x1[i], y1[i]);
             vec![
                 (fpp1 - fpp2).abs(),
                 (fmp1 - fmp2).abs(),
@@ -398,8 +465,10 @@ where
     let d2 = (0..x2.len())
         .into_par_iter()
         .map(|i| {
-            let (fpp1, fmp1, fpm1, fmm1) = count_quads_generic(x1, y1, x2[i], y2[i]);
-            let (fpp2, fmp2, fpm2, fmm2) = count_quads_generic(x2, y2, x2[i], y2[i]);
+            let (fpp1, fmp1, fpm1, fmm1) =
+                count_quads_generic(x1, y1, x2[i], y2[i]);
+            let (fpp2, fmp2, fpm2, fmm2) =
+                count_quads_generic(x2, y2, x2[i], y2[i]);
             vec![
                 (fpp1 - fpp2).abs(),
                 (fmp1 - fmp2).abs(),
@@ -415,7 +484,8 @@ where
 
     // Calculate test statistic and p-value
     let d = (d1 + d2) / 2.0;
-    let sqen = ((x1.len() * x2.len()) as f64 / (x1.len() + x2.len()) as f64).sqrt();
+    let sqen =
+        ((x1.len() * x2.len()) as f64 / (x1.len() + x2.len()) as f64).sqrt();
     let r1 = pearson_r(x1, y1);
     let r2 = pearson_r(x2, y2);
     let rr = (1.0 - (r1 * r1 + r2 * r2) / 2.0).sqrt();
@@ -438,7 +508,10 @@ where
 ///
 /// # Returns
 /// Pearson's r coefficient (-1 to 1)
-pub fn pearson_r<X, Y>(x: &[X], y: &[Y]) -> f64
+pub fn pearson_r<X, Y>(
+    x: &[X],
+    y: &[Y],
+) -> f64
 where
     X: num::ToPrimitive
         + num::FromPrimitive
@@ -453,11 +526,11 @@ where
         + Copy
         + Clone
         + num::traits::NumOps
-        + fmt::Debug,
-{
+        + fmt::Debug, {
     if x.len() != y.len() {
         warn!(
-            "Cannot calculate Pearson's r: x length ({}) doesn't match y length ({})",
+            "Cannot calculate Pearson's r: x length ({}) doesn't match y \
+             length ({})",
             x.len(),
             y.len()
         );
@@ -475,8 +548,14 @@ where
     );
 
     // Convert to f64 for calculations
-    let x_f64 = x.iter().map(|x| x.to_f64().unwrap()).collect::<Vec<_>>();
-    let y_f64 = y.iter().map(|y| y.to_f64().unwrap()).collect::<Vec<_>>();
+    let x_f64 = x
+        .iter()
+        .map(|x| x.to_f64().unwrap())
+        .collect::<Vec<_>>();
+    let y_f64 = y
+        .iter()
+        .map(|y| y.to_f64().unwrap())
+        .collect::<Vec<_>>();
 
     let x_mean = x_f64.iter().mean();
     let y_mean = y_f64.iter().mean();
@@ -490,8 +569,14 @@ where
 
     // Calculate denominator (product of standard deviations)
     let denominator = {
-        let x_dev: f64 = x_f64.iter().map(|valx| (valx - x_mean).powi(2)).sum();
-        let y_dev: f64 = y_f64.iter().map(|valy| (valy - y_mean).powi(2)).sum();
+        let x_dev: f64 = x_f64
+            .iter()
+            .map(|valx| (valx - x_mean).powi(2))
+            .sum();
+        let y_dev: f64 = y_f64
+            .iter()
+            .map(|valy| (valy - y_mean).powi(2))
+            .sum();
         (x_dev * y_dev).sqrt()
     };
 
@@ -512,12 +597,27 @@ where
 /// * `x0`, `y0` - Reference point coordinates
 ///
 /// # Returns
-/// Probabilities for each quadrant (++, -+, +-, --) relative to the reference point
-fn count_quads_generic<X, Y>(x: &[X], y: &[Y], x0: X, y0: Y) -> (f64, f64, f64, f64)
+/// Probabilities for each quadrant (++, -+, +-, --) relative to the reference
+/// point
+fn count_quads_generic<X, Y>(
+    x: &[X],
+    y: &[Y],
+    x0: X,
+    y0: Y,
+) -> (f64, f64, f64, f64)
 where
-    X: num::ToPrimitive + num::FromPrimitive + PartialOrd + Copy + Clone + num::traits::NumOps,
-    Y: num::ToPrimitive + num::FromPrimitive + PartialOrd + Copy + Clone + num::traits::NumOps,
-{
+    X: num::ToPrimitive
+        + num::FromPrimitive
+        + PartialOrd
+        + Copy
+        + Clone
+        + num::traits::NumOps,
+    Y: num::ToPrimitive
+        + num::FromPrimitive
+        + PartialOrd
+        + Copy
+        + Clone
+        + num::traits::NumOps, {
     if x.len() != y.len() {
         warn!(
             "Cannot count quadrants: x length ({}) doesn't match y length ({})",
@@ -570,7 +670,11 @@ where
 ///
 /// # Returns
 /// The significance level (p-value)
-fn ks_prob(alam: f64, iter: Option<usize>, prec: Option<f64>) -> f64 {
+fn ks_prob(
+    alam: f64,
+    iter: Option<usize>,
+    prec: Option<f64>,
+) -> f64 {
     let mut toadd: Vec<f64> = vec![1.0];
     let mut qks = 0f64;
     let mut j = 1;
@@ -583,9 +687,9 @@ fn ks_prob(alam: f64, iter: Option<usize>, prec: Option<f64>) -> f64 {
     );
 
     // Iteratively compute probability until convergence
-    while (j < iter) && ((toadd.last().unwrap_or(&f64::MAX)).abs() > prec * 2.0) {
+    while (j < iter) && (toadd.last().unwrap_or(&f64::MAX).abs() > prec * 2.0) {
         let new_elem = 2.0
-            * (-1.0f64).powi((j as i32 - 1) as i32)
+            * (-1.0f64).powi((j as i32 - 1))
             * (-2.0 * j.pow(2) as f64 * alam.powi(2)).exp();
         qks += new_elem;
         toadd.push(new_elem);
@@ -611,7 +715,8 @@ fn ks_prob(alam: f64, iter: Option<usize>, prec: Option<f64>) -> f64 {
     if qks < prec {
         debug!("KS probability close to zero (< {})", prec);
         0.0
-    } else {
+    }
+    else {
         qks
     }
 }
@@ -624,12 +729,13 @@ struct Observation {
     /// Which group the observation belongs to (0 for group1, 1 for group2)
     group: usize,
     /// The assigned rank of this observation
-    rank: f64,
+    rank:  f64,
 }
 
 /// Performs Mann-Whitney U test for two independent samples
 ///
-/// A non-parametric test for determining whether two samples come from the same distribution.
+/// A non-parametric test for determining whether two samples come from the same
+/// distribution.
 ///
 /// # Arguments
 /// * `group1` - First sample values
@@ -637,7 +743,10 @@ struct Observation {
 ///
 /// # Returns
 /// A tuple containing (U statistic, two-tailed p-value)
-pub fn mann_whitney_u(group1: &[f64], group2: &[f64]) -> (f64, f64) {
+pub fn mann_whitney_u(
+    group1: &[f64],
+    group2: &[f64],
+) -> (f64, f64) {
     info!(
         "Performing Mann-Whitney U test: group1={}, group2={}",
         group1.len(),
@@ -656,24 +765,33 @@ pub fn mann_whitney_u(group1: &[f64], group2: &[f64]) -> (f64, f64) {
     // Combine observations from both groups
     let mut observations: Vec<Observation> = group1
         .iter()
-        .map(|&v| Observation {
-            value: v,
-            group: 0,
-            rank: 0.0,
+        .map(|&v| {
+            Observation {
+                value: v,
+                group: 0,
+                rank:  0.0,
+            }
         })
-        .chain(group2.iter().map(|&v| Observation {
-            value: v,
-            group: 1,
-            rank: 0.0,
+        .chain(group2.iter().map(|&v| {
+            Observation {
+                value: v,
+                group: 1,
+                rank:  0.0,
+            }
         }))
         .collect();
 
     // Sort observations by value
     observations.sort_by(|a, b| {
-        a.value.partial_cmp(&b.value).unwrap_or_else(|| {
-            warn!("Unable to compare values: {:?} and {:?}", a.value, b.value);
-            std::cmp::Ordering::Equal
-        })
+        a.value
+            .partial_cmp(&b.value)
+            .unwrap_or_else(|| {
+                warn!(
+                    "Unable to compare values: {:?} and {:?}",
+                    a.value, b.value
+                );
+                std::cmp::Ordering::Equal
+            })
     });
 
     // Assign ranks, handling ties by averaging
@@ -686,7 +804,8 @@ pub fn mann_whitney_u(group1: &[f64], group2: &[f64]) -> (f64, f64) {
 
         // Find all tied values
         while end < observations.len()
-            && (observations[end].value - observations[start].value).abs() < 1e-6
+            && (observations[end].value - observations[start].value).abs()
+                < 1e-6
         {
             end += 1;
         }
@@ -727,13 +846,18 @@ pub fn mann_whitney_u(group1: &[f64], group2: &[f64]) -> (f64, f64) {
     let mean_u = n1 * n2 / 2.0;
 
     // Variance with tie correction
-    let tie_sum: f64 = tie_groups.iter().map(|&t| (t * t * t - t) as f64).sum();
-    let variance_u = n1 * n2 / 12.0 * ((n_total + 1.0) - tie_sum / (n_total * (n_total - 1.0)));
+    let tie_sum: f64 = tie_groups
+        .iter()
+        .map(|&t| (t * t * t - t) as f64)
+        .sum();
+    let variance_u = n1 * n2 / 12.0
+        * ((n_total + 1.0) - tie_sum / (n_total * (n_total - 1.0)));
 
     // Apply continuity correction and compute Z-score
     let z = if variance_u > 0.0 {
         (u_stat - mean_u + 0.5) / variance_u.sqrt()
-    } else {
+    }
+    else {
         warn!("Variance is zero in Mann-Whitney U test");
         0.0
     };
@@ -752,8 +876,9 @@ pub fn mann_whitney_u(group1: &[f64], group2: &[f64]) -> (f64, f64) {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{mann_whitney_u, pearson_r};
     use assert_approx_eq::assert_approx_eq;
+
+    use crate::utils::{mann_whitney_u, pearson_r};
 
     #[test]
     fn test_utest() {

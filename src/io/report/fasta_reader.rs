@@ -1,18 +1,35 @@
-use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
-use crate::utils::types::{PosNum, Strand};
-use bio::io::fasta::*;
-use hashbrown::HashMap;
-use log::{debug, info};
-use num::{PrimInt, ToPrimitive, Unsigned};
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// The Prosperity Public License 3.0.0
+///
+/// Contributor: [shitohana](https://github.com/shitohana)
+///
+/// Source Code: https://github.com/shitohana/BSXplorer
+/// ***********************************************************************
+/// ****
+
+/// ***********************************************************************
+/// *****
+/// * Copyright (c) 2025
+/// ***********************************************************************
+/// ****
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{BufRead, Read, Seek};
 
+use bio::io::fasta::*;
+use hashbrown::HashMap;
+use log::{debug, info};
+use num::{PrimInt, ToPrimitive, Unsigned};
+
+use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
+use crate::utils::types::{PosNum, Strand};
+
 /// A wrapper around bio's IndexedReader to handle FASTA file operations
 pub struct FastaReader<R>
 where
-    R: Read + BufRead + Seek,
-{
+    R: Read + BufRead + Seek, {
     reader: IndexedReader<R>,
 }
 
@@ -27,15 +44,16 @@ where
     }
 
     /// Try to create a FastaReader from file handles for FASTA and FAI files
-    pub fn try_from_handle(fasta_handle: R, fai_handle: R) -> Result<Self, Box<dyn Error>> {
+    pub fn try_from_handle(
+        fasta_handle: R,
+        fai_handle: R,
+    ) -> Result<Self, Box<dyn Error>> {
         let reader = IndexedReader::new(fasta_handle, fai_handle)?;
         Ok(Self::new(reader))
     }
 
     /// Get the underlying FASTA index
-    pub fn index(&self) -> &Index {
-        &self.reader.index
-    }
+    pub fn index(&self) -> &Index { &self.reader.index }
 
     /// Fetch a genomic region specified by coordinates
     pub fn fetch_region<N>(
@@ -43,37 +61,53 @@ where
         region_coordinates: RegionCoordinates<N>,
     ) -> Result<Vec<u8>, Box<dyn Error>>
     where
-        N: PosNum,
-    {
+        N: PosNum, {
         let chr = region_coordinates.chr();
-        let end_pos = region_coordinates.end().to_u64().unwrap_or_default();
+        let end_pos = region_coordinates
+            .end()
+            .to_u64()
+            .unwrap_or_default();
 
         let seq_data = self
             .get_record_metadata(chr)
-            .ok_or_else(|| CoverageError::ChromosomeNotFound(chr.to_string()))?;
+            .ok_or_else(|| {
+                CoverageError::ChromosomeNotFound(chr.to_string())
+            })?;
 
         if seq_data.len < end_pos {
             return Err(CoverageError::OutOfBounds(
                 chr.to_string(),
-                region_coordinates.end().to_usize().unwrap_or_default(),
+                region_coordinates
+                    .end()
+                    .to_usize()
+                    .unwrap_or_default(),
             )
             .into());
         }
 
-        // Determine fetch end position, handling edge case when end is at sequence length
-        let fetch_end = if region_coordinates.end() != N::from(seq_data.len).unwrap() {
-            end_pos + 1
-        } else {
-            seq_data.len
-        };
+        // Determine fetch end position, handling edge case when end is at
+        // sequence length
+        let fetch_end =
+            if region_coordinates.end() != N::from(seq_data.len).unwrap() {
+                end_pos + 1
+            }
+            else {
+                seq_data.len
+            };
 
         self.reader.fetch(
             chr,
-            region_coordinates.start().to_u64().unwrap_or_default(),
+            region_coordinates
+                .start()
+                .to_u64()
+                .unwrap_or_default(),
             fetch_end,
         )?;
 
-        let capacity = region_coordinates.length().to_usize().unwrap_or_default();
+        let capacity = region_coordinates
+            .length()
+            .to_usize()
+            .unwrap_or_default();
         let mut buffer = Vec::with_capacity(capacity);
         self.reader.read(&mut buffer)?;
 
@@ -82,10 +116,15 @@ where
     }
 
     /// Fetch an entire record by name
-    pub fn fetch_record(&mut self, name: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn fetch_record(
+        &mut self,
+        name: &str,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         let seq_data = self
             .get_record_metadata(name)
-            .ok_or_else(|| CoverageError::ChromosomeNotFound(name.to_string()))?;
+            .ok_or_else(|| {
+                CoverageError::ChromosomeNotFound(name.to_string())
+            })?;
 
         let mut buffer = Vec::with_capacity(seq_data.len as usize);
         self.reader.fetch_all(name)?;
@@ -95,7 +134,10 @@ where
     }
 
     /// Get metadata for a specific record
-    pub fn get_record_metadata(&self, name: &str) -> Option<Sequence> {
+    pub fn get_record_metadata(
+        &self,
+        name: &str,
+    ) -> Option<Sequence> {
         self.reader
             .index
             .sequences()
@@ -118,9 +160,8 @@ where
 pub struct FastaCoverageReader<R, V>
 where
     R: Read + BufRead + Seek,
-    V: PrimInt + Unsigned,
-{
-    inner: FastaReader<R>,
+    V: PrimInt + Unsigned, {
+    inner:    FastaReader<R>,
     coverage: Coverage<V>,
 }
 
@@ -149,14 +190,15 @@ where
     }
 
     /// Get the current position for a given sequence name
-    pub fn tell_pos(&self, name: &str) -> Option<V> {
+    pub fn tell_pos(
+        &self,
+        name: &str,
+    ) -> Option<V> {
         self.coverage.get(name).map(|c| c.read)
     }
 
     /// Get a reference to the inner FastaReader
-    pub fn inner(&self) -> &FastaReader<R> {
-        &self.inner
-    }
+    pub fn inner(&self) -> &FastaReader<R> { &self.inner }
 
     /// Get a mutable reference to the inner FastaReader
     pub(crate) fn inner_mut(&mut self) -> &mut FastaReader<R> {
@@ -164,9 +206,7 @@ where
     }
 
     /// Get a reference to the coverage tracker
-    pub fn coverage(&self) -> &Coverage<V> {
-        &self.coverage
-    }
+    pub fn coverage(&self) -> &Coverage<V> { &self.coverage }
 
     /// Get a mutable reference to the coverage tracker
     pub(crate) fn coverage_mut(&mut self) -> &mut Coverage<V> {
@@ -203,13 +243,18 @@ where
     }
 
     /// Get the remaining sequence for a chromosome
-    pub fn get_seq_leftover(&mut self, chr: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        let coverage_row = self
-            .coverage
-            .get(chr)
-            .ok_or_else(|| CoverageError::ChromosomeNotFound(chr.to_string()))?;
+    pub fn get_seq_leftover(
+        &mut self,
+        chr: &str,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let coverage_row = self.coverage.get(chr).ok_or_else(|| {
+            CoverageError::ChromosomeNotFound(chr.to_string())
+        })?;
 
-        let end_pos = coverage_row.total.to_u32().unwrap_or_default();
+        let end_pos = coverage_row
+            .total
+            .to_u32()
+            .unwrap_or_default();
         let end_gpos = GenomicPosition::new(chr.to_string(), end_pos);
 
         self.get_seq_until(&end_gpos)
@@ -220,9 +265,8 @@ where
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct CoverageRow<V>
 where
-    V: Unsigned + PrimInt,
-{
-    read: V,  // Position up to which the sequence has been read
+    V: Unsigned + PrimInt, {
+    read:  V, // Position up to which the sequence has been read
     total: V, // Total length of the sequence
 }
 
@@ -231,7 +275,10 @@ where
     V: Unsigned + PrimInt,
 {
     /// Create a new CoverageRow with specified read and total positions
-    pub fn new(read: V, total: V) -> Self {
+    pub fn new(
+        read: V,
+        total: V,
+    ) -> Self {
         Self { read, total }
     }
 
@@ -244,7 +291,10 @@ where
     }
 
     /// Update the read position
-    pub fn shift_to(&mut self, pos: V) -> Result<(V, V), CoverageError> {
+    pub fn shift_to(
+        &mut self,
+        pos: V,
+    ) -> Result<(V, V), CoverageError> {
         if self.read > pos {
             return Err(CoverageError::ValueError(format!(
                 "New position {} is less than previous position {}",
@@ -263,28 +313,21 @@ where
     }
 
     /// Check if the entire sequence has been read
-    pub fn is_finished(&self) -> bool {
-        self.total == self.read
-    }
+    pub fn is_finished(&self) -> bool { self.total == self.read }
 
     /// Get the current read position
-    pub fn read(&self) -> V {
-        self.read
-    }
+    pub fn read(&self) -> V { self.read }
 
     /// Get the total sequence length
-    pub fn total(&self) -> V {
-        self.total
-    }
+    pub fn total(&self) -> V { self.total }
 }
 
 /// Tracks coverage across multiple sequences
 pub struct Coverage<V>
 where
-    V: Unsigned + PrimInt,
-{
+    V: Unsigned + PrimInt, {
     mapping: HashMap<String, CoverageRow<V>>,
-    order: Vec<String>, // Preserves the order of sequences
+    order:   Vec<String>, // Preserves the order of sequences
 }
 
 /// Errors that can occur during coverage operations
@@ -297,16 +340,23 @@ pub enum CoverageError {
 }
 
 impl Display for CoverageError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
-            CoverageError::ChromosomeNotFound(name) => write!(f, "Chromosome '{}' not found", name),
+            CoverageError::ChromosomeNotFound(name) => {
+                write!(f, "Chromosome '{}' not found", name)
+            },
             CoverageError::PreviousNotFinished(name) => {
                 write!(f, "Previous sequence '{}' not finished", name)
-            }
+            },
             CoverageError::OutOfBounds(name, size) => {
                 write!(f, "Position {} for '{}' is out of bounds", size, name)
-            }
-            CoverageError::ValueError(desc) => write!(f, "Value error: {}", desc),
+            },
+            CoverageError::ValueError(desc) => {
+                write!(f, "Value error: {}", desc)
+            },
         }
     }
 }
@@ -327,31 +377,51 @@ where
             })
             .collect();
 
-        let order = sequences.into_iter().map(|seq| seq.name).collect();
+        let order = sequences
+            .into_iter()
+            .map(|seq| seq.name)
+            .collect();
 
         Self { mapping, order }
     }
 
     /// Get coverage information for a sequence by name
-    pub fn get(&self, name: &str) -> Option<&CoverageRow<V>> {
+    pub fn get(
+        &self,
+        name: &str,
+    ) -> Option<&CoverageRow<V>> {
         self.mapping.get(name)
     }
 
     /// Find a sequence's position in the order
-    pub fn position(&self, name: &str) -> Option<usize> {
-        self.order.iter().position(|n| n == name)
+    pub fn position(
+        &self,
+        name: &str,
+    ) -> Option<usize> {
+        self.order
+            .iter()
+            .position(|n| n == name)
     }
 
     /// Update the coverage position for a sequence
-    pub fn shift_to(&mut self, name: &str, pos: V) -> Result<(V, V), CoverageError> {
+    pub fn shift_to(
+        &mut self,
+        name: &str,
+        pos: V,
+    ) -> Result<(V, V), CoverageError> {
         // Check if all previous sequences are finished
         if let Some(idx) = self.position(name) {
             if idx > 0 {
-                if let Some(unfinished) = self.order[..idx]
-                    .iter()
-                    .find(|&n| !self.mapping.get(n).unwrap().is_finished())
-                {
-                    return Err(CoverageError::PreviousNotFinished(unfinished.to_string()));
+                if let Some(unfinished) = self.order[..idx].iter().find(|&n| {
+                    !self
+                        .mapping
+                        .get(n)
+                        .unwrap()
+                        .is_finished()
+                }) {
+                    return Err(CoverageError::PreviousNotFinished(
+                        unfinished.to_string(),
+                    ));
                 }
             }
         }
@@ -391,11 +461,11 @@ mod tests {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
             Sequence {
                 name: "chr1".to_string(),
-                len: 100,
+                len:  100,
             },
             Sequence {
                 name: "chr2".to_string(),
-                len: 200,
+                len:  200,
             },
         ]);
         assert_eq!(coverage.get("chr1").map(|v| v.read), Some(0u64));
@@ -408,7 +478,10 @@ mod tests {
         let (start, end) = coverage.shift_to("chr1", 110).unwrap();
         assert_eq!(start, 51u64);
         assert_eq!(end, 100u64);
-        assert!(coverage.get("chr1").unwrap().is_finished());
+        assert!(coverage
+            .get("chr1")
+            .unwrap()
+            .is_finished());
 
         let (start, end) = coverage.shift_to("chr2", 100).unwrap();
         assert_eq!(start, 1u64);
@@ -421,11 +494,11 @@ mod tests {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
             Sequence {
                 name: "chr1".to_string(),
-                len: 100,
+                len:  100,
             },
             Sequence {
                 name: "chr2".to_string(),
-                len: 200,
+                len:  200,
             },
         ]);
         let _result = coverage.shift_to("chr2", 100).unwrap();
@@ -437,11 +510,11 @@ mod tests {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
             Sequence {
                 name: "chr1".to_string(),
-                len: 100,
+                len:  100,
             },
             Sequence {
                 name: "chr2".to_string(),
-                len: 200,
+                len:  200,
             },
         ]);
         let _result = coverage.shift_to("chr3", 100).unwrap();

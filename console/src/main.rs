@@ -1,21 +1,34 @@
+/*******************************************************************************
+ Copyright (c) 2025
+ The Prosperity Public License 3.0.0
+
+ Contributor: [shitohana](https://github.com/shitohana)
+
+ Source Code: https://github.com/shitohana/BSXplorer
+ ******************************************************************************/
+
+/// ****************************************************************************
+/// * Copyright (c) 2025
+/// ***************************************************************************
+
 #![feature(path_add_extension)]
 pub mod convert;
 mod dmr;
 pub mod stats;
 pub mod utils;
-use crate::convert::ReportArgs;
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 pub(crate) use utils::*;
 use wild::ArgsOs;
+
+use crate::convert::ReportArgs;
 
 #[derive(Parser, Debug)]
 #[command(
     author = env!("CARGO_PKG_AUTHORS"),
     version = env!("CARGO_PKG_VERSION"),
     about = env!("CARGO_PKG_DESCRIPTION"),
-    long_about = None,
-)]
+    long_about = None,)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -27,8 +40,7 @@ const CONVERT_ABOUT: &'static str = "BSXplorer report type conversion tool";
 enum Commands {
     #[command(
         about = DMR_ABOUT,
-        name = "dmr",
-    )]
+        name = "dmr",)]
     Dmr {
         #[clap(flatten)]
         utils: UtilsArgs,
@@ -39,8 +51,7 @@ enum Commands {
     #[command(
         name = "convert",
         about = CONVERT_ABOUT,
-        after_help = include_str!("strings/convert_ahelp.txt"),
-    )]
+        after_help = include_str!("strings/convert_ahelp.txt"),)]
     Convert {
         #[clap(flatten)]
         args: ReportArgs,
@@ -48,8 +59,7 @@ enum Commands {
         utils: UtilsArgs,
     },
 
-    #[command(
-        name = "stats",
+    #[command(name = "stats",
         about = "Compute methylation statistics.",
         after_help = include_str!("strings/stats_ahelp.txt"),
     )]
