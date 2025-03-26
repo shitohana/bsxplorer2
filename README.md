@@ -60,6 +60,8 @@ Add BSXplorer to your Rust project by including it in your `Cargo.toml`:
 bsxplorer = "0.1.0"
 ```
 
+Documentation is available at [docs.rs](https://docs.rs/bsxplorer2)
+
 ## Usage
 
 ### Basic Example: Reading and Processing Methylation Data
