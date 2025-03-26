@@ -1,23 +1,12 @@
-use std::ops::{Div, Mul, Sub};
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
 use itertools::Itertools;
 use ndarray::{arr0, Array1, ArrayView1};
 use num::Float;
+use std::ops::{Div, Mul, Sub};
 
 use crate::tools::dimred::to_num;
 
 const PRECISION_LIMIT: f64 = 1e-6;
-const VARIANCE_MIN_RATIO: f64 = 1e-2;
+// const VARIANCE_MIN_RATIO: f64 = 1e-2;
 const MEAN_SCALE: u64 = 1000;
 
 // TODO add pseudocounts
@@ -313,7 +302,7 @@ impl<N: Float + ndarray::ScalarOperand> BetaBinomParams<N> {
         // OPTIMIZATION: Calculate mean and variance in one pass through the
         // data
         let n_elements = to_num(data.len());
-        let (sum, sum_sq, props): (N, N, Vec<N>) = data
+        let (sum, sum_sq, _props): (N, N, Vec<N>) = data
             .iter()
             .zip(n_trials)
             .map(|(s, t)| *s / *t)

@@ -335,34 +335,6 @@ pub fn decode_context(
     )
 }
 
-// ======================= Value Scaling Functions =======================
-/// Scales a floating-point value to the full range of u64
-///
-/// # Arguments
-/// * `value` - A f64 value between 0.0 and 1.0
-///
-/// # Returns
-/// A u64 value scaled to the full range
-pub(crate) fn f64_to_u64_scaled(value: f64) -> u64 {
-    debug!("Scaling f64 value {} to u64", value);
-    (value * u64::MAX as f64) as u64
-}
-
-/// Scales a u64 value back to a floating-point between 0.0 and 1.0
-///
-/// # Arguments
-/// * `value` - A u64 value
-///
-/// # Returns
-/// A f64 value between 0.0 and 1.0
-pub(crate) fn u64_to_f64_scaled(value: u64) -> f64 {
-    debug!("Scaling u64 value {} to f64", value);
-    value as f64 / u64::MAX as f64
-}
-
-/// Power used for grouping with < 0.5% error
-pub(crate) const GROUPING_POWER: u8 = 8;
-
 // ======================= Statistical Tests =======================
 /// Two-dimensional, two-sample Kolmogorov-Smirnov test
 ///

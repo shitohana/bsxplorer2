@@ -1,10 +1,3 @@
-#[cfg(feature = "plots")]
-pub use plotly;
-// TODO remove
-#[cfg(feature = "plots")]
-pub use yew;
-#[cfg(feature = "plots")]
-pub use yew_plotly;
 pub use {adjustp,
          anyhow,
          bio,
