@@ -1,16 +1,3 @@
-/*******************************************************************************
- Copyright (c) 2025
- The Prosperity Public License 3.0.0
-
- Contributor: [shitohana](https://github.com/shitohana)
-
- Source Code: https://github.com/shitohana/BSXplorer
- ******************************************************************************/
-
-/// ****************************************************************************
-/// * Copyright (c) 2025
-/// ***************************************************************************
-
 #![feature(path_add_extension)]
 pub mod convert;
 mod dmr;
@@ -45,7 +32,7 @@ enum Commands {
         #[clap(flatten)]
         utils: UtilsArgs,
         #[clap(flatten)]
-        args: dmr::DmrArgs,
+        args:  dmr::DmrArgs,
     },
 
     #[command(
@@ -54,7 +41,7 @@ enum Commands {
         after_help = include_str!("strings/convert_ahelp.txt"),)]
     Convert {
         #[clap(flatten)]
-        args: ReportArgs,
+        args:  ReportArgs,
         #[clap(flatten)]
         utils: UtilsArgs,
     },

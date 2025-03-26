@@ -1,16 +1,3 @@
-/*******************************************************************************
- Copyright (c) 2025
- The Prosperity Public License 3.0.0
-
- Contributor: [shitohana](https://github.com/shitohana)
-
- Source Code: https://github.com/shitohana/BSXplorer
- ******************************************************************************/
-
-/// ****************************************************************************
-/// * Copyright (c) 2025
-/// ***************************************************************************
-
 //! This module provides functionalities for grouping and analyzing multiple
 //! `EncodedBsxBatch` instances.
 //!
@@ -91,7 +78,7 @@ pub struct EncodedBsxBatchGroup<R: Display + Eq> {
     batches: Vec<EncodedBsxBatch>,
     /// Optional labels associated with each batch (e.g., condition, tissue
     /// type, etc.)
-    labels: Option<Vec<R>>,
+    labels:  Option<Vec<R>>,
 }
 
 impl<R: Display + Eq> EncodedBsxBatchGroup<R> {
@@ -145,7 +132,8 @@ where
                 .iter()
                 .map(EncodedBsxBatch::height),
             "Batch heights do not match"
-        ).with_context(|| "Batches must have the same number of rows")?;
+        )
+        .with_context(|| "Batches must have the same number of rows")?;
 
         check_eq_batches!(
             batches
@@ -154,7 +142,8 @@ where
                 .map(|b| EncodedBsxBatch::as_contig(b, &mut None))
                 .map(|c| c.unwrap()),
             "Contigs differ between batches"
-        ).with_context(|| {
+        )
+        .with_context(|| {
             "All batches must reference the same chromosome/contig"
         })?;
 
@@ -230,11 +219,13 @@ where
                     .unwrap()
             }),
             "Data columns (position, strand, context) differ between batches"
-        ).is_ok();
+        )
+        .is_ok();
 
         if result {
             debug!("Expensive consistency check passed");
-        } else {
+        }
+        else {
             warn!(
                 "Expensive consistency check failed - batches have \
                  inconsistent data_structs"
@@ -264,9 +255,14 @@ where
     ) -> anyhow::Result<Self> {
         debug!("Applying filter mask to {} batches", self.batches.len());
 
-        let filtered_batches: Result<Vec<EncodedBsxBatch>, PolarsError> = self.batches.into_par_iter().map(|batch| batch.filter_mask(&mask)).collect();
+        let filtered_batches: Result<Vec<EncodedBsxBatch>, PolarsError> = self
+            .batches
+            .into_par_iter()
+            .map(|batch| batch.filter_mask(&mask))
+            .collect();
 
-        let filtered_batches = filtered_batches.with_context(|| "Failed to apply filter mask to batches")?;
+        let filtered_batches = filtered_batches
+            .with_context(|| "Failed to apply filter mask to batches")?;
 
         info!(
             "Successfully filtered batch group to {} rows",
@@ -280,7 +276,7 @@ where
 
         Ok(Self {
             batches: filtered_batches,
-            labels: self.labels,
+            labels:  self.labels,
         })
     }
 
@@ -309,11 +305,19 @@ where
 
         let mask = {
             let context_bool = context_bool;
-            let mask_iter = df0.data().column("context").with_context(|| {
-                "Failed to get 'context' column from batch data_structs"
-            })?.bool().with_context(|| {
-                "Failed to convert 'context' column to boolean"
-            })?.iter().map(|v| v == context_bool).collect_vec();
+            let mask_iter = df0
+                .data()
+                .column("context")
+                .with_context(|| {
+                    "Failed to get 'context' column from batch data_structs"
+                })?
+                .bool()
+                .with_context(|| {
+                    "Failed to convert 'context' column to boolean"
+                })?
+                .iter()
+                .map(|v| v == context_bool)
+                .collect_vec();
             BooleanChunked::new("mask".into(), mask_iter)
         };
 
@@ -344,11 +348,19 @@ where
         info!("Filtering batch group by strand: {:?}", strand);
 
         let mask = {
-            let mask_iter = df0.data().column("strand").with_context(|| {
-                "Failed to get 'strand' column from batch data_structs"
-            })?.bool().with_context(|| {
-                "Failed to convert 'strand' column to boolean"
-            })?.iter().map(|v| v == strand_bool).collect_vec();
+            let mask_iter = df0
+                .data()
+                .column("strand")
+                .with_context(|| {
+                    "Failed to get 'strand' column from batch data_structs"
+                })?
+                .bool()
+                .with_context(|| {
+                    "Failed to convert 'strand' column to boolean"
+                })?
+                .iter()
+                .map(|v| v == strand_bool)
+                .collect_vec();
             BooleanChunked::new("mask".into(), mask_iter)
         };
 
@@ -380,7 +392,11 @@ where
             threshold
         );
 
-        let marked: Result<Vec<EncodedBsxBatch>, PolarsError> = self.batches.into_par_iter().map(|batch| batch.mark_low_counts(threshold)).collect();
+        let marked: Result<Vec<EncodedBsxBatch>, PolarsError> = self
+            .batches
+            .into_par_iter()
+            .map(|batch| batch.mark_low_counts(threshold))
+            .collect();
 
         let marked = marked.with_context(|| {
             format!(
@@ -396,7 +412,7 @@ where
 
         Ok(Self {
             batches: marked,
-            labels: self.labels,
+            labels:  self.labels,
         })
     }
 
@@ -439,13 +455,26 @@ where
         );
 
         let mask = {
-            let nan_vecs = self.batches.par_iter().map(|batch| {
-                Ok(batch.data().column("density").with_context(|| "Failed to get 'density' column")?.f32().with_context(|| {
-                    "Failed to convert 'density' column to f32"
-                })?.iter().map(|v| v.map(|x| x.is_nan()).unwrap_or(true)).collect())
-            }).collect::<anyhow::Result<Vec<Vec<bool>>>>().with_context(|| {
-                "Failed to collect NaN vectors from batches"
-            })?;
+            let nan_vecs = self
+                .batches
+                .par_iter()
+                .map(|batch| {
+                    Ok(batch
+                        .data()
+                        .column("density")
+                        .with_context(|| "Failed to get 'density' column")?
+                        .f32()
+                        .with_context(|| {
+                            "Failed to convert 'density' column to f32"
+                        })?
+                        .iter()
+                        .map(|v| v.map(|x| x.is_nan()).unwrap_or(true))
+                        .collect())
+                })
+                .collect::<anyhow::Result<Vec<Vec<bool>>>>()
+                .with_context(|| {
+                    "Failed to collect NaN vectors from batches"
+                })?;
 
             let (width, height) = (self.n_samples(), self.height());
             debug!(
@@ -454,15 +483,18 @@ where
                 width, height
             );
 
-            let mask_vec: Vec<bool> = (0..height).into_par_iter().map(|j| {
-                let mut nan_count = 0usize;
-                for i in 0..width {
-                    if nan_vecs[i][j] {
-                        nan_count += 1;
+            let mask_vec: Vec<bool> = (0..height)
+                .into_par_iter()
+                .map(|j| {
+                    let mut nan_count = 0usize;
+                    for i in 0..width {
+                        if nan_vecs[i][j] {
+                            nan_count += 1;
+                        }
                     }
-                }
-                nan_count <= threshold
-            }).collect();
+                    nan_count <= threshold
+                })
+                .collect();
 
             debug!(
                 "Created filter mask with {} sites retained out of {}",
@@ -490,7 +522,10 @@ where
             "Extracting {} DataFrames from batch group",
             self.batches.len()
         );
-        self.batches.into_iter().map(DataFrame::from).collect()
+        self.batches
+            .into_iter()
+            .map(DataFrame::from)
+            .collect()
     }
 
     /// Returns the number of samples (batches) in the group.
@@ -539,7 +574,9 @@ where
         });
 
         for (batch, label) in izip!(self.batches, labels) {
-            out.entry(label.clone()).or_insert_with(Vec::new).push(batch);
+            out.entry(label.clone())
+                .or_insert_with(Vec::new)
+                .push(batch);
         }
 
         let result = HashMap::from_iter(out.into_iter().map(|(k, v)| {
@@ -583,27 +620,41 @@ where
             na_rm
         );
 
-        let density_cols = self.batches.iter().map(EncodedBsxBatch::get_density_vals).collect::<anyhow::Result<Vec<_>, _>>().with_context(|| "Failed to extract density values from batches")?;
+        let density_cols = self
+            .batches
+            .iter()
+            .map(EncodedBsxBatch::get_density_vals)
+            .collect::<anyhow::Result<Vec<_>, _>>()
+            .with_context(|| "Failed to extract density values from batches")?;
 
         let (height, width) = (self.height(), self.n_samples());
         debug!("Processing {} sites across {} samples", height, width);
 
-        let res = (0..height).into_par_iter().map(|j| {
-            let values: Vec<f32> = (0..width).into_iter().map(|i| density_cols[i][j]).filter(|&x| {
-                if na_rm {
-                    !x.is_nan()
-                } else {
-                    true
-                }
-            }).collect();
+        let res = (0..height)
+            .into_par_iter()
+            .map(|j| {
+                let values: Vec<f32> = (0..width)
+                    .into_iter()
+                    .map(|i| density_cols[i][j])
+                    .filter(|&x| {
+                        if na_rm {
+                            !x.is_nan()
+                        }
+                        else {
+                            true
+                        }
+                    })
+                    .collect();
 
-            if values.is_empty() && na_rm {
-                f64::NAN // Return NaN if all values were NaN and we're
-                // removing NaNs
-            } else {
-                values.iter().map(|&x| x as f64).mean()
-            }
-        }).collect::<Vec<_>>();
+                if values.is_empty() && na_rm {
+                    f64::NAN // Return NaN if all values were NaN and we're
+                             // removing NaNs
+                }
+                else {
+                    values.iter().map(|&x| x as f64).mean()
+                }
+            })
+            .collect::<Vec<_>>();
 
         debug!(
             "Completed average density calculation for {} sites",
@@ -625,16 +676,28 @@ where
             self.n_samples()
         );
 
-        let count_m_cols = self.batches.iter().map(EncodedBsxBatch::get_counts_m).collect::<anyhow::Result<Vec<_>, _>>().with_context(|| {
-            "Failed to extract methylated counts from batches"
-        })?;
+        let count_m_cols = self
+            .batches
+            .iter()
+            .map(EncodedBsxBatch::get_counts_m)
+            .collect::<anyhow::Result<Vec<_>, _>>()
+            .with_context(|| {
+                "Failed to extract methylated counts from batches"
+            })?;
 
         let (height, width) = (self.height(), self.n_samples());
         debug!("Processing {} sites across {} samples", height, width);
 
-        let res = (0..height).into_par_iter().map(|j| {
-            (0..width).into_iter().map(|i| count_m_cols[i][j]).map(|x| x as u32).sum()
-        }).collect::<Vec<_>>();
+        let res = (0..height)
+            .into_par_iter()
+            .map(|j| {
+                (0..width)
+                    .into_iter()
+                    .map(|i| count_m_cols[i][j])
+                    .map(|x| x as u32)
+                    .sum()
+            })
+            .collect::<Vec<_>>();
 
         debug!(
             "Completed methylated count summation for {} sites",
@@ -656,14 +719,26 @@ where
             self.n_samples()
         );
 
-        let count_total_cols = self.batches.iter().map(EncodedBsxBatch::get_counts_total).collect::<anyhow::Result<Vec<_>, _>>().with_context(|| "Failed to extract total counts from batches")?;
+        let count_total_cols = self
+            .batches
+            .iter()
+            .map(EncodedBsxBatch::get_counts_total)
+            .collect::<anyhow::Result<Vec<_>, _>>()
+            .with_context(|| "Failed to extract total counts from batches")?;
 
         let (height, width) = (self.height(), self.n_samples());
         debug!("Processing {} sites across {} samples", height, width);
 
-        let res = (0..height).into_par_iter().map(|j| {
-            (0..width).into_iter().map(|i| count_total_cols[i][j]).map(|x| x as u32).sum()
-        }).collect::<Vec<_>>();
+        let res = (0..height)
+            .into_par_iter()
+            .map(|j| {
+                (0..width)
+                    .into_iter()
+                    .map(|i| count_total_cols[i][j])
+                    .map(|x| x as u32)
+                    .sum()
+            })
+            .collect::<Vec<_>>();
 
         debug!("Completed total count summation for {} sites", res.len());
         Ok(res)
@@ -680,9 +755,11 @@ where
     /// methylation site).
     pub fn get_positions(&self) -> anyhow::Result<Vec<u32>> {
         debug!("Retrieving genomic positions from batch group");
-        self.batches[0].get_position_vals().with_context(|| {
-            "Failed to retrieve position values from first batch"
-        })
+        self.batches[0]
+            .get_position_vals()
+            .with_context(|| {
+                "Failed to retrieve position values from first batch"
+            })
     }
 
     /// Retrieves the chromosome (contig) name.

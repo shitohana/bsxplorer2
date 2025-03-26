@@ -1,19 +1,3 @@
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// ***********************************************************************
-/// ****
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
@@ -39,7 +23,8 @@ use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
 use crate::io::report::schema::ReportTypeSchema;
 use crate::utils::types::PosNum;
 use crate::utils::{first_position, last_position};
-// TODO:
+
+// TODO
 // Add decompression
 // Add expand_user
 

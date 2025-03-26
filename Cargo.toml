@@ -20,10 +20,6 @@ quickcheck = "*"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 plotters = { version = "0.3.7", default-features = false, features = [] }
 
-[[bench]]
-name = "beta_binom"
-harness = false
-
 [dependencies]
 # Utility
 anyhow = "1.0.91"

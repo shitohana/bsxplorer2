@@ -6,7 +6,6 @@ combine_control_expr = false
 wrap_comments = true
 condense_wildcard_suffixes = true
 control_brace_style = "ClosingNextLine"
-fn_args_layout = "Vertical"
 fn_params_layout = "Vertical"
 fn_single_line = true
 force_multiline_blocks = true

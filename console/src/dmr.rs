@@ -1,23 +1,8 @@
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// ***********************************************************************
-/// ****
 use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
 
+use bsxplorer2::exports::anyhow;
 use bsxplorer2::exports::anyhow::anyhow;
 use bsxplorer2::tools::dmr::DMRegion;
 use clap::{Args, ValueEnum};
@@ -238,6 +223,13 @@ pub fn init(
             println!("{}", style("Process aborted by the user.").red());
             return Err(anyhow!("User aborted the process."));
         }
+    }
+
+    if a_paths.len() == 0 {
+        return Err(anyhow::anyhow!("Group A files must not be empty"));
+    }
+    if b_paths.len() == 0 {
+        return Err(anyhow::anyhow!("Group B files must not be empty"));
     }
 
     for path in a_paths.iter().chain(b_paths.iter()) {

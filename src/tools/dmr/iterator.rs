@@ -1,22 +1,5 @@
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// ***********************************************************************
-/// ****
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
 use anyhow::anyhow;

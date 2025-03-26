@@ -1,19 +1,3 @@
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// ***********************************************************************
-/// ****
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
@@ -737,7 +721,10 @@ mod tests {
                 / total_weight;
 
         assert!((merged.mean_methylation - expected_mean).abs() < 1e-6);
-        assert!((merged.methylation_var - expected_variance).abs() < 1e-6);
+        assert!(
+            (merged.methylation_var as f64 - expected_variance as f64).abs()
+                < 1e-6
+        );
         assert_eq!(merged.coverage_distribution.get(&10), Some(&100));
         assert_eq!(merged.coverage_distribution.get(&20), Some(&200));
         assert_eq!(merged.coverage_distribution.get(&30), Some(&300));

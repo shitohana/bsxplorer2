@@ -1,16 +1,3 @@
-/*******************************************************************************
- Copyright (c) 2025
- The Prosperity Public License 3.0.0
-
- Contributor: [shitohana](https://github.com/shitohana)
-
- Source Code: https://github.com/shitohana/BSXplorer
- ******************************************************************************/
-
-/// ****************************************************************************
-/// * Copyright (c) 2025
-/// ***************************************************************************
-
 #![feature(path_add_extension)]
 #[macro_use]
 extern crate log;
@@ -48,30 +35,30 @@ use tempfile::NamedTempFile;
 #[derive(Debug)]
 struct TestReportConfig {
     mean_coverage: f64,
-    std_coverage: f64,
-    chroms_num: Range<usize>,
-    chr_len: Range<usize>,
-    context_meth: Vec<(Context, f64)>,
-    nuc_prob: [f64; 4],
-    seed: Option<u64>,
-    chunk_size: usize,
+    std_coverage:  f64,
+    chroms_num:    Range<usize>,
+    chr_len:       Range<usize>,
+    context_meth:  Vec<(Context, f64)>,
+    nuc_prob:      [f64; 4],
+    seed:          Option<u64>,
+    chunk_size:    usize,
 }
 
 impl Default for TestReportConfig {
     fn default() -> Self {
         Self {
             mean_coverage: 40f64,
-            std_coverage: 30f64,
-            chroms_num: 5..10,
-            chr_len: 5e5 as usize..3e6 as usize,
-            context_meth: vec![
+            std_coverage:  30f64,
+            chroms_num:    5..10,
+            chr_len:       5e5 as usize..3e6 as usize,
+            context_meth:  vec![
                 (Context::CG, 0.4),
                 (Context::CHG, 0.15),
                 (Context::CHH, 0.05),
             ],
-            nuc_prob: [0.25; 4],
-            seed: None,
-            chunk_size: 10_000,
+            nuc_prob:      [0.25; 4],
+            seed:          None,
+            chunk_size:    10_000,
         }
     }
 }
@@ -79,14 +66,14 @@ impl Default for TestReportConfig {
 type ReferenceMetadataEntry = DataFrame;
 
 struct ReferenceMetadata {
-    data: HashMap<String, ReferenceMetadataEntry>,
+    data:  HashMap<String, ReferenceMetadataEntry>,
     order: Vec<String>,
 }
 
 impl ReferenceMetadata {
     pub fn new() -> Self {
         Self {
-            data: HashMap::new(),
+            data:  HashMap::new(),
             order: Vec::new(),
         }
     }
@@ -118,9 +105,9 @@ impl ReferenceMetadata {
 }
 
 struct TestReportEnv {
-    fasta_tempfile: NamedTempFile,
-    fai_tempfile: NamedTempFile,
-    config: TestReportConfig,
+    fasta_tempfile:     NamedTempFile,
+    fai_tempfile:       NamedTempFile,
+    config:             TestReportConfig,
     reference_metadata: ReferenceMetadata,
 }
 
@@ -132,24 +119,31 @@ impl TestReportEnv {
 
         let mut rng = if let Some(seed) = config.seed {
             ChaCha8Rng::seed_from_u64(seed)
-        } else {
+        }
+        else {
             ChaCha8Rng::from_entropy()
         };
 
         let fasta_sink = fasta_tempfile.reopen().unwrap();
         let mut fasta_writer = bio::io::fasta::Writer::new(fasta_sink);
 
-        let chr_number = Self::generate_in_range(&mut rng, config.chroms_num.clone());
-        let chr_length = (0..chr_number).map(|_| Self::generate_in_range(&mut rng, config.chr_len.clone())).collect_vec();
+        let chr_number =
+            Self::generate_in_range(&mut rng, config.chroms_num.clone());
+        let chr_length = (0..chr_number)
+            .map(|_| Self::generate_in_range(&mut rng, config.chr_len.clone()))
+            .collect_vec();
 
         for (idx, chr_length) in (0..chr_number).zip(chr_length) {
             let chr_name = format!("chr{}", idx);
 
             info!("Chrom '{}': {}", chr_name, chr_length);
 
-            let chr_sequence = Self::generate_sequence(&mut rng, chr_length, config.nuc_prob);
+            let chr_sequence =
+                Self::generate_sequence(&mut rng, chr_length, config.nuc_prob);
 
-            fasta_writer.write(chr_name.as_str(), None, &chr_sequence).unwrap();
+            fasta_writer
+                .write(chr_name.as_str(), None, &chr_sequence)
+                .unwrap();
 
             let context_data = ContextData::from_sequence(
                 &chr_sequence,
@@ -176,7 +170,8 @@ impl TestReportEnv {
                 counts_m_col,
                 counts_total_col,
                 chr_name.as_str(),
-            ).unwrap();
+            )
+            .unwrap();
 
             reference_metadata.insert(chr_name, bsx_result);
         }
@@ -184,7 +179,8 @@ impl TestReportEnv {
         fasta_writer.flush().unwrap();
 
         let fai_sink = fai_tempfile.reopen().unwrap();
-        Self::create_fai(fasta_tempfile.path(), fai_sink).expect("Could not create FAI");
+        Self::create_fai(fasta_tempfile.path(), fai_sink)
+            .expect("Could not create FAI");
 
         info!("Initialized ReportTestingEnv with config: {:?}", config);
         info!("Fasta saved as: {}", fasta_tempfile.path().display());
@@ -203,7 +199,10 @@ impl TestReportEnv {
         self.write_bsx(report_tempfile.reopen()?)?;
 
         let mut read_metadata = CytosinesHashmap::new();
-        self.reference_metadata.order.iter().for_each(|k| read_metadata.append_chr(k.clone(), &[]));
+        self.reference_metadata
+            .order
+            .iter()
+            .for_each(|k| read_metadata.append_chr(k.clone(), &[]));
 
         let mut shortened_batch_num = 0;
 
@@ -221,8 +220,17 @@ impl TestReportEnv {
             }
 
             read_metadata.extend_positions(
-                batch.first_position()?.chr().to_string(),
-                &batch.data().column("position")?.u64()?.iter().map(|v| v.unwrap()).collect_vec(),
+                batch
+                    .first_position()?
+                    .chr()
+                    .to_string(),
+                &batch
+                    .data()
+                    .column("position")?
+                    .u64()?
+                    .iter()
+                    .map(|v| v.unwrap())
+                    .collect_vec(),
             );
         }
 
@@ -244,10 +252,16 @@ impl TestReportEnv {
         self.write_report(report_tempfile.reopen()?, report_type)?;
 
         let mut read_metadata = CytosinesHashmap::new();
-        self.reference_metadata.order.iter().for_each(|k| read_metadata.append_chr(k.clone(), &[]));
+        self.reference_metadata
+            .order
+            .iter()
+            .for_each(|k| read_metadata.append_chr(k.clone(), &[]));
 
         let reader = {
-            let mut builder = ReportReaderBuilder::default().with_chunk_size(self.config.chunk_size).with_report_type(report_type).with_batch_size(2 << 30);
+            let mut builder = ReportReaderBuilder::default()
+                .with_chunk_size(self.config.chunk_size)
+                .with_report_type(report_type)
+                .with_batch_size(2 << 30);
 
             if report_type.need_align() {
                 builder = builder.with_fasta(
@@ -271,8 +285,17 @@ impl TestReportEnv {
             }
 
             read_metadata.extend_positions(
-                batch.first_position()?.chr().to_string(),
-                &batch.data().column("position")?.u64()?.iter().map(|v| v.unwrap()).collect_vec(),
+                batch
+                    .first_position()?
+                    .chr()
+                    .to_string(),
+                &batch
+                    .data()
+                    .column("position")?
+                    .u64()?
+                    .iter()
+                    .map(|v| v.unwrap())
+                    .collect_vec(),
             );
         }
 
@@ -291,15 +314,30 @@ impl TestReportEnv {
     ) -> Result<(), Box<dyn Error>> {
         for chr in reference.order() {
             let reference = HashSet::from_iter(
-                reference.get(chr).unwrap().column("position")?.u64()?.into_iter().map(|v| v.unwrap()),
+                reference
+                    .get(chr)
+                    .unwrap()
+                    .column("position")?
+                    .u64()?
+                    .into_iter()
+                    .map(|v| v.unwrap()),
             );
             let real = read.c_positions.get(chr).unwrap();
-            let difference = reference.difference(real).cloned().sorted().collect_vec();
+            let difference = reference
+                .difference(real)
+                .cloned()
+                .sorted()
+                .collect_vec();
 
             if !difference.is_empty() {
                 println!(
                     "{:?}",
-                    reference.iter().sorted().zip(real.iter().sorted()).take(20).collect::<Vec<_>>()
+                    reference
+                        .iter()
+                        .sorted()
+                        .zip(real.iter().sorted())
+                        .take(20)
+                        .collect::<Vec<_>>()
                 );
                 panic!("Context positions differ! {:?}", difference);
             }
@@ -309,22 +347,45 @@ impl TestReportEnv {
     }
 
     fn check_chr_unique(batch: &BsxBatch) {
-        let batch_chroms = batch.data().column("chr").unwrap().as_series().unwrap().unique().unwrap();
+        let batch_chroms = batch
+            .data()
+            .column("chr")
+            .unwrap()
+            .as_series()
+            .unwrap()
+            .unique()
+            .unwrap();
         assert_eq!(batch_chroms.len(), 1, "Chr should be unique");
     }
 
     fn check_positions_sorted(batch: &BsxBatch) {
         assert!(
-            batch.data().column("position").unwrap().as_series().unwrap().is_sorted(SortOptions::default().with_order_descending(false)).unwrap(),
+            batch
+                .data()
+                .column("position")
+                .unwrap()
+                .as_series()
+                .unwrap()
+                .is_sorted(SortOptions::default().with_order_descending(false))
+                .unwrap(),
             "Got unsorted batch {}",
             {
                 let mut prev = 0;
                 let mut idx = 0;
-                for (i, val) in batch.data().column("position").unwrap().u64().unwrap().into_iter().enumerate() {
+                for (i, val) in batch
+                    .data()
+                    .column("position")
+                    .unwrap()
+                    .u64()
+                    .unwrap()
+                    .into_iter()
+                    .enumerate()
+                {
                     if let Some(v) = val {
                         if v >= prev {
                             prev = v;
-                        } else {
+                        }
+                        else {
                             idx = i;
                             break;
                         }
@@ -338,7 +399,15 @@ impl TestReportEnv {
 
     fn check_positions_unique(batch: &BsxBatch) {
         assert_eq!(
-            batch.data().column("position").unwrap().as_series().unwrap().unique().unwrap().len(),
+            batch
+                .data()
+                .column("position")
+                .unwrap()
+                .as_series()
+                .unwrap()
+                .unique()
+                .unwrap()
+                .len(),
             batch.data().height(),
             "Got non-unique positions"
         );
@@ -348,15 +417,25 @@ impl TestReportEnv {
         &self,
         sink: W,
         report_type: ReportTypeSchema,
-    ) -> Result<(), Box<dyn Error>> where
-        W: Write,
-    {
-        let mut writer = CsvWriter::new(sink).with_separator(b'\t').include_header(matches!(report_type, ReportTypeSchema::BedGraph)).include_bom(false).with_float_scientific(Some(false)).batched(&report_type.schema()).unwrap();
+    ) -> Result<(), Box<dyn Error>>
+    where
+        W: Write, {
+        let mut writer = CsvWriter::new(sink)
+            .with_separator(b'\t')
+            .include_header(matches!(report_type, ReportTypeSchema::BedGraph))
+            .include_bom(false)
+            .with_float_scientific(Some(false))
+            .batched(&report_type.schema())
+            .unwrap();
 
         for chr_name in self.reference_metadata.order() {
-            let bsx_data = self.reference_metadata.get(chr_name).unwrap();
+            let bsx_data = self
+                .reference_metadata
+                .get(chr_name)
+                .unwrap();
 
-            let mut report_data = report_type.report_mutate_from_bsx(bsx_data.clone())?;
+            let mut report_data =
+                report_type.report_mutate_from_bsx(bsx_data.clone())?;
             report_data.align_chunks_par();
 
             writer.write_batch(&report_data)?;
@@ -369,9 +448,9 @@ impl TestReportEnv {
     fn write_bsx<W>(
         &self,
         sink: W,
-    ) -> Result<(), Box<dyn Error>> where
-        W: Write,
-    {
+    ) -> Result<(), Box<dyn Error>>
+    where
+        W: Write, {
         let mut writer = BsxIpcWriter::try_from_sink_and_fai(
             sink,
             self.fai_tempfile.path().to_path_buf(),
@@ -380,7 +459,11 @@ impl TestReportEnv {
         )?;
 
         for chr_name in self.reference_metadata.order() {
-            let mut bsx_data = self.reference_metadata.get(chr_name).unwrap().clone();
+            let mut bsx_data = self
+                .reference_metadata
+                .get(chr_name)
+                .unwrap()
+                .clone();
             bsx_data.align_chunks_par();
             let batch = BsxBatch::try_from(bsx_data.clone())?;
 
@@ -394,9 +477,9 @@ impl TestReportEnv {
     fn create_fai<W>(
         fasta_path: &Path,
         mut fai_sink: W,
-    ) -> io::Result<()> where
-        W: Write,
-    {
+    ) -> io::Result<()>
+    where
+        W: Write, {
         noodles::fasta::fs::index(fasta_path).expect("Failed to build .fai");
 
         let index_path = fasta_path.with_added_extension("fai");
@@ -413,9 +496,9 @@ impl TestReportEnv {
     fn generate_in_range<N>(
         rng: &mut ChaCha8Rng,
         range: Range<N>,
-    ) -> N where
-        N: SampleUniform + PartialOrd,
-    {
+    ) -> N
+    where
+        N: SampleUniform + PartialOrd, {
         rng.gen_range(range)
     }
 
@@ -432,17 +515,24 @@ impl TestReportEnv {
         let c = prob[3] + g;
         assert_eq!(c, 1f64);
 
-        rand_distr::Uniform::new_inclusive(0f64, 1f64).sample_iter(rng).take(length).map(|n| {
-            if n <= a {
-                b'A'
-            } else if n <= t {
-                b'T'
-            } else if n <= g {
-                b'G'
-            } else {
-                b'C'
-            }
-        }).collect_vec()
+        rand_distr::Uniform::new_inclusive(0f64, 1f64)
+            .sample_iter(rng)
+            .take(length)
+            .map(|n| {
+                if n <= a {
+                    b'A'
+                }
+                else if n <= t {
+                    b'T'
+                }
+                else if n <= g {
+                    b'G'
+                }
+                else {
+                    b'C'
+                }
+            })
+            .collect_vec()
     }
 
     fn generate_counts_total<N>(
@@ -450,11 +540,15 @@ impl TestReportEnv {
         mean: f64,
         std: f64,
         length: usize,
-    ) -> Vec<N> where
-        N: SampleUniform + PrimInt,
-    {
+    ) -> Vec<N>
+    where
+        N: SampleUniform + PrimInt, {
         let counts_dist = rand_distr::Normal::new(mean, std).unwrap();
-        counts_dist.sample_iter(rng).take(length).map(|v| N::from(v.abs().floor()).unwrap()).collect_vec()
+        counts_dist
+            .sample_iter(rng)
+            .take(length)
+            .map(|v| N::from(v.abs().floor()).unwrap())
+            .collect_vec()
     }
 
     fn generate_counts_m<N>(
@@ -462,21 +556,29 @@ impl TestReportEnv {
         counts_total: &[N],
         encoded_contexts: &[Option<bool>],
         contexts_prob: &[(Context, f64)],
-    ) -> Vec<N> where
-        N: PrimInt + Sync + Send,
-    {
+    ) -> Vec<N>
+    where
+        N: PrimInt + Sync + Send, {
         let rng_mutex = Mutex::new(rng);
-        let encoded_context_prob: HashMap<Option<bool>, f64> = HashMap::from_iter(
-            contexts_prob.iter().map(|(context, prob)| (context.to_bool(), *prob)),
-        );
-        counts_total.par_iter().zip(encoded_contexts.par_iter()).map(|(count_total, context)| {
-            let context_prob = encoded_context_prob[context];
-            let dist = rand_distr::Binomial::new(
-                count_total.clone().to_u64().unwrap(),
-                context_prob,
-            ).unwrap();
-            N::from(dist.sample(*rng_mutex.lock().unwrap())).unwrap()
-        }).collect()
+        let encoded_context_prob: HashMap<Option<bool>, f64> =
+            HashMap::from_iter(
+                contexts_prob
+                    .iter()
+                    .map(|(context, prob)| (context.to_bool(), *prob)),
+            );
+        counts_total
+            .par_iter()
+            .zip(encoded_contexts.par_iter())
+            .map(|(count_total, context)| {
+                let context_prob = encoded_context_prob[context];
+                let dist = rand_distr::Binomial::new(
+                    count_total.clone().to_u64().unwrap(),
+                    context_prob,
+                )
+                .unwrap();
+                N::from(dist.sample(*rng_mutex.lock().unwrap())).unwrap()
+            })
+            .collect()
     }
 }
 
@@ -504,7 +606,8 @@ impl CytosinesHashmap {
         name: String,
         cytosines: &[u64],
     ) {
-        self.c_positions.insert(name, HashSet::from_iter(cytosines.iter().cloned()));
+        self.c_positions
+            .insert(name, HashSet::from_iter(cytosines.iter().cloned()));
     }
 
     fn extend_positions(
@@ -512,11 +615,17 @@ impl CytosinesHashmap {
         name: String,
         cytosines: &[u64],
     ) {
-        self.c_positions.get_mut(&name).unwrap().extend(cytosines);
+        self.c_positions
+            .get_mut(&name)
+            .unwrap()
+            .extend(cytosines);
     }
 
     fn cytoines_total(&self) -> usize {
-        self.c_positions.values().map(HashSet::len).sum()
+        self.c_positions
+            .values()
+            .map(HashSet::len)
+            .sum()
     }
 }
 
@@ -525,33 +634,46 @@ fn context_data_to_bsx<N>(
     counts_m: Vec<N>,
     counts_total: Vec<N>,
     chr_name: &str,
-) -> PolarsResult<DataFrame> where
-    N: PosNum,
-{
+) -> PolarsResult<DataFrame>
+where
+    N: PosNum, {
     let mut result_df = context_data.into_dataframe()?;
     result_df.with_column(Series::new(
         "count_m".into(),
-        counts_m.iter().map(|v| v.to_u64().unwrap()).collect_vec(),
+        counts_m
+            .iter()
+            .map(|v| v.to_u64().unwrap())
+            .collect_vec(),
     ))?;
     result_df.with_column(Series::new(
         "count_total".into(),
-        counts_total.iter().map(|v| v.to_u64().unwrap()).collect_vec(),
+        counts_total
+            .iter()
+            .map(|v| v.to_u64().unwrap())
+            .collect_vec(),
     ))?;
 
     let mut result_lazy = result_df.lazy();
     result_lazy = decode_context(result_lazy, "context", "context");
     result_lazy = decode_strand(result_lazy, "strand", "strand");
 
-    result_lazy = result_lazy.with_columns([
-        lit(chr_name).alias("chr"),
-        col("count_m").cast(DataType::Float64).div(col("count_total")).alias("density"),
-    ]).cast(BsxBatch::hashmap(), true);
+    result_lazy = result_lazy
+        .with_columns([
+            lit(chr_name).alias("chr"),
+            col("count_m")
+                .cast(DataType::Float64)
+                .div(col("count_total"))
+                .alias("density"),
+        ])
+        .cast(BsxBatch::hashmap(), true);
     result_lazy.collect()
 }
 
 #[test]
+#[ignore]
 fn report_reading() {
-    #[allow(unused_results)] let _ = pretty_env_logger::try_init();
+    #[allow(unused_results)]
+    let _ = pretty_env_logger::try_init();
     // let chunk_size = 10_000;
     let report_schemas = [
         ReportTypeSchema::BedGraph,
@@ -569,17 +691,19 @@ fn report_reading() {
 
     for report_type in report_schemas {
         match env.test_report_type(report_type) {
-            Ok(()) => {}
+            Ok(()) => {},
             Err(err) => {
                 panic!("{}", err)
-            }
+            },
         }
     }
 }
 
 #[test]
+#[ignore]
 fn bsx_io() {
-    #[allow(unused_results)] let _ = pretty_env_logger::try_init();
+    #[allow(unused_results)]
+    let _ = pretty_env_logger::try_init();
     // let chunk_size = 10_000;
     let config = TestReportConfig {
         seed: Some(1234),

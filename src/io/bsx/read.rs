@@ -1,29 +1,11 @@
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// ***********************************************************************
-/// ****
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Seek};
 
-use log::{debug, trace, warn};
+use log::{debug, trace};
 use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
 use polars::export::arrow::record_batch::RecordBatchT;
 use polars::frame::DataFrame;
-#[cfg(feature = "python")]
-use pyo3::{pyclass, pymethods, PyRef, PyResult};
 
 use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::io::bsx::ipc::IpcFileReader;

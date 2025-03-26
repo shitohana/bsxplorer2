@@ -481,7 +481,7 @@ mod tests {
     #[test]
     fn tautstring_test_zero_lambda() {
         let input = vec![1.0, 2.1, 5.2, 8.2, 1.4, 5.2, 6.2, 10.1];
-        let output = tautstring(&input, 0.0);
+        let output = tautstring(&input, 0.0f64);
         let output_expected = vec![1.0, 2.1, 5.2, 8.2, 1.4, 5.2, 6.2, 10.1];
         for i in 0..input.len() {
             let output_data = output[i];
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn tautstring_test_large_lambda() {
-        let input = vec![1.0, 2.1, 5.2, 8.2, 1.4, 5.2, 6.2, 10.1];
+        let input = vec![1.0f64, 2.1, 5.2, 8.2, 1.4, 5.2, 6.2, 10.1];
         let output = tautstring(&input, 100.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
@@ -508,7 +508,7 @@ mod tests {
     #[test]
     fn tautstring_test_moderate_lambda() {
         let input =
-            vec![111.0, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
+            vec![111.0f64, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
         let output = tautstring(&input, 5.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
@@ -555,7 +555,7 @@ mod tests {
     #[test]
     fn condat_test_large_lambda() {
         let input =
-            vec![111.0, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
+            vec![111.0f64, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
         let output = condat(&input, 700.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
@@ -573,7 +573,7 @@ mod tests {
 
     #[test]
     fn condat_test_moderate_lambda() {
-        let input = vec![1.0, 2.1, 5.2, 8.2, 1.4, 5.2, 6.2, 10.1];
+        let input = vec![1.0f64, 2.1, 5.2, 8.2, 1.4, 5.2, 6.2, 10.1];
         let output = condat(&input, 3.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.

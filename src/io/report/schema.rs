@@ -1,28 +1,8 @@
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// ***********************************************************************
-/// ****
 use std::ops::Div;
 
 use itertools::Itertools;
 use log::{debug, trace, warn};
 use polars::prelude::*;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
-#[cfg(feature = "python")]
-use pyo3_polars::PySchema;
 
 use crate::data_structs::bsx_batch::BsxBatch;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
@@ -33,7 +13,6 @@ use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 /// Each format has its own column structure and data_structs types that need to
 /// be handled differently during import and transformation operations.
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "python", pyclass)]
 pub enum ReportTypeSchema {
     /// Bismark methylation extractor output format
     Bismark,
@@ -496,19 +475,6 @@ impl ReportTypeSchema {
         }
 
         result
-    }
-}
-
-#[cfg(feature = "python")]
-#[pymethods]
-impl ReportTypeSchema {
-    /// Gets the schema for this report type in a Python-compatible format.
-    ///
-    /// # Returns
-    /// A PySchema object that can be used in Python code
-    fn get_schema(&self) -> PyResult<PySchema> {
-        debug!("Creating PySchema for {:?} report format", self);
-        Ok(PySchema(SchemaRef::new(self.schema())))
     }
 }
 

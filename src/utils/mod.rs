@@ -1,19 +1,3 @@
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// The Prosperity Public License 3.0.0
-///
-/// Contributor: [shitohana](https://github.com/shitohana)
-///
-/// Source Code: https://github.com/shitohana/BSXplorer
-/// ***********************************************************************
-/// ****
-
-/// ***********************************************************************
-/// *****
-/// * Copyright (c) 2025
-/// ***********************************************************************
-/// ****
 use std::fmt;
 use std::sync::Arc;
 
@@ -689,7 +673,7 @@ fn ks_prob(
     // Iteratively compute probability until convergence
     while (j < iter) && (toadd.last().unwrap_or(&f64::MAX).abs() > prec * 2.0) {
         let new_elem = 2.0
-            * (-1.0f64).powi((j as i32 - 1))
+            * (-1.0f64).powi(j as i32 - 1)
             * (-2.0 * j.pow(2) as f64 * alam.powi(2)).exp();
         qks += new_elem;
         toadd.push(new_elem);

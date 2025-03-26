@@ -3,15 +3,14 @@
 // Contributor: [shitohana](https://github.com/shitohana)
 // Source Code: https://github.com/shitohana/BSXplorer
 
-use argmin::core::{CostFunction, Error, Executor, Gradient};
-use argmin::solver::linesearch::MoreThuenteLineSearch;
-use argmin::solver::quasinewton::LBFGS;
+use argmin::core::{CostFunction, Error, Gradient};
 use statrs::function::factorial::ln_factorial;
 use statrs::function::gamma::{digamma, ln_gamma};
 
 /// This is not a good estimator, and currently MoM nearly allways
 /// performs better
-use crate::tools::dimred::BetaBinomParams;
+use crate::tools::dimred::mom::BetaBinomParams;
+
 
 #[derive(Clone)]
 pub struct MethylationData {
@@ -42,7 +41,7 @@ impl BetaBinomialMLE {
         confidence: f64,
         error: f64,
     ) -> Vec<f64> {
-        let (params, _) = BetaBinomParams::from_counts(
+        let (params, ..) = BetaBinomParams::from_counts(
             &self.data.methylated_reads,
             &self.data.total_reads,
             confidence,
@@ -155,85 +154,85 @@ impl Gradient for BetaBinomialMLE {
     }
 }
 
-/// Estimates the parameters of a Beta-Binomial distribution using LBFGS
-/// optimization.
-///
-/// Returns a tuple of (mu, phi) parameters where:
-/// - mu: Mean methylation rate (between 0 and 1)
-/// - phi: Overdispersion parameter (between 0 and 1)
-pub fn estimate_beta_binomial_params(
-    methylated_reads: Vec<u32>,
-    total_reads: Vec<u32>,
-    confidence: f64,
-    error: f64,
-) -> Result<(f64, f64), Box<dyn std::error::Error>> {
-    let problem = BetaBinomialMLE::new(methylated_reads, total_reads);
-    let initial_params = problem.estimate_initial_params(confidence, error);
-
-    let linesearch = MoreThuenteLineSearch::new();
-    let solver = LBFGS::new(linesearch, 10)
-        .with_tolerance_grad(1e-12)?
-        .with_tolerance_cost(1e-12)?;
-
-    let res = Executor::new(problem, solver)
-        .configure(|state| {
-            state
-                .param(initial_params)
-                .max_iters(1000)
-        })
-        .run()?;
-
-    let best_params = res
-        .state()
-        .best_param
-        .clone()
-        .ok_or("No parameters found")?;
-
-    Ok((best_params[0], best_params[1]))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tools::dimred::tests::generate_beta_binomial_samples;
-
-    #[test]
-    fn test_parameter_estimation() -> Result<(), Box<dyn std::error::Error>> {
-        // True parameters for simulation
-        let true_alpha = 1.5;
-        let true_beta = 4.0;
-        let n_trials = 20;
-        let n_samples = 10;
-
-        let (successes, totals) = generate_beta_binomial_samples(
-            true_alpha, true_beta, n_trials, n_samples,
-        );
-
-        let (mu, phi) =
-            estimate_beta_binomial_params(successes, totals, 0.95, 0.05)?;
-
-        // Convert back to alpha and beta for comparison
-        let alpha = mu * (1.0 - phi) / phi;
-        let beta = (1.0 - mu) * (1.0 - phi) / phi;
-
-        println!("\nParameter Estimation Results:");
-        println!(
-            "True parameters: α = {:.4}, β = {:.4}",
-            true_alpha, true_beta
-        );
-        println!("Estimated parameters: α = {:.4}, β = {:.4}", alpha, beta);
-        println!("In transformed space: μ = {:.4}, φ = {:.4}", mu, phi);
-
-        // Basic assertion to ensure estimates are reasonably close
-        assert!(
-            (alpha - true_alpha).abs() < 1.0,
-            "Alpha estimate too far from true value"
-        );
-        assert!(
-            (beta - true_beta).abs() < 1.0,
-            "Beta estimate too far from true value"
-        );
-
-        Ok(())
-    }
-}
+// Estimates the parameters of a Beta-Binomial distribution using LBFGS
+// optimization.
+//
+// Returns a tuple of (mu, phi) parameters where:
+// - mu: Mean methylation rate (between 0 and 1)
+// - phi: Overdispersion parameter (between 0 and 1)
+// pub fn estimate_beta_binomial_params(
+//     methylated_reads: Vec<u32>,
+//     total_reads: Vec<u32>,
+//     confidence: f64,
+//     error: f64,
+// ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
+//     let problem = BetaBinomialMLE::new(methylated_reads, total_reads);
+//     let initial_params = problem.estimate_initial_params(confidence, error);
+//
+//     let linesearch = MoreThuenteLineSearch::new();
+//     let solver = LBFGS::new(linesearch, 10)
+//         .with_tolerance_grad(1e-12)?
+//         .with_tolerance_cost(1e-12)?;
+//
+//     let res = Executor::new(problem, solver)
+//         .configure(|state| {
+//             state
+//                 .param(initial_params)
+//                 .max_iters(1000)
+//         })
+//         .run()?;
+//
+//     let best_params = res
+//         .state()
+//         .best_param
+//         .clone()
+//         .ok_or("No parameters found")?;
+//
+//     Ok((best_params[0], best_params[1]))
+// }
+//
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::tools::dimred::tests::generate_beta_binomial_samples;
+//
+//     #[test]
+//     fn test_parameter_estimation() -> Result<(), Box<dyn std::error::Error>>
+// {         // True parameters for simulation
+//         let true_alpha = 1.5;
+//         let true_beta = 4.0;
+//         let n_trials = 20;
+//         let n_samples = 10;
+//
+//         let (successes, totals) = generate_beta_binomial_samples(
+//             true_alpha, true_beta, n_trials, n_samples,
+//         );
+//
+//         let (mu, phi) =
+//             estimate_beta_binomial_params(successes, totals, 0.95, 0.05)?;
+//
+//         // Convert back to alpha and beta for comparison
+//         let alpha = mu * (1.0 - phi) / phi;
+//         let beta = (1.0 - mu) * (1.0 - phi) / phi;
+//
+//         println!("\nParameter Estimation Results:");
+//         println!(
+//             "True parameters: α = {:.4}, β = {:.4}",
+//             true_alpha, true_beta
+//         );
+//         println!("Estimated parameters: α = {:.4}, β = {:.4}", alpha, beta);
+//         println!("In transformed space: μ = {:.4}, φ = {:.4}", mu, phi);
+//
+//         // Basic assertion to ensure estimates are reasonably close
+//         assert!(
+//             (alpha - true_alpha).abs() < 1.0,
+//             "Alpha estimate too far from true value"
+//         );
+//         assert!(
+//             (beta - true_beta).abs() < 1.0,
+//             "Beta estimate too far from true value"
+//         );
+//
+//         Ok(())
+//     }
+// }
