@@ -2,7 +2,13 @@
 name = "bsxplorer2"
 version = "0.1.0"
 edition = "2021"
-authors = ["shitohana"]
+authors = ["shitohana (kyudytskiy@gmail.com)"]
+license-file = "LICENSE.md"
+description = "A high-performance library for bisulfite sequencing data analysis and DNA methylation research"
+repository = "https://github.com/shitohana/bsxplorer2"
+license = "Prosperity-3.0.0"
+keywords = ["bioinformatics", "methylation", "bisulfite", "epigenetics", "genomics"]
+categories = ["science", "data-structures", "algorithms", "mathematics"]
 
 [workspace]
 members = ["console"]
@@ -16,9 +22,6 @@ plots = ["plotly", "z_table", "yew", "yew-plotly"]
 
 [dev-dependencies]
 rand_chacha = "=0.3.1"
-quickcheck = "*"
-criterion = { version = "0.5.1", features = ["html_reports"] }
-plotters = { version = "0.3.7", default-features = false, features = [] }
 
 [dependencies]
 # Utility
@@ -27,9 +30,7 @@ assert_approx_eq = "1.1.0"
 crossbeam = "0.8.4"
 hashbrown = { version = "=0.14.5", features = ["raw"] }
 itertools = "0.14.0"
-memmap2 = "0.9.5"
 num = "0.4.3"
-once_cell = "1.20.3"
 rayon = "1.10"
 tempfile = "3.15.0"
 uuid = { version = "1.12.1", features = ["serde"] }
@@ -47,10 +48,8 @@ serde_json = "1"
 console = "0.15"
 
 adjustp = "0.1.6"
-histogram = "0.11.2"
 rand = { version = "=0.8.5", features = ["std", "std_rng"] }
 rand_distr = "=0.4.3"
-rand_xoshiro = "0.7.0"
 argmin = "0.10.0"
 ndarray = { version = "0.15.4", features = ["serde"] }
 statrs = "0.18.0"
