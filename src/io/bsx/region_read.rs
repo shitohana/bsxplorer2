@@ -1,4 +1,3 @@
-use std::collections::btree_map::Cursor;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::io::{Read, Seek};
@@ -76,43 +75,43 @@ impl BSXBTree {
     /// Get cursor to the first batch, which has lower start position.
     pub fn get_lower_bound(
         &self,
-        chr: String,
+        chr: &str,
         start: u64,
-    ) -> Option<Cursor<'_, u64, usize>> {
-        Some(
-            self.0
-                .get(&chr)?
-                .lower_bound(Included(&start)),
-        )
+    ) -> Option<std::collections::btree_map::Range<'_, u64, usize>> {
+        self.0.get(chr).map(|inner_map| {
+            inner_map.range((Included(start), Included(u64::MAX))) // Use range instead of lower_bound
+        })
     }
 
     /// Get all batch indexes, which contain data_structs about specified region
-    pub fn get_region(
-        &self,
-        coordinates: &RegionCoordinates<u64>,
-    ) -> Option<Vec<usize>> {
-        let mut lower_bound = self.get_lower_bound(
-            coordinates.chr.to_string(),
-            coordinates.start(),
-        )?;
-        let mut batches = vec![lower_bound.prev()];
-        while let Some((start_val, index)) = lower_bound.next() {
-            if start_val > &coordinates.end() {
+    pub fn get_region(&self, coordinates: &RegionCoordinates<u64>) -> Option<Vec<usize>> {
+        let mut range = self.get_lower_bound(coordinates.chr(), coordinates.start())?;
+        let mut batches: Vec<usize> = Vec::new();
+        
+        for (start_val, index) in range {
+            if *start_val > coordinates.end() {
                 break;
             }
-            else {
-                batches.push(Some((start_val, index)));
+            batches.push(*index);
+        }
+
+        if batches.is_empty() {
+            return if let Some(inner_map) = self.0.get(coordinates.chr()) {
+                if !inner_map.is_empty() {
+                    let (_start, idx) = inner_map.last_key_value().unwrap();
+                    Some(vec![*idx; 2])
+                } else {
+                    Some(vec![])
+                }
+            } else {
+                None
             }
         }
-        Some(
-            batches
-                .iter()
-                .flatten()
-                .map(|(_key, index)| *(*index))
-                .collect(),
-        )
+
+        Some(batches)
     }
 }
+
 
 #[derive(Clone)]
 pub struct LinkedReadPlan {

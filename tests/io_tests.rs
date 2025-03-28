@@ -1,4 +1,3 @@
-#![feature(path_add_extension)]
 #[macro_use]
 extern crate log;
 extern crate pretty_env_logger;
@@ -481,8 +480,7 @@ impl TestReportEnv {
     where
         W: Write, {
         noodles::fasta::fs::index(fasta_path).expect("Failed to build .fai");
-
-        let index_path = fasta_path.with_added_extension("fai");
+        let index_path = format!("{:?}.fai", fasta_path);
         let mut fai_handle = File::open(index_path.clone())?;
         let mut index: Vec<u8> = Vec::new();
         fai_handle.read_to_end(&mut index)?;

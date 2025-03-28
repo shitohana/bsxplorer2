@@ -46,6 +46,8 @@ use crate::utils::{decode_context,
 #[derive(Clone, PartialEq, Debug)]
 pub struct BsxBatch(DataFrame);
 
+
+
 impl BsxBatch {
     /// Creates new [BsxBatch] without checks
     ///

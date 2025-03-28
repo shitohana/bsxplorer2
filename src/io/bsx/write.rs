@@ -59,7 +59,7 @@ where
         }
 
         let opts = IpcWriterOptions {
-            compression:    compression.clone(),
+            compression:    compression,
             maintain_order: true,
         };
 
@@ -160,13 +160,11 @@ where
         })?;
 
         debug!("FASTA index created or verified");
-        let index_path = fasta_path
-            .as_path()
-            .with_added_extension("fai");
+        let index_path = format!("{}.fai", fasta_path.to_str().unwrap());
         debug!("Using FASTA index at: {:?}", index_path);
         Self::try_from_sink_and_fai(
             sink,
-            index_path,
+            index_path.into(),
             compression,
             custom_metadata,
         )

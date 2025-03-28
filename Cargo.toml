@@ -10,10 +10,6 @@ members = ["console"]
 [lib]
 path = "src/lib.rs"
 
-[features]
-default = ["plots"]
-plots = ["plotly", "z_table", "yew", "yew-plotly"]
-
 [dev-dependencies]
 rand_chacha = "=0.3.1"
 quickcheck = "*"
@@ -60,18 +56,14 @@ bio = "2.0.3"
 bio-types = "1.0.4"
 noodles = { version = "0.90.0", features = ["fasta"] }
 
-# Plots
-plotly = { version = "0.12.1", optional = true }
-yew = { version = "0.21", features = ["csr"], optional = true }
-yew-plotly = { version = "0.3.0", optional = true }
-z_table = { version = "0.1.5", optional = true }
+z_table = { version = "0.1.5"}
 
 [dependencies.polars]
 version = "=0.45.0"
 default-features = false
 features = [
     # Performance
-    "performant",
+    # "performant",
     # Data types
     "dtype-i16",
     "dtype-u8",
@@ -79,14 +71,12 @@ features = [
     "dtype-u16",
     "dtype-categorical",
     "dtype-struct",
-    "dtype-array",
     # Lazy
     "lazy",
     # IO
     "csv",
     "decompress",
     "ipc",
-    "ipc_streaming",
     "streaming",
     # DataFrame operations
     "dataframe_arithmetic",
@@ -99,10 +89,6 @@ features = [
     "round_series",
     "concat_str",
     "rank",
-    "list_eval",
-    "list_count",
-    "list_any_all",
-    "search_sorted",
 ]
 
 [dependencies.polars-arrow-format]

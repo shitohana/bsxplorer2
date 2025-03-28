@@ -1,12 +1,13 @@
-#![feature(path_add_extension)]
-pub mod convert;
 mod dmr;
+pub mod convert;
 pub mod stats;
 pub mod utils;
+
 use clap::{Parser, Subcommand};
 use serde::Serialize;
-pub(crate) use utils::*;
 use wild::ArgsOs;
+
+pub(crate) use utils::*;
 
 use crate::convert::ReportArgs;
 
