@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
@@ -320,11 +321,8 @@ pub fn run(
     };
 
     let mut last_batch_idx = 0;
-
-    let all_segments_path = args
-        .output
-        .with_added_extension("segments")
-        .with_added_extension("tsv");
+    
+    let all_segments_path = format!("{}.segments.tsv", args.output.to_str().unwrap_or_else(|| panic!("Path is empty!")));
 
     let mut csv_writer = csv::WriterBuilder::default()
         .delimiter(b'\t')
@@ -400,11 +398,7 @@ pub fn run(
         .collect::<Vec<_>>();
     let dmr_count = filtered.len();
 
-    let filtered_path = args
-        .output
-        .with_added_extension("filtered")
-        .with_added_extension("tsv");
-
+    let filtered_path = format!("{}.filtered.tsv", args.output.to_str().unwrap_or_else(|| panic!("Path is empty!")));
     let mut csv_writer = csv::WriterBuilder::default()
         .delimiter(b'\t')
         .has_headers(true)
