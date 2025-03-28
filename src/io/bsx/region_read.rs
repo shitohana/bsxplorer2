@@ -85,7 +85,7 @@ impl BSXBTree {
 
     /// Get all batch indexes, which contain data_structs about specified region
     pub fn get_region(&self, coordinates: &RegionCoordinates<u64>) -> Option<Vec<usize>> {
-        let mut range = self.get_lower_bound(coordinates.chr(), coordinates.start())?;
+        let range = self.get_lower_bound(coordinates.chr(), coordinates.start())?;
         let mut batches: Vec<usize> = Vec::new();
         
         for (start_val, index) in range {

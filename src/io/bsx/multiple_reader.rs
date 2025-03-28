@@ -11,9 +11,8 @@ use log::{debug, info, warn};
 use polars::prelude::*;
 use serde::Serialize;
 
-use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::io::bsx::read::BsxFileReader;
-use crate::utils::types::RefId;
 
 /// A reader for multiple BSX files that handles concurrent batch reading
 /// across multiple files with synchronized batch indexing.

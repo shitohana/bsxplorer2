@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result, anyhow};
 use polars::{prelude::*, series::IsSorted};
-use std::collections::HashSet;
 
 // This import is marked as unused in the original code and isn't used here.
 // use super::bsx_dtype::BsxPolarsDtype;

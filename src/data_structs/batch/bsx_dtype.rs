@@ -1,6 +1,5 @@
-use itertools::Itertools;
 use polars::prelude::*;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 
 pub trait BsxPolarsDtype: Clone + Sized + ToString + PartialEq {
     type RustType;
