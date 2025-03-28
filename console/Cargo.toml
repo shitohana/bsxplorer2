@@ -8,6 +8,7 @@ description = "A high-performance tool for bisulfite sequencing data analysis an
 repository = "https://github.com/shitohana/bsxplorer2"
 keywords = ["bioinformatics", "methylation", "bisulfite", "epigenetics", "genomics"]
 categories = ["science", "data-structures", "algorithms", "mathematics"]
+readme = "README.md"
 
 [dependencies]
 bsxplorer2 = "0.1.0"
