@@ -1,4 +1,3 @@
-#![feature(btree_cursors)]
 #![allow(unused_assignments)]
 
 pub mod data_structs;
