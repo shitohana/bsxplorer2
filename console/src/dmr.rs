@@ -1,4 +1,3 @@
-use std::fmt::format;
 use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
@@ -13,11 +12,9 @@ use indicatif::ProgressBar;
 use serde::Serialize;
 
 use crate::utils::init_pbar;
-use crate::{expand_wildcards,
-            init_logger,
-            init_rayon_threads,
-            DmrContext,
-            UtilsArgs};
+use crate::{
+    expand_wildcards, init_logger, init_rayon_threads, DmrContext, UtilsArgs,
+};
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct DmrArgs {
@@ -43,7 +40,7 @@ pub(crate) struct DmrArgs {
         required = true,
         help = "Prefix for the generated output files."
     )]
-    output:  PathBuf,
+    output: PathBuf,
     #[arg(
         short,
         long,
@@ -51,7 +48,7 @@ pub(crate) struct DmrArgs {
         default_value_t = false,
         help = "Automatically confirm selected paths."
     )]
-    force:   bool,
+    force: bool,
 
     #[clap(
         short,
@@ -102,7 +99,7 @@ pub(crate) struct DmrArgs {
                 difference in methylation proportion between the two groups \
                 smaller than this value will be discarded."
     )]
-    pub diff_threshold: f64,
+    pub diff_threshold: f32,
 
     #[arg(
         short = 'D',
@@ -155,7 +152,7 @@ pub(crate) struct DmrArgs {
                 values result in more segments being merged. Should be very \
                 small to avoid over-segmentation after denoising."
     )]
-    tolerance: f64,
+    tolerance: f32,
 
     #[arg(
         long,
@@ -277,8 +274,7 @@ pub fn run(
         utils.verbose,
     ) {
         result
-    }
-    else {
+    } else {
         return;
     };
     let context = args.context.tobsxplorer2();
@@ -315,14 +311,18 @@ pub fn run(
         let progress_bar = init_pbar(dmr_iterator.blocks_total())
             .expect("Failed to initialize progress bar");
         progress_bar
-    }
-    else {
+    } else {
         ProgressBar::hidden()
     };
 
     let mut last_batch_idx = 0;
-    
-    let all_segments_path = format!("{}.segments.tsv", args.output.to_str().unwrap_or_else(|| panic!("Path is empty!")));
+
+    let all_segments_path = format!(
+        "{}.segments.tsv",
+        args.output
+            .to_str()
+            .unwrap_or_else(|| panic!("Path is empty!"))
+    );
 
     let mut csv_writer = csv::WriterBuilder::default()
         .delimiter(b'\t')
@@ -380,8 +380,7 @@ pub fn run(
                 _ => unreachable!(),
             },
         )
-    }
-    else {
+    } else {
         all_segments
             .iter()
             .map(|s| s.p_value)
@@ -398,7 +397,12 @@ pub fn run(
         .collect::<Vec<_>>();
     let dmr_count = filtered.len();
 
-    let filtered_path = format!("{}.filtered.tsv", args.output.to_str().unwrap_or_else(|| panic!("Path is empty!")));
+    let filtered_path = format!(
+        "{}.filtered.tsv",
+        args.output
+            .to_str()
+            .unwrap_or_else(|| panic!("Path is empty!"))
+    );
     let mut csv_writer = csv::WriterBuilder::default()
         .delimiter(b'\t')
         .has_headers(true)
@@ -423,16 +427,16 @@ pub fn run(
 
 #[derive(Debug, Serialize)]
 struct DmrFilteredRow {
-    chr:         String,
-    start:       u32,
-    end:         u32,
+    chr: String,
+    start: u32,
+    end: u32,
     n_cytosines: usize,
-    padj:        f64,
-    p_utest:     f64,
-    group_a:     f64,
-    group_b:     f64,
-    meth_diff:   f64,
-    meth_mean:   f64,
+    padj: f64,
+    p_utest: f64,
+    group_a: f32,
+    group_b: f32,
+    meth_diff: f32,
+    meth_mean: f32,
 }
 
 impl DmrFilteredRow {
