@@ -204,6 +204,98 @@ impl From<BsxBatch> for DataFrame {
 pub struct EncodedBsxBatch(DataFrame);
 
 impl EncodedBsxBatch {
+    pub const CHR_NAME: &'static str = "chr";
+    pub const POS_NAME: &'static str = "position";
+    pub const STRAND_NAME: &'static str = "strand";
+    pub const CONTEXT_NAME: &'static str = "context";
+    pub const COUNT_M_NAME: &'static str = "count_m";
+    pub const COUNT_TOTAL_NAME: &'static str = "count_total";
+    pub const DENSITY_NAME: &'static str = "density";
+
+    pub const POS_DTYPE: DataType = DataType::UInt32;
+    pub const STRAND_DTYPE: DataType = DataType::Boolean;
+    pub const CONTEXT_DTYPE: DataType = DataType::Boolean;
+    pub const COUNT_DTYPE: DataType = DataType::Int16;
+    pub const DENSITY_DTYPE: DataType = DataType::Float32;
+
+    /// Returns expected schema of [EncodedBsxBatch]
+    pub(crate) fn get_schema(chr_dtype: &DataType) -> Schema {
+        Schema::from_iter(Self::get_hashmap(chr_dtype).into_iter().map(|(k, v)| (PlSmallStr::from(k), v)))
+    }
+
+    /// Returns expected schema of [EncodedBsxBatch] as [PlHashMap]
+    pub(crate) fn get_hashmap(
+        chr_dtype: &DataType
+    ) -> PlHashMap<&str, DataType> {
+        PlHashMap::from_iter([
+            (Self::CHR_NAME, chr_dtype.clone()),
+            (Self::POS_NAME, Self::POS_DTYPE.clone()),
+            (Self::STRAND_NAME, Self::STRAND_DTYPE.clone()),
+            (Self::CONTEXT_NAME, Self::CONTEXT_DTYPE.clone()),
+            (Self::COUNT_M_NAME, Self::COUNT_DTYPE.clone()),
+            (Self::COUNT_TOTAL_NAME, Self::COUNT_DTYPE.clone()),
+            (Self::DENSITY_NAME, Self::DENSITY_DTYPE.clone()),
+        ])
+    }
+
+    pub fn position(&self) -> &ChunkedArray<UInt32Type> {
+        self.0
+            .column(Self::POS_NAME)
+            .unwrap()
+            .u32()
+            .unwrap()
+    }
+
+    pub fn chr(&self) -> &CategoricalChunked {
+        self.0
+            .column(Self::CHR_NAME)
+            .unwrap()
+            .categorical()
+            .unwrap()
+    }
+
+    pub fn strand(&self) -> &ChunkedArray<BooleanType> {
+        self.0
+            .column(Self::STRAND_NAME)
+            .unwrap()
+            .bool()
+            .unwrap()
+    }
+
+    pub fn context(&self) -> &ChunkedArray<BooleanType> {
+        self.0
+            .column(Self::CONTEXT_NAME)
+            .unwrap()
+            .bool()
+            .unwrap()
+    }
+
+    pub fn count_m(&self) -> &ChunkedArray<Int16Type> {
+        self.0
+            .column(Self::COUNT_M_NAME)
+            .unwrap()
+            .i16()
+            .unwrap()
+    }
+
+    pub fn count_total(&self) -> &ChunkedArray<Int16Type> {
+        self.0
+            .column(Self::COUNT_TOTAL_NAME)
+            .unwrap()
+            .i16()
+            .unwrap()
+    }
+
+    pub fn density(&self) -> &ChunkedArray<Float32Type> {
+        self.0
+            .column(Self::DENSITY_NAME)
+            .unwrap()
+            .f32()
+            .unwrap()
+    }
+}
+
+impl EncodedBsxBatch {
     /// Creates new [EncodedBsxBatch] without checks
     ///
     /// # Safety
@@ -268,34 +360,6 @@ impl EncodedBsxBatch {
 
         let result = batch_lazy.collect()?;
         Ok(BsxBatch(result))
-    }
-
-    /// Returns expected schema of [EncodedBsxBatch]
-    pub(crate) fn get_schema(chr_dtype: &DataType) -> Schema {
-        polars_schema![
-            "chr" => chr_dtype.clone(),
-            "position" => DataType::UInt32,
-            "strand" => DataType::Boolean,
-            "context" => DataType::Boolean,
-            "count_m" => DataType::Int16,
-            "count_total" => DataType::Int16,
-            "density" => DataType::Float32
-        ]
-    }
-
-    /// Returns expected schema of [EncodedBsxBatch] as [PlHashMap]
-    pub(crate) fn get_hashmap(
-        chr_dtype: &DataType
-    ) -> PlHashMap<&str, DataType> {
-        PlHashMap::from_iter([
-            ("chr", chr_dtype.clone()),
-            ("position", DataType::UInt32),
-            ("strand", DataType::Boolean),
-            ("context", DataType::Boolean),
-            ("count_m", DataType::Int16),
-            ("count_total", DataType::Int16),
-            ("density", DataType::Float32),
-        ])
     }
 
     /// Trims [EncodedBsxBatch] by `region_coordinates`
@@ -470,7 +534,7 @@ impl EncodedBsxBatch {
     }
 
     /// Returns chromosome name from chromosome column
-    pub fn chr(&self) -> PolarsResult<String> {
+    pub fn batch_chr(&self) -> PolarsResult<String> {
         let chr_col = self
             .data()
             .column("chr")?
@@ -495,10 +559,10 @@ impl EncodedBsxBatch {
             .first()
             .unwrap();
         let chr = if let Some(refids) = refid_set {
-            refids.intern(self.chr()?.as_str())
+            refids.intern(self.batch_chr()?.as_str())
         }
         else {
-            Arc::new(self.chr()?.to_owned())
+            Arc::new(self.batch_chr()?.to_owned())
         };
         Ok(Pos::new(chr, pos as isize, NoStrand::Unknown))
     }
@@ -515,10 +579,10 @@ impl EncodedBsxBatch {
             .last()
             .unwrap();
         let chr = if let Some(refids) = refid_set {
-            refids.intern(self.chr()?.as_str())
+            refids.intern(self.batch_chr()?.as_str())
         }
         else {
-            Arc::new(self.chr()?.to_owned())
+            Arc::new(self.batch_chr()?.to_owned())
         };
         Ok(Pos::new(chr, pos as isize, NoStrand::Unknown))
     }
@@ -551,70 +615,20 @@ impl EncodedBsxBatch {
         self,
         threshold: i16,
     ) -> PolarsResult<Self> {
-        let data = self
-            .0
-            .lazy()
-            .with_column(
-                when(col("count_total").lt(lit(threshold as u32)))
-                    .then(lit(0))
-                    .otherwise(col("count_total"))
-                    .alias("count_total"),
-            )
-            .with_columns([
-                when(col("count_total").eq(lit(0)))
-                    .then(lit(0))
-                    .otherwise(col("count_m"))
-                    .alias("count_m"),
-                when(col("count_total").eq(lit(0)))
-                    .then(lit(f64::NAN))
-                    .otherwise(col("density"))
-                    .alias("density"),
-            ])
-            .collect()?;
+        let data = self.0.lazy().with_column(
+            when(col("count_total").lt(lit(threshold as u32))).then(lit(0)).otherwise(col("count_total")).alias("count_total"),
+        ).with_columns([
+            when(col("count_total").eq(lit(0))).then(lit(0)).otherwise(col("count_m")).alias("count_m"),
+            when(col("count_total").eq(lit(0))).then(lit(f64::NAN)).otherwise(col("density")).alias("density"),
+        ]).collect()?;
         Ok(Self(data))
-    }
-
-    /// Returns methylation density values
-    pub fn get_density_vals(&self) -> PolarsResult<Vec<f32>> {
-        Ok(self
-            .0
-            .column("density")?
-            .f32()?
-            .into_iter()
-            .map(|x| x.unwrap_or(f32::NAN))
-            .collect())
     }
 
     /// Returns position values
     pub fn get_position_vals(&self) -> PolarsResult<Vec<u32>> {
-        Ok(self
-            .0
-            .column("position")?
-            .u32()?
+        Ok(self.position()
             .into_iter()
             .map(|x| x.unwrap())
-            .collect())
-    }
-
-    /// Returns methylated counts
-    pub fn get_counts_m(&self) -> PolarsResult<Vec<i16>> {
-        Ok(self
-            .0
-            .column("count_m")?
-            .i16()?
-            .into_iter()
-            .map(|x| x.unwrap_or(0))
-            .collect())
-    }
-
-    /// Returns total counts
-    pub fn get_counts_total(&self) -> PolarsResult<Vec<i16>> {
-        Ok(self
-            .0
-            .column("count_total")?
-            .i16()?
-            .into_iter()
-            .map(|x| x.unwrap_or(0))
             .collect())
     }
 

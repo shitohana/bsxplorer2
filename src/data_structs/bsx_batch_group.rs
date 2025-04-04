@@ -21,10 +21,11 @@ use std::hash::Hash;
 use anyhow::{anyhow, Context as AnyhowContext};
 use itertools::{izip, Itertools};
 use log::{debug, info, warn};
+use ndarray::{Array2, Axis};
 use polars::datatypes::BooleanChunked;
 use polars::error::PolarsError;
 use polars::frame::DataFrame;
-use polars::prelude::NamedFrom;
+use polars::prelude::{ChunkedArray, NamedFrom, PolarsDataType, PolarsNumericType};
 use rayon::iter::{IntoParallelIterator,
                   IntoParallelRefIterator,
                   ParallelIterator};
@@ -52,7 +53,6 @@ macro_rules! check_eq_batches {
         'eval: {
             let mut evaled = $expression;
             if evaled.all_equal() {
-                debug!("Batch equality check passed: {}", $err_string);
                 break 'eval Ok(());
             }
             else {
@@ -61,6 +61,24 @@ macro_rules! check_eq_batches {
             }
         }
     };
+}
+
+pub(crate) fn apply_over_column<P, R, T, F>(
+    columns: Vec<&ChunkedArray<P>>, 
+    func: F
+) -> anyhow::Result<T>
+where
+    P: PolarsNumericType<Native = R>,
+    F: FnOnce(Array2<Option<R>>) -> T
+{
+    assert!(columns.len() > 0);
+    
+    let matrix: Array2<Option<R>> = Array2::from_shape_vec(
+        (columns.len(), columns[0].len()),
+        columns.into_iter().map(|a| a.to_vec()).concat()
+    )?;
+    
+    Ok(func(matrix))
 }
 
 /// Represents a group of encoded BSX batches with optional labels.
@@ -124,8 +142,6 @@ where
                 "Cannot create batch group: Empty batches provided"
             ));
         }
-
-        info!("Creating batch group with {} batches", batches.len());
 
         check_eq_batches!(
             batches
@@ -448,60 +464,18 @@ where
             threshold = self.n_samples();
         }
 
-        info!(
-            "Filtering rows with more than {} missing values out of {} samples",
-            threshold,
-            self.n_samples()
-        );
-
         let mask = {
-            let nan_vecs = self
-                .batches
-                .par_iter()
-                .map(|batch| {
-                    Ok(batch
-                        .data()
-                        .column("density")
-                        .with_context(|| "Failed to get 'density' column")?
-                        .f32()
-                        .with_context(|| {
-                            "Failed to convert 'density' column to f32"
-                        })?
-                        .iter()
-                        .map(|v| v.map(|x| x.is_nan()).unwrap_or(true))
-                        .collect())
-                })
-                .collect::<anyhow::Result<Vec<Vec<bool>>>>()
-                .with_context(|| {
-                    "Failed to collect NaN vectors from batches"
-                })?;
-
-            let (width, height) = (self.n_samples(), self.height());
-            debug!(
-                "Checking for missing values across {} samples with {} sites \
-                 each",
-                width, height
-            );
-
-            let mask_vec: Vec<bool> = (0..height)
-                .into_par_iter()
-                .map(|j| {
-                    let mut nan_count = 0usize;
-                    for i in 0..width {
-                        if nan_vecs[i][j] {
-                            nan_count += 1;
-                        }
-                    }
-                    nan_count <= threshold
-                })
-                .collect();
-
-            debug!(
-                "Created filter mask with {} sites retained out of {}",
-                mask_vec.iter().filter(|&&x| x).count(),
-                height
-            );
-
+            let mask_vec = apply_over_column(
+                self.batches.iter().map(EncodedBsxBatch::density).collect_vec(),
+                |arr| {
+                    arr
+                        .map(|x| if x.is_none() {1usize} else {0})
+                        .sum_axis(Axis(0))
+                        .map(|value| value <= &threshold)
+                        .to_vec()
+                }
+            )?;
+            
             BooleanChunked::new("mask".into(), mask_vec)
         };
 
@@ -612,55 +586,16 @@ where
     pub fn get_average_density(
         &self,
         na_rm: bool,
-    ) -> anyhow::Result<Vec<f64>> {
-        info!(
-            "Calculating average methylation density across {} batches \
-             (na_rm={})",
-            self.n_samples(),
-            na_rm
-        );
-
-        let density_cols = self
-            .batches
-            .iter()
-            .map(EncodedBsxBatch::get_density_vals)
-            .collect::<anyhow::Result<Vec<_>, _>>()
-            .with_context(|| "Failed to extract density values from batches")?;
-
-        let (height, width) = (self.height(), self.n_samples());
-        debug!("Processing {} sites across {} samples", height, width);
-
-        let res = (0..height)
-            .into_par_iter()
-            .map(|j| {
-                let values: Vec<f32> = (0..width)
-                    .into_iter()
-                    .map(|i| density_cols[i][j])
-                    .filter(|&x| {
-                        if na_rm {
-                            !x.is_nan()
-                        }
-                        else {
-                            true
-                        }
-                    })
-                    .collect();
-
-                if values.is_empty() && na_rm {
-                    f64::NAN // Return NaN if all values were NaN and we're
-                             // removing NaNs
-                }
-                else {
-                    values.iter().map(|&x| x as f64).mean()
-                }
-            })
-            .collect::<Vec<_>>();
-
-        debug!(
-            "Completed average density calculation for {} sites",
-            res.len()
-        );
-        Ok(res)
+    ) -> anyhow::Result<Vec<f32>> {
+        apply_over_column::<_, f32, _, _>(
+            self.batches.iter().map(EncodedBsxBatch::density).collect_vec(),
+            |arr| {
+                arr
+                    .map(|x| x.unwrap_or(if na_rm { 0.0 } else { f32::NAN }))
+                    .mean_axis(Axis(0))
+                    .unwrap().to_vec()
+            }
+        )
     }
 
     /// Calculates the sum of methylated counts (`count_m`) for each methylation
@@ -670,40 +605,16 @@ where
     ///
     /// A Result containing a vector of summed methylated counts (one for each
     /// methylation site).
-    pub fn get_sum_counts_m(&self) -> anyhow::Result<Vec<u32>> {
-        info!(
-            "Calculating sum of methylated counts across {} batches",
-            self.n_samples()
-        );
-
-        let count_m_cols = self
-            .batches
-            .iter()
-            .map(EncodedBsxBatch::get_counts_m)
-            .collect::<anyhow::Result<Vec<_>, _>>()
-            .with_context(|| {
-                "Failed to extract methylated counts from batches"
-            })?;
-
-        let (height, width) = (self.height(), self.n_samples());
-        debug!("Processing {} sites across {} samples", height, width);
-
-        let res = (0..height)
-            .into_par_iter()
-            .map(|j| {
-                (0..width)
-                    .into_iter()
-                    .map(|i| count_m_cols[i][j])
-                    .map(|x| x as u32)
-                    .sum()
-            })
-            .collect::<Vec<_>>();
-
-        debug!(
-            "Completed methylated count summation for {} sites",
-            res.len()
-        );
-        Ok(res)
+    pub fn get_sum_counts_m(&self) -> anyhow::Result<Vec<i16>> {
+        apply_over_column(
+            self.batches.iter().map(EncodedBsxBatch::count_m).collect_vec(),
+            |arr| {
+                arr
+                    .map(|x| x.unwrap_or(0))
+                    .sum_axis(Axis(0))
+                    .to_vec()
+            }
+        )
     }
 
     /// Calculates the sum of total counts (`count_total`) for each methylation
@@ -713,35 +624,16 @@ where
     ///
     /// A Result containing a vector of summed total counts (one for each
     /// methylation site).
-    pub fn get_sum_counts_total(&self) -> anyhow::Result<Vec<u32>> {
-        info!(
-            "Calculating sum of total counts across {} batches",
-            self.n_samples()
-        );
-
-        let count_total_cols = self
-            .batches
-            .iter()
-            .map(EncodedBsxBatch::get_counts_total)
-            .collect::<anyhow::Result<Vec<_>, _>>()
-            .with_context(|| "Failed to extract total counts from batches")?;
-
-        let (height, width) = (self.height(), self.n_samples());
-        debug!("Processing {} sites across {} samples", height, width);
-
-        let res = (0..height)
-            .into_par_iter()
-            .map(|j| {
-                (0..width)
-                    .into_iter()
-                    .map(|i| count_total_cols[i][j])
-                    .map(|x| x as u32)
-                    .sum()
-            })
-            .collect::<Vec<_>>();
-
-        debug!("Completed total count summation for {} sites", res.len());
-        Ok(res)
+    pub fn get_sum_counts_total(&self) -> anyhow::Result<Vec<i16>> {
+        apply_over_column(
+            self.batches.iter().map(EncodedBsxBatch::count_total).collect_vec(),
+            |arr| {
+                arr
+                    .map(|x| x.unwrap_or(0))
+                    .sum_axis(Axis(0))
+                    .to_vec()
+            }
+        )
     }
 
     /// Retrieves the genomic positions of the methylation sites.
@@ -772,7 +664,7 @@ where
     /// A Result containing the chromosome name.
     pub fn get_chr(&self) -> anyhow::Result<String> {
         debug!("Retrieving chromosome name from batch group");
-        self.batches[0].chr().with_context(|| {
+        self.batches[0].batch_chr().with_context(|| {
             "Failed to retrieve chromosome name from first batch"
         })
     }

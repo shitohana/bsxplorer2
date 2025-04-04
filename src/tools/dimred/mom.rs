@@ -67,23 +67,24 @@ fn empiric_sample_size<N: Float>(
     confidence: N,
     precision: N,
 ) -> usize {
-    let z: N =
-        to_num(z_table::lookup((1.0 + confidence.to_f32().unwrap()) / 2.0));
-    let factor = to_num::<_, N>(1) / alpha_est
-        + to_num::<_, N>(1) / beta_est
-        + to_num::<_, N>(1) / (alpha_est + beta_est);
-    let var_alpha = (alpha_est.powi(2)) * factor;
-    let var_beta = (beta_est.powi(2)) * factor;
-
-    let denominator = precision.powi(2) * alpha_est.powi(2);
-    let n_alpha: N = (to_num::<_, N>(z.powi(2)) * var_alpha) / denominator;
-    let n_beta: N = (to_num::<_, N>(z.powi(2)) * var_beta) / denominator;
-
-    n_alpha
-        .max(n_beta)
-        .ceil()
-        .to_usize()
-        .unwrap_or(usize::MAX)
+    todo!("Switch from using z_table");
+    // let z: N =
+    //     to_num(z_table::lookup((1.0 + confidence.to_f32().unwrap()) / 2.0));
+    // let factor = to_num::<_, N>(1) / alpha_est
+    //     + to_num::<_, N>(1) / beta_est
+    //     + to_num::<_, N>(1) / (alpha_est + beta_est);
+    // let var_alpha = (alpha_est.powi(2)) * factor;
+    // let var_beta = (beta_est.powi(2)) * factor;
+    //
+    // let denominator = precision.powi(2) * alpha_est.powi(2);
+    // let n_alpha: N = (to_num::<_, N>(z.powi(2)) * var_alpha) / denominator;
+    // let n_beta: N = (to_num::<_, N>(z.powi(2)) * var_beta) / denominator;
+    //
+    // n_alpha
+    //     .max(n_beta)
+    //     .ceil()
+    //     .to_usize()
+    //     .unwrap_or(usize::MAX)
 }
 
 /// Calculate the theoretical sample size needed

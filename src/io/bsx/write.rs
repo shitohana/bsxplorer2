@@ -59,7 +59,7 @@ where
         }
 
         let opts = IpcWriterOptions {
-            compression:    compression,
+            compression,
             maintain_order: true,
         };
 

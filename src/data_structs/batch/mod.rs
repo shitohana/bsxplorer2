@@ -1,2 +1,1 @@
-mod batch_trait;
-mod bsx_dtype;
+mod meth_batch;

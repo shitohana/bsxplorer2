@@ -1,3 +1,4 @@
+use once_cell::sync::OnceCell;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -10,7 +11,7 @@ use crate::utils::mann_whitney_u;
 
 #[derive(Clone, Debug)]
 pub struct SegmentView<'a> {
-    pub(crate) pvalue:    Option<f64>,
+    pub(crate) pvalue:    OnceCell<f64>,
     pub(crate) rel_start: usize,
     pub(crate) rel_end:   usize,
     parent:               Arc<&'a SegmentOwned>,
@@ -18,23 +19,16 @@ pub struct SegmentView<'a> {
 
 impl<'a> SegmentView<'a> {
     pub fn new(
-        pvalue: Option<f64>,
         rel_start: usize,
         rel_end: usize,
         parent: Arc<&'a SegmentOwned>,
     ) -> SegmentView<'a> {
+        let pvalue = OnceCell::new();
         SegmentView {
             pvalue,
             rel_start,
             rel_end,
             parent,
-        }
-    }
-
-    pub fn init_pvalue(&mut self) {
-        if self.pvalue.is_none() {
-            let (_, prob) = self.mann_whitney();
-            self.pvalue = Some(prob)
         }
     }
 
@@ -76,7 +70,6 @@ impl<'a> SegmentView<'a> {
         end: usize,
     ) -> SegmentView<'a> {
         SegmentView::new(
-            None,
             self.rel_start + start,
             if self.rel_start + end <= self.rel_end {
                 self.rel_start + end
@@ -99,7 +92,6 @@ impl<'a> SegmentView<'a> {
                 < 2
         );
         SegmentView::new(
-            None,
             self.rel_start,
             other.rel_end,
             self.parent.clone(),
@@ -114,6 +106,13 @@ impl<'a> SegmentView<'a> {
             group_b:   self.group_b().to_vec(),
             mds_orig:  self.mds_orig().to_vec(),
         }
+    }
+
+    pub fn get_pvalue(&self) -> f64 {
+        *self.pvalue.get_or_init(|| {
+            let (_, prob) = self.mann_whitney();
+            prob
+        })
     }
 }
 
@@ -249,7 +248,7 @@ impl SegmentOwned {
     }
 
     pub fn to_view(&self) -> SegmentView {
-        SegmentView::new(None, 0, self.mds_orig.len(), Arc::new(self))
+        SegmentView::new(0, self.mds_orig.len(), Arc::new(self))
     }
 
     pub fn size(&self) -> usize { self.positions.len() }

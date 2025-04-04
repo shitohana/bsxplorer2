@@ -98,7 +98,7 @@ pub fn tv_recurse_segment(
         iterations += 1;
 
         let mut cur_seg = segment_queue.pop().unwrap();
-        cur_seg.init_pvalue();
+        cur_seg.get_pvalue();
 
         let diff_smoothed = izip!(
             condat(cur_seg.group_a(), initial_l),
@@ -118,10 +118,6 @@ pub fn tv_recurse_segment(
         let new_segments = extract_segments(&diff_smoothed, seg_tolerance)
             .iter()
             .map(|(start, end, _)| cur_seg.slice(*start, *end))
-            .map(|mut s| {
-                s.init_pvalue();
-                s
-            })
             .collect_vec();
 
         let (mut short_segments, mut better_segments) = new_segments
@@ -130,7 +126,7 @@ pub fn tv_recurse_segment(
                 if s.size() <= min_cpg {
                     short.push(s.clone())
                 }
-                else if s.pvalue < cur_seg.pvalue {
+                else if s.get_pvalue() < cur_seg.get_pvalue() {
                     better.push(s.clone())
                 }
                 (short, better)

@@ -4,3 +4,4 @@ pub mod genome;
 pub mod region;
 pub mod region_data;
 mod batch;
+mod bsx_file;

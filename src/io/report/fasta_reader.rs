@@ -13,7 +13,8 @@ use crate::utils::types::{PosNum, Strand};
 /// A wrapper around bio's IndexedReader to handle FASTA file operations
 pub struct FastaReader<R>
 where
-    R: Read + BufRead + Seek, {
+    R: Read + BufRead + Seek,
+{
     reader: IndexedReader<R>,
 }
 
@@ -37,7 +38,9 @@ where
     }
 
     /// Get the underlying FASTA index
-    pub fn index(&self) -> &Index { &self.reader.index }
+    pub fn index(&self) -> &Index {
+        &self.reader.index
+    }
 
     /// Fetch a genomic region specified by coordinates
     pub fn fetch_region<N>(
@@ -45,7 +48,8 @@ where
         region_coordinates: RegionCoordinates<N>,
     ) -> Result<Vec<u8>, Box<dyn Error>>
     where
-        N: PosNum, {
+        N: PosNum,
+    {
         let chr = region_coordinates.chr();
         let end_pos = region_coordinates
             .end()
@@ -74,8 +78,7 @@ where
         let fetch_end =
             if region_coordinates.end() != N::from(seq_data.len).unwrap() {
                 end_pos + 1
-            }
-            else {
+            } else {
                 seq_data.len
             };
 
@@ -144,8 +147,9 @@ where
 pub struct FastaCoverageReader<R, V>
 where
     R: Read + BufRead + Seek,
-    V: PrimInt + Unsigned, {
-    inner:    FastaReader<R>,
+    V: PrimInt + Unsigned,
+{
+    inner: FastaReader<R>,
     coverage: Coverage<V>,
 }
 
@@ -182,7 +186,9 @@ where
     }
 
     /// Get a reference to the inner FastaReader
-    pub fn inner(&self) -> &FastaReader<R> { &self.inner }
+    pub fn inner(&self) -> &FastaReader<R> {
+        &self.inner
+    }
 
     /// Get a mutable reference to the inner FastaReader
     pub(crate) fn inner_mut(&mut self) -> &mut FastaReader<R> {
@@ -190,7 +196,9 @@ where
     }
 
     /// Get a reference to the coverage tracker
-    pub fn coverage(&self) -> &Coverage<V> { &self.coverage }
+    pub fn coverage(&self) -> &Coverage<V> {
+        &self.coverage
+    }
 
     /// Get a mutable reference to the coverage tracker
     pub(crate) fn coverage_mut(&mut self) -> &mut Coverage<V> {
@@ -249,8 +257,9 @@ where
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct CoverageRow<V>
 where
-    V: Unsigned + PrimInt, {
-    read:  V, // Position up to which the sequence has been read
+    V: Unsigned + PrimInt,
+{
+    read: V,  // Position up to which the sequence has been read
     total: V, // Total length of the sequence
 }
 
@@ -297,21 +306,28 @@ where
     }
 
     /// Check if the entire sequence has been read
-    pub fn is_finished(&self) -> bool { self.total == self.read }
+    pub fn is_finished(&self) -> bool {
+        self.total == self.read
+    }
 
     /// Get the current read position
-    pub fn read(&self) -> V { self.read }
+    pub fn read(&self) -> V {
+        self.read
+    }
 
     /// Get the total sequence length
-    pub fn total(&self) -> V { self.total }
+    pub fn total(&self) -> V {
+        self.total
+    }
 }
 
 /// Tracks coverage across multiple sequences
 pub struct Coverage<V>
 where
-    V: Unsigned + PrimInt, {
+    V: Unsigned + PrimInt,
+{
     mapping: HashMap<String, CoverageRow<V>>,
-    order:   Vec<String>, // Preserves the order of sequences
+    order: Vec<String>, // Preserves the order of sequences
 }
 
 /// Errors that can occur during coverage operations
@@ -445,11 +461,11 @@ mod tests {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
             Sequence {
                 name: "chr1".to_string(),
-                len:  100,
+                len: 100,
             },
             Sequence {
                 name: "chr2".to_string(),
-                len:  200,
+                len: 200,
             },
         ]);
         assert_eq!(coverage.get("chr1").map(|v| v.read), Some(0u64));
@@ -478,11 +494,11 @@ mod tests {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
             Sequence {
                 name: "chr1".to_string(),
-                len:  100,
+                len: 100,
             },
             Sequence {
                 name: "chr2".to_string(),
-                len:  200,
+                len: 200,
             },
         ]);
         let _result = coverage.shift_to("chr2", 100).unwrap();
@@ -494,11 +510,11 @@ mod tests {
         let mut coverage: Coverage<u64> = Coverage::new(vec![
             Sequence {
                 name: "chr1".to_string(),
-                len:  100,
+                len: 100,
             },
             Sequence {
                 name: "chr2".to_string(),
-                len:  200,
+                len: 200,
             },
         ]);
         let _result = coverage.shift_to("chr3", 100).unwrap();

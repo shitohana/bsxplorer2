@@ -171,8 +171,8 @@ where
         // Divide the group into left and right groups
         let (group_left, group_right) = self.divide_groups(group)?;
         let (density_left, density_right) = (
-            group_left.get_average_density(true)?,
-            group_right.get_average_density(true)?,
+            group_left.get_average_density(true)?.into_iter().map_into().collect_vec(),
+            group_right.get_average_density(true)?.into_iter().map_into().collect_vec(),
         );
         let positions = group_left
             .get_positions()?
@@ -269,23 +269,18 @@ where
             );
             let mut new_cache = result
                 .into_iter()
-                .filter(|s| s.pvalue.is_some())
+                .filter(|s| s.pvalue.get().is_some())
                 .map(|segment| {
                     let a_mean = segment.group_a().mean();
                     let b_mean = segment.group_b().mean();
 
-                    let pval = if (b_mean - a_mean).abs() > self.config.diff_threshold {
-                        let (_, u_test_pval) = mann_whitney_u(segment.group_a(), segment.group_b());
-                        u_test_pval
-                    } else {
-                        segment.pvalue.unwrap()
-                    };
+                    let pval = segment.pvalue.get().unwrap();
 
                     DMRegion::new(
                         self.last_chr.clone(),
                         segment.start_pos() as u32,
                         segment.end_pos() as u32,
-                        pval,
+                        *pval,
                         a_mean,
                         b_mean,
                         segment.size(),
