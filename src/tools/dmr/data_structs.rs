@@ -2,12 +2,10 @@ use once_cell::sync::OnceCell;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
-use itertools::Itertools;
-use serde::{Deserialize, Serialize, Serializer};
-use statrs::statistics::Statistics;
-
 use crate::tools::dmr::segmentation;
 use crate::utils::mann_whitney_u;
+use itertools::Itertools;
+use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Clone, Debug)]
 pub struct SegmentView<'a> {
@@ -32,25 +30,16 @@ impl<'a> SegmentView<'a> {
         }
     }
 
-    fn mann_whitney(&self) -> (f64, f64) {
-        mann_whitney_u(self.group_a(), self.group_b())
-    }
-
-    pub fn mds_orig(&self) -> &[f64] {
+    pub fn mds_orig(&self) -> &[f32] {
         &self.parent.mds_orig[self.rel_start..self.rel_end]
     }
 
-    pub fn group_a(&self) -> &[f64] {
+    pub fn group_a(&self) -> &[f32] {
         &self.parent.group_a[self.rel_start..self.rel_end]
     }
 
-    pub fn group_b(&self) -> &[f64] {
+    pub fn group_b(&self) -> &[f32] {
         &self.parent.group_b[self.rel_start..self.rel_end]
-    }
-
-    #[allow(dead_code)]
-    pub fn mean_diff(&self) -> f64 {
-        self.group_a().mean() - self.group_b().mean()
     }
 
     pub fn start_pos(&self) -> u64 { self.parent.positions[self.rel_start] }
@@ -110,7 +99,10 @@ impl<'a> SegmentView<'a> {
 
     pub fn get_pvalue(&self) -> f64 {
         *self.pvalue.get_or_init(|| {
-            let (_, prob) = self.mann_whitney();
+            let (_, prob) = mann_whitney_u(
+                self.group_a(),
+                self.group_b()
+            );
             prob
         })
     }
@@ -170,17 +162,17 @@ impl Ord for SegmentView<'_> {
 
 #[derive(Debug)]
 pub struct SegmentOwned {
-    group_a:   Vec<f64>,
-    group_b:   Vec<f64>,
-    mds_orig:  Vec<f64>,
+    group_a:   Vec<f32>,
+    group_b:   Vec<f32>,
+    mds_orig:  Vec<f32>,
     positions: Vec<u64>,
 }
 
 impl SegmentOwned {
     pub fn new(
         positions: Vec<u64>,
-        group_a: Vec<f64>,
-        group_b: Vec<f64>,
+        group_a: Vec<f32>,
+        group_b: Vec<f32>,
     ) -> Self {
         let mds_orig = group_a
             .iter()
@@ -275,11 +267,11 @@ pub struct DMRegion {
     pub end:         u32,
     #[serde(serialize_with = "serialize_scientific")]
     pub p_value:     f64,
-    pub meth_left:   f64,
-    pub meth_right:  f64,
+    pub meth_left:   f32,
+    pub meth_right:  f32,
     pub n_cytosines: usize,
-    pub meth_diff:   f64,
-    pub meth_mean:   f64,
+    pub meth_diff:   f32,
+    pub meth_mean:   f32,
 }
 
 impl DMRegion {
@@ -288,8 +280,8 @@ impl DMRegion {
         start: u32,
         end: u32,
         p_value: f64,
-        meth_left: f64,
-        meth_right: f64,
+        meth_left: f32,
+        meth_right: f32,
         n_cytosines: usize,
     ) -> Self {
         DMRegion {
@@ -305,10 +297,27 @@ impl DMRegion {
         }
     }
 
-    pub fn meth_diff(&self) -> f64 { self.meth_left - self.meth_right }
+    pub(crate) fn from_segment_view(segment: SegmentView, chr: String) -> Self {
+        let a_mean = segment.group_a().iter().sum::<f32>() / segment.size() as f32;
+        let b_mean = segment.group_b().iter().sum::<f32>() / segment.size() as f32;
+
+        DMRegion {
+            chr,
+            start: segment.start_pos() as u32,
+            end: segment.end_pos() as u32,
+            p_value: segment.get_pvalue(),
+            meth_left: a_mean,
+            meth_right: b_mean,
+            n_cytosines: segment.size(),
+            meth_diff: a_mean - b_mean,
+            meth_mean: (a_mean + b_mean) / 2.0,
+        }
+    }
+
+    pub fn meth_diff(&self) -> f32 { self.meth_left - self.meth_right }
 
     #[allow(dead_code)]
-    fn meth_mean(&self) -> f64 { (self.meth_left + self.meth_right) / 2.0 }
+    fn meth_mean(&self) -> f32 { (self.meth_left + self.meth_right) / 2.0 }
 
     pub fn length(&self) -> u32 { self.end - self.start + 1 }
 }

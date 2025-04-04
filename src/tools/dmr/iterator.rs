@@ -221,29 +221,10 @@ where
                 );
                 result
                     .into_iter()
-                    // .filter(|s| s.pvalue.is_some()) //NOTE: this filter is redundant, as pvalue is checked below
                     .map(|segment| {
-                        let a_mean = segment.group_a().mean();
-                        let b_mean = segment.group_b().mean();
-
-                        let (_, pval) = mann_whitney_u(segment.group_a(), segment.group_b());
-
-                        DMRegion::new(
-                            self.last_chr.clone(),
-                            segment.start_pos() as u32,
-                            segment.end_pos() as u32,
-                            pval,
-                            a_mean,
-                            b_mean,
-                            segment.size(),
-                        )
+                        DMRegion::from_segment_view(segment, self.last_chr.to_string())
                     })
                     .filter(|dmr| dmr.end != dmr.start)
-                    // DISABLE PREFILTERING
-                    // .filter(|dmr| {
-                    //     dmr.meth_diff.abs() >= self.config.diff_threshold
-                    //         && dmr.p_value <= self.config.seg_pvalue
-                    // })
                     .collect_vec()
             })
             .flatten()
@@ -271,26 +252,9 @@ where
                 .into_iter()
                 .filter(|s| s.pvalue.get().is_some())
                 .map(|segment| {
-                    let a_mean = segment.group_a().mean();
-                    let b_mean = segment.group_b().mean();
-
-                    let pval = segment.pvalue.get().unwrap();
-
-                    DMRegion::new(
-                        self.last_chr.clone(),
-                        segment.start_pos() as u32,
-                        segment.end_pos() as u32,
-                        *pval,
-                        a_mean,
-                        b_mean,
-                        segment.size(),
-                    )
+                    DMRegion::from_segment_view(segment, self.last_chr.to_string())
                 })
                 .filter(|dmr| dmr.end != dmr.start)
-                // .filter(|dmr| {
-                //     dmr.meth_diff.abs() >= self.config.diff_threshold
-                //         && dmr.p_value <= self.config.seg_pvalue
-                // })
                 .collect_vec();
 
             self.regions_cache

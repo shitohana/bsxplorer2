@@ -77,8 +77,8 @@ pub fn tv_recurse_segment(
     l_min: f64,
     l_coef: f64,
     min_cpg: usize,
-    diff_threshold: f64,
-    seg_tolerance: f64,
+    diff_threshold: f32,
+    seg_tolerance: f32,
     merge_pvalue: f64,
 ) -> BTreeSet<SegmentView> {
     assert!(
@@ -101,8 +101,8 @@ pub fn tv_recurse_segment(
         cur_seg.get_pvalue();
 
         let diff_smoothed = izip!(
-            condat(cur_seg.group_a(), initial_l),
-            condat(cur_seg.group_b(), initial_l)
+            condat(cur_seg.group_a(), initial_l as f32),
+            condat(cur_seg.group_b(), initial_l as f32)
         )
         .map(|(a, b)| {
             let diff = a - b;
@@ -188,9 +188,9 @@ pub fn tv_recurse_segment(
 ///   - The end index of the segment.
 ///   - The value of the segment (the value at the start index).
 fn extract_segments(
-    x: &[f64],
-    tolerance: f64,
-) -> Vec<(usize, usize, f64)> {
+    x: &[f32],
+    tolerance: f32,
+) -> Vec<(usize, usize, f32)> {
     let mut segments = Vec::new();
     if x.is_empty() {
         return segments;
@@ -244,7 +244,10 @@ fn merge_adjacent_segments(
         // they are adjacent or overlapping.
         if cur_seg.rel_start <= prev_seg.rel_end {
             let (_ustat, p_value) =
-                mann_whitney_u(prev_seg.mds_orig(), cur_seg.mds_orig());
+                mann_whitney_u(
+                    prev_seg.mds_orig(), 
+                    cur_seg.mds_orig()
+                );
             // If the difference is not significant, merge the segments.
             if p_value > p_threshold {
                 prev_seg = prev_seg.merge(cur_seg);

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use itertools::Itertools;
 use log::{debug, info, warn};
+use num::Float;
 use polars::datatypes::PlIndexMap;
 use polars::prelude::*;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -679,9 +680,9 @@ fn ks_prob(
 
 /// Represents an observation in the Mann-Whitney U test
 #[derive(Debug)]
-struct Observation {
+struct Observation<F: Float> {
     /// The observed value
-    value: f64,
+    value: F,
     /// Which group the observation belongs to (0 for group1, 1 for group2)
     group: usize,
     /// The assigned rank of this observation
@@ -699,9 +700,9 @@ struct Observation {
 ///
 /// # Returns
 /// A tuple containing (U statistic, two-tailed p-value)
-pub fn mann_whitney_u(
-    group1: &[f64],
-    group2: &[f64],
+pub fn mann_whitney_u<F: Float>(
+    group1: &[F],
+    group2: &[F],
 ) -> (f64, f64) {
     info!(
         "Performing Mann-Whitney U test: group1={}, group2={}",
@@ -709,9 +710,9 @@ pub fn mann_whitney_u(
         group2.len()
     );
 
-    let n1 = group1.len() as f64;
-    let n2 = group2.len() as f64;
-    let n_total = (group1.len() + group2.len()) as f64;
+    let n1 = F::from(group1.len()).unwrap();
+    let n2 = F::from(group2.len()).unwrap();
+    let n_total = n1 + n2;
 
     if group1.is_empty() || group2.is_empty() {
         warn!("Mann-Whitney U test: one or both groups are empty");
@@ -719,7 +720,7 @@ pub fn mann_whitney_u(
     }
 
     // Combine observations from both groups
-    let mut observations: Vec<Observation> = group1
+    let mut observations: Vec<Observation<F>> = group1
         .iter()
         .map(|&v| {
             Observation {
@@ -742,10 +743,6 @@ pub fn mann_whitney_u(
         a.value
             .partial_cmp(&b.value)
             .unwrap_or_else(|| {
-                warn!(
-                    "Unable to compare values: {:?} and {:?}",
-                    a.value, b.value
-                );
                 std::cmp::Ordering::Equal
             })
     });
@@ -761,7 +758,7 @@ pub fn mann_whitney_u(
         // Find all tied values
         while end < observations.len()
             && (observations[end].value - observations[start].value).abs()
-                < 1e-6
+                < F::from(1e-6).unwrap()
         {
             end += 1;
         }
@@ -784,50 +781,45 @@ pub fn mann_whitney_u(
     }
 
     // Compute the sum of ranks for group1
-    let r1: f64 = observations
+    let r1: F = F::from(observations
         .iter()
         .filter(|obs| obs.group == 0)
         .map(|obs| obs.rank)
-        .sum();
+        .sum::<f64>()).unwrap();
 
     // Calculate U statistics
-    let u1 = r1 - n1 * (n1 + 1.0) / 2.0;
+    let u1 = r1 - n1 * (n1 + F::from(1.0).unwrap()) / F::from(2.0).unwrap();
     let u2 = n1 * n2 - u1;
     // Use the smaller U value for the test
     let u_stat = u1.min(u2);
 
-    debug!("U1={:.2}, U2={:.2}, using U={:.2}", u1, u2, u_stat);
-
     // Mean of U under H0
-    let mean_u = n1 * n2 / 2.0;
+    let mean_u = n1 * n2 / F::from(2.0).unwrap();
 
     // Variance with tie correction
-    let tie_sum: f64 = tie_groups
+    let tie_sum = F::from(tie_groups
         .iter()
         .map(|&t| (t * t * t - t) as f64)
-        .sum();
-    let variance_u = n1 * n2 / 12.0
-        * ((n_total + 1.0) - tie_sum / (n_total * (n_total - 1.0)));
+        .sum::<f64>()).unwrap();
+    let variance_u = n1 * n2 / F::from(12.0).unwrap()
+        * ((n_total + F::from(1.0).unwrap()) - tie_sum / (n_total * (n_total - F::from(1.0).unwrap())));
 
     // Apply continuity correction and compute Z-score
-    let z = if variance_u > 0.0 {
-        (u_stat - mean_u + 0.5) / variance_u.sqrt()
+    let z = if variance_u > F::from(0.0).unwrap() {
+        (u_stat - mean_u + F::from(0.5).unwrap()) / variance_u.sqrt()
     }
     else {
         warn!("Variance is zero in Mann-Whitney U test");
-        0.0
+        F::from(0.0).unwrap()
     };
+    let z = z.to_f64().unwrap();
 
     // Calculate two-tailed p-value
     let normal = Normal::new(0.0, 1.0).unwrap();
     let p_value = 2.0 * normal.cdf(-z.abs());
     let p_value = p_value.min(1.0); // ensure p-value doesn't exceed 1
 
-    info!(
-        "Mann-Whitney U result: U={:.2}, Z={:.4}, p={:.6}",
-        u_stat, z, p_value
-    );
-    (u_stat, p_value)
+    (u_stat.to_f64().unwrap(), p_value)
 }
 
 #[cfg(test)]
