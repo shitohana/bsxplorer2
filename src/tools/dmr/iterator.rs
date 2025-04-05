@@ -7,13 +7,11 @@ use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 use log::error;
 use rayon::prelude::*;
-use statrs::statistics::Statistics;
 
 use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::{tv_recurse_segment, FilterConfig};
-use crate::utils::mann_whitney_u;
 
 /// An iterator over differentially methylated regions (DMRs).
 pub struct DmrIterator<R>

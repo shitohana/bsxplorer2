@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufReader, Read, Seek};
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{mpsc, Arc};
@@ -19,14 +19,13 @@ use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef};
 use super::report_read_utils::{align_data_with_context, get_context_data};
 use crate::data_structs::bsx_batch::BsxBatch;
 use crate::data_structs::region::GenomicPosition;
+#[cfg(feature="compression")]
+use crate::io::compression::Compression;
 use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
 use crate::io::report::schema::ReportTypeSchema;
 use crate::utils::types::PosNum;
 use crate::utils::{first_position, last_position};
 
-// TODO
-// Add decompression
-// Add expand_user
 
 /// Builder for ReportReader that configures all reading parameters
 pub struct ReportReaderBuilder {
@@ -54,6 +53,9 @@ pub struct ReportReaderBuilder {
     pub batch_per_read:         usize,
     /// Size of each batch in bytes
     pub batch_size:             usize,
+
+    #[cfg(feature="compression")]
+    pub compression:            Compression,
 }
 
 impl ReportReaderBuilder {
@@ -166,13 +168,25 @@ impl ReportReaderBuilder {
         self
     }
 
+    #[cfg(feature="compression")]
+    pub fn with_compression(mut self, compression: Compression) -> Self {
+        self.compression = compression;
+        self
+    }
+
     /// Finalize the builder and create a ReportReader
     pub fn try_finish<F>(
         self,
         handle: F,
     ) -> Result<ReportReader, Box<dyn Error>>
     where
-        F: Read + Seek + MmapBytesReader + 'static, {
+        F: MmapBytesReader + 'static, {
+
+        #[cfg(feature="compression")]
+        let handle = self.compression.get_decoder(handle);
+        #[cfg(not(feature="compression"))]
+        let handle = Box::new(handle) as Box<dyn MmapBytesReader>;
+
         let csv_reader = self
             .report_type
             .read_options()
@@ -241,6 +255,8 @@ impl Default for ReportReaderBuilder {
             fai_path:               None,
             batch_per_read:         16,
             batch_size:             2 << 20,
+            #[cfg(feature="compression")]
+            compression:            Compression::None,
         }
     }
 }
@@ -248,7 +264,7 @@ impl Default for ReportReaderBuilder {
 /// A wrapper around BatchedCsvReader that manages ownership of the reader
 pub struct OwnedBatchedCsvReader<F>
 where
-    F: Read + Seek + MmapBytesReader, {
+    F: MmapBytesReader, {
     #[allow(dead_code)]
     // this exists because we need to keep ownership
     /// Schema of the CSV file
@@ -262,7 +278,7 @@ where
 
 impl<F> OwnedBatchedCsvReader<F>
 where
-    F: Read + Seek + MmapBytesReader + 'static,
+    F: MmapBytesReader + 'static,
 {
     /// Create a new OwnedBatchedCsvReader from a CsvReader and schema
     pub(crate) fn new(
@@ -284,7 +300,7 @@ where
 
 impl<F> OwnedBatchedCsvReader<F>
 where
-    F: Read + Seek + MmapBytesReader + 'static,
+    F: MmapBytesReader + 'static,
 {
     /// Read the next n batches from the CSV file
     pub fn next_batches(

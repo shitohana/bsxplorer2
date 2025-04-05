@@ -4,7 +4,7 @@ use itertools::Itertools;
 use log::{debug, trace, warn};
 use polars::prelude::*;
 
-use crate::data_structs::bsx_batch::BsxBatch;
+use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Represents different methylation report file formats supported by the
@@ -480,7 +480,8 @@ impl ReportTypeSchema {
 
 #[cfg(test)]
 mod report_schema_test {
-    use crate::data_structs::bsx_batch::BsxBatch;
+    use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
+    use crate::data_structs::bsx_builder::build_bsx_batch;
     use crate::io::report::schema::ReportTypeSchema;
     use crate::io::report::*;
 
@@ -489,7 +490,7 @@ mod report_schema_test {
         let report_type = ReportTypeSchema::Bismark;
 
         let input_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "position" => [1, 2, 3],
             "strand" => [".", ".", "."],
             "context" => ["CG", "CHG", "CHH"],
@@ -506,7 +507,7 @@ mod report_schema_test {
         .unwrap();
 
         let output_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "position" => [1, 2, 3],
             "strand" => [".", ".", "."],
             "context" => ["CG", "CHG", "CHH"],
@@ -520,11 +521,18 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let mutate_func = report_type.bsx_mutate();
-        let bsx_batch = mutate_func(input_df.clone()).unwrap();
-        assert_eq!(bsx_batch, output_df);
+        let bsx_batch = build_bsx_batch(
+            input_df.clone(), 
+            Some(&report_type), 
+            true, 
+            true, 
+            true
+        ).unwrap();
+        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let new_df = DataFrame::from(bsx_batch);
+        assert_eq!(new_df, output_df);
         let reverse_transform = report_type
-            .report_mutate_from_bsx(bsx_batch)
+            .report_mutate_from_bsx(new_df)
             .unwrap();
         assert_eq!(reverse_transform, input_df);
     }
@@ -534,7 +542,7 @@ mod report_schema_test {
         let report_type = ReportTypeSchema::CgMap;
 
         let input_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "nuc" => ["G", "C", "C"],
             "position" => [1, 2, 3],
             "context" => ["CG", "CHG", "CHH"],
@@ -550,7 +558,7 @@ mod report_schema_test {
         .unwrap();
 
         let output_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "position" => [1, 2, 3],
             "strand" => ["-", "+", "+"],
             "context" => ["CG", "CHG", "CHH"],
@@ -564,11 +572,18 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let mutate_func = report_type.bsx_mutate();
-        let bsx_batch = mutate_func(input_df.clone()).unwrap();
-        assert_eq!(bsx_batch, output_df);
+        let bsx_batch = build_bsx_batch(
+            input_df.clone(),
+            Some(&report_type),
+            true,
+            true,
+            true
+        ).unwrap();
+        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let new_df = DataFrame::from(bsx_batch);
+        assert_eq!(new_df, output_df);
         let reverse_transform = report_type
-            .report_mutate_from_bsx(bsx_batch)
+            .report_mutate_from_bsx(new_df)
             .unwrap();
         assert_eq!(reverse_transform, input_df);
     }
@@ -577,7 +592,7 @@ mod report_schema_test {
     fn coverage_conversion() {
         let report_type = ReportTypeSchema::Coverage;
         let input_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "start" => [1, 2, 3],
             "end" => [1, 2, 3],
             "density" => [0, 1, 0],
@@ -591,7 +606,7 @@ mod report_schema_test {
         .unwrap();
 
         let output_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "position" => [1, 2, 3],
             "strand" => [".", ".", "."],
             "context" => [None::<&str>, None, None],
@@ -605,11 +620,18 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let mutate_func = report_type.bsx_mutate();
-        let bsx_batch = mutate_func(input_df.clone()).unwrap();
-        assert_eq!(bsx_batch, output_df);
+        let bsx_batch = build_bsx_batch(
+            input_df.clone(),
+            Some(&report_type),
+            true,
+            true,
+            true
+        ).unwrap();
+        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let new_df = DataFrame::from(bsx_batch);
+        assert_eq!(new_df, output_df);
         let reverse_transform = report_type
-            .report_mutate_from_bsx(bsx_batch)
+            .report_mutate_from_bsx(new_df)
             .unwrap();
         assert_eq!(reverse_transform, input_df);
     }
@@ -619,7 +641,7 @@ mod report_schema_test {
         let report_type = ReportTypeSchema::BedGraph;
 
         let input_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "start" => [1, 2, 3],
             "end" => [1, 2, 3],
             "density" => [0, 1, 0],
@@ -631,7 +653,7 @@ mod report_schema_test {
         .unwrap();
 
         let output_df = df![
-            "chr" => ["1", "2", "3"],
+            "chr" => ["1", "1", "1"],
             "position" => [1, 2, 3],
             "strand" => [".", ".", "."],
             "context" => [None::<&str>, None, None],
@@ -645,11 +667,18 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let mutate_func = report_type.bsx_mutate();
-        let bsx_batch = mutate_func(input_df.clone()).unwrap();
-        assert_eq!(bsx_batch, output_df);
+        let bsx_batch = build_bsx_batch(
+            input_df.clone(),
+            Some(&report_type),
+            true,
+            true,
+            true
+        ).unwrap();
+        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let new_df = DataFrame::from(bsx_batch);
+        assert_eq!(new_df, output_df);
         let reverse_transform = report_type
-            .report_mutate_from_bsx(bsx_batch)
+            .report_mutate_from_bsx(new_df)
             .unwrap();
         assert_eq!(reverse_transform, input_df);
     }

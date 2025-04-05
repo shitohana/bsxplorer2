@@ -11,7 +11,7 @@ mod report_read_utils {
     use std::io::{BufRead, Seek};
 
     use super::*;
-    use crate::data_structs::bsx_batch::BsxBatch;
+    use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
     use crate::data_structs::region::RegionCoordinates;
     use crate::io::report::read::{ContextData, ReadQueueItem};
     use crate::io::report::schema::ReportTypeSchema;
@@ -107,12 +107,12 @@ mod report_read_utils {
         data_frame: &DataFrame,
         context_data: ContextData<N>,
     ) -> anyhow::Result<DataFrame> {
-        let data_join_columns = [BsxBatch::pos_col()];
+        let data_join_columns = [BsxBatch::POS_NAME];
         let context_join_columns = [ContextData::<N>::position_col()];
         let chr = utils::first_position(
             data_frame,
-            BsxBatch::chr_col(),
-            BsxBatch::pos_col(),
+            BsxBatch::CHR_NAME,
+            BsxBatch::POS_NAME,
         )?
         .chr()
         .to_string();

@@ -15,20 +15,6 @@ use crate::data_structs::region::GenomicPosition;
 
 pub mod types;
 
-// ======================= Schema Utilities =======================
-/// Macro for creating Polars schemas with a more concise syntax
-macro_rules! polars_schema {
-    ( $($name: expr => $dtype: expr),* ) => {
-        {
-            let mut fields: Vec<(PlSmallStr, DataType)> = Vec::new();
-            $(
-                fields.push(($name.into(), $dtype));
-            )*
-            Schema::from_iter(fields)
-        }
-    };
-}
-pub(crate) use polars_schema;
 
 /// Converts an array of name-datatype pairs to a Polars Schema
 ///

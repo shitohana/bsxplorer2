@@ -32,12 +32,10 @@ use statrs::statistics::Statistics;
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::tools::stats::MethylationStats;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
-// noinspection ALL
 use crate::utils::{decode_context,
                    decode_strand,
                    encode_context,
-                   encode_strand,
-                   polars_schema};
+                   encode_strand};
 
 /// DataFrame with
 /// 1. Non-null chr and position
@@ -46,7 +44,14 @@ use crate::utils::{decode_context,
 #[derive(Clone, PartialEq, Debug)]
 pub struct BsxBatch(DataFrame);
 
-
+impl BsxBatch {
+    pub const CHR_DTYPE: DataType = DataType::String;
+    pub const POS_DTYPE: DataType = DataType::UInt64;
+    pub const STRAND_DTYPE: DataType = DataType::String;
+    pub const CONTEXT_DTYPE: DataType = DataType::String;
+    pub const COUNT_DTYPE: DataType = DataType::UInt32;
+    pub const DENSITY_DTYPE: DataType = DataType::Float64;
+}
 
 impl BsxBatch {
     /// Creates new [BsxBatch] without checks
@@ -58,50 +63,29 @@ impl BsxBatch {
         BsxBatch(data_frame)
     }
 
-    /// Returns expected column names of dataframe
-    pub(crate) const fn col_names() -> &'static [&'static str] {
-        &[
-            "chr",
-            "position",
-            "strand",
-            "context",
-            "count_m",
-            "count_total",
-            "density",
-        ]
-    }
-
     /// Returns expected types of columns
     pub(crate) const fn col_types() -> &'static [DataType] {
         &[
-            DataType::String,
-            DataType::UInt64,
-            DataType::String,
-            DataType::String,
-            DataType::UInt32,
-            DataType::UInt32,
-            DataType::Float64,
+            Self::CHR_DTYPE,
+            Self::POS_DTYPE,
+            Self::STRAND_DTYPE,
+            Self::CONTEXT_DTYPE,
+            Self::COUNT_DTYPE,
+            Self::COUNT_DTYPE,
+            Self::DENSITY_DTYPE,
         ]
     }
-
-    /// Returns name of chr column
-    #[inline(always)]
-    pub(crate) const fn chr_col() -> &'static str { "chr" }
-
-    /// Returns name of position column
-    #[inline(always)]
-    pub(crate) const fn pos_col() -> &'static str { "position" }
 
     /// Returns expected schema of [BsxBatch]
     pub fn schema() -> Schema {
         use crate::utils::schema_from_arrays;
-        schema_from_arrays(Self::col_names(), Self::col_types())
+        schema_from_arrays(&Self::col_names(), Self::col_types())
     }
 
     /// Returns expected schema of [BsxBatch] as [PlHashMap]
     pub fn hashmap() -> PlHashMap<&'static str, DataType> {
         use crate::utils::hashmap_from_arrays;
-        hashmap_from_arrays(Self::col_names(), Self::col_types())
+        hashmap_from_arrays(&Self::col_names(), Self::col_types())
     }
 }
 
@@ -156,14 +140,7 @@ impl TryFrom<DataFrame> for BsxBatch {
             .cast(Self::hashmap(), true)
             .collect()?;
 
-        for colname in [
-            Self::chr_col(),
-            Self::pos_col(),
-            "context",
-            "strand",
-            "count_m",
-            "count_total",
-        ] {
+        for colname in Self::col_names() {
             if data_casted
                 .column(colname)?
                 .null_count()
@@ -177,7 +154,7 @@ impl TryFrom<DataFrame> for BsxBatch {
 
         // Check sorted
         if !data_casted
-            .column(Self::pos_col())?
+            .column(Self::POS_NAME)?
             .as_series()
             .unwrap()
             .is_sorted(SortOptions::default().with_order_descending(false))?
@@ -204,14 +181,6 @@ impl From<BsxBatch> for DataFrame {
 pub struct EncodedBsxBatch(DataFrame);
 
 impl EncodedBsxBatch {
-    pub const CHR_NAME: &'static str = "chr";
-    pub const POS_NAME: &'static str = "position";
-    pub const STRAND_NAME: &'static str = "strand";
-    pub const CONTEXT_NAME: &'static str = "context";
-    pub const COUNT_M_NAME: &'static str = "count_m";
-    pub const COUNT_TOTAL_NAME: &'static str = "count_total";
-    pub const DENSITY_NAME: &'static str = "density";
-
     pub const POS_DTYPE: DataType = DataType::UInt32;
     pub const STRAND_DTYPE: DataType = DataType::Boolean;
     pub const CONTEXT_DTYPE: DataType = DataType::Boolean;
@@ -423,10 +392,6 @@ impl EncodedBsxBatch {
     pub(crate) fn schema(&self) -> Schema { self.data().schema() }
 
     /// Returns expected column names of inner [DataFrame]
-    #[inline]
-    pub(crate) fn col_names() -> &'static [&'static str] {
-        BsxBatch::col_names()
-    }
 
     // TODO: add checks
     /// Vertically stacks with other [EncodedBsxBatch]
@@ -440,6 +405,7 @@ impl EncodedBsxBatch {
 
     /// Get methylation stats for [EncodedBsxBatch]
     pub fn get_methylation_stats(&self) -> PolarsResult<MethylationStats> {
+        // TODO move logic out
         let density_col = self.data().column("density")?;
         let mean_methylation = density_col
             .f32()?
@@ -779,6 +745,26 @@ impl BsxBatchMethods for EncodedBsxBatch {
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
 pub trait BsxBatchMethods {
+    const CHR_NAME: &'static str = "chr";
+    const POS_NAME: &'static str = "position";
+    const STRAND_NAME: &'static str = "strand";
+    const CONTEXT_NAME: &'static str = "context";
+    const COUNT_M_NAME: &'static str = "count_m";
+    const COUNT_TOTAL_NAME: &'static str = "count_total";
+    const DENSITY_NAME: &'static str = "density";
+
+    fn col_names() -> [&'static str; 7] {
+        [
+            Self::CHR_NAME,
+            Self::POS_NAME,
+            Self::STRAND_NAME,
+            Self::CONTEXT_NAME,
+            Self::COUNT_M_NAME,
+            Self::COUNT_TOTAL_NAME,
+            Self::DENSITY_NAME,
+        ]
+    }
+
     /// Filters [BsxBatch] by `context` and `strand`
     ///
     /// If both `context` and `strand` are [None], returns [BsxBatch]
@@ -809,13 +795,15 @@ pub trait BsxBatchMethods {
 
     /// Returns first [GenomicPosition]
     fn first_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
+        // TODO move to proper chunkedarray
         use crate::utils::first_position;
-        first_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
+        first_position(self.data(), Self::CHR_NAME, Self::POS_NAME)
     }
     /// Returns last [GenomicPosition]
     fn last_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
+        // TODO move to proper chunkedarray
         use crate::utils::last_position;
-        last_position(self.data(), BsxBatch::chr_col(), BsxBatch::pos_col())
+        last_position(self.data(), Self::CHR_NAME, Self::POS_NAME)
     }
 
     /// Extends [BsxBatch] by other

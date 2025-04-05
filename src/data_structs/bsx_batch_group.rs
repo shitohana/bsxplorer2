@@ -25,11 +25,9 @@ use ndarray::{Array2, Axis};
 use polars::datatypes::BooleanChunked;
 use polars::error::PolarsError;
 use polars::frame::DataFrame;
-use polars::prelude::{ChunkedArray, NamedFrom, PolarsDataType, PolarsNumericType};
+use polars::prelude::{ChunkedArray, NamedFrom, PolarsNumericType};
 use rayon::iter::{IntoParallelIterator,
-                  IntoParallelRefIterator,
                   ParallelIterator};
-use statrs::statistics::Statistics;
 
 use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};

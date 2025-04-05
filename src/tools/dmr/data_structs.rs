@@ -204,7 +204,6 @@ impl SegmentOwned {
                 split_idxs
                     .into_iter()
                     .fold(Vec::new(), |mut acc, idx| {
-                        // TODO not sure here
                         let positions = self
                             .positions
                             .drain(idx..)
@@ -275,28 +274,6 @@ pub struct DMRegion {
 }
 
 impl DMRegion {
-    pub(crate) fn new(
-        chr: Arc<String>,
-        start: u32,
-        end: u32,
-        p_value: f64,
-        meth_left: f32,
-        meth_right: f32,
-        n_cytosines: usize,
-    ) -> Self {
-        DMRegion {
-            chr: chr.to_string(),
-            start,
-            end,
-            p_value,
-            meth_left,
-            meth_right,
-            n_cytosines,
-            meth_diff: meth_left - meth_right,
-            meth_mean: (meth_left + meth_right) / 2.0,
-        }
-    }
-
     pub(crate) fn from_segment_view(segment: SegmentView, chr: String) -> Self {
         let a_mean = segment.group_a().iter().sum::<f32>() / segment.size() as f32;
         let b_mean = segment.group_b().iter().sum::<f32>() / segment.size() as f32;

@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
-use polars::prelude::*;
 use serde::Serialize;
 
 use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};

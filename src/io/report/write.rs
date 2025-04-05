@@ -5,6 +5,8 @@ use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;
 
 use crate::data_structs::bsx_batch::BsxBatch;
+#[cfg(feature = "compression")]
+use crate::io::compression::Compression;
 use crate::io::report::schema::ReportTypeSchema;
 
 /// `ReportWriter` provides functionality to write report data_structs to a sink
@@ -13,14 +15,14 @@ use crate::io::report::schema::ReportTypeSchema;
 /// # Type Parameters
 ///
 /// * `W`: Any type that implements the `Write` trait
-pub struct ReportWriter<W: Write> {
+pub struct ReportWriter {
     /// The schema defining the structure of the report
     schema: ReportTypeSchema,
     /// Batched CSV writer that handles the actual writing
-    writer: BatchedCsvWriter<W>,
+    writer: BatchedCsvWriter<Box<dyn Write>>,
 }
 
-impl<W: Write> ReportWriter<W> {
+impl ReportWriter {
     /// Creates a new `ReportWriter` with the specified sink, schema, and thread
     /// count.
     ///
@@ -34,13 +36,22 @@ impl<W: Write> ReportWriter<W> {
     /// # Returns
     ///
     /// A `PolarsResult` containing the new `ReportWriter` or an error
-    pub fn try_new(
+    pub fn try_new<W: Write + 'static>(
         sink: W,
         schema: ReportTypeSchema,
         n_threads: usize,
-    ) -> PolarsResult<Self> {
+        #[cfg(feature = "compression")]
+        compression: Compression,
+        #[cfg(feature = "compression")]
+        compression_level: Option<u32>
+    ) -> anyhow::Result<Self> {
         debug!("Creating new ReportWriter with {} threads", n_threads);
         let report_options = schema.read_options();
+
+        #[cfg(feature = "compression")]
+        let sink = compression.get_encoder(sink, compression_level.unwrap_or(1))?;
+        #[cfg(not(feature = "compression"))]
+        let sink = Box::new(sink) as Box<dyn Write>;
 
         let writer = CsvWriter::new(sink)
             .include_header(report_options.has_header)

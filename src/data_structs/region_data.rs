@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use rayon::prelude::*;
-
 use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
 use crate::data_structs::region::RegionCoordinates;
 use crate::utils::types::{Data, PosNum, RefId, Strand};

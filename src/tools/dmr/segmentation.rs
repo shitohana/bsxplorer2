@@ -96,7 +96,8 @@ pub fn tv_recurse_segment(
             break;
         }
         iterations += 1;
-
+        
+        #[allow(unused_mut)]
         let mut cur_seg = segment_queue.pop().unwrap();
         cur_seg.get_pvalue();
 

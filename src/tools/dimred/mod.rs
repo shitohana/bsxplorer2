@@ -12,6 +12,7 @@ pub mod mom;
 
 use num::NumCast;
 
+#[allow(unused)]
 struct MethCountsDataOwned {
     positions:      Vec<u32>,
     count_m:        Vec<u16>,
