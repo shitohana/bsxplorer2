@@ -17,7 +17,7 @@ use polars::io::RowIndex;
 use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef};
 
 use super::report_read_utils::{align_data_with_context, get_context_data};
-use crate::data_structs::bsx_batch::BsxBatch;
+use crate::data_structs::batch::decoded::BsxBatch;
 use crate::data_structs::region::GenomicPosition;
 #[cfg(feature="compression")]
 use crate::io::compression::Compression;

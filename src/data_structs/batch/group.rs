@@ -1,3 +1,12 @@
+/*******************************************************************************
+ Copyright (c) 2025
+ The Prosperity Public License 3.0.0
+
+ Contributor: [shitohana](https://github.com/shitohana)
+
+ Source Code: https://github.com/shitohana/BSXplorer
+ ******************************************************************************/
+
 //! This module provides functionalities for grouping and analyzing multiple
 //! `EncodedBsxBatch` instances.
 //!
@@ -29,7 +38,8 @@ use polars::prelude::{ChunkedArray, NamedFrom, PolarsNumericType};
 use rayon::iter::{IntoParallelIterator,
                   ParallelIterator};
 
-use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::batch::encoded::EncodedBsxBatch;
+use crate::data_structs::batch::traits::BsxBatchMethods;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 
 /// Macro to check if all items in a collection are equal
@@ -153,7 +163,7 @@ where
             batches
                 .iter()
                 .filter(|b| b.height() > 0)
-                .map(|b| EncodedBsxBatch::as_contig(b, &mut None))
+                .map(|b| EncodedBsxBatch::as_contig(b))
                 .map(|c| c.unwrap()),
             "Contigs differ between batches"
         )
@@ -662,7 +672,8 @@ where
     /// A Result containing the chromosome name.
     pub fn get_chr(&self) -> anyhow::Result<String> {
         debug!("Retrieving chromosome name from batch group");
-        self.batches[0].batch_chr().with_context(|| {
+        // todo change signature to &str
+        self.batches[0].chr_val().map(|v| v.to_string()).with_context(|| {
             "Failed to retrieve chromosome name from first batch"
         })
     }

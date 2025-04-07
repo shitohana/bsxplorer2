@@ -1,3 +1,8 @@
+use anyhow::anyhow;
+use itertools::Itertools;
+use polars::error::PolarsResult;
+use polars::prelude::*;
+use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::io::{Read, Seek};
@@ -7,16 +12,12 @@ use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 use std::thread::JoinHandle;
 
-use itertools::Itertools;
-use polars::error::PolarsResult;
-use polars::prelude::*;
-use rayon::prelude::*;
-
-use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::batch::encoded::EncodedBsxBatch;
+use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::data_structs::region_data::RegionData;
 use crate::io::bsx::read::{BSXIndex, BsxFileReader};
-use crate::utils::types::Strand;
+use crate::utils::types::{IPCEncodedEnum, Strand};
 
 /// Structure, that holds chromosome-wise index of batches from BSXplorer
 /// IPC file.
@@ -35,7 +36,10 @@ impl BSXBTree {
                 .enumerate()
         } {
             let df = df.expect("failed to read df")?;
-            let first_pos = df.first_position()?;
+            let first_pos = GenomicPosition::new(
+                df.chr_val()?.to_string(),
+                df.start_pos().ok_or(anyhow!("Empty batch"))? as u64
+            );
             new.insert(first_pos, num);
         }
         Ok(new)
@@ -256,8 +260,10 @@ impl RegionAssembler {
                 .map(|region_data| {
                     let batch = data_ref.trim_region(&region_data.as_region());
                     batch.map(|mut df| {
-                        if matches!(region_data.strand(), Strand::None) {
-                            df = df.filter(None, Some(region_data.strand()))
+                        if !matches!(region_data.strand(), Strand::None) {
+                            // Todo rewrite this to something without except
+                            df = df.filter(col(EncodedBsxBatch::STRAND_NAME).eq(lit(region_data.strand().to_bool().unwrap())))
+                                .expect("Failed to filter by strand");
                         };
                         (region_data.clone(), df)
                     })
@@ -299,7 +305,7 @@ impl RegionAssembler {
                         let sorted_batches = region_batches
                             .into_iter()
                             .sorted_unstable_by_key(|b| {
-                                b.first_position().unwrap().position()
+                                b.start_pos()
                             })
                             .collect_vec();
 

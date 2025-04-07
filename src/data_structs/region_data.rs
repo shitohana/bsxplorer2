@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::batch::encoded::EncodedBsxBatch;
+use crate::data_structs::batch::traits::BsxBatchMethods;
 use crate::data_structs::region::RegionCoordinates;
 use crate::utils::types::{Data, PosNum, RefId, Strand};
 
@@ -174,12 +175,10 @@ where
     pub fn try_from_batch(
         batch: &EncodedBsxBatch
     ) -> anyhow::Result<RegionData<String, u64, &EncodedBsxBatch>> {
-        let first_position = batch.first_position()?;
-
         Ok(RegionData {
-            chr:        first_position.chr().to_string(),
-            start:      first_position.position(),
-            end:        batch.last_position()?.position(),
+            chr:       batch.chr_val()?.to_string(),
+            start:      batch.start_pos().ok_or(anyhow::anyhow!("empty data"))? as u64,
+            end:        batch.end_pos().ok_or(anyhow::anyhow!("empty data"))? as u64,
             strand:     Strand::None,
             data:       batch,
             attributes: HashMap::default(),

@@ -11,7 +11,8 @@ mod report_read_utils {
     use std::io::{BufRead, Seek};
 
     use super::*;
-    use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
+    use crate::data_structs::batch::decoded::BsxBatch;
+    use crate::data_structs::batch::traits::BsxColNames;
     use crate::data_structs::region::RegionCoordinates;
     use crate::io::report::read::{ContextData, ReadQueueItem};
     use crate::io::report::schema::ReportTypeSchema;

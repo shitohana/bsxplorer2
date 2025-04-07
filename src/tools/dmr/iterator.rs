@@ -8,7 +8,7 @@ use itertools::Itertools;
 use log::error;
 use rayon::prelude::*;
 
-use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
+use crate::data_structs::batch::group::EncodedBsxBatchGroup;
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::{tv_recurse_segment, FilterConfig};

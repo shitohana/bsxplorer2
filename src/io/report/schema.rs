@@ -4,7 +4,8 @@ use itertools::Itertools;
 use log::{debug, trace, warn};
 use polars::prelude::*;
 
-use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
+use crate::data_structs::batch::decoded::BsxBatch;
+use crate::data_structs::batch::traits::BsxColNames;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Represents different methylation report file formats supported by the
@@ -480,8 +481,8 @@ impl ReportTypeSchema {
 
 #[cfg(test)]
 mod report_schema_test {
-    use crate::data_structs::bsx_batch::{BsxBatch, BsxBatchMethods};
-    use crate::data_structs::bsx_builder::build_bsx_batch;
+    use crate::data_structs::batch::builder::BsxBatchBuilder;
+    use crate::data_structs::batch::decoded::BsxBatch;
     use crate::io::report::schema::ReportTypeSchema;
     use crate::io::report::*;
 
@@ -521,14 +522,10 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let bsx_batch = build_bsx_batch(
-            input_df.clone(), 
-            Some(&report_type), 
-            true, 
-            true, 
-            true
-        ).unwrap();
-        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let bsx_batch = BsxBatchBuilder::default()
+            .with_report_type(report_type)
+            .build_decoded(input_df.clone())
+            .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);
         let reverse_transform = report_type
@@ -572,14 +569,10 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let bsx_batch = build_bsx_batch(
-            input_df.clone(),
-            Some(&report_type),
-            true,
-            true,
-            true
-        ).unwrap();
-        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let bsx_batch = BsxBatchBuilder::default()
+            .with_report_type(report_type)
+            .build_decoded(input_df.clone())
+            .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);
         let reverse_transform = report_type
@@ -620,14 +613,10 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let bsx_batch = build_bsx_batch(
-            input_df.clone(),
-            Some(&report_type),
-            true,
-            true,
-            true
-        ).unwrap();
-        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let bsx_batch = BsxBatchBuilder::default()
+            .with_report_type(report_type)
+            .build_decoded(input_df.clone())
+            .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);
         let reverse_transform = report_type
@@ -667,14 +656,10 @@ mod report_schema_test {
         .collect()
         .unwrap();
 
-        let bsx_batch = build_bsx_batch(
-            input_df.clone(),
-            Some(&report_type),
-            true,
-            true,
-            true
-        ).unwrap();
-        let bsx_batch = bsx_batch.get(0).unwrap().clone();
+        let bsx_batch = BsxBatchBuilder::default()
+            .with_report_type(report_type)
+            .build_decoded(input_df.clone())
+            .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);
         let reverse_transform = report_type

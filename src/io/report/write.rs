@@ -4,7 +4,7 @@ use log::{debug, info, warn};
 use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;
 
-use crate::data_structs::bsx_batch::BsxBatch;
+use crate::data_structs::batch::decoded::BsxBatch;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::report::schema::ReportTypeSchema;

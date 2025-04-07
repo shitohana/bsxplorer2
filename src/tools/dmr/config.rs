@@ -8,7 +8,7 @@ use anyhow::anyhow;
 use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 
-use crate::data_structs::bsx_batch_group::EncodedBsxBatchGroup;
+use crate::data_structs::batch::group::EncodedBsxBatchGroup;
 use crate::io::bsx::multiple_reader::MultiBsxFileReader;
 use crate::io::bsx::read::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;

@@ -2,19 +2,19 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::data_structs::batch::builder::BsxBatchBuilder;
+use crate::data_structs::batch::decoded::BsxBatch;
+use crate::data_structs::batch::encoded::{get_encoded_schema, EncodedBsxBatch};
+use crate::data_structs::batch::traits::BsxBatchMethods;
+use crate::utils::get_categorical_dtype;
 use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
 use polars::datatypes::DataType;
-use polars::error::PolarsResult;
+use polars::error::{polars_bail, PolarsError, PolarsResult};
 use polars::export::arrow::datatypes::Metadata;
 pub use polars::prelude::IpcCompression as PolarsIpcCompression;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
-
-use crate::data_structs::bsx_batch::{BsxBatch,
-                                     BsxBatchMethods,
-                                     EncodedBsxBatch};
-use crate::utils::get_categorical_dtype;
 
 /// Writer for BSX data_structs in Arrow IPC format.
 /// Handles serialization of BSX batches to Arrow IPC format with optional
@@ -65,7 +65,7 @@ where
 
         info!("Initializing writer with compression: {:?}", compression);
         let chr_dtype = get_categorical_dtype(chr_names);
-        let schema = EncodedBsxBatch::get_schema(&chr_dtype);
+        let schema = get_encoded_schema(&chr_dtype);
 
         let mut writer = opts.to_writer(sink);
         if let Some(metadata) = custom_metadata {
@@ -200,12 +200,11 @@ where
         batch: BsxBatch,
     ) -> PolarsResult<()> {
         debug!("Encoding and writing batch to IPC file");
-        let encoded = match EncodedBsxBatch::encode(batch, self.get_chr_dtype())
+        let encoded = match BsxBatchBuilder::encode_batch(batch, self.get_chr_dtype().clone())
         {
             Ok(encoded) => encoded,
             Err(e) => {
-                warn!("Failed to encode BSX batch: {}", e);
-                return Err(e);
+                return Err(PolarsError::ComputeError("failed to encode batch".into()));
             },
         };
         self.write_encoded_batch(encoded)

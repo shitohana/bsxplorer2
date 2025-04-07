@@ -10,7 +10,8 @@ use itertools::Itertools;
 use log::{debug, info, warn};
 use serde::Serialize;
 
-use crate::data_structs::bsx_batch::{BsxBatchMethods, EncodedBsxBatch};
+use crate::data_structs::batch::encoded::EncodedBsxBatch;
+use crate::data_structs::batch::traits::BsxBatchMethods;
 use crate::io::bsx::read::BsxFileReader;
 
 /// A reader for multiple BSX files that handles concurrent batch reading
