@@ -30,8 +30,9 @@ impl Default for BsxBatchBuilder {
 
 /// Builds a standardized BSX batch from various input formats
 ///
-/// Processes input data according to specified report type, performs validation,
-/// and ensures proper sorting of genomic positions
+/// Splits input data by chromosomes. Processes input data according to 
+/// specified report type, performs validation, and ensures proper sorting of 
+/// genomic positions
 pub fn build_bsx_batch(
     data: DataFrame,
     report_type: Option<&ReportTypeSchema>,
@@ -55,7 +56,7 @@ pub fn build_bsx_batch(
     }
 
     let mut res = Vec::new();
-    for batch in casted.partition_by(["chr"], true)? {
+    for batch in casted.partition_by_stable(["chr"], true)? {
         if check_nulls {
             check_has_nulls(&casted)?;
         }

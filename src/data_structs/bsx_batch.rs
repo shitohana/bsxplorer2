@@ -15,10 +15,7 @@
 //!
 //! Both BsxBatch and EncodedBsxBatch can be filtered using context and/or
 //! strand
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::ops::BitAnd;
-
+use anyhow::anyhow;
 use bio_types::annot::contig::Contig;
 use bio_types::annot::loc::Loc;
 use bio_types::annot::pos::Pos;
@@ -28,6 +25,9 @@ use itertools::{multiunzip, Itertools};
 use log::warn;
 use polars::prelude::*;
 use statrs::statistics::Statistics;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::ops::BitAnd;
 
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::tools::stats::MethylationStats;
@@ -75,6 +75,15 @@ impl BsxBatch {
             Self::DENSITY_DTYPE,
         ]
     }
+    
+    pub fn empty() -> Self {
+        BsxBatch(DataFrame::empty_with_schema(&BsxBatch::schema()))
+    }
+    
+    pub fn split_at(self, index: usize) -> (Self, Self) {
+        let (a, b) = self.0.split_at(index as i64);
+        (BsxBatch(a), BsxBatch(b))
+    }
 
     /// Returns expected schema of [BsxBatch]
     pub fn schema() -> Schema {
@@ -86,6 +95,66 @@ impl BsxBatch {
     pub fn hashmap() -> PlHashMap<&'static str, DataType> {
         use crate::utils::hashmap_from_arrays;
         hashmap_from_arrays(&Self::col_names(), Self::col_types())
+    }
+
+    pub fn position(&self) -> &ChunkedArray<UInt64Type> {
+        self.0
+            .column(Self::POS_NAME)
+            .unwrap()
+            .u64()
+            .unwrap()
+    }
+
+    pub fn chr(&self) -> &ChunkedArray<StringType> {
+        self.0
+            .column(Self::CHR_NAME)
+            .unwrap()
+            .str()
+            .unwrap()
+    }
+
+    pub fn strand(&self) -> &ChunkedArray<StringType> {
+        self.0
+            .column(Self::STRAND_NAME)
+            .unwrap()
+            .str()
+            .unwrap()
+    }
+
+    pub fn context(&self) -> &ChunkedArray<StringType> {
+        self.0
+            .column(Self::CONTEXT_NAME)
+            .unwrap()
+            .str()
+            .unwrap()
+    }
+
+    pub fn count_m(&self) -> &ChunkedArray<UInt32Type> {
+        self.0
+            .column(Self::COUNT_M_NAME)
+            .unwrap()
+            .u32()
+            .unwrap()
+    }
+
+    pub fn count_total(&self) -> &ChunkedArray<UInt32Type> {
+        self.0
+            .column(Self::COUNT_TOTAL_NAME)
+            .unwrap()
+            .u32()
+            .unwrap()
+    }
+
+    pub fn density(&self) -> &ChunkedArray<Float64Type> {
+        self.0
+            .column(Self::DENSITY_NAME)
+            .unwrap()
+            .f64()
+            .unwrap()
+    }
+
+    pub fn chr_val(&self) -> Option<&str> {
+        self.chr().first()
     }
 }
 
@@ -124,6 +193,18 @@ impl BsxBatchMethods for BsxBatch {
     /// Returns mutable reference to inner [DataFrame]
     #[inline]
     fn data_mut(&mut self) -> &mut DataFrame { &mut self.0 }
+
+    fn first_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
+        let chr = self.chr().first().ok_or(anyhow!("no data"))?;
+        let pos = self.position().first().ok_or_else(|| anyhow!("no data"))?;
+        Ok(GenomicPosition::new(chr.to_owned(), pos))
+    }
+
+    fn last_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
+        let chr = self.chr().last().ok_or(anyhow!("no data"))?;
+        let pos = self.position().last().ok_or_else(|| anyhow!("no data"))?;
+        Ok(GenomicPosition::new(chr.to_owned(), pos))
+    }
 }
 
 impl TryFrom<DataFrame> for BsxBatch {
@@ -782,17 +863,6 @@ pub trait BsxBatchMethods {
     /// Returns mutable reference to inner [DataFrame]
     fn data_mut(&mut self) -> &mut DataFrame;
 
-    /// Checks if chromosome column contains only one chromosome
-    fn check_chr_unique(&self) -> bool {
-        self.data()
-            .column("chr")
-            .unwrap()
-            .unique()
-            .unwrap()
-            .len()
-            == 1
-    }
-
     /// Returns first [GenomicPosition]
     fn first_position(&self) -> anyhow::Result<GenomicPosition<u64>> {
         // TODO move to proper chunkedarray
@@ -821,12 +891,6 @@ pub trait BsxBatchMethods {
     ) -> anyhow::Result<()>
     where
         Self: Sized, {
-        if !(self.check_chr_unique() && other.check_chr_unique()) {
-            return Err(PolarsError::ComputeError(
-                "Chromosomes in batches non-unique".into(),
-            )
-            .into());
-        }
         let self_pos = self.last_position()?;
         let other_pos = self.first_position()?;
 
@@ -903,37 +967,6 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn test_chr_unique() {
-        let batch = BsxBatch::try_from(
-            df![
-                "chr" => ["1", "2", "3"],
-                "position" => [1, 2, 3],
-                "strand" => [".", ".", "."],
-                "context" => ["CG", "CHG", "CHH"],
-                "count_m" => [0,0,0],
-                "count_total" => [0,0,0],
-                "density" => [0, 1, 0]
-            ]
-            .unwrap()
-            .lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect()
-            .unwrap(),
-        )
-        .unwrap();
-
-        assert!(!batch.check_chr_unique());
-
-        let batch = dummy_batch();
-
-        assert!(batch.check_chr_unique());
-
-        let chr_dtype = get_categorical_dtype(vec!["1".into()]);
-        let encoded = EncodedBsxBatch::encode(batch, &chr_dtype).unwrap();
-
-        assert!(encoded.check_chr_unique())
-    }
 
     #[test]
     fn test_position() {
