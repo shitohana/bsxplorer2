@@ -203,10 +203,12 @@ impl BsxBatchBuilder {
                 SortMultipleOptions::default().with_order_descending(false)
             )?;
         } else {
-            data.apply("position", |mut c| {
-                c.set_sorted_flag(IsSorted::Ascending);
-                c
-            })?;
+            let pos_col_idx = data.get_column_index(BsxBatch::POS_NAME).unwrap();
+            unsafe {
+                let columns = data.get_columns_mut();
+                let pos_col = columns.get_mut(pos_col_idx).unwrap();
+                pos_col.set_sorted_flag(IsSorted::Ascending);
+            }
         }
         Ok(data)
     }

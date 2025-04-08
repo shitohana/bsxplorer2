@@ -72,7 +72,7 @@ pub trait BsxBatchMethods {
         &self,
         mask: &BooleanChunked,
     ) -> PolarsResult<Self>
-    where Self: Sized 
+    where Self: Sized
     {
         Ok(unsafe { Self::new_unchecked(self.data().filter(mask)?) })
     }
@@ -98,4 +98,8 @@ pub trait BsxBatchMethods {
             NoStrand::Unknown,
         ))
     }
+}
+
+pub trait BsxTypeTag {
+    fn type_name() -> &'static str;
 }

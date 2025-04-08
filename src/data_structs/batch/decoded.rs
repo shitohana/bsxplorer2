@@ -1,12 +1,3 @@
-/*******************************************************************************
- Copyright (c) 2025
- The Prosperity Public License 3.0.0
-
- Contributor: [shitohana](https://github.com/shitohana)
-
- Source Code: https://github.com/shitohana/BSXplorer
- ******************************************************************************/
-
 //! Module contains BsxBatches which represent single chromosome methylation
 //! data_structs
 //!
@@ -25,6 +16,7 @@
 //! Both BsxBatch and EncodedBsxBatch can be filtered using context and/or
 //! strand
 use crate::data_structs::batch::builder::BsxBatchBuilder;
+use crate::data_structs::batch::traits::BsxTypeTag;
 use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
 use crate::utils::types::{IPCEncodedEnum, Strand};
 use anyhow::anyhow;
@@ -67,12 +59,7 @@ impl BsxBatch {
     }
 
     pub fn empty() -> Self {
-        BsxBatch {
-            data: DataFrame::empty_with_schema(&BsxBatch::schema()),
-            chr: Default::default(),
-            start: Default::default(),
-            end: Default::default(),
-        }
+        unsafe { Self::new_unchecked(DataFrame::empty_with_schema(&BsxBatch::schema())) }
     }
 
     pub fn split_at(
@@ -80,20 +67,10 @@ impl BsxBatch {
         index: usize,
     ) -> (Self, Self) {
         let (a, b) = self.data.split_at(index as i64);
-        (
-            BsxBatch {
-                data: a,
-                chr: Default::default(),
-                start: Default::default(),
-                end: Default::default(),
-            },
-            BsxBatch {
-                data: b,
-                chr: Default::default(),
-                start: Default::default(),
-                end: Default::default(),
-            },
-        )
+        unsafe {(
+            Self::new_unchecked(a),
+            Self::new_unchecked(b),
+        )}
     }
 
     /// Returns expected schema of [BsxBatch]
@@ -245,6 +222,12 @@ impl TryFrom<DataFrame> for BsxBatch {
 impl From<BsxBatch> for DataFrame {
     fn from(b: BsxBatch) -> Self {
         b.data
+    }
+}
+
+impl BsxTypeTag for BsxBatch {
+    fn type_name() -> &'static str {
+        "decoded"
     }
 }
 

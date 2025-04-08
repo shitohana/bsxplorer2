@@ -24,6 +24,8 @@ use polars::frame::DataFrame;
 use polars::prelude::{col, lit, when, Expr, IntoLazy, NamedFrom, Schema};
 use std::cmp::Ordering;
 
+use super::traits::BsxTypeTag;
+
 /// Encoded version of [BsxBatch]
 ///
 /// Encodes
@@ -330,6 +332,12 @@ impl BsxBatchMethods for EncodedBsxBatch {
             })
             .ok()
             .cloned()
+    }
+}
+
+impl BsxTypeTag for EncodedBsxBatch {
+    fn type_name() -> &'static str {
+        "encoded"
     }
 }
 
