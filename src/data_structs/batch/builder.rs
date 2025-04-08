@@ -7,18 +7,17 @@
  Source Code: https://github.com/shitohana/BSXplorer
  ******************************************************************************/
 
+use super::encoded::EncodedBsxBatch;
 use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::encoded::{get_encoded_hashmap, EncodedBsxBatch};
 use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
 use crate::io::report::schema::ReportTypeSchema;
 use crate::utils::{decode_context, decode_strand, encode_context, encode_strand};
 use anyhow::anyhow;
-use itertools::Itertools;
 use log::warn;
-use once_cell::sync::OnceCell;
 use polars::prelude::*;
-use statrs::statistics::Data;
+use polars::series::IsSorted;
 
+#[derive(Debug, Copy, Clone)]
 pub struct BsxBatchBuilder {
     report_type: Option<ReportTypeSchema>,
     check_nulls: bool,
@@ -113,6 +112,13 @@ impl BsxBatchBuilder {
         Ok(unsafe { EncodedBsxBatch::new_unchecked(casted) })
     }
 
+    pub fn check(&self, data: DataFrame) -> anyhow::Result<DataFrame> {
+        self.run_checks(&data)?;
+        let sorted = self.sort(data)?;
+        let res = self.rechunk(sorted);
+        Ok(res)
+    }
+
     pub fn encode_batch(batch: BsxBatch, chr_dtype: DataType) -> anyhow::Result<EncodedBsxBatch> {
         let chr = batch.chr_val()?.to_string();
         let start = batch.start_pos().ok_or("no data").unwrap();
@@ -129,7 +135,7 @@ impl BsxBatchBuilder {
         );
         Ok(encoded)
     }
-    
+
     pub fn decode_batch(batch: EncodedBsxBatch) -> anyhow::Result<BsxBatch> {
         let batch_data = DataFrame::from(batch);
         let mut batch_lazy = batch_data.lazy();
@@ -196,6 +202,11 @@ impl BsxBatchBuilder {
                 ["position"],
                 SortMultipleOptions::default().with_order_descending(false)
             )?;
+        } else {
+            data.apply("position", |mut c| {
+                c.set_sorted_flag(IsSorted::Ascending);
+                c
+            })?;
         }
         Ok(data)
     }

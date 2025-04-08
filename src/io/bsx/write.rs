@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
 use polars::datatypes::DataType;
-use polars::error::{polars_bail, PolarsError, PolarsResult};
+use polars::error::{PolarsError, PolarsResult};
 use polars::export::arrow::datatypes::Metadata;
 pub use polars::prelude::IpcCompression as PolarsIpcCompression;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
@@ -203,7 +203,7 @@ where
         let encoded = match BsxBatchBuilder::encode_batch(batch, self.get_chr_dtype().clone())
         {
             Ok(encoded) => encoded,
-            Err(e) => {
+            Err(_) => {
                 return Err(PolarsError::ComputeError("failed to encode batch".into()));
             },
         };

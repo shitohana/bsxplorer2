@@ -6,6 +6,7 @@ pub mod fasta_reader;
 pub mod read;
 pub mod schema;
 pub mod write;
+mod read2;
 
 mod report_read_utils {
     use std::io::{BufRead, Seek};
@@ -13,8 +14,9 @@ mod report_read_utils {
     use super::*;
     use crate::data_structs::batch::decoded::BsxBatch;
     use crate::data_structs::batch::traits::BsxColNames;
+    use crate::data_structs::context_data::ContextData;
     use crate::data_structs::region::RegionCoordinates;
-    use crate::io::report::read::{ContextData, ReadQueueItem};
+    use crate::io::report::read::ReadQueueItem;
     use crate::io::report::schema::ReportTypeSchema;
     use crate::utils;
     use crate::utils::types::{PosNum, Strand};

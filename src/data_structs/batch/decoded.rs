@@ -53,20 +53,6 @@ impl BsxBatch {
 }
 
 impl BsxBatch {
-    /// Creates new [BsxBatch] without checks
-    ///
-    /// # Safety
-    ///
-    /// * input [DataFrame] is expected to follow format
-    pub(crate) unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
-        BsxBatch {
-            data: data_frame,
-            chr: Default::default(),
-            start: Default::default(),
-            end: Default::default(),
-        }
-    }
-
     /// Returns expected types of columns
     pub(crate) const fn col_types() -> &'static [DataType] {
         &[
@@ -184,6 +170,14 @@ impl BsxBatch {
 impl BsxColNames for BsxBatch {}
 
 impl BsxBatchMethods for BsxBatch {
+    unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
+        BsxBatch {
+            data: data_frame,
+            chr: Default::default(),
+            start: Default::default(),
+            end: Default::default(),
+        }
+    }
     /// Filters [BsxBatch] by `context` and `strand`
     ///
     /// If both `context` and `strand` are [None], returns [BsxBatch]

@@ -1,9 +1,12 @@
-use crate::data_structs::region::GenomicPosition;
-use crate::utils::types::{Context, Strand};
-use log::warn;
-use polars::error::PolarsError;
+use anyhow::anyhow;
+use bio_types::annot::contig::Contig;
+use bio_types::strand::NoStrand;
+use polars::datatypes::BooleanChunked;
+use polars::error::PolarsResult;
 use polars::frame::DataFrame;
-use polars::prelude::{Expr, SortMultipleOptions};
+use polars::prelude::Expr;
+
+use super::builder::BsxBatchBuilder;
 
 pub trait BsxColNames {
     const CHR_NAME: &'static str = "chr";
@@ -29,6 +32,9 @@ pub trait BsxColNames {
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
 pub trait BsxBatchMethods {
+    unsafe fn new_unchecked(data_frame: DataFrame) -> Self
+    where
+        Self: Sized;
     /// Filters [BsxBatch] by `context` and `strand`
     ///
     /// If both `context` and `strand` are [None], returns [BsxBatch]
@@ -46,70 +52,50 @@ pub trait BsxBatchMethods {
     fn data_mut(&mut self) -> &mut DataFrame;
 
     fn chr_val(&self) -> anyhow::Result<&str>;
-    
+
     fn start_pos(&self) -> Option<u32>;
     fn end_pos(&self) -> Option<u32>;
 
-    /// Extends [BsxBatch] by other
-    ///
-    /// Prints warning if first position of other is not less than last of self,
-    /// but still sorts data_structs by position.
-    ///
-    /// Returns error if
-    /// 1. Chromosome names do not match
-    /// 2. Chromosome columns non-unique
-    /// 3. Resulting data_structs still contains duplicates
-    fn extend(
-        &mut self,
+    fn vstack(
+        &self,
         other: &Self,
-    ) -> anyhow::Result<()>
+    ) -> anyhow::Result<Self>
     where
-        Self: Sized 
+        Self: Sized,
     {
-        if self.chr_val()? != other.chr_val()? {
-            return Err(PolarsError::ComputeError(
-                "Chromosomes in batches differ".into(),
-            )
-            .into());
-        }
-        if self.end_pos() >= other.start_pos() {
-            warn!(
-                "First position in other batch ({:?}) must be less than last \
-                 position in the current ({:?})",
-                self.end_pos(), other.start_pos()
-            );
-            self.data_mut().extend(other.data())?;
-            self.data_mut().sort_in_place(
-                ["position"],
-                SortMultipleOptions::default()
-                    .with_order_descending(false)
-                    .with_multithreaded(true),
-            )?;
+        let new_data = self.data().vstack(other.data())?;
+        let res = BsxBatchBuilder::all_checks().check(new_data)?;
+        Ok(unsafe { Self::new_unchecked(res) })
+    }
 
-            if self
-                .data()
-                .column("position")?
-                .n_unique()?
-                != self.data().height()
-            {
-                println!(
-                    "{} != {}",
-                    self.data()
-                        .column("position")?
-                        .n_unique()?,
-                    self.data().height()
-                );
-                println!("{}", self.data());
-                return Err(PolarsError::ComputeError(
-                    "Position values are duplicated".into(),
-                )
-                .into());
-            }
-        }
-
-        Ok(self.data_mut().extend(other.data())?)
+    fn filter_mask(
+        &self,
+        mask: &BooleanChunked,
+    ) -> PolarsResult<Self>
+    where Self: Sized 
+    {
+        Ok(unsafe { Self::new_unchecked(self.data().filter(mask)?) })
     }
 
     /// Returns number of rows
-    fn height(&self) -> usize { self.data().height() }
+    fn height(&self) -> usize {
+        self.data().height()
+    }
+
+    fn as_contig(&self) -> anyhow::Result<Contig<&str, NoStrand>> {
+        let start = self
+            .start_pos()
+            .ok_or(anyhow!("no data"))?;
+        let end = self
+            .end_pos()
+            .ok_or(anyhow!("no data"))?;
+        let chr = self.chr_val()?;
+
+        Ok(Contig::new(
+            chr,
+            start as isize,
+            (end + 1 - start) as usize,
+            NoStrand::Unknown,
+        ))
+    }
 }

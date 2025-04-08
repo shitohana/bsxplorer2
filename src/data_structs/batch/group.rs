@@ -656,7 +656,10 @@ where
     pub fn get_positions(&self) -> anyhow::Result<Vec<u32>> {
         debug!("Retrieving genomic positions from batch group");
         self.batches[0]
-            .get_position_vals()
+            .position()
+            .to_vec_null_aware()
+            .left()
+            .ok_or(anyhow!("Nulls in position column"))
             .with_context(|| {
                 "Failed to retrieve position values from first batch"
             })

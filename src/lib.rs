@@ -1,3 +1,4 @@
+#![allow(unused)]
 #![allow(unused_assignments)]
 
 pub mod data_structs;

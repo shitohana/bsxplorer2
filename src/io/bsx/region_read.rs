@@ -311,7 +311,7 @@ impl RegionAssembler {
 
                         let assembled = sorted_batches
                             .into_iter()
-                            .reduce(|acc, df| acc.vstack(df).unwrap())
+                            .reduce(|acc, df| acc.vstack(&df).unwrap())
                             .unwrap();
 
                         self.output_queue
