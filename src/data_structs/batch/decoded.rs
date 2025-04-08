@@ -35,99 +35,52 @@ pub struct BsxBatch {
     end: OnceCell<u32>,
 }
 
-impl BsxBatch {
-    pub const CHR_DTYPE: DataType = DataType::String;
-    pub const POS_DTYPE: DataType = DataType::UInt64;
-    pub const STRAND_DTYPE: DataType = DataType::String;
-    pub const CONTEXT_DTYPE: DataType = DataType::String;
-    pub const COUNT_DTYPE: DataType = DataType::UInt32;
-    pub const DENSITY_DTYPE: DataType = DataType::Float64;
-}
+impl BsxColNames for BsxBatch {}
 
-impl BsxBatch {
-    /// Returns expected types of columns
-    pub(crate) const fn col_types() -> &'static [DataType] {
-        &[
-            Self::CHR_DTYPE,
-            Self::POS_DTYPE,
-            Self::STRAND_DTYPE,
-            Self::CONTEXT_DTYPE,
-            Self::COUNT_DTYPE,
-            Self::COUNT_DTYPE,
-            Self::DENSITY_DTYPE,
-        ]
-    }
+impl BsxBatchMethods for BsxBatch {
+    type ChrType = StringType;
+    type PosType = UInt64Type;
+    type StrandType = StringType;
+    type ContextType = StringType;
+    type CountType = UInt32Type;
+    type DensityType = Float64Type;
 
-    pub fn empty() -> Self {
-        unsafe { Self::new_unchecked(DataFrame::empty_with_schema(&BsxBatch::schema())) }
-    }
-
-    pub fn split_at(
-        self,
-        index: usize,
-    ) -> (Self, Self) {
-        let (a, b) = self.data.split_at(index as i64);
-        unsafe {(
-            Self::new_unchecked(a),
-            Self::new_unchecked(b),
-        )}
-    }
-
-    /// Returns expected schema of [BsxBatch]
-    pub fn schema() -> Schema {
-        use crate::data_structs::batch::traits::BsxColNames;
-        use crate::utils::schema_from_arrays;
-        schema_from_arrays(&Self::col_names(), Self::col_types())
-    }
-
-    /// Returns expected schema of [BsxBatch] as [PlHashMap]
-    pub fn hashmap() -> PlHashMap<&'static str, DataType> {
-        use crate::data_structs::batch::traits::BsxColNames;
-        use crate::utils::hashmap_from_arrays;
-        hashmap_from_arrays(&Self::col_names(), Self::col_types())
-    }
-
-    pub fn position(&self) -> &ChunkedArray<UInt64Type> {
-        self.data
-            .column(Self::POS_NAME)
-            .unwrap()
-            .u64()
-            .unwrap()
-    }
-
-    pub fn chr(&self) -> &ChunkedArray<StringType> {
+    fn chr(&self) -> &ChunkedArray<Self::ChrType> {
         self.data
             .column(Self::CHR_NAME)
             .unwrap()
             .str()
             .unwrap()
     }
-
-    pub fn strand(&self) -> &ChunkedArray<StringType> {
+    fn position(&self) -> &ChunkedArray<Self::PosType> {
+        self.data
+            .column(Self::POS_NAME)
+            .unwrap()
+            .u64()
+            .unwrap()
+    }
+    fn strand(&self) -> &ChunkedArray<Self::StrandType> {
         self.data
             .column(Self::STRAND_NAME)
             .unwrap()
             .str()
             .unwrap()
     }
-
-    pub fn context(&self) -> &ChunkedArray<StringType> {
+    fn context(&self) -> &ChunkedArray<Self::ContextType> {
         self.data
             .column(Self::CONTEXT_NAME)
             .unwrap()
             .str()
             .unwrap()
     }
-
-    pub fn count_m(&self) -> &ChunkedArray<UInt32Type> {
+    fn count_m(&self) -> &ChunkedArray<Self::CountType> {
         self.data
             .column(Self::COUNT_M_NAME)
             .unwrap()
             .u32()
             .unwrap()
     }
-
-    pub fn count_total(&self) -> &ChunkedArray<UInt32Type> {
+    fn count_total(&self) -> &ChunkedArray<Self::CountType> {
         self.data
             .column(Self::COUNT_TOTAL_NAME)
             .unwrap()
@@ -135,18 +88,14 @@ impl BsxBatch {
             .unwrap()
     }
 
-    pub fn density(&self) -> &ChunkedArray<Float64Type> {
+    fn density(&self) -> &ChunkedArray<Self::DensityType> {
         self.data
             .column(Self::DENSITY_NAME)
             .unwrap()
             .f64()
             .unwrap()
     }
-}
 
-impl BsxColNames for BsxBatch {}
-
-impl BsxBatchMethods for BsxBatch {
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         BsxBatch {
             data: data_frame,
@@ -155,24 +104,17 @@ impl BsxBatchMethods for BsxBatch {
             end: Default::default(),
         }
     }
-    /// Filters [BsxBatch] by `context` and `strand`
-    ///
-    /// If both `context` and `strand` are [None], returns [BsxBatch]
-    fn filter(
-        self,
-        expr: Expr,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        let df = self.data.lazy().filter(expr).collect()?;
-        BsxBatchBuilder::no_checks().build_decoded(df)
-    }
 
     /// Returns reference to inner [DataFrame]
     #[inline]
     fn data(&self) -> &DataFrame {
         &self.data
+    }
+
+    /// Returns mutable reference to inner [DataFrame]
+    #[inline]
+    fn data_mut(&mut self) -> &mut DataFrame {
+        &mut self.data
     }
 
     fn chr_val(&self) -> anyhow::Result<&str> {
@@ -183,12 +125,6 @@ impl BsxBatchMethods for BsxBatch {
 
     }
 
-    /// Returns mutable reference to inner [DataFrame]
-    #[inline]
-    fn data_mut(&mut self) -> &mut DataFrame {
-        &mut self.data
-    }
-
     fn start_pos(&self) -> Option<u32> {
         self.start.get_or_try_init(|| self.position()
             .first()
@@ -197,6 +133,7 @@ impl BsxBatchMethods for BsxBatch {
         ).ok().cloned()
 
     }
+
     fn end_pos(&self) -> Option<u32> {
         self.end.get_or_try_init(|| self.position()
             .last()

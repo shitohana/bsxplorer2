@@ -7,24 +7,15 @@ Contributor: [shitohana](https://github.com/shitohana)
 Source Code: https://github.com/shitohana/BSXplorer
 ******************************************************************************/
 
-use crate::data_structs::batch::builder::BsxBatchBuilder;
+use super::traits::BsxTypeTag;
 use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::utils::types::{Context, IPCEncodedEnum};
 use anyhow::anyhow;
 use itertools::{multiunzip, Itertools};
 use once_cell::sync::OnceCell;
-use polars::chunked_array::ChunkedArray;
-use polars::datatypes::{
-    BooleanChunked, BooleanType, CategoricalChunked, DataType, Float32Type,
-    Int16Type, LogicalType, PlHashMap, PlSmallStr, UInt32Type,
-};
-use polars::error::{PolarsError, PolarsResult};
-use polars::frame::DataFrame;
-use polars::prelude::{col, lit, when, Expr, IntoLazy, NamedFrom, Schema};
+use polars::prelude::*;
 use std::cmp::Ordering;
-
-use super::traits::BsxTypeTag;
 
 /// Encoded version of [BsxBatch]
 ///
@@ -44,20 +35,6 @@ pub struct EncodedBsxBatch {
 impl BsxColNames for EncodedBsxBatch {}
 
 impl EncodedBsxBatch {
-    pub const POS_DTYPE: DataType = DataType::UInt32;
-    pub const STRAND_DTYPE: DataType = DataType::Boolean;
-    pub const CONTEXT_DTYPE: DataType = DataType::Boolean;
-    pub const COUNT_DTYPE: DataType = DataType::Int16;
-    pub const DENSITY_DTYPE: DataType = DataType::Float32;
-
-    pub fn position(&self) -> &ChunkedArray<UInt32Type> {
-        self.data
-            .column(Self::POS_NAME)
-            .unwrap()
-            .u32()
-            .unwrap()
-    }
-
     pub fn chr(&self) -> &CategoricalChunked {
         self.data
             .column(Self::CHR_NAME)
@@ -66,45 +43,6 @@ impl EncodedBsxBatch {
             .unwrap()
     }
 
-    pub fn strand(&self) -> &ChunkedArray<BooleanType> {
-        self.data
-            .column(Self::STRAND_NAME)
-            .unwrap()
-            .bool()
-            .unwrap()
-    }
-
-    pub fn context(&self) -> &ChunkedArray<BooleanType> {
-        self.data
-            .column(Self::CONTEXT_NAME)
-            .unwrap()
-            .bool()
-            .unwrap()
-    }
-
-    pub fn count_m(&self) -> &ChunkedArray<Int16Type> {
-        self.data
-            .column(Self::COUNT_M_NAME)
-            .unwrap()
-            .i16()
-            .unwrap()
-    }
-
-    pub fn count_total(&self) -> &ChunkedArray<Int16Type> {
-        self.data
-            .column(Self::COUNT_TOTAL_NAME)
-            .unwrap()
-            .i16()
-            .unwrap()
-    }
-
-    pub fn density(&self) -> &ChunkedArray<Float32Type> {
-        self.data
-            .column(Self::DENSITY_NAME)
-            .unwrap()
-            .f32()
-            .unwrap()
-    }
 
     pub(crate) fn new_with_fields(
         data: DataFrame,
@@ -262,6 +200,68 @@ impl From<EncodedBsxBatch> for DataFrame {
 }
 
 impl BsxBatchMethods for EncodedBsxBatch {
+    type ChrType = UInt32Type;
+    type PosType = UInt32Type;
+    type StrandType = BooleanType;
+    type ContextType = BooleanType;
+    type CountType = Int16Type;
+    type DensityType = Float32Type;
+
+    fn chr(&self) -> &ChunkedArray<Self::ChrType> {
+        self.data
+            .column(Self::CHR_NAME)
+            .unwrap()
+            .categorical()
+            .unwrap()
+            .physical()
+    }
+    fn position(&self) -> &ChunkedArray<Self::PosType> {
+        self.data
+            .column(Self::POS_NAME)
+            .unwrap()
+            .u32()
+            .unwrap()
+    }
+    fn strand(&self) -> &ChunkedArray<Self::StrandType> {
+        self.data
+            .column(Self::STRAND_NAME)
+            .unwrap()
+            .bool()
+            .unwrap()
+    }
+
+    fn context(&self) -> &ChunkedArray<Self::ContextType> {
+        self.data
+            .column(Self::CONTEXT_NAME)
+            .unwrap()
+            .bool()
+            .unwrap()
+    }
+
+    fn count_m(&self) -> &ChunkedArray<Self::CountType> {
+        self.data
+            .column(Self::COUNT_M_NAME)
+            .unwrap()
+            .i16()
+            .unwrap()
+    }
+
+    fn count_total(&self) -> &ChunkedArray<Self::CountType> {
+        self.data
+            .column(Self::COUNT_TOTAL_NAME)
+            .unwrap()
+            .i16()
+            .unwrap()
+    }
+
+    fn density(&self) -> &ChunkedArray<Self::DensityType> {
+        self.data
+            .column(Self::DENSITY_NAME)
+            .unwrap()
+            .f32()
+            .unwrap()
+    }
+
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         EncodedBsxBatch {
             data: data_frame,
@@ -271,21 +271,6 @@ impl BsxBatchMethods for EncodedBsxBatch {
         }
     }
 
-    fn filter(
-        self,
-        expr: Expr,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        let dtype = self.chr().dtype().clone();
-        let df = self
-            .data
-            .lazy()
-            .filter(expr)
-            .collect()?;
-        BsxBatchBuilder::no_checks().build_encoded(df, dtype)
-    }
     /// Returns reference to inner [DataFrame]
     fn data(&self) -> &DataFrame {
         &self.data
@@ -339,44 +324,4 @@ impl BsxTypeTag for EncodedBsxBatch {
     fn type_name() -> &'static str {
         "encoded"
     }
-}
-
-pub(crate) fn get_encoded_schema(chr_dtype: &DataType) -> Schema {
-    Schema::from_iter(
-        get_encoded_hashmap(chr_dtype)
-            .into_iter()
-            .map(|(k, v)| (PlSmallStr::from(k), v)),
-    )
-}
-
-pub(crate) fn get_encoded_hashmap(
-    chr_dtype: &DataType
-) -> PlHashMap<&str, DataType> {
-    PlHashMap::from_iter([
-        (EncodedBsxBatch::CHR_NAME, chr_dtype.clone()),
-        (
-            EncodedBsxBatch::POS_NAME,
-            EncodedBsxBatch::POS_DTYPE.clone(),
-        ),
-        (
-            EncodedBsxBatch::STRAND_NAME,
-            EncodedBsxBatch::STRAND_DTYPE.clone(),
-        ),
-        (
-            EncodedBsxBatch::CONTEXT_NAME,
-            EncodedBsxBatch::CONTEXT_DTYPE.clone(),
-        ),
-        (
-            EncodedBsxBatch::COUNT_M_NAME,
-            EncodedBsxBatch::COUNT_DTYPE.clone(),
-        ),
-        (
-            EncodedBsxBatch::COUNT_TOTAL_NAME,
-            EncodedBsxBatch::COUNT_DTYPE.clone(),
-        ),
-        (
-            EncodedBsxBatch::DENSITY_NAME,
-            EncodedBsxBatch::DENSITY_DTYPE.clone(),
-        ),
-    ])
 }

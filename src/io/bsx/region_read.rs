@@ -91,7 +91,7 @@ impl BSXBTree {
     pub fn get_region(&self, coordinates: &RegionCoordinates<u64>) -> Option<Vec<usize>> {
         let range = self.get_lower_bound(coordinates.chr(), coordinates.start())?;
         let mut batches: Vec<usize> = Vec::new();
-        
+
         for (start_val, index) in range {
             if *start_val > coordinates.end() {
                 break;
@@ -262,8 +262,9 @@ impl RegionAssembler {
                     batch.map(|mut df| {
                         if !matches!(region_data.strand(), Strand::None) {
                             // Todo rewrite this to something without except
-                            df = df.filter(col(EncodedBsxBatch::STRAND_NAME).eq(lit(region_data.strand().to_bool().unwrap())))
-                                .expect("Failed to filter by strand");
+                            // df = df.filter(col(EncodedBsxBatch::STRAND_NAME).eq(lit(region_data.strand().to_bool().unwrap())))
+                            //     .expect("Failed to filter by strand");
+                            todo!()
                         };
                         (region_data.clone(), df)
                     })

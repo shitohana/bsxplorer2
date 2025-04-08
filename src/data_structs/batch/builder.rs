@@ -223,13 +223,13 @@ mod decoded {
     /// Transforms input data to a standardized schema with properly typed columns
     pub(crate) fn select_cast(lf: LazyFrame) -> LazyFrame {
         lf.select([
-            col("chr").cast(BsxBatch::CHR_DTYPE).alias(BsxBatch::CHR_NAME),
-            col("position").cast(BsxBatch::POS_DTYPE).alias(BsxBatch::POS_NAME),
-            col("strand").cast(BsxBatch::STRAND_DTYPE).alias(BsxBatch::STRAND_NAME),
-            col("context").cast(BsxBatch::CONTEXT_DTYPE).alias(BsxBatch::CONTEXT_NAME),
-            col("count_m").cast(BsxBatch::COUNT_DTYPE).alias(BsxBatch::COUNT_M_NAME),
-            col("count_total").cast(BsxBatch::COUNT_DTYPE).alias(BsxBatch::COUNT_TOTAL_NAME),
-            col("density").cast(BsxBatch::DENSITY_DTYPE).alias(BsxBatch::DENSITY_NAME),
+            col("chr").cast(BsxBatch::chr_type()).alias(BsxBatch::CHR_NAME),
+            col("position").cast(BsxBatch::pos_type()).alias(BsxBatch::POS_NAME),
+            col("strand").cast(BsxBatch::strand_type()).alias(BsxBatch::STRAND_NAME),
+            col("context").cast(BsxBatch::context_type()).alias(BsxBatch::CONTEXT_NAME),
+            col("count_m").cast(BsxBatch::count_type()).alias(BsxBatch::COUNT_M_NAME),
+            col("count_total").cast(BsxBatch::count_type()).alias(BsxBatch::COUNT_TOTAL_NAME),
+            col("density").cast(BsxBatch::density_type()).alias(BsxBatch::DENSITY_NAME),
         ])
     }
 
@@ -299,12 +299,12 @@ mod encoded {
     pub(crate) fn select_cast(lf: LazyFrame, chr_dtype: DataType) -> LazyFrame {
         lf.select([
             col("chr").cast(chr_dtype).alias(EncodedBsxBatch::CHR_NAME),
-            col("position").cast(EncodedBsxBatch::POS_DTYPE).alias(EncodedBsxBatch::POS_NAME),
-            col("strand").cast(EncodedBsxBatch::STRAND_DTYPE).alias(EncodedBsxBatch::STRAND_NAME),
-            col("context").cast(EncodedBsxBatch::CONTEXT_DTYPE).alias(EncodedBsxBatch::CONTEXT_NAME),
-            col("count_m").cast(EncodedBsxBatch::COUNT_DTYPE).alias(EncodedBsxBatch::COUNT_M_NAME),
-            col("count_total").cast(EncodedBsxBatch::COUNT_DTYPE).alias(EncodedBsxBatch::COUNT_TOTAL_NAME),
-            col("density").cast(EncodedBsxBatch::DENSITY_DTYPE).alias(EncodedBsxBatch::DENSITY_NAME),
+            col("position").cast(EncodedBsxBatch::pos_type()).alias(EncodedBsxBatch::POS_NAME),
+            col("strand").cast(EncodedBsxBatch::strand_type()).alias(EncodedBsxBatch::STRAND_NAME),
+            col("context").cast(EncodedBsxBatch::context_type()).alias(EncodedBsxBatch::CONTEXT_NAME),
+            col("count_m").cast(EncodedBsxBatch::count_type()).alias(EncodedBsxBatch::COUNT_M_NAME),
+            col("count_total").cast(EncodedBsxBatch::count_type()).alias(EncodedBsxBatch::COUNT_TOTAL_NAME),
+            col("density").cast(EncodedBsxBatch::density_type()).alias(EncodedBsxBatch::DENSITY_NAME),
         ])
     }
 

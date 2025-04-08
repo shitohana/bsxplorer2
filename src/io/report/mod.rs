@@ -13,7 +13,7 @@ mod report_read_utils {
 
     use super::*;
     use crate::data_structs::batch::decoded::BsxBatch;
-    use crate::data_structs::batch::traits::BsxColNames;
+    use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
     use crate::data_structs::context_data::ContextData;
     use crate::data_structs::region::RegionCoordinates;
     use crate::io::report::read::ReadQueueItem;

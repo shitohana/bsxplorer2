@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use crate::data_structs::batch::builder::BsxBatchBuilder;
 use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::encoded::{get_encoded_schema, EncodedBsxBatch};
-use crate::data_structs::batch::traits::BsxBatchMethods;
+use crate::data_structs::batch::encoded::EncodedBsxBatch;
+use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
 use crate::utils::get_categorical_dtype;
 use anyhow::{Context, Result};
 use itertools::Itertools;
@@ -65,7 +65,8 @@ where
 
         info!("Initializing writer with compression: {:?}", compression);
         let chr_dtype = get_categorical_dtype(chr_names);
-        let schema = get_encoded_schema(&chr_dtype);
+        let mut schema = EncodedBsxBatch::schema();
+        schema.set_dtype(EncodedBsxBatch::CHR_NAME, chr_dtype);
 
         let mut writer = opts.to_writer(sink);
         if let Some(metadata) = custom_metadata {

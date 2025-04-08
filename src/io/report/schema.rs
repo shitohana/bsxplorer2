@@ -5,7 +5,7 @@ use log::{debug, trace, warn};
 use polars::prelude::*;
 
 use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::traits::BsxColNames;
+use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Represents different methylation report file formats supported by the
@@ -483,6 +483,7 @@ impl ReportTypeSchema {
 mod report_schema_test {
     use crate::data_structs::batch::builder::BsxBatchBuilder;
     use crate::data_structs::batch::decoded::BsxBatch;
+    use crate::data_structs::batch::traits::BsxBatchMethods;
     use crate::io::report::schema::ReportTypeSchema;
     use crate::io::report::*;
 
