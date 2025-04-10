@@ -176,7 +176,7 @@ where
         batch: &EncodedBsxBatch
     ) -> anyhow::Result<RegionData<String, u64, &EncodedBsxBatch>> {
         Ok(RegionData {
-            chr:       batch.chr_val()?.to_string(),
+            chr:        <EncodedBsxBatch as BsxBatchMethods>::chr_val(batch)?.to_string(),
             start:      batch.start_pos().ok_or(anyhow::anyhow!("empty data"))? as u64,
             end:        batch.end_pos().ok_or(anyhow::anyhow!("empty data"))? as u64,
             strand:     Strand::None,

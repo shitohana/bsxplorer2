@@ -1,12 +1,3 @@
-/*******************************************************************************
- Copyright (c) 2025
- The Prosperity Public License 3.0.0
-
- Contributor: [shitohana](https://github.com/shitohana)
-
- Source Code: https://github.com/shitohana/BSXplorer
- ******************************************************************************/
-
 use super::encoded::EncodedBsxBatch;
 use crate::data_structs::batch::decoded::BsxBatch;
 use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
@@ -17,6 +8,7 @@ use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
 
+/// Builder for constructing and validating BSX batch data
 #[derive(Debug, Copy, Clone)]
 pub struct BsxBatchBuilder {
     report_type: Option<ReportTypeSchema>,
@@ -42,6 +34,7 @@ impl Default for BsxBatchBuilder {
 
 // Public methods
 impl BsxBatchBuilder {
+    /// Creates a builder with all data validation checks enabled
     pub fn all_checks() -> Self {
         Self {
             report_type: None,
@@ -53,6 +46,7 @@ impl BsxBatchBuilder {
         }
     }
 
+    /// Creates a builder with all validation checks disabled
     pub fn no_checks() -> Self {
         Self {
             report_type: None,
@@ -64,36 +58,43 @@ impl BsxBatchBuilder {
         }
     }
 
+    /// Sets the report type schema for data conversion
     pub fn with_report_type(mut self, report_type: ReportTypeSchema) -> Self {
         self.report_type = Some(report_type);
         self
     }
 
+    /// Sets whether to check for null values in critical columns
     pub fn with_check_nulls(mut self, check_nulls: bool) -> Self {
         self.check_nulls = check_nulls;
         self
     }
 
+    /// Sets whether to check and ensure positions are sorted
     pub fn with_check_sorted(mut self, check_sorted: bool) -> Self {
         self.check_sorted = check_sorted;
         self
     }
 
+    /// Sets whether to rechunk the data for memory efficiency
     pub fn with_rechunk(mut self, rechunk: bool) -> Self {
         self.rechunk = rechunk;
         self
     }
 
+    /// Sets whether to check if all data is from a single chromosome
     pub fn with_check_single_chr(mut self, check: bool) -> Self {
         self.check_single_chr = check;
         self
     }
 
+    /// Sets whether to check for duplicate positions
     pub fn with_check_duplicates(mut self, check_duplicates: bool) -> Self {
         self.check_duplicates = check_duplicates;
         self
     }
 
+    /// Builds a decoded BSX batch from a DataFrame
     pub fn build_decoded(self, data: DataFrame) -> anyhow::Result<BsxBatch> {
         let casted = self.cast_decoded(data)?;
         self.run_checks(&casted)?;
@@ -103,6 +104,7 @@ impl BsxBatchBuilder {
         Ok(unsafe { BsxBatch::new_unchecked(casted) })
     }
 
+    /// Builds an encoded BSX batch from a DataFrame
     pub fn build_encoded(self, data: DataFrame, chr_dtype: DataType) -> anyhow::Result<EncodedBsxBatch> {
         let casted = self.cast_encoded(data, chr_dtype)?;
         self.run_checks(&casted)?;
@@ -112,6 +114,7 @@ impl BsxBatchBuilder {
         Ok(unsafe { EncodedBsxBatch::new_unchecked(casted) })
     }
 
+    /// Validates and optimizes a DataFrame according to builder settings
     pub fn check(&self, data: DataFrame) -> anyhow::Result<DataFrame> {
         self.run_checks(&data)?;
         let sorted = self.sort(data)?;
@@ -119,6 +122,7 @@ impl BsxBatchBuilder {
         Ok(res)
     }
 
+    /// Converts a decoded batch to an encoded batch format
     pub fn encode_batch(batch: BsxBatch, chr_dtype: DataType) -> anyhow::Result<EncodedBsxBatch> {
         let chr = batch.chr_val()?.to_string();
         let start = batch.start_pos().ok_or("no data").unwrap();
@@ -131,11 +135,12 @@ impl BsxBatchBuilder {
 
         let casted = encoded::select_cast(batch_lazy, chr_dtype).collect()?;
         let encoded = EncodedBsxBatch::new_with_fields(
-            casted, chr, start, end,
+            casted, chr
         );
         Ok(encoded)
     }
 
+    /// Converts an encoded batch to a decoded batch format
     pub fn decode_batch(batch: EncodedBsxBatch) -> anyhow::Result<BsxBatch> {
         let batch_data = DataFrame::from(batch);
         let mut batch_lazy = batch_data.lazy();
@@ -150,6 +155,7 @@ impl BsxBatchBuilder {
 
 // Private methods
 impl BsxBatchBuilder {
+    /// Casts data to decoded format using appropriate schema conversion
     fn cast_decoded(&self, data: DataFrame) -> anyhow::Result<DataFrame> {
         let casted = if let Some(report_type) = self.report_type {
             match report_type {
@@ -164,6 +170,7 @@ impl BsxBatchBuilder {
         Ok(casted)
     }
 
+    /// Casts data to encoded format using appropriate schema conversion
     fn cast_encoded(&self, data: DataFrame, chr_dtype: DataType) -> anyhow::Result<DataFrame> {
         let casted = if let Some(report_type) = self.report_type {
             match report_type {
@@ -178,6 +185,7 @@ impl BsxBatchBuilder {
         Ok(casted)
     }
 
+    /// Rechunks the data if enabled in the builder
     fn rechunk(&self, data: DataFrame) -> DataFrame {
         let mut data = data;
         if self.rechunk {
@@ -185,6 +193,8 @@ impl BsxBatchBuilder {
         }
         data
     }
+
+    /// Performs data validation based on builder settings
     fn run_checks(&self, data: &DataFrame) -> anyhow::Result<()> {
         if self.check_nulls {
             check_has_nulls(data)?;
@@ -194,6 +204,8 @@ impl BsxBatchBuilder {
         }
         Ok(())
     }
+
+    /// Sorts data by position if needed and updates sorting flags
     fn sort(&self, data: DataFrame) -> anyhow::Result<DataFrame> {
         let mut data = data;
         if self.check_sorted && !check_pos_ascending(&data) {
@@ -233,6 +245,7 @@ mod decoded {
         ])
     }
 
+    /// Creates an expression to convert nucleotide values to strand symbols
     fn nuc_to_strand_expr() -> Expr {
         when(col("nuc").eq(lit("C")))
             .then(lit("+"))

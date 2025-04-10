@@ -7,12 +7,14 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::io::{Read, Seek};
 use std::ops::Bound::Included;
+use std::ops::Deref;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 use std::thread::JoinHandle;
 
 use crate::data_structs::batch::encoded::EncodedBsxBatch;
+use crate::data_structs::batch::lazy::LazyBsxBatch;
 use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::data_structs::region_data::RegionData;
@@ -258,16 +260,14 @@ impl RegionAssembler {
             )> = affected_regions
                 .par_iter()
                 .map(|region_data| {
-                    let batch = data_ref.trim_region(&region_data.as_region());
-                    batch.map(|mut df| {
-                        if !matches!(region_data.strand(), Strand::None) {
-                            // Todo rewrite this to something without except
-                            // df = df.filter(col(EncodedBsxBatch::STRAND_NAME).eq(lit(region_data.strand().to_bool().unwrap())))
-                            //     .expect("Failed to filter by strand");
-                            todo!()
-                        };
-                        (region_data.clone(), df)
-                    })
+                    let coordinates = region_data.as_region();
+                    let mut lazy = LazyBsxBatch::from(data_ref.deref().clone())
+                        .filter_pos_gt(coordinates.start() - 1)
+                        .filter_pos_lt(coordinates.end);
+                    if !matches!(region_data.strand(), Strand::None) {
+                        lazy = lazy.filter_strand(region_data.strand());
+                    }
+                    EncodedBsxBatch::try_from(lazy).map(|batch| (region_data.clone(), batch))
                 })
                 .collect::<anyhow::Result<Vec<_>>>()
                 .expect("Failed to trim data_structs");

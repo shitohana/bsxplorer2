@@ -1,43 +1,23 @@
-//! Module contains BsxBatches which represent single chromosome methylation
-//! data_structs
-//!
-//! BsxBatch stores data_structs in [DataFrame] with
-//! * Non-null chr and position
-//! * Single unique chromosome
-//! * Ascending sorted positions
-//!
-//! Module contains two main structs:
-//! 1. [BsxBatch] struct for storing non-encoded data_structs
-//! 2. [EncodedBsxBatch] struct for storing encoded data_structs (context and
-//! strand encoded as boolean)
-//!
-//! and [BsxBatchMethods] trait
-//!
-//! Both BsxBatch and EncodedBsxBatch can be filtered using context and/or
-//! strand
 use crate::data_structs::batch::builder::BsxBatchBuilder;
 use crate::data_structs::batch::traits::BsxTypeTag;
 use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
-use crate::utils::types::{IPCEncodedEnum, Strand};
 use anyhow::anyhow;
 use once_cell::sync::OnceCell;
 use polars::prelude::*;
 
-/// DataFrame with
-/// 1. Non-null chr and position
-/// 2. Single unique chr
+/// A batch of BSX data stored in a DataFrame with the following guarantees:
+/// 1. Non-null chr and position columns
+/// 2. Single unique chromosome value
 /// 3. Ascending sorted positions
 #[derive(Clone, PartialEq, Debug)]
 pub struct BsxBatch {
     data: DataFrame,
-    chr: OnceCell<String>,
-    start: OnceCell<u32>,
-    end: OnceCell<u32>,
+    chr: OnceCell<String>
 }
 
 impl BsxColNames for BsxBatch {}
 
-impl BsxBatchMethods for BsxBatch {
+impl BsxBatchMethods for BsxBatch where {
     type ChrType = StringType;
     type PosType = UInt64Type;
     type StrandType = StringType;
@@ -99,22 +79,12 @@ impl BsxBatchMethods for BsxBatch {
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         BsxBatch {
             data: data_frame,
-            chr: Default::default(),
-            start: Default::default(),
-            end: Default::default(),
+            chr: Default::default()
         }
     }
 
-    /// Returns reference to inner [DataFrame]
-    #[inline]
     fn data(&self) -> &DataFrame {
         &self.data
-    }
-
-    /// Returns mutable reference to inner [DataFrame]
-    #[inline]
-    fn data_mut(&mut self) -> &mut DataFrame {
-        &mut self.data
     }
 
     fn chr_val(&self) -> anyhow::Result<&str> {
@@ -124,25 +94,9 @@ impl BsxBatchMethods for BsxBatch {
             }).map(String::as_str)
 
     }
-
-    fn start_pos(&self) -> Option<u32> {
-        self.start.get_or_try_init(|| self.position()
-            .first()
-            .map(|v| v as u32)
-            .ok_or(anyhow!("no data"))
-        ).ok().cloned()
-
-    }
-
-    fn end_pos(&self) -> Option<u32> {
-        self.end.get_or_try_init(|| self.position()
-            .last()
-            .map(|v| v as u32)
-            .ok_or(anyhow!("no data"))
-        ).ok().cloned()
-    }
 }
 
+/// Implementation to create a BsxBatch from a DataFrame with validation
 impl TryFrom<DataFrame> for BsxBatch {
     type Error = anyhow::Error;
 
@@ -156,6 +110,7 @@ impl TryFrom<DataFrame> for BsxBatch {
     }
 }
 
+/// Implementation to convert a BsxBatch back to its inner DataFrame
 impl From<BsxBatch> for DataFrame {
     fn from(b: BsxBatch) -> Self {
         b.data
@@ -165,111 +120,5 @@ impl From<BsxBatch> for DataFrame {
 impl BsxTypeTag for BsxBatch {
     fn type_name() -> &'static str {
         "decoded"
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::data_structs::batch::traits::BsxBatchMethods;
-    use crate::data_structs::region::RegionCoordinates;
-    use crate::utils::get_categorical_dtype;
-
-    fn dummy_batch() -> BsxBatch {
-        BsxBatch::try_from(
-            df![
-                "chr" => ["1", "1", "1"],
-                "position" => [1, 2, 3],
-                "strand" => [".", ".", "."],
-                "context" => ["CG", "CHG", "CHH"],
-                "count_m" => [0,0,0],
-                "count_total" => [0,0,0],
-                "density" => [0, 1, 0]
-            ]
-            .unwrap()
-            .lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect()
-            .unwrap(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn test_position() {
-        let batch = dummy_batch();
-        let chr_dtype = get_categorical_dtype(vec!["1".into()]);
-        let encoded =
-            BsxBatchBuilder::encode_batch(batch.clone(), chr_dtype).unwrap();
-
-        assert_eq!(batch.start_pos().unwrap(), encoded.start_pos().unwrap());
-        assert_eq!(batch.end_pos().unwrap(), encoded.end_pos().unwrap());
-    }
-
-    #[test]
-    fn test_encode_decode() {
-        let batch = dummy_batch();
-        let chr_dtype = get_categorical_dtype(vec!["1".into()]);
-        let encoded =
-            BsxBatchBuilder::encode_batch(batch.clone(), chr_dtype).unwrap();
-        let decoded = BsxBatchBuilder::decode_batch(encoded).unwrap();
-        assert_eq!(batch, decoded);
-    }
-
-    #[test]
-    fn test_trim() {
-        let batch = BsxBatch::try_from(
-            df![
-                "chr" => ["1", "1", "1", "1", "1", "1", "1"],
-                "position" => [2, 3, 4, 5, 7, 9, 10],
-                "strand" => [".", ".", ".", ".", ".", ".", "."],
-                "context" => ["CG", "CHG", "CHH", "CG", "CHG", "CHH", "CG"],
-                "count_m" => [0,0,0,0,0,0,0],
-                "count_total" => [0,0,0,0,0,0,0],
-                "density" => [0, 1, 0, 0, 1, 0, 0]
-            ]
-            .unwrap()
-            .lazy()
-            .cast(BsxBatch::hashmap(), true)
-            .collect()
-            .unwrap(),
-        )
-        .unwrap();
-        let chr_dtype = get_categorical_dtype(vec!["1".into()]);
-        let encoded =
-            BsxBatchBuilder::encode_batch(batch.clone(), chr_dtype).unwrap();
-
-        let trimmed = encoded
-            .trim_region(&RegionCoordinates::new(
-                "1".to_string(),
-                4,
-                9,
-                Strand::None,
-            ))
-            .unwrap();
-        assert_eq!(trimmed.start_pos().unwrap(), 4);
-        assert_eq!(trimmed.end_pos().unwrap(), 9);
-
-        let trimmed = encoded
-            .trim_region(&RegionCoordinates::new(
-                "1".to_string(),
-                1,
-                9,
-                Strand::None,
-            ))
-            .unwrap();
-        assert_eq!(trimmed.start_pos().unwrap(), 2);
-        assert_eq!(trimmed.end_pos().unwrap(), 9);
-
-        let trimmed = encoded
-            .trim_region(&RegionCoordinates::new(
-                "1".to_string(),
-                4,
-                12,
-                Strand::None,
-            ))
-            .unwrap();
-        assert_eq!(trimmed.start_pos().unwrap(), 4);
-        assert_eq!(trimmed.end_pos().unwrap(), 10);
     }
 }

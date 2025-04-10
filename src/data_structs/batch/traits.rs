@@ -8,15 +8,24 @@ use polars::error::PolarsResult;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
+/// Defines column names for BSX data structures
 pub trait BsxColNames {
+    /// Chromosome column name
     const CHR_NAME: &'static str = "chr";
+    /// Position column name
     const POS_NAME: &'static str = "position";
+    /// Strand column name
     const STRAND_NAME: &'static str = "strand";
+    /// Context column name
     const CONTEXT_NAME: &'static str = "context";
+    /// Methylated count column name
     const COUNT_M_NAME: &'static str = "count_m";
+    /// Total count column name
     const COUNT_TOTAL_NAME: &'static str = "count_total";
+    /// Density column name
     const DENSITY_NAME: &'static str = "density";
 
+    /// Returns an array of all column names
     fn col_names() -> [&'static str; 7] {
         [
             Self::CHR_NAME,
@@ -32,41 +41,62 @@ pub trait BsxColNames {
 }
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
-pub trait BsxBatchMethods {
+pub trait BsxBatchMethods
+{
+    /// Type for chromosome data
     type ChrType: PolarsDataType;
-    type PosType: PolarsDataType;
+    /// Type for position data
+    type PosType: PolarsIntegerType;
+    /// Type for strand data
     type StrandType: PolarsDataType;
+    /// Type for context data
     type ContextType: PolarsDataType;
-    type CountType: PolarsDataType;
-    type DensityType: PolarsDataType;
+    /// Type for count data
+    type CountType: PolarsIntegerType;
+    /// Type for density data
+    type DensityType: PolarsFloatType;
 
+    /// Access chromosome column
     fn chr(&self) -> &ChunkedArray<Self::ChrType>;
+    /// Access position column
     fn position(&self) -> &ChunkedArray<Self::PosType>;
+    /// Access strand column
     fn strand(&self) -> &ChunkedArray<Self::StrandType>;
+    /// Access context column
     fn context(&self) -> &ChunkedArray<Self::ContextType>;
+    /// Access methylated count column
     fn count_m(&self) -> &ChunkedArray<Self::CountType>;
+    /// Access total count column
     fn count_total(&self) -> &ChunkedArray<Self::CountType>;
+    /// Access density column
     fn density(&self) -> &ChunkedArray<Self::DensityType>;
 
+    /// Get chromosome data type
     fn chr_type() -> DataType where Self: Sized {
         Self::ChrType::get_dtype()
     }
+    /// Get position data type
     fn pos_type() -> DataType where Self: Sized {
         Self::PosType::get_dtype()
     }
+    /// Get strand data type
     fn strand_type() -> DataType where Self: Sized {
         Self::StrandType::get_dtype()
     }
+    /// Get context data type
     fn context_type() -> DataType where Self: Sized {
         Self::ContextType::get_dtype()
     }
+    /// Get count data type
     fn count_type() -> DataType where Self: Sized {
         Self::CountType::get_dtype()
     }
+    /// Get density data type
     fn density_type() -> DataType where Self: Sized {
         Self::DensityType::get_dtype()
     }
 
+    /// Create schema for the batch data
     fn schema() -> Schema where Self: Sized + BsxColNames {
         Schema::from_iter([
             (Self::CHR_NAME.into(), Self::ChrType::get_dtype()),
@@ -79,6 +109,7 @@ pub trait BsxBatchMethods {
         ])
     }
 
+    /// Create hashmap of column names to data types
     fn hashmap() -> PlHashMap<&'static str, DataType> where Self: Sized + BsxColNames {
         PlHashMap::from_iter([
             (Self::CHR_NAME, Self::ChrType::get_dtype()),
@@ -91,12 +122,15 @@ pub trait BsxBatchMethods {
         ])
     }
 
+    /// Create a new batch from a DataFrame without checks
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self where Self: Sized;
 
+    /// Create an empty batch
     fn empty() -> Self where Self: Sized + BsxColNames {
         unsafe { Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema())) }
     }
 
+    /// Split batch at specified index
     fn split_at(
         self,
         index: usize,
@@ -111,14 +145,29 @@ pub trait BsxBatchMethods {
     /// Returns reference to inner [DataFrame]
     fn data(&self) -> &DataFrame;
 
-    /// Returns mutable reference to inner [DataFrame]
-    fn data_mut(&mut self) -> &mut DataFrame;
-
+    /// Get chromosome value as string
     fn chr_val(&self) -> anyhow::Result<&str>;
 
-    fn start_pos(&self) -> Option<u32>;
-    fn end_pos(&self) -> Option<u32>;
+    /// Get start position
+    fn start_pos(&self) -> Option<u32>
+    where
+        u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>
+    {
+        self.position()
+            .first()
+            .map(|v| u32::try_from(v).unwrap_or_else(|_| panic!("Failed to cast to u32")))
+    }
+    /// Get end position
+    fn end_pos(&self) -> Option<u32>
+                      where
+                          u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>
+    {
+        self.position()
+            .last()
+            .map(|v| u32::try_from(v).unwrap_or_else(|_| panic!("Failed to cast to u32")))
+    }
 
+    /// Vertically stack with another batch
     fn vstack(
         &self,
         other: &Self,
@@ -131,6 +180,7 @@ pub trait BsxBatchMethods {
         Ok(unsafe { Self::new_unchecked(res) })
     }
 
+    /// Filter batch based on boolean mask
     fn filter_mask(
         &self,
         mask: &BooleanChunked,
@@ -145,7 +195,11 @@ pub trait BsxBatchMethods {
         self.data().height()
     }
 
-    fn as_contig(&self) -> anyhow::Result<Contig<&str, NoStrand>> {
+    /// Convert batch to genomic contig
+    fn as_contig(&self) -> anyhow::Result<Contig<&str, NoStrand>>
+    where
+        u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>
+    {
         let start = self
             .start_pos()
             .ok_or(anyhow!("no data"))?;
@@ -163,6 +217,8 @@ pub trait BsxBatchMethods {
     }
 }
 
+/// Trait for BSX type identification
 pub trait BsxTypeTag {
+    /// Get type name as string
     fn type_name() -> &'static str;
 }
