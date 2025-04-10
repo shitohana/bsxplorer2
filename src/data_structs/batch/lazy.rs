@@ -1,13 +1,13 @@
+use crate::data_structs::batch::traits::colnames;
+use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use polars::prelude::*;
 use std::marker::PhantomData;
-
-use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 
 use super::{
     builder::BsxBatchBuilder,
     decoded::BsxBatch,
     encoded::EncodedBsxBatch,
-    traits::{BsxBatchMethods, BsxColNames, BsxTypeTag},
+    traits::{BsxBatchMethods, BsxTypeTag},
 };
 
 /// A lazy representation of a BSX batch for efficient query operations
@@ -41,7 +41,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         self,
         value: N,
     ) -> Self {
-        self.filter(col(BsxBatch::POS_NAME).lt(lit(value)))
+        self.filter(col(colnames::POS_NAME).lt(lit(value)))
     }
 
     /// Filters positions greater than the specified value
@@ -49,7 +49,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         self,
         value: N,
     ) -> Self {
-        self.filter(col(BsxBatch::POS_NAME).gt(lit(value)))
+        self.filter(col(colnames::POS_NAME).gt(lit(value)))
     }
 
     /// Filters entries with coverage less than the specified value
@@ -57,7 +57,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         self,
         value: N,
     ) -> Self {
-        self.filter(col(BsxBatch::COUNT_TOTAL_NAME).lt(lit(value)))
+        self.filter(col(colnames::COUNT_TOTAL_NAME).lt(lit(value)))
     }
 
     /// Filters entries by strand value
@@ -66,8 +66,8 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         value: Strand,
     ) -> Self {
         let expr = match T::type_name() {
-            "decoded" => col(BsxBatch::STRAND_NAME).eq(lit(value.to_string())),
-            "encoded" => col(EncodedBsxBatch::STRAND_NAME).eq(value
+            "decoded" => col(colnames::STRAND_NAME).eq(lit(value.to_string())),
+            "encoded" => col(colnames::STRAND_NAME).eq(value
                 .to_bool()
                 .map(|v| lit(v))
                 .unwrap_or(lit(NULL))),
@@ -82,8 +82,8 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         value: Context,
     ) -> Self {
         let expr = match T::type_name() {
-            "decoded" => col(BsxBatch::CONTEXT_NAME).eq(lit(value.to_string())),
-            "encoded" => col(EncodedBsxBatch::CONTEXT_NAME).eq(value
+            "decoded" => col(colnames::CONTEXT_NAME).eq(lit(value.to_string())),
+            "encoded" => col(colnames::CONTEXT_NAME).eq(value
                 .to_bool()
                 .map(|v| lit(v))
                 .unwrap_or(lit(NULL))),

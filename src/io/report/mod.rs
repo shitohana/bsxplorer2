@@ -13,7 +13,7 @@ mod report_read_utils {
 
     use super::*;
     use crate::data_structs::batch::decoded::BsxBatch;
-    use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
+    use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
     use crate::data_structs::context_data::ContextData;
     use crate::data_structs::region::RegionCoordinates;
     use crate::io::report::read::ReadQueueItem;
@@ -110,12 +110,12 @@ mod report_read_utils {
         data_frame: &DataFrame,
         context_data: ContextData<N>,
     ) -> anyhow::Result<DataFrame> {
-        let data_join_columns = [BsxBatch::POS_NAME];
+        let data_join_columns = [colnames::POS_NAME];
         let context_join_columns = [ContextData::<N>::position_col()];
         let chr = utils::first_position(
             data_frame,
-            BsxBatch::CHR_NAME,
-            BsxBatch::POS_NAME,
+            colnames::CHR_NAME,
+            colnames::POS_NAME,
         )?
         .chr()
         .to_string();
@@ -165,6 +165,6 @@ mod report_read_utils {
             .lazy()
             .cast(BsxBatch::hashmap(), true)
             .collect()?
-            .select(BsxBatch::col_names().iter().cloned())?)
+            .select(colnames::col_names().iter().cloned())?)
     }
 }

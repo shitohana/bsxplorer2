@@ -5,7 +5,7 @@ use log::{debug, trace, warn};
 use polars::prelude::*;
 
 use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
+use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Represents different methylation report file formats supported by the
@@ -235,7 +235,7 @@ impl ReportTypeSchema {
                             .alias("density"),
                     )
                     // Select only the columns needed for BsxBatch format
-                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .select(colnames::col_names().iter().map(|s| col(*s)).collect_vec())
                     // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
@@ -275,7 +275,7 @@ impl ReportTypeSchema {
                         .otherwise(lit("."))
                         .alias("strand")])
                     // Select only the columns needed for BsxBatch format
-                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .select(colnames::col_names().iter().map(|s| col(*s)).collect_vec())
                     // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
@@ -314,7 +314,7 @@ impl ReportTypeSchema {
                         lit(NULL).alias("count_total"),
                     ])
                     // Select only the columns needed for BsxBatch format
-                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .select(colnames::col_names().iter().map(|s| col(*s)).collect_vec())
                     // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();
@@ -360,7 +360,7 @@ impl ReportTypeSchema {
                             .alias("density"),
                     ])
                     // Select only the columns needed for BsxBatch format
-                    .select(BsxBatch::col_names().iter().map(|s| col(*s)).collect_vec())
+                    .select(colnames::col_names().iter().map(|s| col(*s)).collect_vec())
                     // Ensure all columns have the correct data_structs types
                     .cast(BsxBatch::hashmap(), true)
                     .collect();

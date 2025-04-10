@@ -8,40 +8,37 @@ use polars::error::PolarsResult;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-/// Defines column names for BSX data structures
-pub trait BsxColNames {
-    /// Chromosome column name
-    const CHR_NAME: &'static str = "chr";
+pub mod colnames {
+    pub const CHR_NAME: &'static str = "chr";
     /// Position column name
-    const POS_NAME: &'static str = "position";
+    pub const POS_NAME: &'static str = "position";
     /// Strand column name
-    const STRAND_NAME: &'static str = "strand";
+    pub const STRAND_NAME: &'static str = "strand";
     /// Context column name
-    const CONTEXT_NAME: &'static str = "context";
+    pub const CONTEXT_NAME: &'static str = "context";
     /// Methylated count column name
-    const COUNT_M_NAME: &'static str = "count_m";
+    pub const COUNT_M_NAME: &'static str = "count_m";
     /// Total count column name
-    const COUNT_TOTAL_NAME: &'static str = "count_total";
+    pub const COUNT_TOTAL_NAME: &'static str = "count_total";
     /// Density column name
-    const DENSITY_NAME: &'static str = "density";
+    pub const DENSITY_NAME: &'static str = "density";
 
-    /// Returns an array of all column names
-    fn col_names() -> [&'static str; 7] {
+    pub const fn col_names() -> [&'static str; 7] {
         [
-            Self::CHR_NAME,
-            Self::POS_NAME,
-            Self::STRAND_NAME,
-            Self::CONTEXT_NAME,
-            Self::COUNT_M_NAME,
-            Self::COUNT_TOTAL_NAME,
-            Self::DENSITY_NAME,
+            CHR_NAME,
+            POS_NAME,
+            STRAND_NAME,
+            CONTEXT_NAME,
+            COUNT_M_NAME,
+            COUNT_TOTAL_NAME,
+            DENSITY_NAME,
         ]
     }
-
 }
+use colnames::*;
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
-pub trait BsxBatchMethods
+pub trait BsxBatchMethods: BsxTypeTag
 {
     /// Type for chromosome data
     type ChrType: PolarsDataType;
@@ -58,17 +55,12 @@ pub trait BsxBatchMethods
 
     /// Access chromosome column
     fn chr(&self) -> &ChunkedArray<Self::ChrType>;
-    /// Access position column
     fn position(&self) -> &ChunkedArray<Self::PosType>;
-    /// Access strand column
     fn strand(&self) -> &ChunkedArray<Self::StrandType>;
-    /// Access context column
     fn context(&self) -> &ChunkedArray<Self::ContextType>;
-    /// Access methylated count column
     fn count_m(&self) -> &ChunkedArray<Self::CountType>;
-    /// Access total count column
     fn count_total(&self) -> &ChunkedArray<Self::CountType>;
-    /// Access density column
+
     fn density(&self) -> &ChunkedArray<Self::DensityType>;
 
     /// Get chromosome data type
@@ -97,28 +89,28 @@ pub trait BsxBatchMethods
     }
 
     /// Create schema for the batch data
-    fn schema() -> Schema where Self: Sized + BsxColNames {
+    fn schema() -> Schema where Self: Sized {
         Schema::from_iter([
-            (Self::CHR_NAME.into(), Self::ChrType::get_dtype()),
-            (Self::POS_NAME.into(), Self::PosType::get_dtype()),
-            (Self::STRAND_NAME.into(), Self::StrandType::get_dtype()),
-            (Self::CONTEXT_NAME.into(), Self::ContextType::get_dtype()),
-            (Self::COUNT_M_NAME.into(), Self::CountType::get_dtype()),
-            (Self::COUNT_TOTAL_NAME.into(), Self::CountType::get_dtype()),
-            (Self::DENSITY_NAME.into(), Self::DensityType::get_dtype()),
+            (CHR_NAME.into(), Self::ChrType::get_dtype()),
+            (POS_NAME.into(), Self::PosType::get_dtype()),
+            (STRAND_NAME.into(), Self::StrandType::get_dtype()),
+            (CONTEXT_NAME.into(), Self::ContextType::get_dtype()),
+            (COUNT_M_NAME.into(), Self::CountType::get_dtype()),
+            (COUNT_TOTAL_NAME.into(), Self::CountType::get_dtype()),
+            (DENSITY_NAME.into(), Self::DensityType::get_dtype()),
         ])
     }
 
     /// Create hashmap of column names to data types
-    fn hashmap() -> PlHashMap<&'static str, DataType> where Self: Sized + BsxColNames {
+    fn hashmap() -> PlHashMap<&'static str, DataType> where Self: Sized {
         PlHashMap::from_iter([
-            (Self::CHR_NAME, Self::ChrType::get_dtype()),
-            (Self::POS_NAME, Self::PosType::get_dtype()),
-            (Self::STRAND_NAME, Self::StrandType::get_dtype()),
-            (Self::CONTEXT_NAME, Self::ContextType::get_dtype()),
-            (Self::COUNT_M_NAME, Self::CountType::get_dtype()),
-            (Self::COUNT_TOTAL_NAME, Self::CountType::get_dtype()),
-            (Self::DENSITY_NAME, Self::DensityType::get_dtype()),
+            (CHR_NAME, Self::ChrType::get_dtype()),
+            (POS_NAME, Self::PosType::get_dtype()),
+            (STRAND_NAME, Self::StrandType::get_dtype()),
+            (CONTEXT_NAME, Self::ContextType::get_dtype()),
+            (COUNT_M_NAME, Self::CountType::get_dtype()),
+            (COUNT_TOTAL_NAME, Self::CountType::get_dtype()),
+            (DENSITY_NAME, Self::DensityType::get_dtype()),
         ])
     }
 
@@ -126,7 +118,7 @@ pub trait BsxBatchMethods
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self where Self: Sized;
 
     /// Create an empty batch
-    fn empty() -> Self where Self: Sized + BsxColNames {
+    fn empty() -> Self where Self: Sized {
         unsafe { Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema())) }
     }
 

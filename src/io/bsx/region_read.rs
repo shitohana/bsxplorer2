@@ -15,7 +15,7 @@ use std::thread::JoinHandle;
 
 use crate::data_structs::batch::encoded::EncodedBsxBatch;
 use crate::data_structs::batch::lazy::LazyBsxBatch;
-use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
+use crate::data_structs::batch::traits::BsxBatchMethods;
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::data_structs::region_data::RegionData;
 use crate::io::bsx::read::{BSXIndex, BsxFileReader};

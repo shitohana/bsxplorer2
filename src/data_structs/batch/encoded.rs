@@ -1,5 +1,5 @@
-use super::traits::BsxTypeTag;
-use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames};
+use super::traits::{colnames, BsxTypeTag};
+use crate::data_structs::batch::traits::BsxBatchMethods;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use polars::prelude::*;
@@ -17,13 +17,11 @@ pub struct EncodedBsxBatch {
     chr: OnceCell<String>,
 }
 
-impl BsxColNames for EncodedBsxBatch {}
-
 impl EncodedBsxBatch {
     /// Returns a reference to the categorical chromosome column
     pub fn chr(&self) -> &CategoricalChunked {
         self.data
-            .column(Self::CHR_NAME)
+            .column(colnames::CHR_NAME)
             .unwrap()
             .categorical()
             .unwrap()
@@ -58,7 +56,7 @@ impl BsxBatchMethods for EncodedBsxBatch where {
 
     fn chr(&self) -> &ChunkedArray<Self::ChrType> {
         self.data
-            .column(Self::CHR_NAME)
+            .column(colnames::CHR_NAME)
             .unwrap()
             .categorical()
             .unwrap()
@@ -66,14 +64,14 @@ impl BsxBatchMethods for EncodedBsxBatch where {
     }
     fn position(&self) -> &ChunkedArray<Self::PosType> {
         self.data
-            .column(Self::POS_NAME)
+            .column(colnames::POS_NAME)
             .unwrap()
             .u32()
             .unwrap()
     }
     fn strand(&self) -> &ChunkedArray<Self::StrandType> {
         self.data
-            .column(Self::STRAND_NAME)
+            .column(colnames::STRAND_NAME)
             .unwrap()
             .bool()
             .unwrap()
@@ -81,7 +79,7 @@ impl BsxBatchMethods for EncodedBsxBatch where {
 
     fn context(&self) -> &ChunkedArray<Self::ContextType> {
         self.data
-            .column(Self::CONTEXT_NAME)
+            .column(colnames::CONTEXT_NAME)
             .unwrap()
             .bool()
             .unwrap()
@@ -89,7 +87,7 @@ impl BsxBatchMethods for EncodedBsxBatch where {
 
     fn count_m(&self) -> &ChunkedArray<Self::CountType> {
         self.data
-            .column(Self::COUNT_M_NAME)
+            .column(colnames::COUNT_M_NAME)
             .unwrap()
             .i16()
             .unwrap()
@@ -97,7 +95,7 @@ impl BsxBatchMethods for EncodedBsxBatch where {
 
     fn count_total(&self) -> &ChunkedArray<Self::CountType> {
         self.data
-            .column(Self::COUNT_TOTAL_NAME)
+            .column(colnames::COUNT_TOTAL_NAME)
             .unwrap()
             .i16()
             .unwrap()
@@ -105,7 +103,7 @@ impl BsxBatchMethods for EncodedBsxBatch where {
 
     fn density(&self) -> &ChunkedArray<Self::DensityType> {
         self.data
-            .column(Self::DENSITY_NAME)
+            .column(colnames::DENSITY_NAME)
             .unwrap()
             .f32()
             .unwrap()

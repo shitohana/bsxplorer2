@@ -1,62 +1,54 @@
-use crate::data_structs::batch::encoded::EncodedBsxBatch;
-use crate::data_structs::batch::traits::{BsxBatchMethods, BsxColNames, BsxTypeTag};
+use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
 use itertools::Itertools;
 use polars::frame::DataFrame;
-use polars::prelude::{ChunkedArray, Column, IntoSeries};
+use polars::prelude::Column;
 
-pub fn merge_replicates<B: BsxBatchMethods + BsxTypeTag>(
+pub fn merge_replicates<B: BsxBatchMethods>(
     mut batches: Vec<B>,
     count_agg: fn(
-        Vec<&ChunkedArray<B::CountType>>,
-    ) -> ChunkedArray<B::CountType>,
+        Vec<&Column>,
+    ) -> Column,
     density_agg: fn(
-        Vec<&ChunkedArray<B::DensityType>>,
-    ) -> ChunkedArray<B::DensityType>,
+        Vec<&Column>,
+    ) -> Column,
 ) -> anyhow::Result<B>
-where
-    ChunkedArray<B::ChrType>: IntoSeries,
-    ChunkedArray<B::PosType>: IntoSeries,
-    ChunkedArray<B::StrandType>: IntoSeries,
-    ChunkedArray<B::ContextType>: IntoSeries,
-    ChunkedArray<B::CountType>: IntoSeries,
-    ChunkedArray<B::DensityType>: IntoSeries,
 {
     if batches.is_empty() {
         anyhow::bail!("batches cannot be empty");
     } else if batches.len() == 1 {
         return Ok(batches.pop().unwrap());
     } else {
-        let chr_col = batches[0].chr();
-        let pos_col = batches[0].position();
-        let strand_col = batches[0].strand();
-        let context_col = batches[0].context();
+        let chr_col = batches[0].data().column(colnames::CHR_NAME)?;
+        let pos_col = batches[0].data().column(colnames::CHR_NAME)?;
+        let strand_col = batches[0].data().column(colnames::STRAND_NAME)?;
+        let context_col = batches[0].data().column(colnames::CONTEXT_NAME)?;
 
         let count_m_col = count_agg(
             batches
                 .iter()
-                .map(|b| b.count_m())
+                .map(|b| b.data().column(colnames::COUNT_M_NAME).unwrap())
                 .collect_vec(),
         );
         let count_total_col = count_agg(
             batches
                 .iter()
-                .map(|b| b.count_total())
+                .map(|b| b.data().column(colnames::COUNT_TOTAL_NAME).unwrap())
                 .collect_vec(),
         );
         let density_col = density_agg(
             batches
                 .iter()
-                .map(|b| b.density())
+                .map(|b| b.data().column(colnames::DENSITY_NAME).unwrap())
                 .collect_vec(),
         );
         let df = DataFrame::from_iter([
-            Column::new(EncodedBsxBatch::CHR_NAME.into(), chr_col.to_owned()),
-            Column::new(EncodedBsxBatch::POS_NAME.into(), pos_col.to_owned()),
-            Column::new(EncodedBsxBatch::STRAND_NAME.into(), strand_col.to_owned()),
-            Column::new(EncodedBsxBatch::CONTEXT_NAME.into(), context_col.to_owned()),
-            Column::new(EncodedBsxBatch::COUNT_M_NAME.into(), count_m_col),
-            Column::new(EncodedBsxBatch::COUNT_TOTAL_NAME.into(), count_total_col),
-            Column::new(EncodedBsxBatch::DENSITY_NAME.into(), density_col),
+            chr_col.to_owned(),
+            pos_col.to_owned(),
+            strand_col.to_owned(),
+            context_col.to_owned(),
+            count_m_col,
+            count_total_col,
+            density_col,
         ]);
 
         let batch = unsafe { B::new_unchecked(df) };

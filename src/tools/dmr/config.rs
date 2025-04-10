@@ -1,20 +1,17 @@
-use std::collections::{BTreeMap, HashMap};
+use crate::data_structs::batch::encoded::EncodedBsxBatch;
+use crate::io::bsx::read::BsxFileReader;
+use crate::tools::dmr::data_structs::ReaderMetadata;
+use crate::tools::dmr::segmentation::FilterConfig;
+use crate::tools::dmr::{segment_reading, DmrIterator};
+use crate::utils::types::Context;
+use bio_types::annot::refids::RefIDSet;
+use itertools::Itertools;
+use polars::error::PolarsResult;
+use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::io::{Read, Seek};
 use std::sync::Arc;
-
-use anyhow::anyhow;
-use bio_types::annot::refids::RefIDSet;
-use itertools::Itertools;
-
-use crate::data_structs::batch::group::EncodedBsxBatchGroup;
-use crate::io::bsx::multiple_reader::MultiBsxFileReader;
-use crate::io::bsx::read::BsxFileReader;
-use crate::tools::dmr::data_structs::ReaderMetadata;
-use crate::tools::dmr::segmentation::FilterConfig;
-use crate::tools::dmr::DmrIterator;
-use crate::utils::types::Context;
 
 #[derive(Debug, Clone)]
 pub struct DmrConfig {
@@ -44,7 +41,7 @@ impl DmrConfig {
     pub fn try_finish<F, R>(
         &self,
         readers: Vec<(R, F)>,
-    ) -> anyhow::Result<DmrIterator<R>>
+    ) -> anyhow::Result<DmrIterator>
     where
         F: Read + Seek + Send + Sync + 'static,
         R: Display
@@ -54,81 +51,52 @@ impl DmrConfig {
             + Default
             + std::fmt::Debug
             + Send
+            + Ord
             + 'static, {
-        let sample_mapping: HashMap<uuid::Uuid, (R, F)> = HashMap::from_iter(
-            readers
-                .into_iter()
-                .map(|(group, handle)| (uuid::Uuid::new_v4(), (group, handle))),
-        );
 
-        let group_mapping: HashMap<uuid::Uuid, R> = HashMap::from_iter(
-            sample_mapping
-                .iter()
-                .map(|(id, (group, _))| (id.clone(), group.clone())),
-        );
-        let group_order = {
-            let group_set = BTreeMap::from_iter(
-                group_mapping
-                    .values()
-                    .map(|x| (x.to_string(), x)),
-            );
-            if group_set.len() != 2 {
-                return Err(anyhow!(
-                    "There should be only two groups of samples! ({:?})",
-                    group_set
-                ));
-            }
-            let groups_vec = group_set.into_iter().collect_vec();
-            (
-                groups_vec[0].clone().1.clone(),
-                groups_vec[1].clone().1.clone(),
-            )
-        };
-        let readers_mapping: HashMap<uuid::Uuid, BsxFileReader<F>> =
-            HashMap::from_iter(
-                sample_mapping
-                    .into_iter()
-                    .map(|(id, (_, handle))| (id, BsxFileReader::new(handle))),
-            );
+        // Use BTreeMap to sort labels and get consistent left/right order
+        let mut readers_pair = BTreeMap::from_iter(
+            readers.into_iter()
+            .into_group_map_by(|(label, reader)| label.clone())
+            .into_iter()
+        ).into_values().collect_vec();
 
-        let config_copy = self.clone();
+        match readers_pair.len() {
+            0 => anyhow::bail!("No readers supplied"),
+            2 => {},
+            n => anyhow::bail!("Too many readers groups supplied: {}", n),
+        }
+        let right_readers = readers_pair.pop().unwrap()
+            .into_iter().map(|(label, reader)| BsxFileReader::new(reader)).collect_vec();
+        let left_readers = readers_pair.pop().unwrap()
+            .into_iter().map(|(label, reader)| BsxFileReader::new(reader)).collect_vec();
+        let blocks_total = right_readers[0].blocks_total();
+        
+        let batch_decoder = Box::new(
+            |batch_res: PolarsResult<EncodedBsxBatch>| -> EncodedBsxBatch { batch_res.expect("could not read batch") }
+        );
+        
+        let right_readers = right_readers.into_iter()
+            .map(|reader| reader.map(batch_decoder.clone()))
+            .collect_vec();
+        let left_readers = left_readers.into_iter()
+            .map(|reader| reader.map(batch_decoder.clone()))
+            .collect_vec();
 
         let (sender, receiver) = crossbeam::channel::bounded(10);
-        let last_chr = Arc::new(String::new());
-        let ref_idset = RefIDSet::new();
 
-        let group_mapping_clone = group_mapping.clone();
-        let mut multi_reader = MultiBsxFileReader::try_new(readers_mapping)
-            .map_err(|e| anyhow!("{:?}", e))?;
-        let reader_stat = ReaderMetadata::new(multi_reader.blocks_total());
-
-        let join_handle = std::thread::spawn(move || {
-            let group_mapping = group_mapping_clone;
-
-            while let Some(batches) = multi_reader.next() {
-                let labels = batches
-                    .iter()
-                    .map(|(id, _)| group_mapping.get(id).unwrap().clone())
-                    .collect();
-                let data = batches
-                    .into_iter()
-                    .map(|(_, batch)| batch)
-                    .collect();
-                let group =
-                    EncodedBsxBatchGroup::try_new(data, Some(labels)).unwrap();
-                sender.send(group).unwrap();
-            }
-        });
+        let join_handle = std::thread::spawn(
+            move || segment_reading(left_readers, right_readers, sender)
+        );
 
         let out = DmrIterator {
-            config: config_copy,
-            ref_idset,
-            group_pair: group_order,
+            config: self.clone(),
+            ref_idset: RefIDSet::new(),
             leftover: None,
             regions_cache: Vec::new(),
-            last_chr,
+            last_chr: Arc::new(String::new()),
             receiver,
-            reader_stat,
+            reader_stat: ReaderMetadata::new(blocks_total),
             _join_handle: join_handle,
         };
 
