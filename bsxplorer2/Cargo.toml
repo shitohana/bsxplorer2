@@ -13,9 +13,6 @@ readme = "README.md"
 [features]
 compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip"]
 
-#[workspace]
-#members = ["console"]
-
 [lib]
 path = "src/lib.rs"
 

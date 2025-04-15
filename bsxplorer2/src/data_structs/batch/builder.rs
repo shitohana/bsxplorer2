@@ -16,7 +16,6 @@ use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
 // TODO
-//  - Move from_report construction to new builder
 //  - Add builder for report batches to unify interface
 
 #[derive(Debug, Clone, Eq, PartialEq)]

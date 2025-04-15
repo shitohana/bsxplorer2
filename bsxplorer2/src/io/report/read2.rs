@@ -20,6 +20,9 @@ use std::io::{BufReader, Read};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
+#[cfg(feature = "compression")]
+use crate::io::compression::Compression;
+use std::path::Path;
 
 struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
     report_type: ReportTypeSchema,
@@ -30,7 +33,8 @@ struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
     n_threads: Option<usize>,
     low_memory: bool,
     queue_len: usize,
-
+    #[cfg(feature = "compression")]
+    compression: Option<Compression>,
     _batch_type: PhantomData<B>,
 }
 
@@ -99,6 +103,15 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self.queue_len = queue_len;
         self
     }
+
+    #[cfg(feature = "compression")]
+    pub fn with_compression(
+        mut self,
+        compression: Compression,
+    ) -> Self {
+        self.compression = Some(compression);
+        self
+    }
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
@@ -143,15 +156,23 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         }
     }
 
-    fn get_file_handle(&self) -> anyhow::Result<Box<dyn MmapBytesReader>> {
-        // Here we create a handle (possibly with compression)
-        todo!()
+    fn get_file_handle(&self, path: PathBuf) -> anyhow::Result<Box<dyn MmapBytesReader>> {
+        #[cfg(feature = "compression")]
+        {
+            if let Some(compression) = &self.compression {
+                let file = File::open(path)?;
+                return Ok(compression.get_decoder(file));
+            }
+        }
+        
+        // No compression or compression feature not enabled
+        Ok(Box::new(File::open(path)?))
     }
 
     fn get_csv_reader(
-        &self
+        &self, path: PathBuf
     ) -> anyhow::Result<OwnedBatchedCsvReader<Box<dyn MmapBytesReader>>> {
-        let handle = self.get_file_handle()?;
+        let handle = self.get_file_handle(path)?;
 
         let csv_reader = self
             .report_type
@@ -168,7 +189,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         Ok(owned_batched)
     }
 
-    pub fn build(self) -> anyhow::Result<ReportReader<B>> {
+    pub fn build(self, path: PathBuf) -> anyhow::Result<ReportReader<B>> {
         use ReportTypeSchema as RS;
 
         let chr_dtype = self.get_chr_dtype()?;
@@ -184,7 +205,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             )
         }
 
-        let mut csv_reader = self.get_csv_reader()?;
+        let mut csv_reader = self.get_csv_reader(path)?;
         let (sender, receiver) = crossbeam::channel::bounded(self.queue_len);
 
         let join_handle = std::thread::spawn(move || {

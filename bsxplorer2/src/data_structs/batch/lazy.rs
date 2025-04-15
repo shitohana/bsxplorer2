@@ -169,10 +169,10 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
                 col(colnames::POS_NAME)
             )
             .with_columns([
-                col(colnames::CHR_NAME).fill_null(lit(chr_val)),
+                col(colnames::CHR_NAME).fill_null(lit(chr_val)).alias(colnames::CHR_NAME),
                 col(colnames::COUNT_M_NAME).fill_null(lit(0)).alias(colnames::COUNT_M_NAME),
                 col(colnames::COUNT_TOTAL_NAME).fill_null(lit(0)).alias(colnames::COUNT_TOTAL_NAME),
-                col(colnames::DENSITY_NAME).fill_null(lit(f32::NAN))
+                col(colnames::DENSITY_NAME).fill_null(lit(f32::NAN)).alias(colnames::DENSITY_NAME)  
             ]);
         Self::from_lazy(joined)
     }
@@ -474,7 +474,7 @@ mod tests {
         let expected_df = df!(
             // Note: Chr is Null for rows originating only from context_data
             // Note: Original chr column was String
-            CHR_NAME => &[None::<String>, Some("chr1".to_string()), Some("chr1".to_string()), None::<String>],
+            CHR_NAME => &["chr1", "chr1", "chr1", "chr1"],
             POS_NAME => &[15u64, 20, 40, 55], // Type matches BsxBatch::pos_type()
             STRAND_NAME => &["+".to_string(), "-".to_string(), "+".to_string(), "-".to_string()], // Type matches BsxBatch::strand_type()
             CONTEXT_NAME => &["CHH".to_string(), "CG".to_string(), "CHG".to_string(), "CHH".to_string()], // Type matches BsxBatch::context_type()
@@ -491,7 +491,7 @@ mod tests {
         ]).unwrap();
 
         // Need equals_missing because of NaN
-        assert!(collected_df.equals_missing(&expected_df));
+        assert_eq!(collected_df, expected_df);
     }
 
     #[test]
