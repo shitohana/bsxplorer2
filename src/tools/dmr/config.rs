@@ -6,7 +6,7 @@ use crate::tools::dmr::{segment_reading, DmrIterator};
 use crate::utils::types::Context;
 use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
-use polars::error::PolarsResult;
+use polars::io::mmap::MmapBytesReader;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -43,7 +43,7 @@ impl DmrConfig {
         readers: Vec<(R, F)>,
     ) -> anyhow::Result<DmrIterator>
     where
-        F: Read + Seek + Send + Sync + 'static,
+        F: Read + Seek + Send + Sync + MmapBytesReader + 'static,
         R: Display
             + Eq
             + Hash
@@ -66,27 +66,22 @@ impl DmrConfig {
             2 => {},
             n => anyhow::bail!("Too many readers groups supplied: {}", n),
         }
-        let right_readers = readers_pair.pop().unwrap()
-            .into_iter().map(|(label, reader)| BsxFileReader::new(reader)).collect_vec();
-        let left_readers = readers_pair.pop().unwrap()
-            .into_iter().map(|(label, reader)| BsxFileReader::new(reader)).collect_vec();
-        let blocks_total = right_readers[0].blocks_total();
         
-        let batch_decoder = Box::new(
-            |batch_res: PolarsResult<EncodedBsxBatch>| -> EncodedBsxBatch { batch_res.expect("could not read batch") }
-        );
         
-        let right_readers = right_readers.into_iter()
-            .map(|reader| reader.map(batch_decoder.clone()))
-            .collect_vec();
-        let left_readers = left_readers.into_iter()
-            .map(|reader| reader.map(batch_decoder.clone()))
-            .collect_vec();
-
         let (sender, receiver) = crossbeam::channel::bounded(10);
-
+        let mut block_count = 0;
         let join_handle = std::thread::spawn(
-            move || segment_reading(left_readers, right_readers, sender)
+            move || {
+                let (right_n, right_readers) = init_bsx_readers(
+                    readers_pair.pop().unwrap().into_iter().map(|(_, r)| r).collect_vec()
+                );
+                let (left_n, left_readers) = init_bsx_readers(
+                    readers_pair.pop().unwrap().into_iter().map(|(_, r)| r).collect_vec()
+                );
+                assert_eq!(left_n, right_n, "Number of batches does not match");
+                block_count += left_n;
+                segment_reading(left_readers, right_readers, sender) 
+            }
         );
 
         let out = DmrIterator {
@@ -96,7 +91,7 @@ impl DmrConfig {
             regions_cache: Vec::new(),
             last_chr: Arc::new(String::new()),
             receiver,
-            reader_stat: ReaderMetadata::new(blocks_total),
+            reader_stat: ReaderMetadata::new(block_count),
             _join_handle: join_handle,
         };
 
@@ -151,4 +146,23 @@ impl Default for DmrConfig {
             seg_pvalue:     1e-2,
         }
     }
+}
+
+fn init_bsx_readers<F: Read + Seek + 'static>(
+    handles: Vec<F>,
+) -> (usize, Vec<Box<dyn Iterator<Item = EncodedBsxBatch>>>) {
+    assert!(handles.len() > 0, "No readers supplied");
+    let bsx_readers = handles.into_iter()
+        .map(|reader| BsxFileReader::new(reader))
+        .collect_vec();
+    assert!(
+        bsx_readers.iter().map(|r| r.blocks_total()).all_equal(),
+        "Number of blocks not equal in files"
+    );
+    let n_batches = bsx_readers[0].blocks_total();
+    let iterators = bsx_readers.into_iter()
+        .map(|reader| reader.map(|batch_res| batch_res.expect("could not read batch") ))
+        .map(|reader| Box::new(reader) as Box<dyn Iterator<Item = EncodedBsxBatch>>)
+        .collect_vec();
+    (n_batches, iterators)
 }

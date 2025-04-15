@@ -38,7 +38,7 @@ pub mod colnames {
 use colnames::*;
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
-pub trait BsxBatchMethods: BsxTypeTag
+pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
 {
     /// Type for chromosome data
     type ChrType: PolarsDataType;
@@ -121,6 +121,9 @@ pub trait BsxBatchMethods: BsxTypeTag
     fn empty() -> Self where Self: Sized {
         unsafe { Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema())) }
     }
+    fn is_empty(&self) -> bool {
+        self.data().is_empty()
+    }
 
     /// Split batch at specified index
     fn split_at(
@@ -136,27 +139,28 @@ pub trait BsxBatchMethods: BsxTypeTag
 
     /// Returns reference to inner [DataFrame]
     fn data(&self) -> &DataFrame;
+    fn data_mut(&mut self) -> &mut DataFrame;
+    
+    fn take(self) -> DataFrame where Self: Sized;
 
     /// Get chromosome value as string
     fn chr_val(&self) -> anyhow::Result<&str>;
 
     /// Get start position
-    fn start_pos(&self) -> Option<u32>
-    where
-        u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>
-    {
-        self.position()
-            .first()
-            .map(|v| u32::try_from(v).unwrap_or_else(|_| panic!("Failed to cast to u32")))
+    fn start_pos(&self) -> Option<u32> {
+        self.data()
+            .column(POS_NAME).unwrap()
+            .get(self.data().height() - 1)
+            .map(|v| v.cast(&DataType::UInt32).try_extract().unwrap())
+            .ok()
     }
     /// Get end position
-    fn end_pos(&self) -> Option<u32>
-                      where
-                          u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>
-    {
-        self.position()
-            .last()
-            .map(|v| u32::try_from(v).unwrap_or_else(|_| panic!("Failed to cast to u32")))
+    fn end_pos(&self) -> Option<u32> {
+        self.data()
+            .column(POS_NAME).unwrap()
+            .get(0)
+            .map(|v| v.cast(&DataType::UInt32).try_extract().unwrap())
+            .ok()
     }
 
     /// Vertically stack with another batch
@@ -168,8 +172,16 @@ pub trait BsxBatchMethods: BsxTypeTag
         Self: Sized,
     {
         let new_data = self.data().vstack(other.data())?;
-        let res = BsxBatchBuilder::all_checks().check(new_data)?;
+        let res = BsxBatchBuilder::all_checks().check_modify(new_data)?;
         Ok(unsafe { Self::new_unchecked(res) })
+    }
+    
+    fn extend(
+        &mut self, other: &Self,
+    ) -> anyhow::Result<()> {
+        self.data_mut().extend(other.data())?;
+        BsxBatchBuilder::all_checks().check(self.data())?;
+        Ok(())
     }
 
     /// Filter batch based on boolean mask
@@ -209,8 +221,16 @@ pub trait BsxBatchMethods: BsxTypeTag
     }
 }
 
+
 /// Trait for BSX type identification
 pub trait BsxTypeTag {
     /// Get type name as string
     fn type_name() -> &'static str;
+    fn type_enum() -> BatchType;
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum BatchType {
+    Decoded,
+    Encoded
 }

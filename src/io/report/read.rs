@@ -7,16 +7,8 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::thread::JoinHandle;
 
-use itertools::Itertools;
-use log::debug;
-use polars::df;
-use polars::error::PolarsResult;
-use polars::frame::DataFrame;
-use polars::io::mmap::MmapBytesReader;
-use polars::io::RowIndex;
-use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef};
-
 use super::report_read_utils::{align_data_with_context, get_context_data};
+use crate::data_structs::batch::builder::BsxBatchBuilder;
 use crate::data_structs::batch::decoded::BsxBatch;
 use crate::data_structs::batch::traits::BsxBatchMethods;
 use crate::data_structs::region::GenomicPosition;
@@ -26,6 +18,14 @@ use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
 use crate::io::report::schema::ReportTypeSchema;
 use crate::utils::types::PosNum;
 use crate::utils::{first_position, last_position};
+use itertools::Itertools;
+use log::debug;
+use polars::df;
+use polars::error::PolarsResult;
+use polars::frame::DataFrame;
+use polars::io::mmap::MmapBytesReader;
+use polars::io::RowIndex;
+use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef};
 
 
 /// Builder for ReportReader that configures all reading parameters
@@ -370,9 +370,13 @@ impl ReportReader {
         else {
             None
         };
-
-        let data_bsx = self.report_schema.bsx_mutate()(item.0)
-            .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+        // let data_bsx = BsxBatchBuilder::default()
+        //     .with_report_type(self.report_schema.clone())
+        //     .build_decoded(item.0)?;
+        let data_bsx: DataFrame = BsxBatchBuilder::all_checks()
+            .with_check_single_chr(false)
+            .build::<BsxBatch>(item.0)
+            .map(|batch| DataFrame::from(batch))?;
 
         let result = if let Some(context_data) = context_data {
             align_data_with_context(&data_bsx, context_data)?
@@ -511,8 +515,8 @@ fn reader_thread<R>(
     batch_per_read: usize,
 ) where
     R: MmapBytesReader + 'static, {
-    let mut owned_batched =
-        OwnedBatchedCsvReader::new(reader, Arc::from(report_schema.schema()));
+        let mut owned_batched =
+            OwnedBatchedCsvReader::new(reader, Arc::from(report_schema.schema()));
     let chr_col = report_schema.chr_col();
     let pos_col = report_schema.position_col();
 

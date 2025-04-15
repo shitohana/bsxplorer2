@@ -13,7 +13,7 @@ use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 ///
 /// Each format has its own column structure and data_structs types that need to
 /// be handled differently during import and transformation operations.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReportTypeSchema {
     /// Bismark methylation extractor output format
     Bismark,
@@ -525,7 +525,7 @@ mod report_schema_test {
 
         let bsx_batch = BsxBatchBuilder::default()
             .with_report_type(report_type)
-            .build_decoded(input_df.clone())
+            .build::<BsxBatch>(input_df.clone())
             .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);
@@ -572,7 +572,7 @@ mod report_schema_test {
 
         let bsx_batch = BsxBatchBuilder::default()
             .with_report_type(report_type)
-            .build_decoded(input_df.clone())
+            .build::<BsxBatch>(input_df.clone())
             .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);
@@ -616,7 +616,7 @@ mod report_schema_test {
 
         let bsx_batch = BsxBatchBuilder::default()
             .with_report_type(report_type)
-            .build_decoded(input_df.clone())
+            .build::<BsxBatch>(input_df.clone())
             .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);
@@ -659,7 +659,7 @@ mod report_schema_test {
 
         let bsx_batch = BsxBatchBuilder::default()
             .with_report_type(report_type)
-            .build_decoded(input_df.clone())
+            .build::<BsxBatch>(input_df.clone())
             .unwrap();
         let new_df = DataFrame::from(bsx_batch);
         assert_eq!(new_df, output_df);

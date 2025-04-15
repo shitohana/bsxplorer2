@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::ops::{Deref, Div};
+use std::ops::{AddAssign, Deref, Div};
 use std::rc::Rc;
 use std::sync::Arc;
 
