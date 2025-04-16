@@ -11,7 +11,7 @@ mod inner {
         Lz4,
         Xz2,
         Bzip2,
-        Zip
+        Zip,
     }
 
     impl Compression {
@@ -27,14 +27,23 @@ mod inner {
             }
         }
 
-        pub fn get_decoder(&self, handle: File) -> Box<dyn MmapBytesReader> {
+        pub fn get_decoder(
+            &self,
+            handle: File,
+        ) -> Box<dyn MmapBytesReader> {
             match self {
-                Compression::Gz => Box::new(flate2::read::GzDecoder::new(handle)),
+                Compression::Gz => {
+                    Box::new(flate2::read::GzDecoder::new(handle))
+                },
                 Compression::Zstd => Box::new(zstd::Decoder::new(handle)),
                 Compression::Lz4 => Box::new(lz4::Decoder::new(handle)),
                 Compression::Xz2 => Box::new(xz2::read::XzDecoder::new(handle)),
-                Compression::Bzip2 => Box::new(bzip2::read::BzDecoder::new(handle)),
-                Compression::Zip => Box::new(zip::read::ZipArchive::new(handle)),
+                Compression::Bzip2 => {
+                    Box::new(bzip2::read::BzDecoder::new(handle))
+                },
+                Compression::Zip => {
+                    Box::new(zip::read::ZipArchive::new(handle))
+                },
                 Compression::None => Box::new(handle),
             }
         }
@@ -42,17 +51,16 @@ mod inner {
         pub fn get_encoder(
             &self,
             handle: File,
-            compression_level: u32
+            compression_level: u32,
         ) -> anyhow::Result<Box<dyn Write>> {
             let encoder: Box<dyn Write> = match self {
                 Compression::Gz => Box::new(flate2::write::GzEncoder::new(
                     handle,
-                    flate2::Compression(compression_level)
-                ))
-                ,
+                    flate2::Compression(compression_level),
+                )),
                 Compression::Zstd => Box::new(zstd::Encoder::new(
                     handle,
-                    compression_level as i32
+                    compression_level as i32,
                 )?),
                 Compression::Lz4 => {
                     let encoder = lz4::EncoderBuilder::new()
@@ -62,18 +70,20 @@ mod inner {
                 },
                 Compression::Xz2 => Box::new(xz2::write::XzEncoder::new(
                     handle,
-                    compression_level
+                    compression_level,
                 )),
                 Compression::Bzip2 => Box::new(bzip2::write::BzEncoder::new(
-                    handle, bzip2::Compression(compression_level)
+                    handle,
+                    bzip2::Compression(compression_level),
                 )),
-                Compression::Zip => Box::new(zip::write::ZipWriter::new(handle)),
+                Compression::Zip => {
+                    Box::new(zip::write::ZipWriter::new(handle))
+                },
                 Compression::None => Box::new(handle),
             };
             Ok(encoder)
         }
     }
-
 }
 
 #[cfg(feature = "compression")]

@@ -28,17 +28,14 @@ use std::default::Default;
 use std::io::{Read, Seek};
 
 use polars::export::arrow::array::Array;
-use polars::export::arrow::io::ipc::read::{read_batch,
-                                           read_file_dictionaries,
-                                           read_file_metadata,
-                                           Dictionaries,
-                                           FileMetadata};
+use polars::export::arrow::io::ipc::read::{
+    read_batch, read_file_dictionaries, read_file_metadata, Dictionaries,
+    FileMetadata,
+};
 use polars::export::arrow::record_batch::RecordBatchT;
-use polars::prelude::{ArrowSchema,
-                      DataFrame,
-                      PlHashMap,
-                      PolarsError,
-                      PolarsResult};
+use polars::prelude::{
+    ArrowSchema, DataFrame, PlHashMap, PolarsError, PolarsResult,
+};
 
 fn apply_projection(
     chunk: RecordBatchT<Box<dyn Array>>,
@@ -96,15 +93,15 @@ pub fn prepare_projection(
 
 /// An iterator of [`RecordBatchT`]s from an Arrow IPC file.
 pub struct IpcFileReader<R: Read + Seek> {
-    reader:          R,
-    metadata:        FileMetadata,
+    reader: R,
+    metadata: FileMetadata,
     // the dictionaries are going to be read
-    dictionaries:    Option<Dictionaries>,
-    current_block:   usize,
-    blocks_total:    usize,
-    projection:      Option<(Vec<usize>, PlHashMap<usize, usize>, ArrowSchema)>,
-    remaining:       usize,
-    data_scratch:    Vec<u8>,
+    dictionaries: Option<Dictionaries>,
+    current_block: usize,
+    blocks_total: usize,
+    projection: Option<(Vec<usize>, PlHashMap<usize, usize>, ArrowSchema)>,
+    remaining: usize,
+    data_scratch: Vec<u8>,
     message_scratch: Vec<u8>,
 }
 
@@ -147,13 +144,19 @@ impl<R: Read + Seek> IpcFileReader<R> {
             .unwrap_or(&self.metadata.schema)
     }
 
-    pub fn blocks_total(&self) -> usize { self.blocks_total }
+    pub fn blocks_total(&self) -> usize {
+        self.blocks_total
+    }
 
     /// Returns the [`FileMetadata`]
-    pub fn metadata(&self) -> &FileMetadata { &self.metadata }
+    pub fn metadata(&self) -> &FileMetadata {
+        &self.metadata
+    }
 
     /// Consumes this FileReader, returning the underlying reader
-    pub fn into_inner(self) -> R { self.reader }
+    pub fn into_inner(self) -> R {
+        self.reader
+    }
 
     /// Get the inner memory scratches so they can be reused in a new writer.
     /// This can be utilized to save memory allocations for performance reasons.
@@ -214,8 +217,7 @@ impl<R: Read + Seek> IpcFileReader<R> {
         let chunk = if let Some((_, map, _)) = &self.projection {
             // re-order according to projection
             chunk.map(|chunk| apply_projection(chunk, map))
-        }
-        else {
+        } else {
             chunk
         };
         Some(chunk)
@@ -271,8 +273,7 @@ impl<R: Read + Seek> Iterator for IpcFileReader<R> {
         let chunk = if let Some((_, map, _)) = &self.projection {
             // re-order according to projection
             chunk.map(|chunk| apply_projection(chunk, map))
-        }
-        else {
+        } else {
             chunk
         };
         Some(chunk)

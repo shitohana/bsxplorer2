@@ -35,8 +35,7 @@ pub fn arg_split_segment(
         .filter_map(|i| {
             if positions[i] - positions[i - 1] >= max_dist {
                 Some(i)
-            }
-            else {
+            } else {
                 None
             }
         })
@@ -96,7 +95,7 @@ pub fn tv_recurse_segment(
             break;
         }
         iterations += 1;
-        
+
         #[allow(unused_mut)]
         let mut cur_seg = segment_queue.pop().unwrap();
         cur_seg.get_pvalue();
@@ -109,8 +108,7 @@ pub fn tv_recurse_segment(
             let diff = a - b;
             if diff.abs() > diff_threshold {
                 diff
-            }
-            else {
+            } else {
                 0.0
             }
         })
@@ -126,8 +124,7 @@ pub fn tv_recurse_segment(
             .fold((Vec::new(), Vec::new()), |(mut short, mut better), s| {
                 if s.size() <= min_cpg {
                     short.push(s.clone())
-                }
-                else if s.get_pvalue() < cur_seg.get_pvalue() {
+                } else if s.get_pvalue() < cur_seg.get_pvalue() {
                     better.push(s.clone())
                 }
                 (short, better)
@@ -136,8 +133,7 @@ pub fn tv_recurse_segment(
         result.append(&mut short_segments);
         if better_segments.len() == 0 {
             result.push(cur_seg);
-        }
-        else {
+        } else {
             segment_queue.append(&mut better_segments);
         }
 
@@ -245,20 +241,15 @@ fn merge_adjacent_segments(
         // they are adjacent or overlapping.
         if cur_seg.rel_start <= prev_seg.rel_end {
             let (_ustat, p_value) =
-                mann_whitney_u(
-                    prev_seg.mds_orig(), 
-                    cur_seg.mds_orig()
-                );
+                mann_whitney_u(prev_seg.mds_orig(), cur_seg.mds_orig());
             // If the difference is not significant, merge the segments.
             if p_value > p_threshold {
                 prev_seg = prev_seg.merge(cur_seg);
-            }
-            else {
+            } else {
                 merged_segments.push(prev_seg);
                 prev_seg = cur_seg.clone();
             }
-        }
-        else {
+        } else {
             merged_segments.push(prev_seg);
             prev_seg = cur_seg.clone();
         }
@@ -302,9 +293,9 @@ pub fn merge_segments(
 /// Configuration for filtering data_structs.
 pub struct FilterConfig {
     /// The context to consider (e.g., CpG, CHG, CHH).
-    pub context:      Context,
+    pub context: Context,
     /// The maximum number of missing values allowed.
-    pub n_missing:    usize,
+    pub n_missing: usize,
     /// The minimum coverage required.
     pub min_coverage: i16,
 }

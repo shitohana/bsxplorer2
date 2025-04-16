@@ -1,174 +1,199 @@
-use crate::data_structs::region::GenomicPosition;
-use crate::utils::types::PosNum;
+use crate::data_structs::batch::{BatchType, BsxTypeTag};
+use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use itertools::Itertools;
-
 use polars::df;
-use polars::error::PolarsResult;
 use polars::frame::DataFrame;
 
-/// Structure to hold context data_structs for positions
-pub struct ContextData<N>
-where
-    N: PosNum, {
-    /// Genomic positions
-    positions: Vec<N>,
-    /// Methylation contexts (CpG=Some(true), CHG=Some(false), CHH=None)
-    contexts:  Vec<Option<bool>>,
-    /// Strand information (true=forward, false=reverse)
-    strands:   Vec<bool>,
+#[derive(Debug, Clone)]
+pub struct Entry(u32, Strand, Context);
+
+impl Ord for Entry {
+    fn cmp(
+        &self,
+        other: &Self,
+    ) -> std::cmp::Ordering {
+        self.0
+            .cmp(&other.0)
+            .then_with(|| self.1.cmp(&other.1))
+            .then_with(|| self.2.cmp(&other.2))
+    }
 }
 
-impl<N: PosNum> ContextData<N> {
-    /// Get the number of positions in this context data_structs
-    pub fn len(&self) -> usize { self.contexts.len() }
+impl PartialOrd for Entry {
+    fn partial_cmp(
+        &self,
+        other: &Self,
+    ) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
-    /// Check if the context data_structs is empty
-    pub fn is_empty(&self) -> bool { self.contexts.is_empty() }
+impl PartialEq for Entry {
+    fn eq(
+        &self,
+        other: &Self,
+    ) -> bool {
+        self.0 == other.0 && self.1 == other.1 && self.2 == other.2
+    }
+}
 
-    /// Create a new empty ContextData
-    pub(crate) fn new() -> Self {
-        ContextData {
-            positions: Vec::new(),
-            contexts:  Vec::new(),
-            strands:   Vec::new(),
+impl Eq for Entry {}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ContextData {
+    entries: std::collections::BTreeSet<Entry>,
+}
+
+impl ContextData {
+    pub fn new(
+        positions: Vec<u32>,
+        strands: Vec<Strand>,
+        contexts: Vec<Context>,
+    ) -> Self {
+        assert_eq!(positions.len(), strands.len());
+        assert_eq!(positions.len(), contexts.len());
+
+        let mut entries = std::collections::BTreeSet::new();
+        for i in 0..positions.len() {
+            entries.insert(Entry(positions[i], strands[i], contexts[i]));
         }
+
+        Self { entries }
     }
 
-    /// Filter the context data_structs based on a predicate function on
-    /// positions
-    pub(crate) fn filter<F: Fn(N) -> bool>(
-        &self,
-        predicate: F,
-    ) -> Self {
-        let mut new_self = Self::new();
-        for (idx, pos) in self.positions.iter().enumerate() {
-            if predicate(*pos) {
-                new_self.add_row(*pos, self.contexts[idx], self.strands[idx])
-            }
-        }
+    pub fn from_sequence(seq: Vec<u8>) -> Self {
+        let mut new_self = Self {
+            entries: std::collections::BTreeSet::new(),
+        };
+        new_self.read_sequence(&seq, 1);
         new_self
     }
 
-    /// Get the column names for this context data_structs
-    #[allow(dead_code)]
-    pub(crate) fn col_names() -> &'static [&'static str] {
-        &["position", "context", "strand"]
-    }
-
-    /// Get the name of the position column
-    pub(crate) fn position_col() -> &'static str { "position" }
-
-    /// Create a new ContextData with the given capacity
-    pub(crate) fn with_capacity(capacity: usize) -> Self {
-        ContextData {
-            positions: Vec::with_capacity(capacity),
-            contexts:  Vec::with_capacity(capacity),
-            strands:   Vec::with_capacity(capacity),
+    pub fn empty() -> Self {
+        Self {
+            entries: std::collections::BTreeSet::new(),
         }
     }
 
-    /// Add a row to the context data_structs
-    pub(crate) fn add_row(
+    pub fn read_sequence(
         &mut self,
-        position: N,
-        context: Option<bool>,
-        strand: bool,
+        seq: &[u8],
+        start: u32,
     ) {
-        self.positions.push(position);
-        self.strands.push(strand);
-        self.contexts.push(context);
+        let uppercase = seq.to_ascii_uppercase();
+
+        for (shift, trinuc) in uppercase.windows(3).enumerate() {
+            match trinuc {
+                &[b'C', b'G', _] => {
+                    self.entries.insert(Entry(
+                        start + shift as u32,
+                        Strand::Forward,
+                        Context::CG,
+                    ));
+                    self.entries.insert(Entry(
+                        start + shift as u32 + 1,
+                        Strand::Reverse,
+                        Context::CG,
+                    ));
+                },
+                &[b'C', _, b'G'] => {
+                    self.entries.insert(Entry(
+                        start + shift as u32,
+                        Strand::Forward,
+                        Context::CHG,
+                    ));
+                    self.entries.insert(Entry(
+                        start + shift as u32 + 2,
+                        Strand::Reverse,
+                        Context::CHG,
+                    ));
+                },
+                &[b'C', _, _] => {
+                    self.entries.insert(Entry(
+                        start + shift as u32,
+                        Strand::Forward,
+                        Context::CHH,
+                    ));
+                },
+                &[_, _, b'G'] => {
+                    self.entries.insert(Entry(
+                        start + shift as u32 + 2,
+                        Strand::Reverse,
+                        Context::CHH,
+                    ));
+                },
+                _ => continue,
+            }
+        }
+        if let Some(&[b'C', b'G']) =
+            uppercase.get(uppercase.len().saturating_sub(2)..)
+        {
+            self.entries.insert(Entry(
+                start + uppercase.len() as u32 - 1,
+                Strand::Reverse,
+                Context::CG,
+            ));
+        }
     }
 
-    /// Create context data_structs from a DNA sequence starting at the given
-    /// position
-    pub fn from_sequence(
-        seq: &[u8],
-        start: GenomicPosition<N>,
+    pub fn drain_until(
+        &mut self,
+        pos: u32,
     ) -> Self {
-        let start_pos = start.position();
-        let fw_bound: usize = seq.len() - 2;
-        let rv_bound: usize = 2;
+        let split_point = self
+            .entries
+            .iter()
+            .find(|entry| entry.0 > pos)
+            .cloned();
 
-        let mut new = Self::with_capacity(seq.len());
-
-        let ascii_seq = seq.to_ascii_uppercase();
-
-        'seq_iter: for (index, nuc) in ascii_seq.iter().enumerate() {
-            let forward = match nuc {
-                b'C' => true,
-                b'G' => false,
-                _ => continue 'seq_iter,
-            };
-            let context = if forward {
-                if index >= fw_bound {
-                    continue 'seq_iter;
-                };
-
-                if ascii_seq[index + 1] == b'G' {
-                    Some(true)
-                }
-                else if ascii_seq[index + 2] == b'G' {
-                    Some(false)
-                }
-                else {
-                    None
-                }
-            }
-            else {
-                if index <= rv_bound {
-                    continue 'seq_iter;
-                };
-
-                if ascii_seq[index - 1] == b'C' {
-                    Some(true)
-                }
-                else if ascii_seq[index - 2] == b'C' {
-                    Some(false)
-                }
-                else {
-                    None
-                }
-            };
-
-            new.add_row(
-                start_pos
-                    + N::from(index).unwrap_or_else(|| {
-                        panic!(
-                            "Failed to convert index {} to position type",
-                            index
-                        )
-                    }),
-                context,
-                forward,
-            );
+        let mut drained = std::collections::BTreeSet::new();
+        if let Some(split_entry) = split_point {
+            let remaining = self.entries.split_off(&split_entry);
+            std::mem::swap(&mut drained, &mut self.entries);
+            self.entries = remaining;
+        } else {
+            std::mem::swap(&mut drained, &mut self.entries);
         }
 
-        new.shrink_to_fit();
-        new
+        Self { entries: drained }
     }
 
-    /// Shrink the capacity of the internal vectors to fit their contents
-    pub(crate) fn shrink_to_fit(&mut self) {
-        self.positions.shrink_to_fit();
-        self.contexts.shrink_to_fit();
-        self.strands.shrink_to_fit();
+    pub fn len(&self) -> usize {
+        self.entries.len()
     }
 
-    /// Convert the context data_structs to a DataFrame
-    pub fn into_dataframe(self) -> PolarsResult<DataFrame> {
-        df![
-            "position" => self.positions.iter().map(|x| x.to_u64().unwrap()).collect_vec(),
-            "context" => self.contexts,
-            "strand" => self.strands
-        ]
+    pub fn take(self) -> (Vec<u32>, Vec<Strand>, Vec<Context>) {
+        let mut positions = Vec::with_capacity(self.entries.len());
+        let mut strands = Vec::with_capacity(self.entries.len());
+        let mut contexts = Vec::with_capacity(self.entries.len());
+
+        for entry in self.entries {
+            positions.push(entry.0);
+            strands.push(entry.1);
+            contexts.push(entry.2);
+        }
+
+        (positions, strands, contexts)
     }
 
-    /// Get a reference to the positions
-    pub fn positions(&self) -> &Vec<N> { &self.positions }
+    pub fn to_df<B: BsxTypeTag>(self) -> DataFrame {
+        let (positions, strands, contexts) = self.take();
 
-    /// Get a reference to the contexts
-    pub fn contexts(&self) -> &Vec<Option<bool>> { &self.contexts }
-
-    /// Get a reference to the strands
-    pub fn strands(&self) -> &Vec<bool> { &self.strands }
+        match B::type_enum() {
+            BatchType::Decoded => {
+                df!(
+                    "position" => positions.into_iter().map(|x| x as u64).collect_vec(),
+                    "strand" => strands.into_iter().map(|x| x.to_string()).collect_vec(),
+                    "context" => contexts.into_iter().map(|x| x.to_string()).collect_vec(),
+                ).unwrap()
+            }
+            BatchType::Encoded => {
+                df!(
+                    "position" => positions,
+                    "strand" => strands.into_iter().map(|x| x.to_bool()).collect_vec(),
+                    "context" => contexts.into_iter().map(|x| x.to_bool()).collect_vec(),
+                ).unwrap()
+            }
+        }
+    }
 }

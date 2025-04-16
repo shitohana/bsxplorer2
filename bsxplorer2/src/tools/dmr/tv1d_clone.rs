@@ -85,7 +85,8 @@ where
         + ops::AddAssign<T>
         + ops::SubAssign<T>
         + num::Float
-        + num::ToPrimitive, {
+        + num::ToPrimitive,
+{
     assert!(
         input.len() > 0,
         "Input list should have at least one value."
@@ -171,8 +172,7 @@ where
                         .expect(
                             "Unable to convert usize to num::FromPrimitive.",
                         );
-            }
-            else {
+            } else {
                 slope_low[c_low] = (lower_bound[i] - z[c])
                     / num::FromPrimitive::from_usize(i - index[c]).expect(
                         "Unable to convert usize to num::FromPrimitive.",
@@ -193,8 +193,7 @@ where
                         .expect(
                             "Unable to convert usize to num::FromPrimitive.",
                         );
-            }
-            else {
+            } else {
                 slope_up[c_up] = (upper_bound[i] - z[c])
                     / num::FromPrimitive::from_usize(i - index[c]).expect(
                         "Unable to convert usize to num::FromPrimitive.",
@@ -284,7 +283,8 @@ where
         + PartialOrd
         + ops::Neg<Output = T>
         + ops::AddAssign<T>
-        + Copy, {
+        + Copy,
+{
     assert!(
         input.len() > 0,
         "Input list should have at least one value."
@@ -339,30 +339,28 @@ where
                         .take(kminus - segment_start + 1),
                 );
                 segment_start = kminus + 1;
-                utils::sync_values(segment_start, &mut [
-                    &mut current_input_index,
-                    &mut kminus,
-                ]);
+                utils::sync_values(
+                    segment_start,
+                    &mut [&mut current_input_index, &mut kminus],
+                );
                 segment_lower_bound = input[kminus];
                 umin = lambda;
                 umax = segment_lower_bound + umin - segment_upper_bound;
-            }
-            else if umax > num::zero() {
+            } else if umax > num::zero() {
                 // If `segment_upper_bound` is too low, jump up.
                 output.extend(
                     iter::repeat(segment_upper_bound)
                         .take(kplus - segment_start + 1),
                 );
                 segment_start = kplus + 1;
-                utils::sync_values(segment_start, &mut [
-                    &mut current_input_index,
-                    &mut kplus,
-                ]);
+                utils::sync_values(
+                    segment_start,
+                    &mut [&mut current_input_index, &mut kplus],
+                );
                 segment_upper_bound = input[kplus];
                 umax = minlambda;
                 umin = segment_upper_bound + umax - segment_lower_bound;
-            }
-            else {
+            } else {
                 // `segment_lower_bound` and `segment_upper_bound` are
                 // not too high or not too low. Adjust the
                 // `segment_lower_bound` to reflect the difference
@@ -384,8 +382,7 @@ where
                 );
                 return output;
             }
-        }
-        else {
+        } else {
             umin += input[current_input_index + 1] - segment_lower_bound;
             umax += input[current_input_index + 1] - segment_upper_bound;
             if umin < minlambda {
@@ -399,17 +396,15 @@ where
                         .take(kminus - segment_start + 1),
                 );
                 segment_start = kminus + 1;
-                utils::sync_values(segment_start, &mut [
-                    &mut current_input_index,
-                    &mut kminus,
-                    &mut kplus,
-                ]);
+                utils::sync_values(
+                    segment_start,
+                    &mut [&mut current_input_index, &mut kminus, &mut kplus],
+                );
                 segment_lower_bound = input[kplus];
                 segment_upper_bound = segment_lower_bound + twolambda;
                 umin = lambda;
                 umax = minlambda;
-            }
-            else if umax > lambda {
+            } else if umax > lambda {
                 // If next value (`input[current_input_index + 1]`is
                 // much larger than `segment_upper_bound`, make a
                 // negative jump. Next value becomes the
@@ -420,17 +415,15 @@ where
                         .take(kplus - segment_start + 1),
                 );
                 segment_start = kplus + 1;
-                utils::sync_values(segment_start, &mut [
-                    &mut current_input_index,
-                    &mut kminus,
-                    &mut kplus,
-                ]);
+                utils::sync_values(
+                    segment_start,
+                    &mut [&mut current_input_index, &mut kminus, &mut kplus],
+                );
                 segment_upper_bound = input[kplus];
                 segment_lower_bound = segment_upper_bound - twolambda;
                 umin = lambda;
                 umax = minlambda;
-            }
-            else {
+            } else {
                 // `segment_upper_bound` and `segment_lower_bound` are
                 // appropriate, and therefore no jump is necessary.
                 current_input_index += 1;

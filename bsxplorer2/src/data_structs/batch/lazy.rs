@@ -4,11 +4,12 @@ use super::{
     encoded::EncodedBsxBatch,
     traits::{BsxBatchMethods, BsxTypeTag},
 };
-use crate::data_structs::batch::builder::ContextData;
-use crate::data_structs::batch::traits::{colnames, BatchType};
+use crate::data_structs::batch::traits::colnames;
+use crate::data_structs::context_data::ContextData;
+use crate::io::report::schema::ReportTypeSchema;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+use itertools::Itertools;
 use polars::prelude::*;
-use polars::series::IsSorted;
 use std::marker::PhantomData;
 
 /// A lazy representation of a BSX batch for efficient query operations
@@ -18,9 +19,64 @@ pub struct LazyBsxBatch<T: BsxTypeTag + BsxBatchMethods> {
 }
 
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
+    pub fn as_report(
+        self,
+        report_type: &ReportTypeSchema,
+    ) -> anyhow::Result<DataFrame> {
+        let res = match report_type {
+            ReportTypeSchema::Bismark => self
+                .data
+                .with_column(
+                    (col("count_total") - col("count_m")).alias("count_um"),
+                )
+                .with_column(col("context").alias("trinuc")),
+            ReportTypeSchema::CgMap => {
+                self.data
+                    // Determine nucleotide based on strand (+ is C, - is G)
+                    .with_columns([when(col("strand").eq(lit("+")))
+                        .then(lit("C"))
+                        .when(col("strand").eq(lit("-")))
+                        .then(lit("G"))
+                        .otherwise(lit("."))
+                        .alias("nuc")])
+                    // Copy context column to dinuc (they're the same in CgMap)
+                    .with_column(col("context").alias("dinuc"))
+            },
+            ReportTypeSchema::BedGraph => {
+                self.data
+                    // Convert position to start/end columns
+                    .with_columns([col("position").alias("start"), col("position").alias("end")])
+                    // Remove any rows with NaN density values
+                    .drop_nans(Some(vec![col("density")]))
+            },
+            ReportTypeSchema::Coverage => {
+                self.data
+                    // Convert position to start/end columns
+                    .with_columns([col("position").alias("start"), col("position").alias("end")])
+                    // Remove any rows with NaN density values
+                    .drop_nans(Some(vec![col("density")]))
+                    // Calculate unmethylated count from total and methylated counts
+                    .with_column((col("count_total") - col("count_m")).alias("count_um"))
+            },
+        };
+
+        res.select(
+            report_type
+                .col_names()
+                .iter()
+                .map(|s| col(*s))
+                .collect_vec(),
+        )
+        .cast(report_type.hashmap(), true)
+        .collect()
+        .map_err(|e| anyhow::anyhow!("Error converting to report: {}", e))
+    }
+}
+
+impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     pub fn collect(self) -> PolarsResult<T> {
         let data = self.data.collect()?;
-        Ok(unsafe {T::new_unchecked(data)})
+        Ok(unsafe { T::new_unchecked(data) })
     }
     /// Applies a filter expression to the batch
     fn filter(
@@ -98,13 +154,18 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     }
 
     /// Marks entries with coverage below threshold as zero and adjusts related values
-    pub fn mark_low_coverage(self, threshold: u32) -> Self {
-        let res = self.data.with_column(
-            when(col("count_total").lt(lit(threshold)))
-                .then(lit(0))
-                .otherwise(col("count_total"))
-                .alias("count_total"),
-        )
+    pub fn mark_low_coverage(
+        self,
+        threshold: u32,
+    ) -> Self {
+        let res = self
+            .data
+            .with_column(
+                when(col("count_total").lt(lit(threshold)))
+                    .then(lit(0))
+                    .otherwise(col("count_total"))
+                    .alias("count_total"),
+            )
             .with_columns([
                 when(col("count_total").eq(lit(0)))
                     .then(lit(0))
@@ -118,61 +179,35 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         Self::from_lazy(res)
     }
 
-    pub fn align_with_contexts(mut self, context_data: ContextData, chr_val: &str) -> Self {
-        let (pos_col, strand_col, context_col) = context_data.take();
-        let mut pos_col = Series::from_vec(colnames::POS_NAME.into(), pos_col);
-        pos_col.set_sorted_flag(IsSorted::Ascending);
-
-        let strand_col = match T::type_enum() {
-            BatchType::Decoded => {
-                Series::from_iter(
-                    strand_col.into_iter().map(|v| v.to_string())
-                )
-            },
-            BatchType::Encoded => {
-                Series::from_iter(
-                    strand_col.into_iter().map(|v| v.to_bool())
-                )
-            }
-        }.with_name(colnames::STRAND_NAME.into());
-
-        let context_col = match T::type_enum() {
-            BatchType::Decoded => {
-                Series::from_iter(
-                    context_col.into_iter().map(|v| v.to_string())
-                )
-            },
-            BatchType::Encoded => {
-                Series::from_iter(
-                    context_col.into_iter().map(|v| v.to_bool())
-                )
-            }
-        }.with_name(colnames::CONTEXT_NAME.into());
-
-        let context_df = DataFrame::from_iter([pos_col, strand_col, context_col])
-            .lazy()
-            .cast(
-                PlHashMap::from_iter([
-                    (colnames::POS_NAME, T::pos_type()),
-                    (colnames::STRAND_NAME, T::strand_type()),
-                    (colnames::CONTEXT_NAME, T::context_type()),
-                ]),
-                true
-            );
-        let self_selected = self.data.drop(
-            [col(colnames::CONTEXT_NAME), col(colnames::STRAND_NAME)]
-        );
+    pub fn align_with_contexts(
+        mut self,
+        context_data: ContextData,
+        chr_val: &str,
+    ) -> Self {
+        let context_df = context_data.to_df::<T>();
+        let self_selected = self
+            .data
+            .drop([col(colnames::CONTEXT_NAME), col(colnames::STRAND_NAME)]);
         let joined = context_df
+            .lazy()
             .left_join(
                 self_selected,
                 col(colnames::POS_NAME),
-                col(colnames::POS_NAME)
+                col(colnames::POS_NAME),
             )
             .with_columns([
-                col(colnames::CHR_NAME).fill_null(lit(chr_val)).alias(colnames::CHR_NAME),
-                col(colnames::COUNT_M_NAME).fill_null(lit(0)).alias(colnames::COUNT_M_NAME),
-                col(colnames::COUNT_TOTAL_NAME).fill_null(lit(0)).alias(colnames::COUNT_TOTAL_NAME),
-                col(colnames::DENSITY_NAME).fill_null(lit(f32::NAN)).alias(colnames::DENSITY_NAME)  
+                col(colnames::CHR_NAME)
+                    .fill_null(lit(chr_val))
+                    .alias(colnames::CHR_NAME),
+                col(colnames::COUNT_M_NAME)
+                    .fill_null(lit(0))
+                    .alias(colnames::COUNT_M_NAME),
+                col(colnames::COUNT_TOTAL_NAME)
+                    .fill_null(lit(0))
+                    .alias(colnames::COUNT_TOTAL_NAME),
+                col(colnames::DENSITY_NAME)
+                    .fill_null(lit(f32::NAN))
+                    .alias(colnames::DENSITY_NAME),
             ]);
         Self::from_lazy(joined)
     }
@@ -215,7 +250,6 @@ mod tests {
     };
     use crate::utils::get_categorical_dtype;
     use crate::utils::types::{Context, Strand};
-    use polars::chunked_array::cast::CastOptions;
     use polars::df;
     use polars::prelude::*;
     use std::ops::Not;
@@ -245,12 +279,46 @@ mod tests {
             .expect("Failed to build decoded batch")
     }
 
-     fn create_test_encoded_batch() -> EncodedBsxBatch {
+    fn create_test_encoded_batch() -> EncodedBsxBatch {
         // We build from a decoded DF, the builder handles encoding
-         BsxBatchBuilder::encode_batch(create_test_decoded_batch(), get_categorical_dtype(vec!["chr1".to_string()]))
-            .expect("Failed to build encoded batch")
+        BsxBatchBuilder::encode_batch(
+            create_test_decoded_batch(),
+            get_categorical_dtype(vec!["chr1".to_string()]),
+        )
+        .expect("Failed to build encoded batch")
     }
 
+    use crate::io::report::schema::ReportTypeSchema;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(ReportTypeSchema::Bismark)]
+    #[case(ReportTypeSchema::CgMap)]
+    #[case(ReportTypeSchema::BedGraph)]
+    #[case(ReportTypeSchema::Coverage)]
+    fn test_report_type_conversion(#[case] report_type: ReportTypeSchema) {
+        // Create a test batch
+        let batch = create_test_decoded_batch();
+
+        // Convert to the report format
+        let report_df = LazyBsxBatch::<BsxBatch>::from(batch)
+            .as_report(&report_type)
+            .unwrap();
+
+        // Convert back to BsxBatch
+        let bsx_batch = BsxBatchBuilder::default()
+            .with_report_type(report_type)
+            .build::<BsxBatch>(report_df.clone())
+            .unwrap();
+
+        // Convert back to the original report format
+        let reverse_transform = LazyBsxBatch::<BsxBatch>::from(bsx_batch)
+            .as_report(&report_type)
+            .unwrap();
+
+        // The round-trip conversion should preserve the data
+        assert_eq!(reverse_transform, report_df);
+    }
 
     // --- Test Cases ---
 
@@ -293,10 +361,10 @@ mod tests {
         let collected = filtered_lazy.collect().unwrap();
 
         let expected_df = create_test_encoded_df().slice(0, 2);
-        let expected_batch = unsafe { EncodedBsxBatch::new_unchecked(expected_df) }; // Assume valid after slice
+        let expected_batch =
+            unsafe { EncodedBsxBatch::new_unchecked(expected_df) }; // Assume valid after slice
         assert_eq!(collected.data(), expected_batch.data());
     }
-
 
     #[test]
     fn test_filter_pos_gt_decoded() {
@@ -306,11 +374,11 @@ mod tests {
         let collected = filtered_lazy.collect().unwrap();
 
         let expected_df = create_test_decoded_df().slice(3, 2);
-         let expected_batch = BsxBatch::try_from(expected_df).unwrap();
+        let expected_batch = BsxBatch::try_from(expected_df).unwrap();
         assert_eq!(collected, expected_batch);
     }
 
-     #[test]
+    #[test]
     fn test_filter_pos_gt_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
@@ -318,7 +386,8 @@ mod tests {
         let collected = filtered_lazy.collect().unwrap();
 
         let expected_df = create_test_encoded_df().slice(3, 2);
-        let expected_batch = unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
+        let expected_batch =
+            unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
         assert_eq!(collected.data(), expected_batch.data());
     }
 
@@ -330,7 +399,16 @@ mod tests {
         let filtered_lazy = lazy_batch.filter_coverage_lt(8u32);
         let collected = filtered_lazy.collect().unwrap();
 
-        let expected_df = create_test_decoded_df().filter(&create_test_decoded_df().column(COUNT_TOTAL_NAME).unwrap().lt(&Scalar::new(DataType::UInt32, AnyValue::UInt32(8u32)).into_column("test".into())).unwrap()).unwrap();
+        let expected_df = create_test_decoded_df()
+            .filter(
+                &create_test_decoded_df()
+                    .column(COUNT_TOTAL_NAME)
+                    .unwrap()
+                    .lt(&Scalar::new(DataType::UInt32, AnyValue::UInt32(8u32))
+                        .into_column("test".into()))
+                    .unwrap(),
+            )
+            .unwrap();
         let expected_batch = BsxBatch::try_from(expected_df).unwrap();
         assert_eq!(collected, expected_batch);
     }
@@ -339,15 +417,24 @@ mod tests {
     fn test_filter_coverage_lt_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
-         // Keep total_cov < 8 (rows with 5, 6) -> indices 0, 2
+        // Keep total_cov < 8 (rows with 5, 6) -> indices 0, 2
         let filtered_lazy = lazy_batch.filter_coverage_lt(8i16);
         let collected = filtered_lazy.collect().unwrap();
 
-        let expected_df = create_test_encoded_df().filter(&create_test_encoded_df().column(COUNT_TOTAL_NAME).unwrap().lt(&Scalar::new(DataType::Int16, AnyValue::Int16(8i16)).into_column("test".into())).unwrap()).unwrap();
-        let expected_batch = unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
+        let expected_df = create_test_encoded_df()
+            .filter(
+                &create_test_encoded_df()
+                    .column(COUNT_TOTAL_NAME)
+                    .unwrap()
+                    .lt(&Scalar::new(DataType::Int16, AnyValue::Int16(8i16))
+                        .into_column("test".into()))
+                    .unwrap(),
+            )
+            .unwrap();
+        let expected_batch =
+            unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
         assert_eq!(collected.data(), expected_batch.data());
     }
-
 
     #[test]
     fn test_filter_strand_decoded() {
@@ -357,7 +444,18 @@ mod tests {
         let filtered_lazy = lazy_batch.filter_strand(Strand::Reverse);
         let collected = filtered_lazy.collect().unwrap();
 
-        let expected_df = create_test_decoded_df().filter(&create_test_decoded_df().column(STRAND_NAME).unwrap().equal(&Scalar::new(DataType::String, AnyValue::String("-")).into_column("test".into())).unwrap()).unwrap();
+        let expected_df = create_test_decoded_df()
+            .filter(
+                &create_test_decoded_df()
+                    .column(STRAND_NAME)
+                    .unwrap()
+                    .equal(
+                        &Scalar::new(DataType::String, AnyValue::String("-"))
+                            .into_column("test".into()),
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
         let expected_batch = BsxBatch::try_from(expected_df).unwrap();
         assert_eq!(collected, expected_batch);
     }
@@ -370,12 +468,27 @@ mod tests {
         let filtered_lazy = lazy_batch.filter_strand(Strand::Reverse);
         let collected = filtered_lazy.collect().unwrap();
 
-        let expected_df = create_test_encoded_df().filter(&create_test_encoded_df().column(STRAND_NAME).unwrap().equal(&Scalar::new(DataType::Boolean, AnyValue::Boolean(false)).into_column("test".into())).unwrap()).unwrap();
-         let expected_batch = unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
+        let expected_df = create_test_encoded_df()
+            .filter(
+                &create_test_encoded_df()
+                    .column(STRAND_NAME)
+                    .unwrap()
+                    .equal(
+                        &Scalar::new(
+                            DataType::Boolean,
+                            AnyValue::Boolean(false),
+                        )
+                        .into_column("test".into()),
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
+        let expected_batch =
+            unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
         assert_eq!(collected.data(), expected_batch.data());
     }
 
-     #[test]
+    #[test]
     fn test_filter_context_decoded() {
         let batch = create_test_decoded_batch();
         let lazy_batch = LazyBsxBatch::<BsxBatch>::from(batch.clone());
@@ -383,12 +496,23 @@ mod tests {
         let filtered_lazy = lazy_batch.filter_context(Context::CG);
         let collected = filtered_lazy.collect().unwrap();
 
-        let expected_df = create_test_decoded_df().filter(&create_test_decoded_df().column(CONTEXT_NAME).unwrap().equal(&Scalar::new(DataType::String, AnyValue::String("CG")).into_column("test".into())).unwrap()).unwrap();
+        let expected_df = create_test_decoded_df()
+            .filter(
+                &create_test_decoded_df()
+                    .column(CONTEXT_NAME)
+                    .unwrap()
+                    .equal(
+                        &Scalar::new(DataType::String, AnyValue::String("CG"))
+                            .into_column("test".into()),
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
         let expected_batch = BsxBatch::try_from(expected_df).unwrap();
         assert_eq!(collected, expected_batch);
     }
 
-     #[test]
+    #[test]
     fn test_filter_context_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
@@ -396,8 +520,23 @@ mod tests {
         let filtered_lazy = lazy_batch.filter_context(Context::CG);
         let collected = filtered_lazy.collect().unwrap();
 
-        let expected_df = create_test_encoded_df().filter(&create_test_encoded_df().column(CONTEXT_NAME).unwrap().equal(&Scalar::new(DataType::Boolean, AnyValue::Boolean(true)).into_column("test".into())).unwrap()).unwrap();
-        let expected_batch = unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
+        let expected_df = create_test_encoded_df()
+            .filter(
+                &create_test_encoded_df()
+                    .column(CONTEXT_NAME)
+                    .unwrap()
+                    .equal(
+                        &Scalar::new(
+                            DataType::Boolean,
+                            AnyValue::Boolean(true),
+                        )
+                        .into_column("test".into()),
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
+        let expected_batch =
+            unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
         assert_eq!(collected.data(), expected_batch.data());
     }
 
@@ -421,22 +560,27 @@ mod tests {
             DENSITY_NAME => &[f64::NAN, 0.25, f64::NAN, 0.5, 0.5],
         )
         .unwrap();
-         let expected_batch = BsxBatch::try_from(expected_df).unwrap();
+        let expected_batch = BsxBatch::try_from(expected_df).unwrap();
 
         // Compare DataFrames directly due to NaN
-        assert!(collected.data().equals_missing(expected_batch.data()));
+        assert!(collected
+            .data()
+            .equals_missing(expected_batch.data()));
     }
 
-     #[test]
+    #[test]
     fn test_mark_low_coverage_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch);
         let marked_lazy = lazy_batch.mark_low_coverage(7); // Mark rows with total_cov 5, 6 (indices 0, 2)
         let collected = marked_lazy.collect().unwrap();
 
-        let chr_series = Series::new(CHR_NAME.into(), &["chr1", "chr1", "chr1", "chr1", "chr1"])
-            .cast(&DataType::Categorical(None, CategoricalOrdering::Physical))
-            .unwrap();
+        let chr_series = Series::new(
+            CHR_NAME.into(),
+            &["chr1", "chr1", "chr1", "chr1", "chr1"],
+        )
+        .cast(&DataType::Categorical(None, CategoricalOrdering::Physical))
+        .unwrap();
         let expected_df = df!(
             CHR_NAME => chr_series,
             POS_NAME => &[10u32, 20, 30, 40, 50],
@@ -447,10 +591,13 @@ mod tests {
             DENSITY_NAME => &[f32::NAN, 0.25f32, f32::NAN, 0.5f32, 0.5f32], // Indices 0, 2 are NaN
         )
         .unwrap();
-         let expected_batch = unsafe{ EncodedBsxBatch::new_unchecked(expected_df) };
+        let expected_batch =
+            unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
 
         // Compare DataFrames directly due to NaN and potential categorical diffs
-        assert!(collected.data().equals_missing(expected_batch.data()));
+        assert!(collected
+            .data()
+            .equals_missing(expected_batch.data()));
     }
 
     #[test]
@@ -460,9 +607,19 @@ mod tests {
 
         // Context data: include existing pos (20, 40), new pos (15, 55), different context/strand for existing pos
         let context_positions = vec![15u32, 20, 40, 55];
-        let context_strands = vec![Strand::Forward, Strand::Reverse, Strand::Forward, Strand::Reverse]; // Original 20 was +, 40 was +
-        let context_contexts = vec![Context::CHH, Context::CG, Context::CHG, Context::CHH]; // Original 20 was CHG, 40 was CG
-        let context_data = ContextData::new(context_positions, context_strands, context_contexts);
+        let context_strands = vec![
+            Strand::Forward,
+            Strand::Reverse,
+            Strand::Forward,
+            Strand::Reverse,
+        ]; // Original 20 was +, 40 was +
+        let context_contexts =
+            vec![Context::CHH, Context::CG, Context::CHG, Context::CHH]; // Original 20 was CHG, 40 was CG
+        let context_data = ContextData::new(
+            context_positions,
+            context_strands,
+            context_contexts,
+        );
 
         let aligned_lazy = lazy_batch.align_with_contexts(context_data, "chr1");
         let collected = aligned_lazy.collect().unwrap();
@@ -486,9 +643,18 @@ mod tests {
         )
         .unwrap();
         // Reorder collected columns to match expected df for comparison
-        let collected_df = collected.data().select([
-             CHR_NAME, POS_NAME, STRAND_NAME, CONTEXT_NAME, COUNT_M_NAME, COUNT_TOTAL_NAME, DENSITY_NAME
-        ]).unwrap();
+        let collected_df = collected
+            .data()
+            .select([
+                CHR_NAME,
+                POS_NAME,
+                STRAND_NAME,
+                CONTEXT_NAME,
+                COUNT_M_NAME,
+                COUNT_TOTAL_NAME,
+                DENSITY_NAME,
+            ])
+            .unwrap();
 
         // Need equals_missing because of NaN
         assert_eq!(collected_df, expected_df);
@@ -498,14 +664,25 @@ mod tests {
     fn test_align_with_contexts_encoded() {
         let batch = create_test_encoded_batch(); // pos: 10, 20, 30, 40, 50
         let chr_dtype = batch.chr().dtype().clone();
-        let mut lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
+        let mut lazy_batch =
+            LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
 
         // Context data: include existing pos (20, 40), new pos (15, 55), different context/strand for existing pos
         let context_positions = vec![15u32, 20, 40, 55];
-        let context_strands = vec![Strand::Forward, Strand::Reverse, Strand::Forward, Strand::Reverse]; // Original 20 was +, 40 was + -> true, true
-        let context_contexts = vec![Context::CHH, Context::CG, Context::CHG, Context::CHH]; // Original 20 was CHG, 40 was CG -> false, true
+        let context_strands = vec![
+            Strand::Forward,
+            Strand::Reverse,
+            Strand::Forward,
+            Strand::Reverse,
+        ]; // Original 20 was +, 40 was + -> true, true
+        let context_contexts =
+            vec![Context::CHH, Context::CG, Context::CHG, Context::CHH]; // Original 20 was CHG, 40 was CG -> false, true
 
-        let context_data = ContextData::new(context_positions, context_strands, context_contexts);
+        let context_data = ContextData::new(
+            context_positions,
+            context_strands,
+            context_contexts,
+        );
 
         let aligned_lazy = lazy_batch.align_with_contexts(context_data, "chr1");
         let collected = aligned_lazy.collect().unwrap();
@@ -531,13 +708,23 @@ mod tests {
 
         let expected_batch = BsxBatchBuilder::encode_batch(
             unsafe { BsxBatch::new_unchecked(expected_df) },
-            chr_dtype
-        ).unwrap();
+            chr_dtype,
+        )
+        .unwrap();
 
-         // Reorder collected columns to match expected df for comparison
-        let collected_df = collected.data().select([
-             CHR_NAME, POS_NAME, STRAND_NAME, CONTEXT_NAME, COUNT_M_NAME, COUNT_TOTAL_NAME, DENSITY_NAME
-        ]).unwrap();
+        // Reorder collected columns to match expected df for comparison
+        let collected_df = collected
+            .data()
+            .select([
+                CHR_NAME,
+                POS_NAME,
+                STRAND_NAME,
+                CONTEXT_NAME,
+                COUNT_M_NAME,
+                COUNT_TOTAL_NAME,
+                DENSITY_NAME,
+            ])
+            .unwrap();
 
         // Need equals_missing because of NaN and potential categorical differences
         assert_eq!(collected_df, expected_batch.into());

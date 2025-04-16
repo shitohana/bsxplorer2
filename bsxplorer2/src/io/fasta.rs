@@ -13,12 +13,14 @@ use std::path::PathBuf;
 
 pub(crate) fn get_reader(
     path: PathBuf,
-    #[cfg(feature = "compression")]
-    compression: Compression,
+    #[cfg(feature = "compression")] compression: Compression,
     index_path: Option<PathBuf>,
 ) -> anyhow::Result<FastaIndexedReader<BufReader<Box<dyn MmapBytesReader>>>> {
     let index = if let Some(index_path) = index_path {
-        Some(FaiReader::new(BufReader::new(File::open(index_path)?)).read_index()?)
+        Some(
+            FaiReader::new(BufReader::new(File::open(index_path)?))
+                .read_index()?,
+        )
     } else {
         None
     };
@@ -29,9 +31,11 @@ pub(crate) fn get_reader(
     }
 
     #[cfg(feature = "compression")]
-    let fasta_handle = BufReader::new(compression.get_decoder(File::open(path)?));
+    let fasta_handle =
+        BufReader::new(compression.get_decoder(File::open(path)?));
     #[cfg(not(feature = "compression"))]
-    let fasta_handle = BufReader::new(Box::new(File::open(path)?) as Box<dyn MmapBytesReader>);
+    let fasta_handle =
+        BufReader::new(Box::new(File::open(path)?) as Box<dyn MmapBytesReader>);
     builder
         .build_from_reader(fasta_handle)
         .map_err(|e| e.into())

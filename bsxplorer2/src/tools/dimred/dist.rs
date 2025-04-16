@@ -10,7 +10,6 @@
 /// ****
 use num::Float;
 
-
 enum DistanceMetric {
     Eucledian,
     Cosine,
@@ -29,7 +28,7 @@ trait MetricAccumulator<N: Float>: Clone {
 
 #[derive(Clone)]
 pub struct MinkowskiAccum<N: Float> {
-    power:  usize,
+    power: usize,
     powsum: N,
 }
 
@@ -71,7 +70,9 @@ impl<N: Float> CanberraAccum<N> {
 }
 
 impl<N: Float> MetricAccumulator<N> for CanberraAccum<N> {
-    fn finalize(&self) -> N { self.sum }
+    fn finalize(&self) -> N {
+        self.sum
+    }
 
     fn add_ppoints(
         &mut self,
@@ -96,7 +97,9 @@ impl<N: Float> EucledianAccum<N> {
 }
 
 impl<N: Float> MetricAccumulator<N> for EucledianAccum<N> {
-    fn finalize(&self) -> N { self.sqsum.sqrt() }
+    fn finalize(&self) -> N {
+        self.sqsum.sqrt()
+    }
 
     fn add_ppoints(
         &mut self,
@@ -109,17 +112,17 @@ impl<N: Float> MetricAccumulator<N> for EucledianAccum<N> {
 
 #[derive(Clone)]
 pub struct CosineAccum<N: Float> {
-    dot_prod:    N,
+    dot_prod: N,
     right_sqsum: N,
-    left_sqsum:  N,
+    left_sqsum: N,
 }
 
 impl<N: Float> CosineAccum<N> {
     fn new() -> Self {
         Self {
-            dot_prod:    N::from(0.0).unwrap(),
+            dot_prod: N::from(0.0).unwrap(),
             right_sqsum: N::from(0.0).unwrap(),
-            left_sqsum:  N::from(0.0).unwrap(),
+            left_sqsum: N::from(0.0).unwrap(),
         }
     }
 }

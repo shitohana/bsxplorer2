@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use crate::data_structs::batch::encoded::EncodedBsxBatch;
-use crate::data_structs::batch::traits::BsxBatchMethods;
+use crate::data_structs::batch::BsxBatchMethods;
+use crate::data_structs::batch::EncodedBsxBatch;
 use crate::data_structs::region::RegionCoordinates;
 use crate::utils::types::{Data, PosNum, RefId, Strand};
 
@@ -12,17 +12,18 @@ pub struct RegionData<R, N, T>
 where
     R: RefId,
     N: PosNum,
-    T: Data, {
+    T: Data,
+{
     /// The chromosome ID.
-    chr:        R,
+    chr: R,
     /// The start position of the region.
-    start:      N,
+    start: N,
     /// The end position of the region.
-    end:        N,
+    end: N,
     /// The strand of the region.
-    strand:     Strand,
+    strand: Strand,
     /// The associated data_structs.
-    data:       T,
+    data: T,
     /// Optional attributes associated with the region.
     attributes: HashMap<String, String>,
 }
@@ -46,11 +47,11 @@ where
     /// Creates a new `RegionData` from region coordinates with no data_structs.
     fn from(region: RegionCoordinates<N>) -> Self {
         RegionData {
-            chr:        region.chr.into(),
-            start:      region.start,
-            end:        region.end,
-            strand:     region.strand,
-            data:       (),
+            chr: region.chr.into(),
+            start: region.start,
+            end: region.end,
+            strand: region.strand,
+            data: (),
             attributes: HashMap::default(),
         }
     }
@@ -63,19 +64,29 @@ where
     T: Data,
 {
     /// Returns a reference to the chromosome ID.
-    pub fn chr(&self) -> &R { &self.chr }
+    pub fn chr(&self) -> &R {
+        &self.chr
+    }
 
     /// Returns the start position of the region.
-    pub fn start(&self) -> N { self.start }
+    pub fn start(&self) -> N {
+        self.start
+    }
 
     /// Returns the end position of the region.
-    pub fn end(&self) -> N { self.end }
+    pub fn end(&self) -> N {
+        self.end
+    }
 
     /// Returns the strand of the region.
-    pub fn strand(&self) -> Strand { self.strand }
+    pub fn strand(&self) -> Strand {
+        self.strand
+    }
 
     /// Returns a reference to the associated data_structs.
-    pub fn data(&self) -> &T { &self.data }
+    pub fn data(&self) -> &T {
+        &self.data
+    }
 
     /// Sets the chromosome ID.
     pub fn set_chr(
@@ -118,7 +129,9 @@ where
     }
 
     /// Returns the length of the region.
-    pub fn length(&self) -> N { self.end.clone() - self.start.clone() }
+    pub fn length(&self) -> N {
+        self.end.clone() - self.start.clone()
+    }
 
     /// Creates a new `RegionData` with the same region information but
     /// different data_structs.
@@ -176,17 +189,25 @@ where
         batch: &EncodedBsxBatch
     ) -> anyhow::Result<RegionData<String, u64, &EncodedBsxBatch>> {
         Ok(RegionData {
-            chr:        <EncodedBsxBatch as BsxBatchMethods>::chr_val(batch)?.to_string(),
-            start:      batch.start_pos().ok_or(anyhow::anyhow!("empty data"))? as u64,
-            end:        batch.end_pos().ok_or(anyhow::anyhow!("empty data"))? as u64,
-            strand:     Strand::None,
-            data:       batch,
+            chr: <EncodedBsxBatch as BsxBatchMethods>::chr_val(batch)?
+                .to_string(),
+            start: batch
+                .start_pos()
+                .ok_or(anyhow::anyhow!("empty data"))?
+                as u64,
+            end: batch
+                .end_pos()
+                .ok_or(anyhow::anyhow!("empty data"))? as u64,
+            strand: Strand::None,
+            data: batch,
             attributes: HashMap::default(),
         })
     }
 
     /// Consumes the `RegionData` and returns the associated data_structs.
-    pub fn into_data(self) -> T { self.data }
+    pub fn into_data(self) -> T {
+        self.data
+    }
 
     /// Separates the region data_structs from the associated data_structs,
     /// returning both.
@@ -206,9 +227,9 @@ where
     /// Converts the `RegionData` into a `RegionCoordinates` instance.
     pub fn into_region(self) -> RegionCoordinates<N> {
         RegionCoordinates {
-            chr:    self.chr.into(),
-            start:  self.start,
-            end:    self.end,
+            chr: self.chr.into(),
+            start: self.start,
+            end: self.end,
             strand: self.strand,
         }
     }

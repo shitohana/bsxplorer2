@@ -19,7 +19,10 @@ pub struct EncodedBsxBatch {
 
 impl Eq for EncodedBsxBatch {}
 impl PartialEq for EncodedBsxBatch {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(
+        &self,
+        other: &Self,
+    ) -> bool {
         self.data == other.data
     }
 }
@@ -172,17 +175,25 @@ mod tests {
     // Helper function to create a sample DataFrame suitable for EncodedBsxBatch
     fn create_test_df() -> DataFrame {
         // Raw data similar to decoded, but will be converted
-        let chr_series = Series::new(CHR_NAME.into(), &["chr1", "chr1", "chr1"])
-            .cast(&DataType::Categorical(None, CategoricalOrdering::Physical))
-            .unwrap();
+        let chr_series =
+            Series::new(CHR_NAME.into(), &["chr1", "chr1", "chr1"])
+                .cast(&DataType::Categorical(
+                    None,
+                    CategoricalOrdering::Physical,
+                ))
+                .unwrap();
         let pos_series = Series::new(POS_NAME.into(), &[10u32, 20, 30]);
         // Encode strand: "+" -> true, "-" -> false
-        let strand_series = Series::new(STRAND_NAME.into(), &[true, true, false]);
+        let strand_series =
+            Series::new(STRAND_NAME.into(), &[true, true, false]);
         // Encode context: "CG" -> true, others -> false
-        let context_series = Series::new(CONTEXT_NAME.into(), &[true, false, false]);
+        let context_series =
+            Series::new(CONTEXT_NAME.into(), &[true, false, false]);
         let count_m_series = Series::new(COUNT_M_NAME.into(), &[5i16, 10, 15]);
-        let count_total_series = Series::new(COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
-        let density_series = Series::new(DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
+        let count_total_series =
+            Series::new(COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
+        let density_series =
+            Series::new(DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
 
         df!(
             colnames::CHR_NAME => chr_series,
@@ -205,7 +216,8 @@ mod tests {
     #[test]
     fn test_chr_categorical() {
         let batch = create_test_batch();
-        let expected_dtype = DataType::Categorical(None, CategoricalOrdering::Physical);
+        let expected_dtype =
+            DataType::Categorical(None, CategoricalOrdering::Physical);
         assert_eq!(batch.chr().dtype(), &expected_dtype);
         assert_eq!(batch.chr().len(), 3);
     }
@@ -234,35 +246,46 @@ mod tests {
     #[test]
     fn test_strand() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::STRAND_NAME.into(), &[true, true, false]);
+        let expected =
+            Series::new(colnames::STRAND_NAME.into(), &[true, true, false]);
         assert_eq!(batch.strand().clone().into_series(), expected);
     }
 
     #[test]
     fn test_context() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::CONTEXT_NAME.into(), &[true, false, false]);
+        let expected =
+            Series::new(colnames::CONTEXT_NAME.into(), &[true, false, false]);
         assert_eq!(batch.context().clone().into_series(), expected);
     }
 
     #[test]
     fn test_count_m() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::COUNT_M_NAME.into(), &[5i16, 10, 15]);
+        let expected =
+            Series::new(colnames::COUNT_M_NAME.into(), &[5i16, 10, 15]);
         assert_eq!(batch.count_m().clone().into_series(), expected);
     }
 
     #[test]
     fn test_count_total() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
-        assert_eq!(batch.count_total().clone().into_series(), expected);
+        let expected =
+            Series::new(colnames::COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
+        assert_eq!(
+            batch
+                .count_total()
+                .clone()
+                .into_series(),
+            expected
+        );
     }
 
     #[test]
     fn test_density() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
+        let expected =
+            Series::new(colnames::DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
         assert_eq!(batch.density().clone().into_series(), expected);
     }
 
@@ -278,7 +301,8 @@ mod tests {
     fn test_new_with_fields() {
         let df = create_test_df();
         let chr_str = "chr1".to_string();
-        let batch = EncodedBsxBatch::new_with_fields(df.clone(), chr_str.clone());
+        let batch =
+            EncodedBsxBatch::new_with_fields(df.clone(), chr_str.clone());
         assert_eq!(batch.data(), &df);
         assert!(batch.chr.get().is_some());
         assert_eq!(batch.chr.get().unwrap(), &chr_str);
@@ -330,10 +354,9 @@ mod tests {
         let batch = EncodedBsxBatch::new_with_fields(df, chr_str.clone());
         assert!(batch.chr.get().is_some());
         assert_eq!(batch.chr_val().unwrap(), "chr1");
-         // Ensure it's still the same cached value
+        // Ensure it's still the same cached value
         assert_eq!(batch.chr.get().unwrap(), &chr_str);
     }
-
 
     #[test]
     fn test_chr_val_empty() {
@@ -349,9 +372,12 @@ mod tests {
         .unwrap();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(empty_df) };
         assert!(batch.chr_val().is_err());
-        assert!(batch.chr_val().unwrap_err().to_string().contains("no data"));
+        assert!(batch
+            .chr_val()
+            .unwrap_err()
+            .to_string()
+            .contains("no data"));
     }
-
 
     #[test]
     fn test_from_encoded_bsxbatch() {
@@ -367,4 +393,3 @@ mod tests {
         assert_eq!(EncodedBsxBatch::type_enum(), BatchType::Encoded);
     }
 }
-

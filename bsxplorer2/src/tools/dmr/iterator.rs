@@ -9,11 +9,14 @@ use bio_types::annot::refids::RefIDSet;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
 use log::error;
-use polars::prelude::{col, ArithmeticChunked, ChunkApply, ChunkedArray, Column, DataType, IntoSeries, PolarsNumericType};
+use polars::prelude::{
+    col, ArithmeticChunked, ChunkApply, ChunkedArray, Column, DataType,
+    IntoSeries, PolarsNumericType,
+};
 use rayon::prelude::*;
 
-use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
-use crate::data_structs::batch::utils::merge_replicates;
+use crate::data_structs::batch::merge_replicates;
+use crate::data_structs::batch::{colnames, BsxBatchMethods};
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::{tv_recurse_segment, FilterConfig};
@@ -42,56 +45,80 @@ pub(crate) fn segment_reading<I, B>(
     mut right_readers: Vec<I>,
     sender: Sender<(String, SegmentOwned)>,
 ) where
-    I: Iterator<Item=B>,
+    I: Iterator<Item = B>,
     B: BsxBatchMethods,
 {
     loop {
         match (
-            left_readers.iter_mut().map(|x| x.next()).collect::<Option<Vec<B>>>(),
-            right_readers.iter_mut().map(|x| x.next()).collect::<Option<Vec<B>>>(),
+            left_readers
+                .iter_mut()
+                .map(|x| x.next())
+                .collect::<Option<Vec<B>>>(),
+            right_readers
+                .iter_mut()
+                .map(|x| x.next())
+                .collect::<Option<Vec<B>>>(),
         ) {
             (Some(left), Some(right)) => {
-                let left_merged = merge_replicates(
-                    left, merge_counts, merge_density
-                ).expect("Failed to merge replicates");
-                let right_merged = merge_replicates(
-                    right, merge_counts, merge_density
-                ).expect("Failed to merge replicates");
-                
-                let chr = left_merged.chr_val().unwrap().to_string();
+                let left_merged =
+                    merge_replicates(left, merge_counts, merge_density)
+                        .expect("Failed to merge replicates");
+                let right_merged =
+                    merge_replicates(right, merge_counts, merge_density)
+                        .expect("Failed to merge replicates");
+
+                let chr = left_merged
+                    .chr_val()
+                    .unwrap()
+                    .to_string();
                 // TODO add filtering
                 // TODO change segment position datatype to u32
-                let positions = left_merged.data()
-                    .column(colnames::POS_NAME).unwrap()
-                    .cast(&DataType::UInt64).unwrap()
-                    .u64().unwrap()
-                    .to_vec_null_aware().left()
+                let positions = left_merged
+                    .data()
+                    .column(colnames::POS_NAME)
+                    .unwrap()
+                    .cast(&DataType::UInt64)
+                    .unwrap()
+                    .u64()
+                    .unwrap()
+                    .to_vec_null_aware()
+                    .left()
                     .expect("Unexpected nulls");
-                
-                let left_density: Vec<f32> = left_merged.data()
-                    .column(colnames::DENSITY_NAME).unwrap()
-                    .cast(&DataType::Float32).unwrap()
-                    .f32().unwrap()
+
+                let left_density: Vec<f32> = left_merged
+                    .data()
+                    .column(colnames::DENSITY_NAME)
+                    .unwrap()
+                    .cast(&DataType::Float32)
+                    .unwrap()
+                    .f32()
+                    .unwrap()
                     .into_iter()
                     .map(|v| v.unwrap_or(f32::NAN))
                     .collect_vec();
-                let right_density: Vec<f32> = right_merged.data()
-                    .column(colnames::DENSITY_NAME).unwrap()
-                    .cast(&DataType::Float32).unwrap()
-                    .f32().unwrap()
+                let right_density: Vec<f32> = right_merged
+                    .data()
+                    .column(colnames::DENSITY_NAME)
+                    .unwrap()
+                    .cast(&DataType::Float32)
+                    .unwrap()
+                    .f32()
+                    .unwrap()
                     .into_iter()
                     .map(|v| v.unwrap_or(f32::NAN))
                     .collect_vec();
-                
-                let segment = SegmentOwned::new(
-                    positions, left_density, right_density
-                );
-                
-                sender.send((chr, segment))
+
+                let segment =
+                    SegmentOwned::new(positions, left_density, right_density);
+
+                sender
+                    .send((chr, segment))
                     .expect("Failed to send segment");
             },
             (None, Some(_)) => panic!("Unexpected end of input (left readers)"),
-            (Some(_), None) => panic!("Unexpected end of input (right readers)"),
+            (Some(_), None) => {
+                panic!("Unexpected end of input (right readers)")
+            },
             (None, None) => break,
         }
     }
@@ -100,34 +127,43 @@ pub(crate) fn segment_reading<I, B>(
 /// An iterator over differentially methylated regions (DMRs).
 pub struct DmrIterator {
     /// Configuration for DMR analysis.
-    pub(crate) config:        DmrConfig,
+    pub(crate) config: DmrConfig,
     /// Set of reference IDs.
-    pub(crate) ref_idset:     RefIDSet<Arc<String>>,
+    pub(crate) ref_idset: RefIDSet<Arc<String>>,
     /// Leftover segment from the previous batch.
-    pub(crate) leftover:      Option<SegmentOwned>,
+    pub(crate) leftover: Option<SegmentOwned>,
     /// Cache of DMRs.
     pub(crate) regions_cache: Vec<DMRegion>,
     /// Last chromosome processed.
-    pub(crate) last_chr:      Arc<String>,
+    pub(crate) last_chr: Arc<String>,
     /// Receiver for encoded BSx batch groups.
     pub(crate) receiver: Receiver<(String, SegmentOwned)>,
     /// Metadata about the reader.
-    pub(crate) reader_stat:   ReaderMetadata,
+    pub(crate) reader_stat: ReaderMetadata,
     /// Join handle for the reader thread.
-    pub(crate) _join_handle:  std::thread::JoinHandle<()>,
+    pub(crate) _join_handle: std::thread::JoinHandle<()>,
 }
 
 impl DmrIterator {
     /// Returns the total number of blocks processed.
-    pub fn blocks_total(&self) -> usize { self.reader_stat.blocks_total }
+    pub fn blocks_total(&self) -> usize {
+        self.reader_stat.blocks_total
+    }
 
     /// Returns the current block being processed.
-    fn current_block(&self) -> usize { self.reader_stat.current_block }
+    fn current_block(&self) -> usize {
+        self.reader_stat.current_block
+    }
 
     /// Returns the last chromosome processed.
-    fn last_chr(&self) -> Arc<String> { self.last_chr.clone() }
-    
-    fn comp_segment(&self, segment: SegmentOwned) -> Vec<DMRegion> {
+    fn last_chr(&self) -> Arc<String> {
+        self.last_chr.clone()
+    }
+
+    fn comp_segment(
+        &self,
+        segment: SegmentOwned,
+    ) -> Vec<DMRegion> {
         let result = tv_recurse_segment(
             segment.to_view().clone(),
             self.config.initial_l,
@@ -146,7 +182,7 @@ impl DmrIterator {
             .filter(|dmr| dmr.end != dmr.start)
             .collect_vec()
     }
-    
+
     /// Updates the cache with new segments.
     fn update_cache(
         &mut self,
@@ -156,12 +192,16 @@ impl DmrIterator {
         // Get the chromosome of the current group
         let chr = self.ref_idset.intern(&chr);
         let mut initial_segments = Vec::new();
-        
+
         if let Some(leftover) = self.leftover.take() {
-            if chr != self.last_chr() { initial_segments.push(leftover); }
-            else { preseg = leftover.concat(preseg); }
+            if chr != self.last_chr() {
+                initial_segments.push(leftover);
+            } else {
+                preseg = leftover.concat(preseg);
+            }
         }
-        initial_segments.append(&mut preseg.split_by_dist(self.config.max_dist));
+        initial_segments
+            .append(&mut preseg.split_by_dist(self.config.max_dist));
 
         self.last_chr = chr.clone();
         self.leftover = Some(initial_segments.pop().unwrap());
@@ -182,11 +222,12 @@ impl DmrIterator {
         if let Some(leftover) = self.leftover.take() {
             let mut new_cache = self.comp_segment(leftover);
 
-            self.regions_cache.append(&mut new_cache);
-            self.regions_cache.sort_by_key(|d| d.start);
+            self.regions_cache
+                .append(&mut new_cache);
+            self.regions_cache
+                .sort_by_key(|d| d.start);
             Ok(true)
-        }
-        else {
+        } else {
             Ok(false)
         }
     }
@@ -201,8 +242,7 @@ impl Iterator for DmrIterator {
             // Try to pop from region cache first
             if let Some(region) = if self.regions_cache.len() > 0 {
                 Some(self.regions_cache.remove(0))
-            }
-            else {
+            } else {
                 None
             } {
                 return Some((self.current_block(), region));
@@ -215,7 +255,7 @@ impl Iterator for DmrIterator {
                     if let Err(e) = self.update_cache(segment, chr) {
                         error!("Error processing group: {}", e);
                     }
-                }
+                },
                 Err(_) => {
                     // Handle the case where receiving fails (e.g., channel
                     // closed)
@@ -224,8 +264,7 @@ impl Iterator for DmrIterator {
                         .expect("Error processing last leftover")
                     {
                         self.next()
-                    }
-                    else {
+                    } else {
                         None
                     };
                 },

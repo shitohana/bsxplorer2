@@ -10,7 +10,7 @@ use crate::utils::types::{PosNum, Strand};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GenomicPosition<N: PosNum> {
-    chr:      String,
+    chr: String,
     position: N,
 }
 
@@ -31,9 +31,13 @@ impl<N: PosNum> GenomicPosition<N> {
         GenomicPosition { chr, position }
     }
 
-    pub fn chr(&self) -> &str { &self.chr }
+    pub fn chr(&self) -> &str {
+        &self.chr
+    }
 
-    pub fn position(&self) -> N { self.position }
+    pub fn position(&self) -> N {
+        self.position
+    }
 }
 
 impl<N: PosNum> Add<N> for GenomicPosition<N> {
@@ -74,8 +78,7 @@ impl<N: PosNum> PartialOrd for GenomicPosition<N> {
     ) -> Option<Ordering> {
         if self.chr == other.chr {
             Some(self.position.cmp(&other.position))
-        }
-        else {
+        } else {
             None
         }
     }
@@ -101,16 +104,14 @@ impl<N: PosNum> Shr for GenomicPosition<N> {
                 self.position,
                 Strand::None,
             ))
-        }
-        else if chr_cmp.is_some() && chr_cmp.unwrap() == Ordering::Less {
+        } else if chr_cmp.is_some() && chr_cmp.unwrap() == Ordering::Less {
             Some(RegionCoordinates::new(
                 self.chr,
                 self.position,
                 rhs.position,
                 Strand::None,
             ))
-        }
-        else {
+        } else {
             None
         }
     }
@@ -118,9 +119,9 @@ impl<N: PosNum> Shr for GenomicPosition<N> {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize)]
 pub struct RegionCoordinates<N: PosNum> {
-    pub chr:    String,
-    pub start:  N,
-    pub end:    N,
+    pub chr: String,
+    pub start: N,
+    pub end: N,
     pub strand: Strand,
 }
 
@@ -160,13 +161,21 @@ impl<N: PosNum> RegionCoordinates<N> {
         )
     }
 
-    pub fn chr(&self) -> &str { self.chr.as_str() }
+    pub fn chr(&self) -> &str {
+        self.chr.as_str()
+    }
 
-    pub fn start(&self) -> N { self.start }
+    pub fn start(&self) -> N {
+        self.start
+    }
 
-    pub fn strand(&self) -> Strand { self.strand }
+    pub fn strand(&self) -> Strand {
+        self.strand
+    }
 
-    pub fn end(&self) -> N { self.end }
+    pub fn end(&self) -> N {
+        self.end
+    }
 
     pub fn start_gpos(&self) -> GenomicPosition<N> {
         GenomicPosition::new(self.chr.clone(), self.start)
@@ -176,7 +185,9 @@ impl<N: PosNum> RegionCoordinates<N> {
         GenomicPosition::new(self.chr.clone(), self.end)
     }
 
-    pub fn length(&self) -> N { self.end - self.start }
+    pub fn length(&self) -> N {
+        self.end - self.start
+    }
 
     pub fn set_start(
         &mut self,
@@ -185,8 +196,7 @@ impl<N: PosNum> RegionCoordinates<N> {
         if start < self.end {
             self.start = start;
             Ok(())
-        }
-        else {
+        } else {
             Err(Box::from(format!(
                 "Could not modify start value. Provided {} start value is \
                  greater than end {}.",
@@ -202,8 +212,7 @@ impl<N: PosNum> RegionCoordinates<N> {
         if end < self.start {
             self.end = end;
             Ok(())
-        }
-        else {
+        } else {
             Err(Box::from(format!(
                 "Could not modify end value. Provided {} end value is less \
                  than start {}.",
@@ -232,8 +241,7 @@ impl<N: PosNum> RegionCoordinates<N> {
 
         if self.end + value > max_length {
             self.end = max_length;
-        }
-        else {
+        } else {
             self.end = self.end + value
         }
         if self.start > value {

@@ -13,9 +13,9 @@ use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 use std::thread::JoinHandle;
 
-use crate::data_structs::batch::encoded::EncodedBsxBatch;
-use crate::data_structs::batch::lazy::LazyBsxBatch;
-use crate::data_structs::batch::traits::BsxBatchMethods;
+use crate::data_structs::batch::BsxBatchMethods;
+use crate::data_structs::batch::EncodedBsxBatch;
+use crate::data_structs::batch::LazyBsxBatch;
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::data_structs::region_data::RegionData;
 use crate::io::bsx::read::{BSXIndex, BsxFileReader};
@@ -40,14 +40,17 @@ impl BSXBTree {
             let df = df.expect("failed to read df")?;
             let first_pos = GenomicPosition::new(
                 df.chr_val()?.to_string(),
-                df.start_pos().ok_or(anyhow!("Empty batch"))? as u64
+                df.start_pos()
+                    .ok_or(anyhow!("Empty batch"))? as u64,
             );
             new.insert(first_pos, num);
         }
         Ok(new)
     }
 
-    pub(crate) fn empty() -> Self { Self(HashMap::new()) }
+    pub(crate) fn empty() -> Self {
+        Self(HashMap::new())
+    }
 
     /// Insert node to a [BTreeMap].
     pub(crate) fn insert(
@@ -90,8 +93,12 @@ impl BSXBTree {
     }
 
     /// Get all batch indexes, which contain data_structs about specified region
-    pub fn get_region(&self, coordinates: &RegionCoordinates<u64>) -> Option<Vec<usize>> {
-        let range = self.get_lower_bound(coordinates.chr(), coordinates.start())?;
+    pub fn get_region(
+        &self,
+        coordinates: &RegionCoordinates<u64>,
+    ) -> Option<Vec<usize>> {
+        let range =
+            self.get_lower_bound(coordinates.chr(), coordinates.start())?;
         let mut batches: Vec<usize> = Vec::new();
 
         for (start_val, index) in range {
@@ -111,24 +118,23 @@ impl BSXBTree {
                 }
             } else {
                 None
-            }
+            };
         }
 
         Some(batches)
     }
 }
 
-
 #[derive(Clone)]
 pub struct LinkedReadPlan {
-    reg_mapping:   HashMap<RegionData<String, u64, ()>, HashSet<usize>>,
+    reg_mapping: HashMap<RegionData<String, u64, ()>, HashSet<usize>>,
     batch_mapping: BTreeMap<usize, HashSet<RegionData<String, u64, ()>>>,
 }
 
 impl LinkedReadPlan {
     fn new() -> Self {
         Self {
-            reg_mapping:   HashMap::new(),
+            reg_mapping: HashMap::new(),
             batch_mapping: BTreeMap::new(),
         }
     }
@@ -189,8 +195,7 @@ impl LinkedReadPlan {
                     .map(|regions| regions.remove(region));
             }
             Some(batches)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -206,8 +211,7 @@ impl LinkedReadPlan {
                     .map(|indices| indices.remove(&index));
             }
             Some(regions)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -228,7 +232,7 @@ impl LinkedReadPlan {
 }
 
 struct RegionAssembler {
-    read_plan:      LinkedReadPlan,
+    read_plan: LinkedReadPlan,
     assemble_cache:
         Arc<RwLock<HashMap<RegionData<String, u64, ()>, Vec<EncodedBsxBatch>>>>,
     output_queue:
@@ -267,7 +271,8 @@ impl RegionAssembler {
                     if !matches!(region_data.strand(), Strand::None) {
                         lazy = lazy.filter_strand(region_data.strand());
                     }
-                    EncodedBsxBatch::try_from(lazy).map(|batch| (region_data.clone(), batch))
+                    EncodedBsxBatch::try_from(lazy)
+                        .map(|batch| (region_data.clone(), batch))
                 })
                 .collect::<anyhow::Result<Vec<_>>>()
                 .expect("Failed to trim data_structs");
@@ -305,9 +310,7 @@ impl RegionAssembler {
                         // Sort and then vertically stack batches.
                         let sorted_batches = region_batches
                             .into_iter()
-                            .sorted_unstable_by_key(|b| {
-                                b.start_pos()
-                            })
+                            .sorted_unstable_by_key(|b| b.start_pos())
                             .collect_vec();
 
                         let assembled = sorted_batches
@@ -334,19 +337,25 @@ impl RegionAssembler {
     }
 
     #[allow(dead_code)]
-    fn read_plan(&self) -> &LinkedReadPlan { &self.read_plan }
+    fn read_plan(&self) -> &LinkedReadPlan {
+        &self.read_plan
+    }
 
-    fn is_finished(&self) -> bool { self.read_plan.batch_mapping.is_empty() }
+    fn is_finished(&self) -> bool {
+        self.read_plan.batch_mapping.is_empty()
+    }
 }
 
 impl From<LinkedReadPlan> for RegionAssembler {
-    fn from(value: LinkedReadPlan) -> Self { Self::new(value) }
+    fn from(value: LinkedReadPlan) -> Self {
+        Self::new(value)
+    }
 }
 
 pub struct RegionReader {
-    assembler:    RegionAssembler,
+    assembler: RegionAssembler,
     _read_thread: JoinHandle<()>,
-    receiver:     Receiver<(usize, EncodedBsxBatch)>,
+    receiver: Receiver<(usize, EncodedBsxBatch)>,
 }
 
 impl RegionReader {
@@ -396,8 +405,7 @@ impl Iterator for RegionReader {
                 Err(e) => {
                     if self.assembler.is_finished() {
                         return None;
-                    }
-                    else {
+                    } else {
                         panic!("{}", e)
                     }
                 },

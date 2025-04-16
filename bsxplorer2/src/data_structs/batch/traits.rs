@@ -38,8 +38,7 @@ pub mod colnames {
 use colnames::*;
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
-pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
-{
+pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     /// Type for chromosome data
     type ChrType: PolarsDataType;
     /// Type for position data
@@ -64,32 +63,53 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
     fn density(&self) -> &ChunkedArray<Self::DensityType>;
 
     /// Get chromosome data type
-    fn chr_type() -> DataType where Self: Sized {
+    fn chr_type() -> DataType
+    where
+        Self: Sized,
+    {
         Self::ChrType::get_dtype()
     }
     /// Get position data type
-    fn pos_type() -> DataType where Self: Sized {
+    fn pos_type() -> DataType
+    where
+        Self: Sized,
+    {
         Self::PosType::get_dtype()
     }
     /// Get strand data type
-    fn strand_type() -> DataType where Self: Sized {
+    fn strand_type() -> DataType
+    where
+        Self: Sized,
+    {
         Self::StrandType::get_dtype()
     }
     /// Get context data type
-    fn context_type() -> DataType where Self: Sized {
+    fn context_type() -> DataType
+    where
+        Self: Sized,
+    {
         Self::ContextType::get_dtype()
     }
     /// Get count data type
-    fn count_type() -> DataType where Self: Sized {
+    fn count_type() -> DataType
+    where
+        Self: Sized,
+    {
         Self::CountType::get_dtype()
     }
     /// Get density data type
-    fn density_type() -> DataType where Self: Sized {
+    fn density_type() -> DataType
+    where
+        Self: Sized,
+    {
         Self::DensityType::get_dtype()
     }
 
     /// Create schema for the batch data
-    fn schema() -> Schema where Self: Sized {
+    fn schema() -> Schema
+    where
+        Self: Sized,
+    {
         Schema::from_iter([
             (CHR_NAME.into(), Self::ChrType::get_dtype()),
             (POS_NAME.into(), Self::PosType::get_dtype()),
@@ -102,7 +122,10 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
     }
 
     /// Create hashmap of column names to data types
-    fn hashmap() -> PlHashMap<&'static str, DataType> where Self: Sized {
+    fn hashmap() -> PlHashMap<&'static str, DataType>
+    where
+        Self: Sized,
+    {
         PlHashMap::from_iter([
             (CHR_NAME, Self::ChrType::get_dtype()),
             (POS_NAME, Self::PosType::get_dtype()),
@@ -115,11 +138,18 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
     }
 
     /// Create a new batch from a DataFrame without checks
-    unsafe fn new_unchecked(data_frame: DataFrame) -> Self where Self: Sized;
+    unsafe fn new_unchecked(data_frame: DataFrame) -> Self
+    where
+        Self: Sized;
 
     /// Create an empty batch
-    fn empty() -> Self where Self: Sized {
-        unsafe { Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema())) }
+    fn empty() -> Self
+    where
+        Self: Sized,
+    {
+        unsafe {
+            Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema()))
+        }
     }
     fn is_empty(&self) -> bool {
         self.data().is_empty()
@@ -129,19 +159,21 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
     fn split_at(
         self,
         index: usize,
-    ) -> (Self, Self) where Self: Sized {
+    ) -> (Self, Self)
+    where
+        Self: Sized,
+    {
         let (a, b) = self.data().split_at(index as i64);
-        unsafe {(
-            Self::new_unchecked(a),
-            Self::new_unchecked(b),
-        )}
+        unsafe { (Self::new_unchecked(a), Self::new_unchecked(b)) }
     }
 
     /// Returns reference to inner [DataFrame]
     fn data(&self) -> &DataFrame;
     fn data_mut(&mut self) -> &mut DataFrame;
-    
-    fn take(self) -> DataFrame where Self: Sized;
+
+    fn take(self) -> DataFrame
+    where
+        Self: Sized;
 
     /// Get chromosome value as string
     fn chr_val(&self) -> anyhow::Result<&str>;
@@ -149,17 +181,27 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
     /// Get start position
     fn start_pos(&self) -> Option<u32> {
         self.data()
-            .column(POS_NAME).unwrap()
+            .column(POS_NAME)
+            .unwrap()
             .get(self.data().height() - 1)
-            .map(|v| v.cast(&DataType::UInt32).try_extract().unwrap())
+            .map(|v| {
+                v.cast(&DataType::UInt32)
+                    .try_extract()
+                    .unwrap()
+            })
             .ok()
     }
     /// Get end position
     fn end_pos(&self) -> Option<u32> {
         self.data()
-            .column(POS_NAME).unwrap()
+            .column(POS_NAME)
+            .unwrap()
             .get(0)
-            .map(|v| v.cast(&DataType::UInt32).try_extract().unwrap())
+            .map(|v| {
+                v.cast(&DataType::UInt32)
+                    .try_extract()
+                    .unwrap()
+            })
             .ok()
     }
 
@@ -175,9 +217,10 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
         let res = BsxBatchBuilder::all_checks().check_modify(new_data)?;
         Ok(unsafe { Self::new_unchecked(res) })
     }
-    
+
     fn extend(
-        &mut self, other: &Self,
+        &mut self,
+        other: &Self,
     ) -> anyhow::Result<()> {
         self.data_mut().extend(other.data())?;
         BsxBatchBuilder::all_checks().check(self.data())?;
@@ -189,7 +232,8 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
         &self,
         mask: &BooleanChunked,
     ) -> PolarsResult<Self>
-    where Self: Sized
+    where
+        Self: Sized,
     {
         Ok(unsafe { Self::new_unchecked(self.data().filter(mask)?) })
     }
@@ -202,7 +246,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
     /// Convert batch to genomic contig
     fn as_contig(&self) -> anyhow::Result<Contig<&str, NoStrand>>
     where
-        u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>
+        u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>,
     {
         let start = self
             .start_pos()
@@ -221,7 +265,6 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq
     }
 }
 
-
 /// Trait for BSX type identification
 pub trait BsxTypeTag {
     /// Get type name as string
@@ -232,5 +275,5 @@ pub trait BsxTypeTag {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BatchType {
     Decoded,
-    Encoded
+    Encoded,
 }

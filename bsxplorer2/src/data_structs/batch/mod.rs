@@ -1,15 +1,8 @@
-pub mod decoded;
-pub mod builder;
-pub mod traits;
-pub mod encoded;
-pub mod lazy;
-pub mod utils;
+mod builder;
+mod decoded;
+mod encoded;
+mod lazy;
+mod traits;
+mod utils;
 
-pub use {
-    builder::*,
-    decoded::*,
-    encoded::*,
-    lazy::*,
-    traits::*,
-    utils::*
-};
+pub use {builder::*, decoded::*, encoded::*, lazy::*, traits::*, utils::*};

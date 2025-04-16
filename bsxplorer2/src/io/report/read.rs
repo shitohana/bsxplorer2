@@ -1,280 +1,41 @@
-use std::error::Error;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, SyncSender};
-use std::sync::{mpsc, Arc};
-use std::thread;
-use std::thread::JoinHandle;
-
-use super::report_read_utils::{align_data_with_context, get_context_data};
-use crate::data_structs::batch::builder::BsxBatchBuilder;
-use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::traits::BsxBatchMethods;
-use crate::data_structs::region::GenomicPosition;
-#[cfg(feature="compression")]
-use crate::io::compression::Compression;
-use crate::io::report::fasta_reader::{FastaCoverageReader, FastaReader};
+use crate::data_structs::batch::{
+    BatchType, BsxBatchBuilder, BsxBatchMethods, BsxTypeTag, LazyBsxBatch,
+};
 use crate::io::report::schema::ReportTypeSchema;
-use crate::utils::types::PosNum;
-use crate::utils::{first_position, last_position};
+use anyhow::bail;
+use bio::io::fasta::{Reader as FastaReader, Record as FastaRecord};
+use noodles::fasta::fai::io::Reader as FaiReader;
+use noodles::fasta::fs::index as index_fasta;
+
+use crate::data_structs::context_data::ContextData;
+#[cfg(feature = "compression")]
+use crate::io::compression::Compression;
+use crate::utils::get_categorical_dtype;
+use crossbeam::channel::Receiver;
 use itertools::Itertools;
-use log::debug;
-use polars::df;
-use polars::error::PolarsResult;
-use polars::frame::DataFrame;
 use polars::io::mmap::MmapBytesReader;
-use polars::io::RowIndex;
-use polars::prelude::{BatchedCsvReader, CsvReader, Schema, SchemaRef};
-
-
-/// Builder for ReportReader that configures all reading parameters
-pub struct ReportReaderBuilder {
-    /// Type of report to read, determines the schema and parsing strategy
-    pub report_type:            ReportTypeSchema,
-    /// Whether to rechunk the data_structs after reading
-    pub rechunk:                bool,
-    /// Number of threads to use for reading
-    pub n_threads:              Option<usize>,
-    /// Whether to use low memory mode
-    pub low_memory:             bool,
-    /// Maximum number of rows to read
-    pub n_rows:                 Option<usize>,
-    /// Row indexing strategy
-    pub row_index:              Option<RowIndex>,
-    /// Number of rows per chunk when reading
-    pub chunk_size:             usize,
-    /// Number of rows to skip after the header
-    pub skip_rows_after_header: usize,
-    /// Path to FASTA file for sequence context
-    pub fasta_path:             Option<PathBuf>,
-    /// Path to FASTA index file
-    pub fai_path:               Option<PathBuf>,
-    /// Number of batches to prefetch per read operation
-    pub batch_per_read:         usize,
-    /// Size of each batch in bytes
-    pub batch_size:             usize,
-
-    #[cfg(feature="compression")]
-    pub compression:            Compression,
-}
-
-impl ReportReaderBuilder {
-    /// Create a new builder with the specified report type
-    pub fn new(report_type: ReportTypeSchema) -> ReportReaderBuilder {
-        ReportReaderBuilder {
-            report_type,
-            ..Default::default()
-        }
-    }
-
-    /// Set whether to rechunk the data_structs after reading
-    pub fn with_rechunk(
-        mut self,
-        rechunk: bool,
-    ) -> Self {
-        self.rechunk = rechunk;
-        self
-    }
-
-    /// Set the FASTA file and index paths for sequence context
-    pub fn with_fasta(
-        mut self,
-        fasta_path: PathBuf,
-        fai_path: PathBuf,
-    ) -> Self {
-        self.fasta_path = Some(fasta_path);
-        self.fai_path = Some(fai_path);
-        self
-    }
-
-    /// Set the number of threads to use for reading
-    pub fn with_n_threads(
-        mut self,
-        n_threads: usize,
-    ) -> Self {
-        self.n_threads = Some(n_threads);
-        self
-    }
-
-    /// Set the number of rows to skip after the header
-    pub fn with_skip_rows_after_header(
-        mut self,
-        skip_rows_after_header: usize,
-    ) -> Self {
-        self.skip_rows_after_header = skip_rows_after_header;
-        self
-    }
-
-    /// Set whether to use low memory mode
-    pub fn with_low_memory(
-        mut self,
-        low_memory: bool,
-    ) -> Self {
-        self.low_memory = low_memory;
-        self
-    }
-
-    /// Set the maximum number of rows to read
-    pub fn with_n_rows(
-        mut self,
-        n_rows: usize,
-    ) -> Self {
-        self.n_rows = Some(n_rows);
-        self
-    }
-
-    /// Set the report type
-    pub fn with_report_type(
-        mut self,
-        report_type: ReportTypeSchema,
-    ) -> Self {
-        self.report_type = report_type;
-        self
-    }
-
-    /// Set the row indexing strategy
-    pub fn with_row_index(
-        mut self,
-        row_index: RowIndex,
-    ) -> Self {
-        self.row_index = Some(row_index);
-        self
-    }
-
-    /// Set the number of rows per chunk when reading
-    pub fn with_chunk_size(
-        mut self,
-        chunk_size: usize,
-    ) -> Self {
-        self.chunk_size = chunk_size;
-        self
-    }
-
-    /// Set the number of batches to prefetch per read operation
-    pub fn with_batch_per_read(
-        mut self,
-        n: usize,
-    ) -> Self {
-        self.batch_per_read = n;
-        self
-    }
-
-    /// Set the size of each batch in bytes
-    pub fn with_batch_size(
-        mut self,
-        n: usize,
-    ) -> Self {
-        self.batch_size = n;
-        self
-    }
-
-    #[cfg(feature="compression")]
-    pub fn with_compression(mut self, compression: Compression) -> Self {
-        self.compression = compression;
-        self
-    }
-
-    /// Finalize the builder and create a ReportReader
-    pub fn try_finish<F>(
-        self,
-        handle: F,
-    ) -> Result<ReportReader, Box<dyn Error>>
-    where
-        F: MmapBytesReader + 'static, {
-
-        #[cfg(feature="compression")]
-        let handle = self.compression.get_decoder(handle);
-        #[cfg(not(feature="compression"))]
-        let handle = Box::new(handle) as Box<dyn MmapBytesReader>;
-
-        let csv_reader = self
-            .report_type
-            .read_options()
-            .with_low_memory(self.low_memory)
-            .with_n_rows(self.n_rows)
-            .with_skip_rows_after_header(self.skip_rows_after_header)
-            .with_row_index(self.row_index.clone())
-            .with_chunk_size(self.batch_size)
-            .with_low_memory(self.low_memory)
-            .with_n_threads(self.n_threads)
-            .into_reader_with_file_handle(handle);
-
-        let indexed_reader = match (self.fasta_path, self.fai_path) {
-            (Some(fasta_path), Some(fai_path)) => {
-                let reader = FastaReader::try_from_handle(
-                    BufReader::new(
-                        File::open(&fasta_path)
-                            .map_err(|e| Box::new(e) as Box<dyn Error>)?,
-                    ),
-                    BufReader::new(
-                        File::open(&fai_path)
-                            .map_err(|e| Box::new(e) as Box<dyn Error>)?,
-                    ),
-                )?;
-                Some(FastaCoverageReader::from(reader))
-            },
-            (Some(_), None) => todo!("Add auto FASTA indexing?"),
-            (None, Some(_)) => {
-                return Err(Box::from(
-                    "No FASTA path given but FAI path was provided",
-                ))
-            },
-            (None, None) => None,
-        };
-
-        if self.report_type.need_align() && indexed_reader.is_none() {
-            return Err(Box::from(format!(
-                "FASTA path must be provided for report type: {:?}",
-                self.report_type
-            )));
-        }
-
-        Ok(ReportReader::new(
-            csv_reader,
-            indexed_reader,
-            self.report_type,
-            self.batch_per_read,
-            self.chunk_size,
-        ))
-    }
-}
-
-impl Default for ReportReaderBuilder {
-    /// Create a default ReportReaderBuilder with reasonable defaults
-    fn default() -> Self {
-        ReportReaderBuilder {
-            report_type:            ReportTypeSchema::Bismark,
-            rechunk:                false,
-            n_threads:              None,
-            low_memory:             false,
-            n_rows:                 None,
-            row_index:              None,
-            chunk_size:             10_000,
-            skip_rows_after_header: 0,
-            fasta_path:             None,
-            fai_path:               None,
-            batch_per_read:         16,
-            batch_size:             2 << 20,
-            #[cfg(feature="compression")]
-            compression:            Compression::None,
-        }
-    }
-}
+use polars::prelude::*;
+use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::marker::PhantomData;
+use std::path::PathBuf;
+use std::thread::JoinHandle;
 
 /// A wrapper around BatchedCsvReader that manages ownership of the reader
 pub struct OwnedBatchedCsvReader<F>
 where
-    F: MmapBytesReader, {
+    F: MmapBytesReader,
+{
     #[allow(dead_code)]
     // this exists because we need to keep ownership
     /// Schema of the CSV file
-    pub schema:         SchemaRef,
+    pub schema: SchemaRef,
     /// The batched reader for the CSV file
     pub batched_reader: BatchedCsvReader<'static>,
     // keep ownership
     /// Original CSV reader
-    pub _reader:        CsvReader<F>,
+    pub _reader: CsvReader<F>,
 }
 
 impl<F> OwnedBatchedCsvReader<F>
@@ -312,322 +73,399 @@ where
     }
 }
 
-/// Data itself and marker if the batch is the last
-pub(in crate::io::report) type ReadQueueItem = (DataFrame, bool);
-
-/// Reader for processing bisulfite sequencing reports
-pub struct ReportReader {
-    /// Thread that reads the data_structs
-    _join_handle:  JoinHandle<()>,
-    /// Channel to receive batches from the reader thread
-    receiver:      Receiver<ReadQueueItem>,
-    /// Schema of the report
-    report_schema: ReportTypeSchema,
-    /// Reader for FASTA files to get sequence context
-    fasta_reader:  Option<FastaCoverageReader<BufReader<File>, u64>>,
-    /// Number of rows per chunk
-    chunk_size:    usize,
-    /// Cache for batches that have been read but not yet processed
-    batch_cache:   Option<DataFrame>,
+pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
+    report_type: ReportTypeSchema,
+    chunk_size: usize,
+    fasta_path: Option<PathBuf>,
+    fai_path: Option<PathBuf>,
+    batch_size: usize,
+    n_threads: Option<usize>,
+    low_memory: bool,
+    queue_len: usize,
+    #[cfg(feature = "compression")]
+    compression: Option<Compression>,
+    _batch_type: PhantomData<B>,
 }
 
-impl ReportReader {
-    /// Create a new ReportReader with the given parameters
-    pub(crate) fn new<F>(
-        reader: CsvReader<F>,
-        fasta_reader: Option<FastaCoverageReader<BufReader<File>, u64>>,
-        report_schema: ReportTypeSchema,
-        batch_per_read: usize,
-        chunk_size: usize,
-    ) -> Self
-    where
-        F: MmapBytesReader + 'static, {
-        let (sender, receiver) = mpsc::sync_channel(batch_per_read);
-        let join_handle = thread::spawn(move || {
-            reader_thread(reader, sender, report_schema, batch_per_read)
-        });
-        // Create struct
-        Self {
-            receiver,
-            chunk_size,
-            report_schema,
-            fasta_reader,
-            _join_handle: join_handle,
-            batch_cache: None,
-        }
+impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+    pub fn with_report_type(
+        mut self,
+        report_type: ReportTypeSchema,
+    ) -> Self {
+        self.report_type = report_type;
+        self
     }
 
-    /// Extend the cache with a new batch of data_structs
-    /// Item must has single chromosome
-    fn extend_cache(
-        &mut self,
-        item: ReadQueueItem,
-    ) -> Result<(), Box<dyn Error>> {
-        let context_data = if let Some(reader) = self.fasta_reader.as_mut() {
-            let data = get_context_data(reader, &item, &self.report_schema)?;
-            Some(data)
-        }
-        else {
+    pub fn with_chunk_size(
+        mut self,
+        chunk_size: usize,
+    ) -> Self {
+        self.chunk_size = chunk_size;
+        self
+    }
+
+    pub fn with_fasta_path(
+        mut self,
+        fasta_path: PathBuf,
+    ) -> Self {
+        self.fasta_path = Some(fasta_path);
+        self
+    }
+
+    pub fn with_fai_path(
+        mut self,
+        fai_path: PathBuf,
+    ) -> Self {
+        self.fai_path = Some(fai_path);
+        self
+    }
+
+    pub fn with_batch_size(
+        mut self,
+        batch_size: usize,
+    ) -> Self {
+        self.batch_size = batch_size;
+        self
+    }
+
+    pub fn with_n_threads(
+        mut self,
+        n_threads: usize,
+    ) -> Self {
+        self.n_threads = Some(n_threads);
+        self
+    }
+
+    pub fn with_low_memory(
+        mut self,
+        low_memory: bool,
+    ) -> Self {
+        self.low_memory = low_memory;
+        self
+    }
+
+    pub fn with_queue_len(
+        mut self,
+        queue_len: usize,
+    ) -> Self {
+        self.queue_len = queue_len;
+        self
+    }
+
+    #[cfg(feature = "compression")]
+    pub fn with_compression(
+        mut self,
+        compression: Compression,
+    ) -> Self {
+        self.compression = Some(compression);
+        self
+    }
+}
+
+impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+    fn get_chr_dtype(&self) -> anyhow::Result<Option<DataType>> {
+        let index = if let Some(fai_path) = self.fai_path.as_ref() {
+            FaiReader::new(BufReader::new(File::open(fai_path)?))
+                .read_index()?
+                .into()
+        } else if let Some(fasta_path) = self.fasta_path.as_ref() {
+            Some(index_fasta(fasta_path)?)
+        } else {
             None
         };
-        // let data_bsx = BsxBatchBuilder::default()
-        //     .with_report_type(self.report_schema.clone())
-        //     .build_decoded(item.0)?;
-        let data_bsx: DataFrame = BsxBatchBuilder::all_checks()
-            .with_check_single_chr(false)
-            .build::<BsxBatch>(item.0)
-            .map(|batch| DataFrame::from(batch))?;
 
-        let result = if let Some(context_data) = context_data {
-            align_data_with_context(&data_bsx, context_data)?
+        let dtype = index
+            .map(|i| {
+                i.as_ref()
+                    .into_iter()
+                    .map(|r| String::from_utf8(r.name().to_vec()).unwrap())
+                    .collect_vec()
+            })
+            .map(|names| get_categorical_dtype(names));
+        Ok(dtype)
+    }
+
+    fn get_fasta_iterator(
+        &self
+    ) -> anyhow::Result<Option<Box<dyn Iterator<Item = FastaRecord>>>> {
+        if let Some(fasta_path) = self.fasta_path.as_ref() {
+            let reader =
+                FastaReader::new(BufReader::new(File::open(fasta_path)?));
+            let iterator = Some(Box::new(
+                reader
+                    .records()
+                    .into_iter()
+                    .map(|r| r.expect("Failed to read record")),
+            )
+                as Box<dyn Iterator<Item = FastaRecord>>);
+            Ok(iterator)
+        } else {
+            Ok(None)
         }
-        else {
-            data_bsx
+    }
+
+    fn get_file_handle(
+        &self,
+        path: PathBuf,
+    ) -> anyhow::Result<Box<dyn MmapBytesReader>> {
+        #[cfg(feature = "compression")]
+        {
+            if let Some(compression) = &self.compression {
+                let file = File::open(path)?;
+                return Ok(compression.get_decoder(file));
+            }
+        }
+
+        // No compression or compression feature not enabled
+        Ok(Box::new(File::open(path)?))
+    }
+
+    fn get_csv_reader(
+        &self,
+        path: PathBuf,
+    ) -> anyhow::Result<OwnedBatchedCsvReader<Box<dyn MmapBytesReader>>> {
+        let handle = self.get_file_handle(path)?;
+
+        let csv_reader = self
+            .report_type
+            .read_options()
+            .with_n_threads(self.n_threads)
+            .with_low_memory(self.low_memory)
+            .with_chunk_size(self.batch_size)
+            .into_reader_with_file_handle(handle);
+
+        let mut owned_batched = OwnedBatchedCsvReader::new(
+            csv_reader,
+            self.report_type.schema().into(),
+        );
+        Ok(owned_batched)
+    }
+
+    pub fn build(
+        self,
+        path: PathBuf,
+    ) -> anyhow::Result<ReportReader<B>> {
+        use ReportTypeSchema as RS;
+
+        let chr_dtype = self.get_chr_dtype()?;
+        if matches!(B::type_enum(), BatchType::Encoded) && chr_dtype.is_none() {
+            bail!("Either Fasta path or Fai path must be specified for Encoded reading")
+        }
+        let fasta_reader = self.get_fasta_iterator()?;
+        if matches!(self.report_type, RS::Coverage | RS::BedGraph)
+            && fasta_reader.is_none()
+        {
+            bail!(
+                "Fasta path must be specified for Bedgraph or Coverage reading"
+            )
+        }
+
+        let mut csv_reader = self.get_csv_reader(path)?;
+        let (sender, receiver) = crossbeam::channel::bounded(self.queue_len);
+
+        let join_handle = std::thread::spawn(move || {
+            while let Ok(Some(mut df)) = csv_reader.next_batches(1) {
+                if df.len() != 0 {
+                    panic!("Unexpected batch count {}", df.len());
+                }
+                sender
+                    .send(df.pop().unwrap())
+                    .expect("Failed to send data");
+            }
+        });
+
+        let reader = ReportReader {
+            _join_handle: join_handle,
+            data_receiver: receiver,
+            report_type: self.report_type.clone(),
+            cached_batch: BTreeMap::new(),
+            seen_chr: HashMap::new(),
+            chunk_size: self.chunk_size,
+            fasta_reader,
+            cached_chr: None,
+            chr_dtype,
         };
+        Ok(reader)
+    }
+}
 
-        if let Some(cache) = self.batch_cache.as_mut() {
-            cache
-                .extend(&result)
-                .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
+    _join_handle: JoinHandle<()>,
+    data_receiver: Receiver<DataFrame>,
+    report_type: ReportTypeSchema,
+    cached_batch: BTreeMap<usize, B>,
+    seen_chr: HashMap<String, usize>,
+    chunk_size: usize,
+
+    fasta_reader: Option<Box<dyn Iterator<Item = FastaRecord>>>,
+    cached_chr: Option<(String, ContextData)>,
+    chr_dtype: Option<DataType>,
+}
+
+impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
+    fn take_cached(
+        &mut self,
+        force: bool,
+    ) -> Option<B> {
+        // No cache at all
+        if self.cached_batch.is_empty() {
+            return None;
         }
-        else {
-            self.batch_cache = Some(result);
+        // If there is more than one chromosome cached, force yield to avoid blocking on others
+        let should_force = force || self.cached_batch.len() > 1;
+        // As we've checked, that cache is not empty, we can take first
+        let (idx, batch) = match self.cached_batch.pop_first() {
+            Some(pair) => pair,
+            None => return None,
+        };
+        // Split by chunk size
+        let (first, second) = batch.split_at(self.chunk_size);
+        // If cached length was less than chunk_size
+        if second.is_empty() && !should_force {
+            // Return None, if we do not force yield and expect data continuation
+            self.cached_batch.insert(idx, first);
+            return None;
+        // If cached length was greater than chunk size
+        } else if !second.is_empty() {
+            // Add the remainder back to cache
+            self.cached_batch.insert(idx, second);
         }
+        // If we have not returned None yet we can yield first
+        Some(first)
+    }
+
+    fn align_batch(
+        &mut self,
+        batch: B,
+        is_final: bool,
+    ) -> anyhow::Result<B> {
+        // If some cached chr data
+        if let Some((chr, mut cached_data)) = Option::take(&mut self.cached_chr)
+        {
+            // If cached different chromosome raise
+            if batch.chr_val()? != chr {
+                bail!("Chromosome mismatch")
+            // Else align
+            } else {
+                // If it is a final batch - drain cached chr
+                let (context_data, new_cache) = if is_final {
+                    (cached_data, None)
+                // If not final, take till end of batch
+                } else {
+                    let drained =
+                        cached_data.drain_until(batch.end_pos().unwrap());
+                    (drained, Some((chr, cached_data)))
+                };
+                // Update cache (leftover if not final else None)
+                self.cached_chr = new_cache;
+                let chr_val = batch.chr_val()?.to_string();
+                // Align batch
+                let aligned = LazyBsxBatch::from(batch)
+                    .align_with_contexts(context_data, &chr_val)
+                    .collect()?;
+                Ok(aligned)
+            }
+        // If cache is empty read next chromosome
+        } else {
+            // Try read
+            if let Some(new_sequence) = self
+                .fasta_reader
+                .as_mut()
+                .unwrap()
+                .next()
+            {
+                // Process sequence
+                let mut new_context_data = ContextData::empty();
+                new_context_data.read_sequence(new_sequence.seq(), 1);
+                self.cached_chr =
+                    Some((new_sequence.id().to_string(), new_context_data));
+                // Try aligning again
+                Ok(self
+                    .align_batch(batch, is_final)
+                    .map_err(|e| anyhow::anyhow!(e))?)
+            // Everything is read, but more sequence requested. Raise
+            } else {
+                bail!("Sequence has already been fully written")
+            }
+        }
+    }
+
+    fn fill_cache(&mut self) -> anyhow::Result<()> {
+        // Try receive another batch
+        let new_batch = self.data_receiver.recv().map_err(|e| {
+            anyhow::anyhow!("Channel closed unexpectedly while reading a batch")
+                .context(e)
+        })?;
+        // Partition by chromosome
+        let partitioned = new_batch
+            .partition_by_stable([self.report_type.chr_col()], true)
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to partition batch").context(e)
+            })?;
+        // 1 if single chromosome or > 1 if multiple
+        let n_partitioned = partitioned.len();
+
+        for (index, data) in partitioned.into_iter().enumerate() {
+            // Convert to BSX batch format
+            let mut bsx_batch = BsxBatchBuilder::all_checks()
+                .with_check_single_chr(false)
+                .with_chr_dtype(self.chr_dtype.clone()) // Will raise if not specified
+                .build::<B>(data)?;
+
+            // Align batch if required
+            if self.report_type.need_align() {
+                let is_final = index < n_partitioned - 1;
+                bsx_batch = self.align_batch(bsx_batch, is_final)?;
+            }
+
+            // Add chromosome to seen and retrieve chr index
+            let batch_chr = bsx_batch.chr_val()?.to_owned();
+            let seen_chr_len = self.seen_chr.len();
+            let chr_idx = self
+                .seen_chr
+                .entry(batch_chr)
+                .or_insert(seen_chr_len)
+                .clone();
+
+            // Update cached batch
+            self.cached_batch
+                .entry(chr_idx)
+                .and_modify(|mut b| {
+                    b.extend(&bsx_batch)
+                        .expect("vstack failed");
+                })
+                .or_insert(bsx_batch);
+        }
+
         Ok(())
     }
-
-    /// Get a chunk of data_structs from the cache
-    /// It is caller responsibility to check, if cache size is enough
-    fn get_chunk(&mut self) -> Result<DataFrame, Box<dyn Error>> {
-        if let Some(cache) = self.batch_cache.as_mut() {
-            let (mut output, mut rest) = cache.split_at(self.chunk_size as i64);
-            let chr_col = output
-                .column("chr")
-                .map_err(|e| Box::new(e) as Box<dyn Error>)?
-                .as_series()
-                .ok_or_else(|| {
-                    Box::<dyn Error>::from("Failed to get chromosome series")
-                })?
-                .rechunk();
-
-            let start_chr = chr_col
-                .first()
-                .as_any_value()
-                .str_value()
-                .to_string();
-
-            let end_chr = chr_col
-                .get(self.chunk_size - 1)
-                .unwrap()
-                .str_value()
-                .to_string();
-
-            if start_chr != end_chr {
-                let mut partitioned = output
-                    .partition_by_stable(["chr"], true)
-                    .map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                partitioned.reverse();
-                output = partitioned.pop().ok_or_else(|| {
-                    Box::<dyn Error>::from("Failed to get first partition")
-                })?;
-
-                if let Some(new_rest) =
-                    partitioned
-                        .into_iter()
-                        .reduce(|acc, df| {
-                            acc.vstack(&df).unwrap_or_else(|_| {
-                                panic!("Failed to vstack dataframes")
-                            })
-                        })
-                {
-                    rest = new_rest
-                        .vstack(&rest)
-                        .map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                }
-            }
-
-            self.batch_cache = Some(rest);
-            Ok(output)
-        }
-        else {
-            Err(Box::from("No batch cache found"))
-        }
-    }
 }
 
-impl Iterator for ReportReader {
-    type Item = BsxBatch;
+impl<B: BsxBatchMethods + BsxTypeTag> Iterator for ReportReader<B> {
+    type Item = anyhow::Result<B>;
 
-    /// Get the next batch of data_structs
     fn next(&mut self) -> Option<Self::Item> {
-        if self
-            .batch_cache
-            .as_ref()
-            .map(DataFrame::height)
-            .unwrap_or(0)
-            >= self.chunk_size
-        {
-            match self.get_chunk() {
-                Ok(df) => Some(unsafe { BsxBatch::new_unchecked(df) }),
-                Err(e) => {
-                    debug!("Error getting chunk: {}", e);
-                    None
-                },
+        loop {
+            // Try to get a cached batch first
+            if let Some(batch) = self.take_cached(false) {
+                return Some(Ok(batch));
             }
-        }
-        else {
-            match self.receiver.recv() {
-                Ok(data) => {
-                    debug!(
-                        "Received data_structs with {} rows",
-                        data.0.height()
-                    );
-                    match self.extend_cache(data) {
-                        Ok(_) => self.next(),
-                        Err(e) => {
-                            debug!("Failed extending batch cache: {}", e);
-                            None
-                        },
-                    }
-                },
-                Err(e) => {
-                    debug!("Channel error: {}", e);
-                    if let Some(cache) = self.batch_cache.take() {
-                        debug!("Batch cache is emptied");
-                        let res =
-                            unsafe { BsxBatch::new_unchecked(cache.clone()) };
-                        Some(res)
-                    }
-                    else {
-                        None
-                    }
-                },
-            }
-        }
-    }
-}
-
-/// Thread function for reading data_structs from a CSV file
-fn reader_thread<R>(
-    reader: CsvReader<R>,
-    send_channel: SyncSender<ReadQueueItem>,
-    report_schema: ReportTypeSchema,
-    batch_per_read: usize,
-) where
-    R: MmapBytesReader + 'static, {
-        let mut owned_batched =
-            OwnedBatchedCsvReader::new(reader, Arc::from(report_schema.schema()));
-    let chr_col = report_schema.chr_col();
-    let pos_col = report_schema.position_col();
-
-    let mut cached_batch: Option<DataFrame> = None;
-
-    loop {
-        let incoming_batches = match owned_batched.next_batches(batch_per_read)
-        {
-            Ok(batches) => batches,
-            Err(e) => {
-                debug!("Error reading batches: {}", e);
-                break;
-            },
-        };
-
-        if let Some(batches_vec) = incoming_batches {
-            // Flatten batches and partition by chr
-            let batches_vec = batches_vec
-                .into_iter()
-                .flat_map(|batch| {
-                    partition_batch(batch, chr_col, pos_col).unwrap_or_else(
-                        |e| {
-                            debug!("Error partitioning batch: {}", e);
-                            vec![]
-                        },
-                    )
-                })
-                .collect_vec();
-
-            for batch in batches_vec.into_iter() {
-                if let Some(cached_batch_data) = cached_batch.take() {
-                    // Compare with cached
-                    let cached_chr = match first_position(
-                        &cached_batch_data,
-                        chr_col,
-                        pos_col,
-                    ) {
-                        Ok(pos) => pos.chr().to_owned(),
-                        Err(e) => {
-                            debug!(
-                                "Error getting first position from cached \
-                                 batch: {}",
-                                e
-                            );
-                            continue;
-                        },
-                    };
-
-                    let new_chr = match first_position(&batch, chr_col, pos_col)
-                    {
-                        Ok(pos) => pos.chr().to_owned(),
-                        Err(e) => {
-                            debug!(
-                                "Error getting first position from new batch: \
-                                 {}",
-                                e
-                            );
-                            continue;
-                        },
-                    };
-
-                    let item = if cached_chr != new_chr {
-                        (cached_batch_data, true)
-                    }
-                    else {
-                        (cached_batch_data, false)
-                    };
-
-                    // Return cached
-                    if let Err(e) = send_channel.send(item) {
-                        debug!(
-                            "Could not send data_structs to main thread: {}",
-                            e
-                        );
-                        break;
-                    }
+            // If the reader thread is still alive or we can expect more data
+            if !self._join_handle.is_finished()
+                || !self.data_receiver.is_empty()
+            {
+                if let Err(e) = self.fill_cache() {
+                    return Some(Err(e));
                 }
-                // Update cached
-                cached_batch = Some(batch);
+                // After filling, try to take again
+                continue;
             }
-        }
-        else {
-            // Release cached
-            if let Some(cached_batch_data) = cached_batch.take() {
-                let item = (cached_batch_data, true);
-                if let Err(e) = send_channel.send(item) {
-                    debug!(
-                        "Could not send final data_structs to main thread: {}",
-                        e
-                    );
-                }
+            // Reader is done and no more data is expected. Drain remaining cache.
+            if let Some(batch) = self.take_cached(true) {
+                return Some(Ok(batch));
             }
-            break;
+            // All done
+            return None;
         }
-    }
-}
-
-/// Partition a batch of data_structs by chromosome
-/// It is caller responsibility to validate schema
-fn partition_batch(
-    batch: DataFrame,
-    chr_col: &str,
-    pos_col: &str,
-) -> Result<Vec<DataFrame>, Box<dyn Error>> {
-    let first_pos = first_position(&batch, chr_col, pos_col)?;
-    let last_pos = last_position(&batch, chr_col, pos_col)?;
-
-    if first_pos.chr() != last_pos.chr() {
-        Ok(batch.partition_by_stable([chr_col], true)?)
-    }
-    else {
-        Ok(vec![batch])
     }
 }

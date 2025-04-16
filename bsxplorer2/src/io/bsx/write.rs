@@ -2,10 +2,9 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::data_structs::batch::builder::BsxBatchBuilder;
-use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::encoded::EncodedBsxBatch;
-use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
+use crate::data_structs::batch::BsxBatch;
+use crate::data_structs::batch::EncodedBsxBatch;
+use crate::data_structs::batch::{colnames, BsxBatchBuilder, BsxBatchMethods};
 use crate::utils::get_categorical_dtype;
 use anyhow::{Context, Result};
 use itertools::Itertools;
@@ -21,7 +20,8 @@ use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 /// compression.
 pub struct BsxIpcWriter<W>
 where
-    W: Write, {
+    W: Write,
+{
     /// Underlying Arrow IPC writer that handles the actual serialization
     writer: polars::io::ipc::BatchedWriter<W>,
     /// Schema defining the structure of the BSX data_structs
@@ -201,11 +201,15 @@ where
         batch: BsxBatch,
     ) -> PolarsResult<()> {
         debug!("Encoding and writing batch to IPC file");
-        let encoded = match BsxBatchBuilder::encode_batch(batch, self.get_chr_dtype().clone())
-        {
+        let encoded = match BsxBatchBuilder::encode_batch(
+            batch,
+            self.get_chr_dtype().clone(),
+        ) {
             Ok(encoded) => encoded,
             Err(_) => {
-                return Err(PolarsError::ComputeError("failed to encode batch".into()));
+                return Err(PolarsError::ComputeError(
+                    "failed to encode batch".into(),
+                ));
             },
         };
         self.write_encoded_batch(encoded)

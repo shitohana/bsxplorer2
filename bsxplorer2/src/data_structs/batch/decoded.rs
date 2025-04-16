@@ -17,7 +17,10 @@ pub struct BsxBatch {
 
 impl Eq for BsxBatch {}
 impl PartialEq for BsxBatch {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(
+        &self,
+        other: &Self,
+    ) -> bool {
         self.data == other.data
     }
 }
@@ -179,7 +182,8 @@ mod tests {
     #[test]
     fn test_chr() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::CHR_NAME.into(), &["chr1", "chr1", "chr1"]);
+        let expected =
+            Series::new(colnames::CHR_NAME.into(), &["chr1", "chr1", "chr1"]);
         assert_eq!(batch.chr().clone().into_series(), expected);
     }
 
@@ -193,35 +197,46 @@ mod tests {
     #[test]
     fn test_strand() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::STRAND_NAME.into(), &["+", "+", "-"]);
+        let expected =
+            Series::new(colnames::STRAND_NAME.into(), &["+", "+", "-"]);
         assert_eq!(batch.strand().clone().into_series(), expected);
     }
 
     #[test]
     fn test_context() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::CONTEXT_NAME.into(), &["CG", "CHG", "CHH"]);
+        let expected =
+            Series::new(colnames::CONTEXT_NAME.into(), &["CG", "CHG", "CHH"]);
         assert_eq!(batch.context().clone().into_series(), expected);
     }
 
     #[test]
     fn test_count_m() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::COUNT_M_NAME.into(), &[5u32, 10, 15]);
+        let expected =
+            Series::new(colnames::COUNT_M_NAME.into(), &[5u32, 10, 15]);
         assert_eq!(batch.count_m().clone().into_series(), expected);
     }
 
     #[test]
     fn test_count_total() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::COUNT_TOTAL_NAME.into(), &[10u32, 20, 30]);
-        assert_eq!(batch.count_total().clone().into_series(), expected);
+        let expected =
+            Series::new(colnames::COUNT_TOTAL_NAME.into(), &[10u32, 20, 30]);
+        assert_eq!(
+            batch
+                .count_total()
+                .clone()
+                .into_series(),
+            expected
+        );
     }
 
     #[test]
     fn test_density() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::DENSITY_NAME.into(), &[0.5f64, 0.5, 0.5]);
+        let expected =
+            Series::new(colnames::DENSITY_NAME.into(), &[0.5f64, 0.5, 0.5]);
         assert_eq!(batch.density().clone().into_series(), expected);
     }
 
@@ -256,10 +271,14 @@ mod tests {
         let batch = unsafe { BsxBatch::new_unchecked(empty_df) };
         assert!(batch.chr_val().is_err());
         // Check error kind if possible/needed, e.g., contains("no data")
-        assert!(batch.chr_val().unwrap_err().to_string().contains("no data"));
+        assert!(batch
+            .chr_val()
+            .unwrap_err()
+            .to_string()
+            .contains("no data"));
     }
 
-     #[test]
+    #[test]
     fn test_try_from_valid() {
         let df = create_test_df();
         let batch = BsxBatch::try_from(df);
@@ -267,7 +286,7 @@ mod tests {
         assert_eq!(batch.unwrap().chr_val().unwrap(), "chr1");
     }
 
-     #[test]
+    #[test]
     fn test_try_from_invalid_chromosome() {
         let df = df!(
             colnames::CHR_NAME => &["chr1", "chr2", "chr1"], // Multiple chromosomes
@@ -281,6 +300,9 @@ mod tests {
         .unwrap();
         let batch = BsxBatch::try_from(df);
         assert!(batch.is_err());
-        assert!(batch.unwrap_err().to_string().contains("Multiple chromosomes"));
+        assert!(batch
+            .unwrap_err()
+            .to_string()
+            .contains("Multiple chromosomes"));
     }
 }

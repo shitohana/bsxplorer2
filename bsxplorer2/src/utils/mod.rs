@@ -15,7 +15,6 @@ use crate::data_structs::region::GenomicPosition;
 
 pub mod types;
 
-
 /// Converts an array of name-datatype pairs to a Polars Schema
 ///
 /// # Arguments
@@ -358,7 +357,8 @@ where
         + num::traits::NumOps
         + Sync
         + Send
-        + fmt::Debug, {
+        + fmt::Debug,
+{
     info!(
         "Performing 2D two-sample KS test: sample1={}, sample2={}",
         x1.len(),
@@ -469,7 +469,8 @@ where
         + Copy
         + Clone
         + num::traits::NumOps
-        + fmt::Debug, {
+        + fmt::Debug,
+{
     if x.len() != y.len() {
         warn!(
             "Cannot calculate Pearson's r: x length ({}) doesn't match y \
@@ -560,7 +561,8 @@ where
         + PartialOrd
         + Copy
         + Clone
-        + num::traits::NumOps, {
+        + num::traits::NumOps,
+{
     if x.len() != y.len() {
         warn!(
             "Cannot count quadrants: x length ({}) doesn't match y length ({})",
@@ -658,8 +660,7 @@ fn ks_prob(
     if qks < prec {
         debug!("KS probability close to zero (< {})", prec);
         0.0
-    }
-    else {
+    } else {
         qks
     }
 }
@@ -672,7 +673,7 @@ struct Observation<F: Float> {
     /// Which group the observation belongs to (0 for group1, 1 for group2)
     group: usize,
     /// The assigned rank of this observation
-    rank:  f64,
+    rank: f64,
 }
 
 /// Performs Mann-Whitney U test for two independent samples
@@ -708,19 +709,15 @@ pub fn mann_whitney_u<F: Float>(
     // Combine observations from both groups
     let mut observations: Vec<Observation<F>> = group1
         .iter()
-        .map(|&v| {
-            Observation {
-                value: v,
-                group: 0,
-                rank:  0.0,
-            }
+        .map(|&v| Observation {
+            value: v,
+            group: 0,
+            rank: 0.0,
         })
-        .chain(group2.iter().map(|&v| {
-            Observation {
-                value: v,
-                group: 1,
-                rank:  0.0,
-            }
+        .chain(group2.iter().map(|&v| Observation {
+            value: v,
+            group: 1,
+            rank: 0.0,
         }))
         .collect();
 
@@ -728,9 +725,7 @@ pub fn mann_whitney_u<F: Float>(
     observations.sort_by(|a, b| {
         a.value
             .partial_cmp(&b.value)
-            .unwrap_or_else(|| {
-                std::cmp::Ordering::Equal
-            })
+            .unwrap_or_else(|| std::cmp::Ordering::Equal)
     });
 
     // Assign ranks, handling ties by averaging
@@ -767,11 +762,14 @@ pub fn mann_whitney_u<F: Float>(
     }
 
     // Compute the sum of ranks for group1
-    let r1: F = F::from(observations
-        .iter()
-        .filter(|obs| obs.group == 0)
-        .map(|obs| obs.rank)
-        .sum::<f64>()).unwrap();
+    let r1: F = F::from(
+        observations
+            .iter()
+            .filter(|obs| obs.group == 0)
+            .map(|obs| obs.rank)
+            .sum::<f64>(),
+    )
+    .unwrap();
 
     // Calculate U statistics
     let u1 = r1 - n1 * (n1 + F::from(1.0).unwrap()) / F::from(2.0).unwrap();
@@ -783,18 +781,21 @@ pub fn mann_whitney_u<F: Float>(
     let mean_u = n1 * n2 / F::from(2.0).unwrap();
 
     // Variance with tie correction
-    let tie_sum = F::from(tie_groups
-        .iter()
-        .map(|&t| (t * t * t - t) as f64)
-        .sum::<f64>()).unwrap();
+    let tie_sum = F::from(
+        tie_groups
+            .iter()
+            .map(|&t| (t * t * t - t) as f64)
+            .sum::<f64>(),
+    )
+    .unwrap();
     let variance_u = n1 * n2 / F::from(12.0).unwrap()
-        * ((n_total + F::from(1.0).unwrap()) - tie_sum / (n_total * (n_total - F::from(1.0).unwrap())));
+        * ((n_total + F::from(1.0).unwrap())
+            - tie_sum / (n_total * (n_total - F::from(1.0).unwrap())));
 
     // Apply continuity correction and compute Z-score
     let z = if variance_u > F::from(0.0).unwrap() {
         (u_stat - mean_u + F::from(0.5).unwrap()) / variance_u.sqrt()
-    }
-    else {
+    } else {
         warn!("Variance is zero in Mann-Whitney U test");
         F::from(0.0).unwrap()
     };

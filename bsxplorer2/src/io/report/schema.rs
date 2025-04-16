@@ -1,18 +1,9 @@
-use std::ops::Div;
-
-use itertools::Itertools;
-use log::{debug, trace, warn};
 use polars::prelude::*;
 
-use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
+use crate::data_structs::batch::BsxBatchMethods;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
-/// Represents different methylation report file formats supported by the
-/// application.
-///
-/// Each format has its own column structure and data_structs types that need to
-/// be handled differently during import and transformation operations.
+/// Supported methylation report file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReportTypeSchema {
     /// Bismark methylation extractor output format
@@ -26,41 +17,31 @@ pub enum ReportTypeSchema {
 }
 
 impl ReportTypeSchema {
-    /// Returns the column names for the specific report format.
-    ///
-    /// Each report type has a predefined set of columns that are expected
-    /// in files of that format.
+    /// Returns column names for this report format.
     pub const fn col_names(&self) -> &[&'static str] {
         match self {
-            Self::Bismark => {
-                &[
-                    "chr", "position", "strand", "count_m", "count_um",
-                    "context", "trinuc",
-                ]
-            },
+            Self::Bismark => &[
+                "chr", "position", "strand", "count_m", "count_um", "context",
+                "trinuc",
+            ],
             Self::Coverage => {
                 &["chr", "start", "end", "density", "count_m", "count_um"]
             },
-            Self::CgMap => {
-                &[
-                    "chr",
-                    "nuc",
-                    "position",
-                    "context",
-                    "dinuc",
-                    "density",
-                    "count_m",
-                    "count_total",
-                ]
-            },
+            Self::CgMap => &[
+                "chr",
+                "nuc",
+                "position",
+                "context",
+                "dinuc",
+                "density",
+                "count_m",
+                "count_total",
+            ],
             Self::BedGraph => &["chr", "start", "end", "density"],
         }
     }
 
-    /// Returns the data_structs types for each column in the report format.
-    ///
-    /// The order of data_structs types corresponds to the order of column names
-    /// returned by `col_names()`.
+    /// Returns data types for each column.
     const fn col_types(&self) -> &[DataType] {
         match self {
             Self::Bismark => {
@@ -107,7 +88,7 @@ impl ReportTypeSchema {
         }
     }
 
-    /// Returns the name of the chromosome column for this report type.
+    /// Returns chromosome column name.
     pub const fn chr_col(&self) -> &'static str {
         match self {
             Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => {
@@ -116,10 +97,7 @@ impl ReportTypeSchema {
         }
     }
 
-    /// Returns the name of the position column for this report type.
-    ///
-    /// Different report formats may use different column names to represent the
-    /// genomic position.
+    /// Returns position column name.
     pub const fn position_col(&self) -> &'static str {
         match self {
             Self::Coverage | Self::BedGraph => "start",
@@ -127,9 +105,7 @@ impl ReportTypeSchema {
         }
     }
 
-    /// Returns the name of the context column if it exists in this report type.
-    ///
-    /// Some formats might not include methylation context information.
+    /// Returns context column name if available.
     pub const fn context_col(&self) -> Option<&'static str> {
         match self {
             Self::Bismark | Self::CgMap => Some("context"),
@@ -137,9 +113,7 @@ impl ReportTypeSchema {
         }
     }
 
-    /// Returns the name of the strand column if it exists in this report type.
-    ///
-    /// Some formats might not include strand information.
+    /// Returns strand column name if available.
     pub const fn strand_col(&self) -> Option<&'static str> {
         match self {
             Self::Bismark | Self::CgMap => Some("strand"),
@@ -147,10 +121,7 @@ impl ReportTypeSchema {
         }
     }
 
-    /// Indicates whether this report type needs alignment when processing.
-    ///
-    /// Some report formats contain range data_structs that requires special
-    /// alignment handling.
+    /// Whether this format needs alignment when processing.
     pub const fn need_align(&self) -> bool {
         match self {
             Self::Bismark | Self::CgMap => false,
@@ -158,28 +129,18 @@ impl ReportTypeSchema {
         }
     }
 
-    /// Creates a Polars Schema for this report format.
-    ///
-    /// The schema defines the column names and their corresponding data_structs
-    /// types.
+    /// Creates a Polars Schema for this format.
     pub fn schema(&self) -> Schema {
-        debug!("Creating schema for {:?} report format", self);
         schema_from_arrays(self.col_names(), self.col_types())
     }
 
-    /// Creates a HashMap mapping column names to their data_structs types for
-    /// this report format.
+    /// Creates a HashMap of column names to data types.
     pub fn hashmap(&self) -> PlHashMap<&str, DataType> {
-        trace!("Creating column type HashMap for {:?} report format", self);
         hashmap_from_arrays(self.col_names(), self.col_types())
     }
 
-    /// Creates CSV read options configured for this report format.
-    ///
-    /// The returned options are configured with appropriate settings for
-    /// parsing files of this specific report type.
+    /// Creates CSV read options for this format.
     pub fn read_options(&self) -> CsvReadOptions {
-        debug!("Configuring CSV read options for {:?} format", self);
         let mut read_options = CsvReadOptions::default()
             .with_has_header(false) // None of the supported formats have headers
             .with_schema(Some(SchemaRef::from(self.schema())))
@@ -192,295 +153,9 @@ impl ReportTypeSchema {
 
         // BedGraph format has a header line that needs to be skipped
         if let Self::BedGraph = self {
-            debug!("BedGraph format detected - configuring to skip header row");
             read_options = read_options.with_skip_rows(1);
         };
 
         read_options
-    }
-
-    /// Converts a DataFrame from BsxBatch format back to the original report
-    /// format.
-    ///
-    /// This is the inverse operation of `bsx_mutate()`, transforming from the
-    /// internal representation back to the specific report format.
-    ///
-    /// # Parameters
-    /// * `df` - A DataFrame in BsxBatch format
-    ///
-    /// # Returns
-    /// A PolarsResult<DataFrame> in the original report format
-    pub fn report_mutate_from_bsx(
-        &self,
-        df: DataFrame,
-    ) -> PolarsResult<DataFrame> {
-        debug!("Converting from BsxBatch to {:?} format", self);
-        trace!("Input DataFrame shape: {}x{}", df.height(), df.width());
-
-        let result = match self {
-            ReportTypeSchema::Bismark => {
-                debug!("Transforming to Bismark format");
-                df.lazy()
-                    // Calculate unmethylated count from total and methylated counts
-                    .with_column((col("count_total") - col("count_m")).alias("count_um"))
-                    // Copy context column to trinuc (they're the same in Bismark)
-                    .with_column(col("context").alias("trinuc"))
-                    // Select only the columns needed for Bismark format
-                    .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data_structs types
-                    .cast(self.hashmap(), true)
-                    .collect()
-            },
-            ReportTypeSchema::CgMap => {
-                debug!("Transforming to CgMap format");
-                df.lazy()
-                    // Determine nucleotide based on strand (+ is C, - is G)
-                    .with_columns([when(col("strand").eq(lit("+")))
-                        .then(lit("C"))
-                        .when(col("strand").eq(lit("-")))
-                        .then(lit("G"))
-                        .otherwise(lit("."))
-                        .alias("nuc")])
-                    // Copy context column to dinuc (they're the same in CgMap)
-                    .with_column(col("context").alias("dinuc"))
-                    // Select only the columns needed for CgMap format
-                    .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data_structs types
-                    .cast(self.hashmap(), true)
-                    .collect()
-            },
-            ReportTypeSchema::BedGraph => {
-                debug!("Transforming to BedGraph format");
-                df.lazy()
-                    // Convert position to start/end columns
-                    .with_columns([col("position").alias("start"), col("position").alias("end")])
-                    // Remove any rows with NaN density values
-                    .drop_nans(Some(vec![col("density")]))
-                    // Select only the columns needed for BedGraph format
-                    .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data_structs types
-                    .cast(self.hashmap(), true)
-                    .collect()
-            },
-            ReportTypeSchema::Coverage => {
-                debug!("Transforming to Coverage format");
-                df.lazy()
-                    // Convert position to start/end columns
-                    .with_columns([col("position").alias("start"), col("position").alias("end")])
-                    // Remove any rows with NaN density values
-                    .drop_nans(Some(vec![col("density")]))
-                    // Calculate unmethylated count from total and methylated counts
-                    .with_column((col("count_total") - col("count_m")).alias("count_um"))
-                    // Select only the columns needed for Coverage format
-                    .select(self.col_names().iter().map(|s| col(*s)).collect_vec())
-                    // Ensure all columns have the correct data_structs types
-                    .cast(self.hashmap(), true)
-                    .collect()
-            },
-        };
-
-        match &result {
-            Ok(df) => {
-                trace!(
-                    "Transformed DataFrame shape: {}x{}",
-                    df.height(),
-                    df.width()
-                )
-            },
-            Err(e) => warn!("Error converting from BsxBatch: {}", e),
-        }
-
-        result
-    }
-}
-
-#[cfg(test)]
-mod report_schema_test {
-    use crate::data_structs::batch::builder::BsxBatchBuilder;
-    use crate::data_structs::batch::decoded::BsxBatch;
-    use crate::data_structs::batch::traits::BsxBatchMethods;
-    use crate::io::report::schema::ReportTypeSchema;
-    use crate::io::report::*;
-
-    #[test]
-    fn bismark_conversion() {
-        let report_type = ReportTypeSchema::Bismark;
-
-        let input_df = df![
-            "chr" => ["1", "1", "1"],
-            "position" => [1, 2, 3],
-            "strand" => [".", ".", "."],
-            "context" => ["CG", "CHG", "CHH"],
-            "count_m" => [0, 1, 0],
-            "count_um" => [1, 0, 1],
-            "trinuc" => ["CG", "CHG", "CHH"]
-        ]
-        .unwrap()
-        .lazy()
-        .cast(report_type.hashmap(), true)
-        .collect()
-        .unwrap()
-        .select(report_type.col_names().iter().cloned())
-        .unwrap();
-
-        let output_df = df![
-            "chr" => ["1", "1", "1"],
-            "position" => [1, 2, 3],
-            "strand" => [".", ".", "."],
-            "context" => ["CG", "CHG", "CHH"],
-            "count_m" => [0, 1, 0],
-            "count_total" => [1, 1, 1],
-            "density" => [0, 1, 0]
-        ]
-        .unwrap()
-        .lazy()
-        .cast(BsxBatch::hashmap(), true)
-        .collect()
-        .unwrap();
-
-        let bsx_batch = BsxBatchBuilder::default()
-            .with_report_type(report_type)
-            .build::<BsxBatch>(input_df.clone())
-            .unwrap();
-        let new_df = DataFrame::from(bsx_batch);
-        assert_eq!(new_df, output_df);
-        let reverse_transform = report_type
-            .report_mutate_from_bsx(new_df)
-            .unwrap();
-        assert_eq!(reverse_transform, input_df);
-    }
-
-    #[test]
-    fn cgmap_conversion() {
-        let report_type = ReportTypeSchema::CgMap;
-
-        let input_df = df![
-            "chr" => ["1", "1", "1"],
-            "nuc" => ["G", "C", "C"],
-            "position" => [1, 2, 3],
-            "context" => ["CG", "CHG", "CHH"],
-            "dinuc" => ["CG", "CHG", "CHH"],
-            "density" => [0, 1, 0],
-            "count_m" => [0, 1, 0],
-            "count_total" => [1, 1, 1],
-        ]
-        .unwrap()
-        .lazy()
-        .cast(report_type.hashmap(), true)
-        .collect()
-        .unwrap();
-
-        let output_df = df![
-            "chr" => ["1", "1", "1"],
-            "position" => [1, 2, 3],
-            "strand" => ["-", "+", "+"],
-            "context" => ["CG", "CHG", "CHH"],
-            "count_m" => [0, 1, 0],
-            "count_total" => [1, 1, 1],
-            "density" => [0, 1, 0]
-        ]
-        .unwrap()
-        .lazy()
-        .cast(BsxBatch::hashmap(), true)
-        .collect()
-        .unwrap();
-
-        let bsx_batch = BsxBatchBuilder::default()
-            .with_report_type(report_type)
-            .build::<BsxBatch>(input_df.clone())
-            .unwrap();
-        let new_df = DataFrame::from(bsx_batch);
-        assert_eq!(new_df, output_df);
-        let reverse_transform = report_type
-            .report_mutate_from_bsx(new_df)
-            .unwrap();
-        assert_eq!(reverse_transform, input_df);
-    }
-
-    #[test]
-    fn coverage_conversion() {
-        let report_type = ReportTypeSchema::Coverage;
-        let input_df = df![
-            "chr" => ["1", "1", "1"],
-            "start" => [1, 2, 3],
-            "end" => [1, 2, 3],
-            "density" => [0, 1, 0],
-            "count_m" => [0, 1, 0],
-            "count_um" => [1, 0, 1],
-        ]
-        .unwrap()
-        .lazy()
-        .cast(report_type.hashmap(), true)
-        .collect()
-        .unwrap();
-
-        let output_df = df![
-            "chr" => ["1", "1", "1"],
-            "position" => [1, 2, 3],
-            "strand" => [".", ".", "."],
-            "context" => [None::<&str>, None, None],
-            "count_m" => [0, 1, 0],
-            "count_total" => [1, 1, 1],
-            "density" => [0, 1, 0]
-        ]
-        .unwrap()
-        .lazy()
-        .cast(BsxBatch::hashmap(), true)
-        .collect()
-        .unwrap();
-
-        let bsx_batch = BsxBatchBuilder::default()
-            .with_report_type(report_type)
-            .build::<BsxBatch>(input_df.clone())
-            .unwrap();
-        let new_df = DataFrame::from(bsx_batch);
-        assert_eq!(new_df, output_df);
-        let reverse_transform = report_type
-            .report_mutate_from_bsx(new_df)
-            .unwrap();
-        assert_eq!(reverse_transform, input_df);
-    }
-
-    #[test]
-    fn bedgraph_conversion() {
-        let report_type = ReportTypeSchema::BedGraph;
-
-        let input_df = df![
-            "chr" => ["1", "1", "1"],
-            "start" => [1, 2, 3],
-            "end" => [1, 2, 3],
-            "density" => [0, 1, 0],
-        ]
-        .unwrap()
-        .lazy()
-        .cast(report_type.hashmap(), true)
-        .collect()
-        .unwrap();
-
-        let output_df = df![
-            "chr" => ["1", "1", "1"],
-            "position" => [1, 2, 3],
-            "strand" => [".", ".", "."],
-            "context" => [None::<&str>, None, None],
-            "count_m" => [None::<u32>, None, None],
-            "count_total" => [None::<u32>, None, None],
-            "density" => [0, 1, 0]
-        ]
-        .unwrap()
-        .lazy()
-        .cast(BsxBatch::hashmap(), true)
-        .collect()
-        .unwrap();
-
-        let bsx_batch = BsxBatchBuilder::default()
-            .with_report_type(report_type)
-            .build::<BsxBatch>(input_df.clone())
-            .unwrap();
-        let new_df = DataFrame::from(bsx_batch);
-        assert_eq!(new_df, output_df);
-        let reverse_transform = report_type
-            .report_mutate_from_bsx(new_df)
-            .unwrap();
-        assert_eq!(reverse_transform, input_df);
     }
 }

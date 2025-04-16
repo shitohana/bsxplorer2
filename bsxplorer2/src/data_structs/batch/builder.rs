@@ -4,9 +4,10 @@ use crate::data_structs::batch::decoded::BsxBatch;
 use crate::data_structs::batch::traits::{
     colnames, BatchType, BsxBatchMethods, BsxTypeTag,
 };
+use crate::data_structs::context_data::ContextData;
 use crate::data_structs::region::GenomicPosition;
 use crate::io::report::schema::ReportTypeSchema;
-use crate::utils::types::{Context, Strand};
+use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use crate::utils::{
     decode_context, decode_strand, encode_context, encode_strand,
 };
@@ -15,139 +16,6 @@ use itertools::{sorted, Itertools};
 use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
-// TODO
-//  - Add builder for report batches to unify interface
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ContextData {
-    positions: Vec<u32>,
-    strands: Vec<Strand>,
-    contexts: Vec<Context>,
-}
-
-impl ContextData {
-    pub fn new(
-        positions: Vec<u32>,
-        strands: Vec<Strand>,
-        contexts: Vec<Context>,
-    ) -> Self {
-        assert_eq!(positions.len(), strands.len());
-        assert_eq!(positions.len(), contexts.len());
-        Self {
-            positions,
-            strands,
-            contexts,
-        }
-    }
-
-    pub fn empty() -> Self {
-        Self {
-            positions: vec![],
-            strands: vec![],
-            contexts: vec![],
-        }
-    }
-
-    pub fn push(
-        &mut self,
-        position: u32,
-        strand: Strand,
-        context: Context,
-    ) {
-        self.positions.push(position);
-        self.strands.push(strand);
-        self.contexts.push(context);
-    }
-
-    pub fn read_sequence(
-        &mut self,
-        seq: &[u8],
-        start: u32,
-    ) {
-        let uppercase = seq.to_ascii_uppercase();
-
-        for (shift, trinuc) in uppercase.windows(3).enumerate() {
-            match trinuc {
-                &[b'C', b'G', _] => {
-                    self.push(
-                        start + shift as u32,
-                        Strand::Forward,
-                        Context::CG,
-                    );
-                    self.push(
-                        start + shift as u32 + 1,
-                        Strand::Reverse,
-                        Context::CG,
-                    );
-                },
-                &[b'C', _, b'G'] => {
-                    self.push(
-                        start + shift as u32,
-                        Strand::Forward,
-                        Context::CHG,
-                    );
-                    self.push(
-                        start + shift as u32 + 2,
-                        Strand::Reverse,
-                        Context::CHG,
-                    );
-                },
-                &[b'C', _, _] => self.push(
-                    start + shift as u32,
-                    Strand::Forward,
-                    Context::CHH,
-                ),
-                &[_, _, b'G'] => {
-                    self.push(
-                        start + shift as u32 + 2,
-                        Strand::Reverse,
-                        Context::CHH,
-                    );
-                },
-                _ => continue,
-            }
-        }
-        if let Some(&[b'C', b'G']) =
-            uppercase.get(uppercase.len().saturating_sub(2)..)
-        {
-            self.push(
-                start + uppercase.len() as u32 - 1,
-                Strand::Reverse,
-                Context::CG,
-            );
-        }
-    }
-
-    pub fn drain_until(
-        &mut self,
-        pos: u32,
-    ) -> Self {
-        let offset = self
-            .positions
-            .iter()
-            .position(|&x| x > pos)
-            .unwrap_or(self.len());
-        Self {
-            positions: self
-                .positions
-                .drain(..=offset)
-                .collect_vec(),
-            strands: self
-                .strands
-                .drain(..=offset)
-                .collect_vec(),
-            contexts: self.contexts.drain(..offset).collect(),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.positions.len()
-    }
-
-    pub fn take(self) -> (Vec<u32>, Vec<Strand>, Vec<Context>) {
-        (self.positions, self.strands, self.contexts)
-    }
-}
 
 /// Builder for constructing and validating BSX batch data
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -281,7 +149,12 @@ impl BsxBatchBuilder {
         &self,
         data: DataFrame,
     ) -> anyhow::Result<DataFrame> {
-        if self.check_single_chr && data.column(colnames::CHR_NAME)?.n_unique()? != 1 {
+        if self.check_single_chr
+            && data
+                .column(colnames::CHR_NAME)?
+                .n_unique()?
+                != 1
+        {
             bail!("Multiple chromosomes")
         }
         if self.check_nulls {
@@ -304,7 +177,12 @@ impl BsxBatchBuilder {
         &self,
         data: &DataFrame,
     ) -> anyhow::Result<()> {
-        if self.check_single_chr && data.column(colnames::CHR_NAME)?.n_unique()? != 1 {
+        if self.check_single_chr
+            && data
+                .column(colnames::CHR_NAME)?
+                .n_unique()?
+                != 1
+        {
             bail!("Multiple chromosomes")
         }
         if self.check_nulls {
@@ -398,7 +276,6 @@ impl BsxBatchBuilder {
         };
         Ok(res)
     }
-
 
     /// Rechunks the data if enabled in the builder
     fn rechunk(
@@ -513,7 +390,6 @@ mod decoded {
                 col("start").alias("position"),
                 lit(".").alias("strand"),
                 lit(NULL).alias("context"),
-                density_col_expr(),
             ]);
         let casted = select_cast(col_added);
         casted.collect().map_err(|e| anyhow!(e))
@@ -638,7 +514,6 @@ mod encoded {
                 col("start").alias("position"),
                 lit(NULL).alias("strand"),
                 lit(NULL).alias("context"),
-                density_col_expr(),
             ]);
         let casted = select_cast(col_added, chr_dtype);
         casted.collect().map_err(|e| anyhow!(e))
@@ -710,7 +585,7 @@ mod tests {
         decoded::BsxBatch, traits::BsxBatchMethods,
     };
     use polars::df;
-    use polars::prelude::{AnyValue, NamedFrom};
+    use polars::prelude::NamedFrom;
     use rstest::rstest;
 
     // Helper function to create a basic DataFrame for testing
@@ -754,7 +629,6 @@ mod tests {
         )
         .unwrap()
     }
-
 
     #[test]
     fn test_check_modify_sorts_when_needed() -> anyhow::Result<()> {

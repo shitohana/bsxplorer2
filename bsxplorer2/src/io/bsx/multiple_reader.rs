@@ -10,8 +10,8 @@ use itertools::Itertools;
 use log::{debug, info, warn};
 use serde::Serialize;
 
-use crate::data_structs::batch::encoded::EncodedBsxBatch;
-use crate::data_structs::batch::traits::BsxBatchMethods;
+use crate::data_structs::batch::BsxBatchMethods;
+use crate::data_structs::batch::EncodedBsxBatch;
 use crate::io::bsx::read::BsxFileReader;
 
 /// A reader for multiple BSX files that handles concurrent batch reading
@@ -19,13 +19,14 @@ use crate::io::bsx::read::BsxFileReader;
 pub struct MultiBsxFileReader<M, R>
 where
     M: Hash + Serialize + Eq + Send + Sync + Debug + 'static,
-    R: Read + Seek + Send + Sync + 'static, {
+    R: Read + Seek + Send + Sync + 'static,
+{
     /// Current batch index position in the readers
     current_batch_idx: usize,
     /// Map of metadata keys to their corresponding file readers
-    readers:           HashMap<Arc<M>, Arc<RwLock<BsxFileReader<R>>>>,
+    readers: HashMap<Arc<M>, Arc<RwLock<BsxFileReader<R>>>>,
     /// Cached vector of keys for fast iteration
-    _keys_bound:       Vec<Arc<M>>,
+    _keys_bound: Vec<Arc<M>>,
 }
 
 impl<M, R> MultiBsxFileReader<M, R>
@@ -104,7 +105,9 @@ where
     ///
     /// # Returns
     /// * `usize` - Current batch index
-    pub fn current_batch_idx(&self) -> usize { self.current_batch_idx }
+    pub fn current_batch_idx(&self) -> usize {
+        self.current_batch_idx
+    }
 
     /// Retrieves a batch from all readers at the specified index
     ///

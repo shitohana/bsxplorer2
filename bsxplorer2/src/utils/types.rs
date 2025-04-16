@@ -36,8 +36,7 @@ impl Ord for Context {
     ) -> Ordering {
         if self == other {
             Ordering::Equal
-        }
-        else {
+        } else {
             match (self, other) {
                 (Context::CG, _) => Ordering::Greater,
                 (_, Context::CG) => Ordering::Less,
@@ -107,8 +106,7 @@ impl Ord for Strand {
     ) -> Ordering {
         if self == other {
             Ordering::Equal
-        }
-        else {
+        } else {
             match (self, other) {
                 (Strand::Forward, _) => Ordering::Greater,
                 (_, Strand::Forward) => Ordering::Less,
@@ -155,7 +153,8 @@ impl IPCEncodedEnum for Strand {
 }
 
 pub trait PosNum:
-    PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash {
+    PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash
+{
 }
 
 impl<T> PosNum for T where
@@ -164,7 +163,8 @@ impl<T> PosNum for T where
 }
 
 pub trait RefId:
-    Eq + Hash + From<String> + Clone + Default + Ord + Display {
+    Eq + Hash + From<String> + Clone + Default + Ord + Display
+{
 }
 
 impl<T> RefId for T where

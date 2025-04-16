@@ -39,8 +39,7 @@ fn estimate_alpha_beta_from_mean_var<N: Float>(
         let temp = {
             let unbounded = if mean_trials > to_num(1) {
                 (phi - to_num(1)) / (mean_trials - to_num(1))
-            }
-            else {
+            } else {
                 to_num(PRECISION_LIMIT)
             };
             to_num(bound_prec(unbounded.to_f64().unwrap()))
@@ -50,8 +49,7 @@ fn estimate_alpha_beta_from_mean_var<N: Float>(
         let beta =
             (to_num::<_, N>(1) - mean) * (to_num::<_, N>(1) - temp) / temp;
         (alpha, beta)
-    }
-    else {
+    } else {
         // Use fixed scale for low variance
         (
             mean * to_num(MEAN_SCALE),
@@ -227,8 +225,7 @@ impl<N: Float + ndarray::ScalarOperand> BetaBinomParams<N> {
 
         let (mu, r) = if initial_variance < adj_variance {
             (mu, r)
-        }
-        else {
+        } else {
             Self::get_params_weights_ratio(
                 adj_weights.view(),
                 success_ratio.view(),

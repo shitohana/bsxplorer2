@@ -1,10 +1,11 @@
-use std::io::Write;
+use std::io::{sink, Write};
 
 use log::{debug, info, warn};
 use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;
 
-use crate::data_structs::batch::decoded::BsxBatch;
+use crate::data_structs::batch::BsxBatch;
+use crate::data_structs::batch::LazyBsxBatch;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::report::schema::ReportTypeSchema;
@@ -40,16 +41,15 @@ impl ReportWriter {
         sink: W,
         schema: ReportTypeSchema,
         n_threads: usize,
-        #[cfg(feature = "compression")]
-        compression: Compression,
-        #[cfg(feature = "compression")]
-        compression_level: Option<u32>
+        #[cfg(feature = "compression")] compression: Compression,
+        #[cfg(feature = "compression")] compression_level: Option<u32>,
     ) -> anyhow::Result<Self> {
         debug!("Creating new ReportWriter with {} threads", n_threads);
         let report_options = schema.read_options();
 
         #[cfg(feature = "compression")]
-        let sink = compression.get_encoder(sink, compression_level.unwrap_or(1))?;
+        let sink =
+            compression.get_encoder(sink, compression_level.unwrap_or(1))?;
         #[cfg(not(feature = "compression"))]
         let sink = Box::new(sink) as Box<dyn Write>;
 
@@ -88,15 +88,10 @@ impl ReportWriter {
     pub fn write_batch(
         &mut self,
         batch: BsxBatch,
-    ) -> PolarsResult<()> {
+    ) -> anyhow::Result<()> {
         debug!("Converting BSX batch to report format");
-        let mut converted = self
-            .schema
-            .report_mutate_from_bsx(batch.into())
-            .map_err(|e| {
-                warn!("Failed to convert BSX batch: {}", e);
-                e
-            })?;
+        let mut converted =
+            LazyBsxBatch::<BsxBatch>::from(batch).as_report(&self.schema)?;
 
         debug!("Rechunking converted data_structs for better performance");
         converted.rechunk_mut();
@@ -104,10 +99,7 @@ impl ReportWriter {
         debug!("Writing batch to destination");
         self.writer
             .write_batch(&converted)
-            .map_err(|e| {
-                warn!("Failed to write batch: {}", e);
-                e
-            })
+            .map_err(|e| anyhow::anyhow!("Failed to write batch: {}", e))
     }
 
     /// Writes a DataFrame directly to the destination.
