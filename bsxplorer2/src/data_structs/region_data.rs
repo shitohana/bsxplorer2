@@ -130,7 +130,7 @@ where
 
     /// Returns the length of the region.
     pub fn length(&self) -> N {
-        self.end.clone() - self.start.clone()
+        self.end - self.start
     }
 
     /// Creates a new `RegionData` with the same region information but

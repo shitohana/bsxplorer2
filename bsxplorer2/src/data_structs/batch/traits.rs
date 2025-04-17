@@ -9,19 +9,19 @@ use polars::frame::DataFrame;
 use polars::prelude::*;
 
 pub mod colnames {
-    pub const CHR_NAME: &'static str = "chr";
+    pub const CHR_NAME: &str = "chr";
     /// Position column name
-    pub const POS_NAME: &'static str = "position";
+    pub const POS_NAME: &str = "position";
     /// Strand column name
-    pub const STRAND_NAME: &'static str = "strand";
+    pub const STRAND_NAME: &str = "strand";
     /// Context column name
-    pub const CONTEXT_NAME: &'static str = "context";
+    pub const CONTEXT_NAME: &str = "context";
     /// Methylated count column name
-    pub const COUNT_M_NAME: &'static str = "count_m";
+    pub const COUNT_M_NAME: &str = "count_m";
     /// Total count column name
-    pub const COUNT_TOTAL_NAME: &'static str = "count_total";
+    pub const COUNT_TOTAL_NAME: &str = "count_total";
     /// Density column name
-    pub const DENSITY_NAME: &'static str = "density";
+    pub const DENSITY_NAME: &str = "density";
 
     pub const fn col_names() -> [&'static str; 7] {
         [
@@ -138,6 +138,10 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Create a new batch from a DataFrame without checks
+    /// 
+    /// # Safety
+    /// 
+    /// This function assumes that the DataFrame is valid and that the columns are of the correct type.
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self
     where
         Self: Sized;

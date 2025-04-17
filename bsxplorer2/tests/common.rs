@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use bio::io::fasta::Record;
 use bsxplorer2::data_structs::{
     batch::{BsxBatch, BsxBatchBuilder},

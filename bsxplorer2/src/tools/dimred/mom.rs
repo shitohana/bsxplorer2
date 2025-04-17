@@ -118,9 +118,7 @@ fn theoretical_sample_size<N: Float>(
 }
 
 fn bound_prec(value: f64) -> f64 {
-    value
-        .min(1.0 - PRECISION_LIMIT)
-        .max(PRECISION_LIMIT)
+    value.clamp(PRECISION_LIMIT, 1.0 - PRECISION_LIMIT)
 }
 
 impl<N: Float + ndarray::ScalarOperand> BetaBinomParams<N> {

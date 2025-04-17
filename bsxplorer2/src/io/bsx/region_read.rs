@@ -283,7 +283,7 @@ impl RegionAssembler {
                 for (region_data, batch_data) in trimmed_results.iter() {
                     cache_write
                         .entry(region_data.clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(batch_data.clone());
                 }
             }

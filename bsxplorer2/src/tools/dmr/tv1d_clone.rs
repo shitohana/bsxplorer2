@@ -35,7 +35,7 @@ mod utils {
     pub fn sync_values(
         anchor_value: usize,
         values: &mut [&mut usize],
-    ) -> () {
+    ) {
         for value in values {
             **value = anchor_value;
         }
@@ -87,10 +87,7 @@ where
         + num::Float
         + num::ToPrimitive,
 {
-    assert!(
-        input.len() > 0,
-        "Input list should have at least one value."
-    );
+    assert!(!input.is_empty(), "Input list should have at least one value.");
 
     assert!(
         lambda >= num::zero(),
@@ -285,10 +282,7 @@ where
         + ops::AddAssign<T>
         + Copy,
 {
-    assert!(
-        input.len() > 0,
-        "Input list should have at least one value."
-    );
+    assert!(!input.is_empty(), "Input list should have at least one value.");
 
     assert!(
         lambda >= num::zero(),

@@ -2,23 +2,24 @@ use super::{
     builder::BsxBatchBuilder,
     decoded::BsxBatch,
     encoded::EncodedBsxBatch,
-    traits::{BsxBatchMethods, BsxTypeTag},
+    traits::{BsxBatchMethods, BsxTypeTag}, BatchType,
 };
-use crate::data_structs::batch::traits::colnames;
+use crate::data_structs::batch::traits::colnames::*;
 use crate::data_structs::context_data::ContextData;
-use crate::io::report::schema::ReportTypeSchema;
+use crate::io::report::ReportTypeSchema;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use itertools::Itertools;
 use polars::prelude::*;
 use std::marker::PhantomData;
 
-/// A lazy representation of a BSX batch for efficient query operations
+/// A lazy representation of a BSX batch for efficient query operations.
 pub struct LazyBsxBatch<T: BsxTypeTag + BsxBatchMethods> {
     data: LazyFrame,
     _phantom: PhantomData<T>,
 }
 
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
+    /// Converts the batch to a specified report type.
     pub fn as_report(
         self,
         report_type: &ReportTypeSchema,
@@ -27,36 +28,36 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
             ReportTypeSchema::Bismark => self
                 .data
                 .with_column(
-                    (col("count_total") - col("count_m")).alias("count_um"),
+                    (col(COUNT_TOTAL_NAME) - col(COUNT_M_NAME)).alias("count_um"),
                 )
-                .with_column(col("context").alias("trinuc")),
+                .with_column(col(CONTEXT_NAME).alias("trinuc")),
             ReportTypeSchema::CgMap => {
                 self.data
                     // Determine nucleotide based on strand (+ is C, - is G)
-                    .with_columns([when(col("strand").eq(lit("+")))
+                    .with_columns([when(col(STRAND_NAME).eq(lit("+")))
                         .then(lit("C"))
-                        .when(col("strand").eq(lit("-")))
+                        .when(col(STRAND_NAME).eq(lit("-")))
                         .then(lit("G"))
                         .otherwise(lit("."))
                         .alias("nuc")])
                     // Copy context column to dinuc (they're the same in CgMap)
-                    .with_column(col("context").alias("dinuc"))
+                    .with_column(col(CONTEXT_NAME).alias("dinuc"))
             },
             ReportTypeSchema::BedGraph => {
                 self.data
                     // Convert position to start/end columns
-                    .with_columns([col("position").alias("start"), col("position").alias("end")])
+                    .with_columns([col(POS_NAME).alias("start"), col(POS_NAME).alias("end")])
                     // Remove any rows with NaN density values
-                    .drop_nans(Some(vec![col("density")]))
+                    .drop_nans(Some(vec![col(DENSITY_NAME)]))
             },
             ReportTypeSchema::Coverage => {
                 self.data
                     // Convert position to start/end columns
-                    .with_columns([col("position").alias("start"), col("position").alias("end")])
+                    .with_columns([col(POS_NAME).alias("start"), col(POS_NAME).alias("end")])
                     // Remove any rows with NaN density values
-                    .drop_nans(Some(vec![col("density")]))
+                    .drop_nans(Some(vec![col(DENSITY_NAME)]))
                     // Calculate unmethylated count from total and methylated counts
-                    .with_column((col("count_total") - col("count_m")).alias("count_um"))
+                    .with_column((col(COUNT_TOTAL_NAME) - col(COUNT_M_NAME)).alias("count_um"))
             },
         };
 
@@ -74,11 +75,12 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
 }
 
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
+    /// Collects the lazy batch into a concrete BSX batch type.
     pub fn collect(self) -> anyhow::Result<T> {
         let data = self.data.collect()?.select(T::schema().iter_names_cloned().collect_vec())?;
         Ok(unsafe { T::new_unchecked(data) })
     }
-    /// Applies a filter expression to the batch
+    /// Applies a filter expression to the batch.
     fn filter(
         self,
         predicate: Expr,
@@ -89,7 +91,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         }
     }
 
-    /// Creates a LazyBsxBatch from an existing LazyFrame
+    /// Creates a LazyBsxBatch from an existing LazyFrame.
     fn from_lazy(lazy: LazyFrame) -> Self {
         Self {
             data: lazy,
@@ -97,63 +99,61 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         }
     }
 
-    /// Filters positions less than the specified value
+    /// Filters positions less than the specified value.
     pub fn filter_pos_lt<N: Literal>(
         self,
         value: N,
     ) -> Self {
-        self.filter(col(colnames::POS_NAME).lt(lit(value)))
+        self.filter(col(POS_NAME).lt(lit(value)))
     }
 
-    /// Filters positions greater than the specified value
+    /// Filters positions greater than the specified value.
     pub fn filter_pos_gt<N: Literal>(
         self,
         value: N,
     ) -> Self {
-        self.filter(col(colnames::POS_NAME).gt(lit(value)))
+        self.filter(col(POS_NAME).gt(lit(value)))
     }
 
-    /// Filters entries with coverage less than the specified value
+    /// Filters entries with coverage less than the specified value.
     pub fn filter_coverage_lt<N: Literal>(
         self,
         value: N,
     ) -> Self {
-        self.filter(col(colnames::COUNT_TOTAL_NAME).lt(lit(value)))
+        self.filter(col(COUNT_TOTAL_NAME).lt(lit(value)))
     }
 
-    /// Filters entries by strand value
+    /// Filters entries by strand value.
     pub fn filter_strand(
         self,
         value: Strand,
     ) -> Self {
-        let expr = match T::type_name() {
-            "decoded" => col(colnames::STRAND_NAME).eq(lit(value.to_string())),
-            "encoded" => col(colnames::STRAND_NAME).eq(value
+        let expr = match T::type_enum() {
+            BatchType::Decoded => col(STRAND_NAME).eq(lit(value.to_string())),
+            BatchType::Encoded => col(STRAND_NAME).eq(value
                 .to_bool()
-                .map(|v| lit(v))
+                .map(lit)
                 .unwrap_or(lit(NULL))),
-            other => unimplemented!("Type {}", other),
         };
         self.filter(expr)
     }
 
-    /// Filters entries by context value
+    /// Filters entries by context value.
     pub fn filter_context(
         self,
         value: Context,
     ) -> Self {
-        let expr = match T::type_name() {
-            "decoded" => col(colnames::CONTEXT_NAME).eq(lit(value.to_string())),
-            "encoded" => col(colnames::CONTEXT_NAME).eq(value
+        let expr = match T::type_enum() {
+            BatchType::Decoded => col(CONTEXT_NAME).eq(lit(value.to_string())),
+            BatchType::Encoded => col(CONTEXT_NAME).eq(value
                 .to_bool()
-                .map(|v| lit(v))
+                .map(lit)
                 .unwrap_or(lit(NULL))),
-            other => unimplemented!("Type {}", other),
         };
         self.filter(expr)
     }
 
-    /// Marks entries with coverage below threshold as zero and adjusts related values
+    /// Marks entries with coverage below threshold as zero and adjusts related values.
     pub fn mark_low_coverage(
         self,
         threshold: u32,
@@ -161,24 +161,25 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         let res = self
             .data
             .with_column(
-                when(col("count_total").lt(lit(threshold)))
+                when(col(COUNT_TOTAL_NAME).lt(lit(threshold)))
                     .then(lit(0))
-                    .otherwise(col("count_total"))
-                    .alias("count_total"),
+                    .otherwise(col(COUNT_TOTAL_NAME))
+                    .alias(COUNT_TOTAL_NAME),
             )
             .with_columns([
-                when(col("count_total").eq(lit(0)))
+                when(col(COUNT_TOTAL_NAME).eq(lit(0)))
                     .then(lit(0))
-                    .otherwise(col("count_m"))
-                    .alias("count_m"),
-                when(col("count_total").eq(lit(0)))
+                    .otherwise(col(COUNT_M_NAME))
+                    .alias(COUNT_M_NAME),
+                when(col(COUNT_TOTAL_NAME).eq(lit(0)))
                     .then(lit(f64::NAN))
-                    .otherwise(col("density"))
-                    .alias("density"),
+                    .otherwise(col(DENSITY_NAME))
+                    .alias(DENSITY_NAME),
             ]);
         Self::from_lazy(res)
     }
 
+    /// Aligns the batch with provided context data for specified chromosome.
     pub fn align_with_contexts(
         mut self,
         context_data: ContextData,
@@ -189,27 +190,27 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
 
         let self_selected = self
             .data
-            .drop([col(colnames::CONTEXT_NAME), col(colnames::STRAND_NAME)]);
+            .drop([col(CONTEXT_NAME), col(STRAND_NAME)]);
         let joined = context_df
             .lazy()
             .left_join(
                 self_selected,
-                col(colnames::POS_NAME),
-                col(colnames::POS_NAME),
+                col(POS_NAME),
+                col(POS_NAME),
             )
             .with_columns([
-                col(colnames::CHR_NAME)
+                col(CHR_NAME)
                     .fill_null(lit(chr_val))
-                    .alias(colnames::CHR_NAME),
-                col(colnames::COUNT_M_NAME)
+                    .alias(CHR_NAME),
+                col(COUNT_M_NAME)
                     .fill_null(lit(0))
-                    .alias(colnames::COUNT_M_NAME),
-                col(colnames::COUNT_TOTAL_NAME)
+                    .alias(COUNT_M_NAME),
+                col(COUNT_TOTAL_NAME)
                     .fill_null(lit(0))
-                    .alias(colnames::COUNT_TOTAL_NAME),
-                col(colnames::DENSITY_NAME)
+                    .alias(COUNT_TOTAL_NAME),
+                col(DENSITY_NAME)
                     .fill_null(lit(f32::NAN))
-                    .alias(colnames::DENSITY_NAME),
+                    .alias(DENSITY_NAME),
             ]);
         Self::from_lazy(joined)
     }
@@ -218,7 +219,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
 impl<T: BsxTypeTag + BsxBatchMethods> TryFrom<LazyBsxBatch<T>> for BsxBatch {
     type Error = anyhow::Error;
 
-    /// Attempts to convert a lazy BSX batch to a decoded BSX batch
+    /// Attempts to convert a lazy BSX batch to a decoded BSX batch.
     fn try_from(lazy_batch: LazyBsxBatch<T>) -> Result<Self, Self::Error> {
         let df = lazy_batch.data.collect()?;
         BsxBatchBuilder::no_checks().build(df)
@@ -230,7 +231,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> TryFrom<LazyBsxBatch<T>>
 {
     type Error = anyhow::Error;
 
-    /// Attempts to convert a lazy BSX batch to an encoded BSX batch
+    /// Attempts to convert a lazy BSX batch to an encoded BSX batch.
     fn try_from(lazy_batch: LazyBsxBatch<T>) -> Result<Self, Self::Error> {
         let df = lazy_batch.data.collect()?;
         unsafe { Ok(EncodedBsxBatch::new_unchecked(df)) }
@@ -248,7 +249,7 @@ mod tests {
     use super::*;
     use crate::data_structs::batch::{
         builder::BsxBatchBuilder, decoded::BsxBatch, encoded::EncodedBsxBatch,
-        traits::colnames::*, traits::BsxBatchMethods,
+        traits::*, traits::BsxBatchMethods,
     };
     use crate::utils::get_categorical_dtype;
     use crate::utils::types::{Context, Strand};
@@ -290,7 +291,7 @@ mod tests {
         .expect("Failed to build encoded batch")
     }
 
-    use crate::io::report::schema::ReportTypeSchema;
+    use crate::io::report::ReportTypeSchema;
     use rstest::rstest;
 
     #[rstest]

@@ -1,5 +1,10 @@
-pub mod ipc;
-pub mod multiple_reader;
-pub mod read;
-pub mod region_read;
-pub mod write;
+mod ipc;
+mod read;
+mod region_read;
+mod write;
+
+pub use {
+    read::{BsxFileReader, BSXIndex},
+    region_read::{RegionReader},
+    write::BsxIpcWriter,
+};

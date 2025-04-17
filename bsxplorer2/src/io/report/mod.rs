@@ -1,7 +1,9 @@
-use std::error::Error;
+mod read;
+mod schema;
+mod write;
 
-use polars::prelude::*;
-
-pub mod read;
-pub mod schema;
-pub mod write;
+pub use {
+    read::{ReportReader, ReportReaderBuilder},
+    schema::ReportTypeSchema,
+    write::ReportWriter
+};

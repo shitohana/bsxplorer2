@@ -195,11 +195,11 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         let dtype = index
             .map(|i| {
                 i.as_ref()
-                    .into_iter()
+                    .iter()
                     .map(|r| String::from_utf8(r.name().to_vec()).unwrap())
                     .collect_vec()
             })
-            .map(|names| get_categorical_dtype(names));
+            .map(get_categorical_dtype);
         Ok(dtype)
     }
 
@@ -212,7 +212,6 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             let iterator = Some(Box::new(
                 reader
                     .records()
-                    .into_iter()
                     .map(|r| r.expect("Failed to read record")),
             )
                 as Box<dyn Iterator<Item = FastaRecord>>);
@@ -293,7 +292,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         let reader = ReportReader {
             _join_handle: join_handle,
             data_receiver: receiver,
-            report_type: self.report_type.clone(),
+            report_type: self.report_type,
             cached_batch: BTreeMap::new(),
             seen_chr: HashMap::new(),
             chunk_size: self.chunk_size,
@@ -338,10 +337,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         // If there is more than one chromosome cached, force yield to avoid blocking on others
         let should_force = force || self.cached_batch.len() > 1;
         // As we've checked, that cache is not empty, we can take first
-        let (idx, batch) = match self.cached_batch.pop_first() {
-            Some(pair) => pair,
-            None => return None,
-        };
+        let (idx, batch) = self.cached_batch.pop_first()?;
         // Split by chunk size
         let (first, second) = batch.split_at(self.chunk_size);
         // If cached length was less than chunk_size
@@ -433,7 +429,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         for (index, data) in partitioned.into_iter().enumerate() {
             // Convert to BSX batch format
             let mut bsx_batch = BsxBatchBuilder::all_checks()
-                .with_report_type(self.report_type.clone())
+                .with_report_type(self.report_type)
                 .with_check_single_chr(false)
                 .with_chr_dtype(self.chr_dtype.clone()) // Will raise if not specified
                 .build::<B>(data)?;
@@ -451,11 +447,10 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
             let chr_idx = self
                 .seen_chr
                 .entry(batch_chr)
-                .or_insert(seen_chr_len)
-                .clone();
+                .or_insert(seen_chr_len);
             // Update cached batch
             self.cached_batch
-                .entry(chr_idx)
+                .entry(*chr_idx)
                 .and_modify(|mut b| {
                     b.extend(&bsx_batch)
                         .expect("vstack failed");

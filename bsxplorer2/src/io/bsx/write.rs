@@ -15,16 +15,12 @@ use polars::export::arrow::datatypes::Metadata;
 pub use polars::prelude::IpcCompression as PolarsIpcCompression;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 
-/// Writer for BSX data_structs in Arrow IPC format.
-/// Handles serialization of BSX batches to Arrow IPC format with optional
-/// compression.
+/// Writer for BSX data in Arrow IPC format with optional compression.
 pub struct BsxIpcWriter<W>
 where
     W: Write,
 {
-    /// Underlying Arrow IPC writer that handles the actual serialization
     writer: polars::io::ipc::BatchedWriter<W>,
-    /// Schema defining the structure of the BSX data_structs
     schema: Schema,
 }
 
@@ -32,18 +28,7 @@ impl<W> BsxIpcWriter<W>
 where
     W: Write,
 {
-    /// Creates a new BSX IPC writer with the given sink, chromosome names,
-    /// compression settings and metadata.
-    ///
-    /// # Arguments
-    /// * `sink` - The destination to write the IPC data_structs to
-    /// * `chr_names` - List of chromosome names to use for categorical encoding
-    /// * `compression` - Optional compression algorithm to use
-    /// * `custom_metadata` - Optional custom metadata to include in the IPC
-    ///   file
-    ///
-    /// # Returns
-    /// A new `BsxIpcWriter` or an error if initialization fails
+    /// Creates a new BSX IPC writer.
     pub fn try_new(
         sink: W,
         chr_names: Vec<String>,
@@ -70,7 +55,6 @@ where
 
         let mut writer = opts.to_writer(sink);
         if let Some(metadata) = custom_metadata {
-            debug!("Setting custom schema metadata");
             writer.set_custom_schema_metadata(metadata);
         }
 
@@ -78,26 +62,13 @@ where
             .batched(&schema)
             .with_context(|| "Failed to create batched writer")?;
 
-        debug!("Successfully created batched writer");
         Ok(Self {
             writer: batched_writer,
             schema,
         })
     }
 
-    /// Creates a writer from a sink and FASTA index file path.
-    ///
-    /// This extracts chromosome names from the FASTA index file.
-    ///
-    /// # Arguments
-    /// * `sink` - The destination to write the IPC data_structs to
-    /// * `fai_path` - Path to the FASTA index file (.fai)
-    /// * `compression` - Optional compression algorithm to use
-    /// * `custom_metadata` - Optional custom metadata to include in the IPC
-    ///   file
-    ///
-    /// # Returns
-    /// A new `BsxIpcWriter` or an error if initialization fails
+    /// Creates a writer from a sink and FASTA index file.
     pub fn try_from_sink_and_fai(
         sink: W,
         fai_path: PathBuf,
@@ -120,10 +91,6 @@ where
             .map(|seq| seq.name)
             .collect_vec();
 
-        debug!(
-            "Extracted {} chromosome names from FASTA index",
-            chr_names.len()
-        );
         Self::try_new(sink, chr_names, compression, custom_metadata)
             .with_context(|| {
                 format!(
@@ -133,20 +100,7 @@ where
             })
     }
 
-    /// Creates a writer from a sink and FASTA file path.
-    ///
-    /// This creates a FASTA index file if it doesn't exist, then extracts
-    /// chromosome names.
-    ///
-    /// # Arguments
-    /// * `sink` - The destination to write the IPC data_structs to
-    /// * `fasta_path` - Path to the FASTA file
-    /// * `compression` - Optional compression algorithm to use
-    /// * `custom_metadata` - Optional custom metadata to include in the IPC
-    ///   file
-    ///
-    /// # Returns
-    /// A new `BsxIpcWriter` or an error if initialization fails
+    /// Creates a writer from a sink and FASTA file.
     pub fn try_from_sink_and_fasta(
         sink: W,
         fasta_path: PathBuf,
@@ -160,9 +114,7 @@ where
             format!("Failed to index FASTA file {:?}", fasta_path)
         })?;
 
-        debug!("FASTA index created or verified");
         let index_path = format!("{}.fai", fasta_path.to_str().unwrap());
-        debug!("Using FASTA index at: {:?}", index_path);
         Self::try_from_sink_and_fai(
             sink,
             index_path.into(),
@@ -174,33 +126,19 @@ where
         })
     }
 
-    /// Writes an encoded BSX batch to the output.
-    ///
-    /// # Arguments
-    /// * `batch` - The encoded BSX batch to write
-    ///
-    /// # Returns
-    /// Success or a Polars error if the write fails
+    /// Writes an encoded BSX batch.
     pub fn write_encoded_batch(
         &mut self,
         batch: EncodedBsxBatch,
     ) -> PolarsResult<()> {
-        debug!("Writing encoded batch to IPC file");
         self.writer.write_batch(batch.data())
     }
 
-    /// Encodes and writes a BSX batch to the output.
-    ///
-    /// # Arguments
-    /// * `batch` - The BSX batch to encode and write
-    ///
-    /// # Returns
-    /// Success or a Polars error if encoding or writing fails
+    /// Encodes and writes a BSX batch.
     pub fn write_batch(
         &mut self,
         batch: BsxBatch,
     ) -> PolarsResult<()> {
-        debug!("Encoding and writing batch to IPC file");
         let encoded = match BsxBatchBuilder::encode_batch(
             batch,
             self.get_chr_dtype().clone(),
@@ -216,18 +154,12 @@ where
     }
 
     /// Finalizes the IPC file and closes the writer.
-    ///
-    /// # Returns
-    /// Success or a Polars error if closing fails
     pub fn close(&mut self) -> PolarsResult<()> {
         info!("Closing BsxIpcWriter");
         self.writer.finish()
     }
 
-    /// Returns the chromosome data_structs type used by this writer.
-    ///
-    /// # Returns
-    /// Reference to the chromosome DataType
+    /// Returns the chromosome data type.
     pub fn get_chr_dtype(&self) -> &DataType {
         // We know "chr" exists in the schema, as we created it in try_new
         self.schema.get("chr").unwrap()
@@ -235,7 +167,7 @@ where
 }
 
 impl<W: Write> Drop for BsxIpcWriter<W> {
-    /// Ensures resources are properly cleaned up when the writer is dropped.
+    /// Ensures resources are properly cleaned up when dropped.
     fn drop(&mut self) {
         if let Err(e) = self.close() {
             warn!("Error closing BsxIpcWriter during drop: {}", e);

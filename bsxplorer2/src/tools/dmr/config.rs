@@ -1,5 +1,5 @@
 use crate::data_structs::batch::EncodedBsxBatch;
-use crate::io::bsx::read::BsxFileReader;
+use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
 use crate::tools::dmr::{segment_reading, DmrIterator};
@@ -58,8 +58,7 @@ impl DmrConfig {
         let mut readers_pair = BTreeMap::from_iter(
             readers
                 .into_iter()
-                .into_group_map_by(|(label, reader)| label.clone())
-                .into_iter(),
+                .into_group_map_by(|(label, reader)| label.clone()),
         )
         .into_values()
         .collect_vec();
@@ -161,7 +160,7 @@ impl Default for DmrConfig {
 fn init_bsx_readers<F: Read + Seek + 'static>(
     handles: Vec<F>
 ) -> (usize, Vec<Box<dyn Iterator<Item = EncodedBsxBatch>>>) {
-    assert!(handles.len() > 0, "No readers supplied");
+    assert!(!handles.is_empty(), "No readers supplied");
     let bsx_readers = handles
         .into_iter()
         .map(|reader| BsxFileReader::new(reader))

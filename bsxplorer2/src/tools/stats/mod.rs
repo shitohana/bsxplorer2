@@ -105,7 +105,7 @@ impl From<MethylationStats> for MethylationStatFlat {
     fn from(value: MethylationStats) -> Self {
         trace!("Converting MethylationStats to MethylationStatFlat");
 
-        let mean_coverage = if value.coverage_distribution.len() > 0 {
+        let mean_coverage = if !value.coverage_distribution.is_empty() {
             value.total_coverage() as f64
                 / value.coverage_distribution.len() as f64
         } else {
@@ -197,7 +197,7 @@ impl MethylationStats {
     /// This is useful as a starting point before aggregating data_structs from
     /// multiple sources.
     pub fn new() -> Self {
-        debug!("Creating new empty MethylationStats");
+        debug!("Creating new empty MethylationStats");       
         Self {
             mean_methylation: 0.0,
             methylation_var: 0.0,
@@ -325,7 +325,7 @@ impl MethylationStats {
         for (context, &(sum_methylation, count)) in &other.context_methylation {
             let entry = self
                 .context_methylation
-                .entry(context.clone())
+                .entry(*context)
                 .or_insert((0.0, 0));
             entry.0 += sum_methylation;
             entry.1 += count;
@@ -341,7 +341,7 @@ impl MethylationStats {
         for (strand, &(sum_methylation, count)) in &other.strand_methylation {
             let entry = self
                 .strand_methylation
-                .entry(strand.clone())
+                .entry(*strand)
                 .or_insert((0.0, 0));
             entry.0 += sum_methylation;
             entry.1 += count;
@@ -545,6 +545,12 @@ impl MethylationStats {
 
         trace!("Successfully generated detailed methylation statistics text");
         Ok(buf)
+    }
+}
+
+impl Default for MethylationStats {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

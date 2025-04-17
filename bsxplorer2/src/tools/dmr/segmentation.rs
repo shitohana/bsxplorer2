@@ -31,14 +31,7 @@ pub fn arg_split_segment(
         return Vec::new(); // Return an empty vector instead of panicking.
     }
     (1..positions.len())
-        .into_iter()
-        .filter_map(|i| {
-            if positions[i] - positions[i - 1] >= max_dist {
-                Some(i)
-            } else {
-                None
-            }
-        })
+        .filter(|&i| positions[i] - positions[i - 1] >= max_dist)
         .collect()
 }
 
@@ -131,7 +124,7 @@ pub fn tv_recurse_segment(
             });
 
         result.append(&mut short_segments);
-        if better_segments.len() == 0 {
+        if better_segments.is_empty() {
             result.push(cur_seg);
         } else {
             segment_queue.append(&mut better_segments);

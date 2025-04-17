@@ -165,6 +165,10 @@ impl ContextData {
         self.entries.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     pub fn take(self) -> (Vec<u32>, Vec<Strand>, Vec<Context>) {
         let mut positions = Vec::with_capacity(self.entries.len());
         let mut strands = Vec::with_capacity(self.entries.len());

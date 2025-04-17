@@ -6,20 +6,80 @@ use crate::data_structs::batch::traits::{
 };
 use crate::data_structs::context_data::ContextData;
 use crate::data_structs::region::GenomicPosition;
-use crate::io::report::schema::ReportTypeSchema;
+use crate::io::report::ReportTypeSchema;
 use crate::utils::types::{Context, IPCEncodedEnum, Strand};
-use crate::utils::{
-    decode_context, decode_strand, encode_context, encode_strand,
-};
 use anyhow::{anyhow, bail};
 use itertools::{sorted, Itertools};
 use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
-// TODO
-//  - Add builder for report batches to unify interface
+/// Encodes strand information to boolean ( "+" to true, "-" to false).
+pub fn encode_strand(
+    lazy_frame: LazyFrame,
+    strand_col: &str,
+) -> LazyFrame {
+    lazy_frame.with_column(
+        when(col(strand_col).eq(lit("+")))
+            .then(lit(true))
+            .when(col(strand_col).eq(lit("-")))
+            .then(lit(false))
+            .otherwise(lit(NULL))
+            .cast(DataType::Boolean)
+            .alias("strand"),
+    )
+}
 
-/// Builder for constructing and validating BSX batch data
+/// Encodes methylation context information as boolean values ("CG" to true, "CHG" to false).
+pub fn encode_context(
+    lazy_frame: LazyFrame,
+    context_col: &str,
+) -> LazyFrame {
+    lazy_frame.with_column(
+        when(col(context_col).eq(lit("CG")))
+            .then(lit(true))
+            .when(col(context_col).eq(lit("CHG")))
+            .then(lit(false))
+            .otherwise(lit(NULL))
+            .cast(DataType::Boolean)
+            .alias(context_col),
+    )
+}
+
+/// Decodes boolean strand information back to string representation (true to "+", false to "-", null to ".").
+pub fn decode_strand(
+    lazy_frame: LazyFrame,
+    strand_col: &str,
+    result_name: &str,
+) -> LazyFrame {
+    lazy_frame.with_column(
+        when(col(strand_col).eq(lit(true)))
+            .then(lit("+"))
+            .when(col(strand_col).eq(lit(false)))
+            .then(lit("-"))
+            .otherwise(lit("."))
+            .cast(DataType::String)
+            .alias(result_name),
+    )
+}
+
+/// Decodes boolean context information back to string representation (true to "CG", false to "CHG", null to "CHH").
+pub fn decode_context(
+    lazy_frame: LazyFrame,
+    context_col: &str,
+    result_name: &str,
+) -> LazyFrame {
+    lazy_frame.with_column(
+        when(col(context_col).eq(lit(true)))
+            .then(lit("CG"))
+            .when(col(context_col).eq(lit(false)))
+            .then(lit("CHG"))
+            .otherwise(lit("CHH"))
+            .cast(DataType::String)
+            .alias(result_name),
+    )
+}
+
+/// Builder for constructing and validating BSX batch data.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BsxBatchBuilder {
     report_type: Option<ReportTypeSchema>,
@@ -40,7 +100,7 @@ impl Default for BsxBatchBuilder {
 
 // Public methods
 impl BsxBatchBuilder {
-    /// Creates a builder with all data validation checks enabled
+    /// Creates a builder with all data validation checks enabled.
     pub fn all_checks() -> Self {
         Self {
             report_type: None,
@@ -54,7 +114,7 @@ impl BsxBatchBuilder {
         }
     }
 
-    /// Creates a builder with all validation checks disabled
+    /// Creates a builder with all validation checks disabled.
     pub fn no_checks() -> Self {
         Self {
             report_type: None,
@@ -68,7 +128,7 @@ impl BsxBatchBuilder {
         }
     }
 
-    /// Sets the report type schema for data conversion
+    /// Sets the report type schema for data conversion.
     pub fn with_report_type(
         mut self,
         report_type: ReportTypeSchema,
@@ -77,7 +137,7 @@ impl BsxBatchBuilder {
         self
     }
 
-    /// Sets whether to check for null values in critical columns
+    /// Sets whether to check for null values in critical columns.
     pub fn with_check_nulls(
         mut self,
         check_nulls: bool,
@@ -86,7 +146,7 @@ impl BsxBatchBuilder {
         self
     }
 
-    /// Sets whether to check and ensure positions are sorted
+    /// Sets whether to check and ensure positions are sorted.
     pub fn with_check_sorted(
         mut self,
         check_sorted: bool,
@@ -95,7 +155,7 @@ impl BsxBatchBuilder {
         self
     }
 
-    /// Sets whether to rechunk the data for memory efficiency
+    /// Sets whether to rechunk the data for memory efficiency.
     pub fn with_rechunk(
         mut self,
         rechunk: bool,
@@ -104,7 +164,7 @@ impl BsxBatchBuilder {
         self
     }
 
-    /// Sets whether to check if all data is from a single chromosome
+    /// Sets whether to check if all data is from a single chromosome.
     pub fn with_check_single_chr(
         mut self,
         check: bool,
@@ -113,7 +173,7 @@ impl BsxBatchBuilder {
         self
     }
 
-    /// Sets whether to check for duplicate positions
+    /// Sets whether to check for duplicate positions.
     pub fn with_check_duplicates(
         mut self,
         check_duplicates: bool,
@@ -122,6 +182,7 @@ impl BsxBatchBuilder {
         self
     }
 
+    /// Sets the data type for the chromosome column.
     pub fn with_chr_dtype(
         mut self,
         chr_dtype: Option<DataType>,
@@ -130,6 +191,7 @@ impl BsxBatchBuilder {
         self
     }
 
+    /// Sets the context data.
     pub fn with_context_data(
         mut self,
         context_data: Option<ContextData>,
@@ -138,6 +200,7 @@ impl BsxBatchBuilder {
         self
     }
 
+    /// Builds a BSX batch from the provided DataFrame.
     pub fn build<B: BsxBatchMethods + BsxTypeTag>(
         &self,
         data: DataFrame,
@@ -146,7 +209,7 @@ impl BsxBatchBuilder {
         Ok(unsafe { B::new_unchecked(self.check_modify(casted)?) })
     }
 
-    /// Validates and optimizes a DataFrame according to builder settings
+    /// Validates and optimizes a DataFrame according to builder settings.
     pub fn check_modify(
         &self,
         data: DataFrame,
@@ -175,6 +238,7 @@ impl BsxBatchBuilder {
         Ok(res)
     }
 
+    /// Checks the data for validity based on the builder settings.
     pub fn check(
         &self,
         data: &DataFrame,
@@ -198,13 +262,13 @@ impl BsxBatchBuilder {
         {
             bail!("Duplicated positions")
         };
-        if !check_pos_ascending(&data) {
+        if !check_pos_ascending(data) {
             bail!("Data not sorted")
         };
         Ok(())
     }
 
-    /// Converts a decoded batch to an encoded batch format
+    /// Converts a decoded batch to an encoded batch format.
     pub fn encode_batch(
         batch: BsxBatch,
         chr_dtype: DataType,
@@ -218,7 +282,7 @@ impl BsxBatchBuilder {
         Ok(encoded)
     }
 
-    /// Converts an encoded batch to a decoded batch format
+    /// Converts an encoded batch to a decoded batch format.
     pub fn decode_batch(batch: EncodedBsxBatch) -> anyhow::Result<BsxBatch> {
         let batch_data = DataFrame::from(batch);
         let mut batch_lazy = batch_data.lazy();
@@ -233,6 +297,7 @@ impl BsxBatchBuilder {
 
 // Private methods
 impl BsxBatchBuilder {
+    /// Casts the DataFrame to the correct types based on the report type.
     fn cast<B: BsxBatchMethods + BsxTypeTag>(
         &self,
         data: DataFrame,
@@ -279,7 +344,7 @@ impl BsxBatchBuilder {
         Ok(res)
     }
 
-    /// Rechunks the data if enabled in the builder
+    /// Rechunks the data if enabled in the builder.
     fn rechunk(
         &self,
         data: DataFrame,
@@ -291,7 +356,7 @@ impl BsxBatchBuilder {
         data
     }
 
-    /// Sorts data by position if needed and updates sorting flags
+    /// Sorts data by position if needed and updates sorting flags.
     fn sort(
         &self,
         data: DataFrame,
@@ -320,9 +385,9 @@ impl BsxBatchBuilder {
 mod decoded {
     use super::*;
 
-    /// Selects and casts columns to the proper types for BSX batch processing
+    /// Selects and casts columns to the proper types for BSX batch processing.
     ///
-    /// Transforms input data to a standardized schema with properly typed columns
+    /// Transforms input data to a standardized schema with properly typed columns.
     pub(crate) fn select_cast(lf: LazyFrame) -> LazyFrame {
         lf.select([
             col(CHR_NAME)
@@ -349,7 +414,7 @@ mod decoded {
         ])
     }
 
-    /// Creates an expression to convert nucleotide values to strand symbols
+    /// Creates an expression to convert nucleotide values to strand symbols.
     fn nuc_to_strand_expr() -> Expr {
         when(col("nuc").eq(lit("C")))
             .then(lit("+"))
@@ -358,12 +423,13 @@ mod decoded {
             .otherwise(lit("."))
     }
 
+    /// Creates a DataFrame from a decoded source
     pub(crate) fn from_df(df: DataFrame) -> anyhow::Result<DataFrame> {
         let casted = select_cast(df.lazy());
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Processes Bismark format data into standardized BSX format
+    /// Processes Bismark format data into standardized BSX format.
     pub(crate) fn from_bismark(df: DataFrame) -> anyhow::Result<DataFrame> {
         let col_added = df
             .lazy()
@@ -373,7 +439,7 @@ mod decoded {
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Converts CG map format data into standardized BSX format
+    /// Converts CG map format data into standardized BSX format.
     pub(crate) fn from_cgmap(df: DataFrame) -> anyhow::Result<DataFrame> {
         let mut col_added = df
             .lazy()
@@ -382,7 +448,7 @@ mod decoded {
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Processes coverage format data into standardized BSX format
+    /// Processes coverage format data into standardized BSX format.
     pub(crate) fn from_coverage(df: DataFrame) -> anyhow::Result<DataFrame> {
         let col_added = df
             .lazy()
@@ -396,7 +462,7 @@ mod decoded {
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Processes BedGraph format data into standardized BSX format
+    /// Processes BedGraph format data into standardized BSX format.
     pub(crate) fn from_bedgraph(df: DataFrame) -> anyhow::Result<DataFrame> {
         let col_added = df.lazy().with_columns([
             col("start").alias("position"),
@@ -413,6 +479,8 @@ mod decoded {
 mod encoded {
     use super::*;
     use crate::data_structs::batch::{colnames::*, encoded::EncodedBsxBatch};
+
+    /// Encodes context information as boolean values ("CG" to true, "CHG" to false).
     fn encode_context() -> Expr {
         when(col(CONTEXT_NAME).eq(lit("CG")))
             .then(lit(true))
@@ -423,6 +491,7 @@ mod encoded {
             .alias(CONTEXT_NAME)
     }
 
+    /// Encodes strand information to boolean ( "+" to true, "-" to false).
     fn encode_strand() -> Expr {
         when(col(STRAND_NAME).eq(lit("+")))
             .then(lit(true))
@@ -433,6 +502,7 @@ mod encoded {
             .alias(STRAND_NAME)
     }
 
+    /// Creates a DataFrame from an encoded source
     pub(crate) fn from_df(
         df: DataFrame,
         chr_dtype: DataType,
@@ -441,9 +511,9 @@ mod encoded {
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Selects and casts columns to the proper types for BSX batch processing
+    /// Selects and casts columns to the proper types for BSX batch processing.
     ///
-    /// Transforms input data to a standardized schema with properly typed columns
+    /// Transforms input data to a standardized schema with properly typed columns.
     pub(crate) fn select_cast(
         lf: LazyFrame,
         chr_dtype: DataType,
@@ -469,6 +539,7 @@ mod encoded {
         ])
     }
 
+    /// Creates an expression to convert nucleotide values to strand symbols.
     fn nuc_to_strand_expr() -> Expr {
         when(col("nuc").eq(lit("C")))
             .then(lit("+"))
@@ -478,7 +549,7 @@ mod encoded {
             .alias(STRAND_NAME)
     }
 
-    /// Processes Bismark format data into standardized BSX format
+    /// Processes Bismark format data into standardized BSX format.
     pub(crate) fn from_bismark(
         df: DataFrame,
         chr_dtype: DataType,
@@ -491,7 +562,7 @@ mod encoded {
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Converts CG map format data into standardized BSX format
+    /// Converts CG map format data into standardized BSX format.
     pub(crate) fn from_cgmap(
         df: DataFrame,
         chr_dtype: DataType,
@@ -503,7 +574,7 @@ mod encoded {
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Processes coverage format data into standardized BSX format
+    /// Processes coverage format data into standardized BSX format.
     pub(crate) fn from_coverage(
         df: DataFrame,
         chr_dtype: DataType,
@@ -520,7 +591,7 @@ mod encoded {
         casted.collect().map_err(|e| anyhow!(e))
     }
 
-    /// Processes BedGraph format data into standardized BSX format
+    /// Processes BedGraph format data into standardized BSX format.
     pub(crate) fn from_bedgraph(
         df: DataFrame,
         chr_dtype: DataType,
@@ -537,7 +608,7 @@ mod encoded {
     }
 }
 
-/// Validates that critical columns do not contain null values
+/// Validates that critical columns do not contain null values.
 fn check_has_nulls(df: &DataFrame) -> anyhow::Result<()> {
     if df
         .column(CHR_NAME)
@@ -558,7 +629,7 @@ fn check_has_nulls(df: &DataFrame) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Checks if position column values are in ascending order
+/// Checks if position column values are in ascending order.
 fn check_pos_ascending(df: &DataFrame) -> bool {
     let pos = df
         .column(POS_NAME)
@@ -569,12 +640,12 @@ fn check_pos_ascending(df: &DataFrame) -> bool {
         .is_sorted()
 }
 
-/// Creates an expression to compute the total count from methylated and unmethylated counts
+/// Creates an expression to compute the total count from methylated and unmethylated counts.
 fn count_total_col_expr() -> Expr {
     (col("count_m") + col("count_um")).alias("count_total")
 }
 
-/// Creates an expression to compute methylation density from count data
+/// Creates an expression to compute methylation density from count data.
 fn density_col_expr() -> Expr {
     (col("count_m").cast(DataType::Float64) / col("count_total").cast(DataType::Float64)).alias("density")
 }

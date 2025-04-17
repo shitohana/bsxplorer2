@@ -240,7 +240,7 @@ impl Iterator for DmrIterator {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             // Try to pop from region cache first
-            if let Some(region) = if self.regions_cache.len() > 0 {
+            if let Some(region) = if !self.regions_cache.is_empty() {
                 Some(self.regions_cache.remove(0))
             } else {
                 None
