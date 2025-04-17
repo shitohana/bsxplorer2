@@ -61,11 +61,11 @@ impl ContextData {
         Self { entries }
     }
 
-    pub fn from_sequence(seq: Vec<u8>) -> Self {
+    pub fn from_sequence(seq: &[u8]) -> Self {
         let mut new_self = Self {
             entries: std::collections::BTreeSet::new(),
         };
-        new_self.read_sequence(&seq, 1);
+        new_self.read_sequence(seq, 1);
         new_self
     }
 
@@ -96,26 +96,29 @@ impl ContextData {
                         Context::CG,
                     ));
                 },
-                &[b'C', _, b'G'] => {
-                    self.entries.insert(Entry(
-                        start + shift as u32,
-                        Strand::Forward,
-                        Context::CHG,
-                    ));
+                trinuc @ &[b'C', _, b'G'] if trinuc[1] != b'C' => {
                     self.entries.insert(Entry(
                         start + shift as u32 + 2,
                         Strand::Reverse,
                         Context::CHG,
                     ));
                 },
-                &[b'C', _, _] => {
+                trinuc @ &[b'C', _, b'G'] if trinuc[1] != b'G' => {
+                    self.entries.insert(Entry(
+                        start + shift as u32,
+                        Strand::Forward,
+                        Context::CHG,
+                    ));
+                    
+                },
+                trinuc @ &[b'C', _, _] if trinuc[1] != b'G'&& trinuc[2] != b'G' => {
                     self.entries.insert(Entry(
                         start + shift as u32,
                         Strand::Forward,
                         Context::CHH,
                     ));
                 },
-                &[_, _, b'G'] => {
+                trinuc @ &[_, _, b'G'] if trinuc[0] != b'C' && trinuc[1] != b'C' => {
                     self.entries.insert(Entry(
                         start + shift as u32 + 2,
                         Strand::Reverse,

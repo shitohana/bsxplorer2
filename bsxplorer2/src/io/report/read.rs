@@ -87,6 +87,24 @@ pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
     _batch_type: PhantomData<B>,
 }
 
+impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
+    fn default() -> Self {
+        Self {
+            report_type: ReportTypeSchema::Bismark,
+            chunk_size: 10000,
+            fasta_path: None,
+            fai_path: None,
+            batch_size: 100000,
+            n_threads: None,
+            low_memory: false,
+            queue_len: 1000,
+            #[cfg(feature = "compression")]
+            compression: None,
+            _batch_type: PhantomData,
+        }
+    }
+}
+
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     pub fn with_report_type(
         mut self,
@@ -222,10 +240,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
 
     fn get_csv_reader(
         &self,
-        path: PathBuf,
+        handle: Box<dyn MmapBytesReader>,
     ) -> anyhow::Result<OwnedBatchedCsvReader<Box<dyn MmapBytesReader>>> {
-        let handle = self.get_file_handle(path)?;
-
         let csv_reader = self
             .report_type
             .read_options()
@@ -241,9 +257,9 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         Ok(owned_batched)
     }
 
-    pub fn build(
+    pub fn build_from_handle(
         self,
-        path: PathBuf,
+        handle: Box<dyn MmapBytesReader>,
     ) -> anyhow::Result<ReportReader<B>> {
         use ReportTypeSchema as RS;
 
@@ -260,12 +276,12 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             )
         }
 
-        let mut csv_reader = self.get_csv_reader(path)?;
+        let mut csv_reader = self.get_csv_reader(handle)?;
         let (sender, receiver) = crossbeam::channel::bounded(self.queue_len);
 
         let join_handle = std::thread::spawn(move || {
             while let Ok(Some(mut df)) = csv_reader.next_batches(1) {
-                if df.len() != 0 {
+                if df.len() != 1 {
                     panic!("Unexpected batch count {}", df.len());
                 }
                 sender
@@ -286,6 +302,14 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             chr_dtype,
         };
         Ok(reader)
+    }
+
+    pub fn build(
+        self,
+        path: PathBuf,
+    ) -> anyhow::Result<ReportReader<B>> {
+        let handle = self.get_file_handle(path)?;
+        self.build_from_handle(handle)
     }
 }
 
@@ -396,6 +420,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
             anyhow::anyhow!("Channel closed unexpectedly while reading a batch")
                 .context(e)
         })?;
+        let last_one = self.data_receiver.is_empty() && self._join_handle.is_finished();
         // Partition by chromosome
         let partitioned = new_batch
             .partition_by_stable([self.report_type.chr_col()], true)
@@ -408,13 +433,15 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         for (index, data) in partitioned.into_iter().enumerate() {
             // Convert to BSX batch format
             let mut bsx_batch = BsxBatchBuilder::all_checks()
+                .with_report_type(self.report_type.clone())
                 .with_check_single_chr(false)
                 .with_chr_dtype(self.chr_dtype.clone()) // Will raise if not specified
                 .build::<B>(data)?;
 
+
             // Align batch if required
             if self.report_type.need_align() {
-                let is_final = index < n_partitioned - 1;
+                let is_final = (index < n_partitioned - 1) || last_one;
                 bsx_batch = self.align_batch(bsx_batch, is_final)?;
             }
 
@@ -426,7 +453,6 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
                 .entry(batch_chr)
                 .or_insert(seen_chr_len)
                 .clone();
-
             // Update cached batch
             self.cached_batch
                 .entry(chr_idx)
@@ -438,6 +464,10 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         }
 
         Ok(())
+    }
+    
+    pub fn set_fasta_reader(&mut self, fasta_reader: Option<Box<dyn Iterator<Item = FastaRecord>>>) {
+        self.fasta_reader = fasta_reader;
     }
 }
 

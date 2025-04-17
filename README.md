@@ -125,7 +125,8 @@ application provides convenient access to the library's core functionality witho
 [Detailed command descriptions](console/README.md).
 
 ## BSX Format (IPC File Format)
-BSXplorer utilizes Arrow's Interprocess Communication (IPC) file format as the foundation for its custom BSX format, delivering significant advantages for methylation data processing:
+BSXplorer utilizes Arrow's Interprocess Communication (IPC) file format as the foundation for its custom BSX format, 
+delivering significant advantages for methylation data processing:
 
 ### Performance Benefits
 

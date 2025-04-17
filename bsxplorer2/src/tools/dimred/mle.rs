@@ -11,6 +11,7 @@ use statrs::function::gamma::{digamma, ln_gamma};
 /// performs better
 use crate::tools::dimred::mom::BetaBinomParams;
 
+
 #[derive(Clone)]
 pub struct MethylationData {
     methylated_reads: Vec<u32>,
@@ -54,11 +55,11 @@ impl BetaBinomialMLE {
 }
 
 impl CostFunction for BetaBinomialMLE {
-    type Output = f64;
     // Instead of (α, β), use (μ, φ) where:
     // μ = α/(α+β) = mean methylation
     // φ = 1/(α+β+1) = overdispersion parameter
     type Param = Vec<f64>;
+    type Output = f64;
 
     fn cost(
         &self,
@@ -104,8 +105,8 @@ impl CostFunction for BetaBinomialMLE {
 }
 
 impl Gradient for BetaBinomialMLE {
-    type Gradient = Vec<f64>;
     type Param = Vec<f64>;
+    type Gradient = Vec<f64>;
 
     fn gradient(
         &self,

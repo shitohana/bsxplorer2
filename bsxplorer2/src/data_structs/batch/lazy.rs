@@ -74,8 +74,8 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
 }
 
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
-    pub fn collect(self) -> PolarsResult<T> {
-        let data = self.data.collect()?;
+    pub fn collect(self) -> anyhow::Result<T> {
+        let data = self.data.collect()?.select(T::schema().iter_names_cloned().collect_vec())?;
         Ok(unsafe { T::new_unchecked(data) })
     }
     /// Applies a filter expression to the batch
@@ -185,6 +185,8 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         chr_val: &str,
     ) -> Self {
         let context_df = context_data.to_df::<T>();
+        let test = self.data.clone().collect().unwrap();
+
         let self_selected = self
             .data
             .drop([col(colnames::CONTEXT_NAME), col(colnames::STRAND_NAME)]);

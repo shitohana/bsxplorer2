@@ -8,7 +8,7 @@ description = "A high-performance library for bisulfite sequencing data analysis
 repository = "https://github.com/shitohana/bsxplorer2"
 keywords = ["bioinformatics", "methylation", "bisulfite", "epigenetics", "genomics"]
 categories = ["science", "data-structures", "algorithms", "mathematics"]
-readme = "README.md"
+readme = "../README.md"
 
 [features]
 compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip"]
@@ -19,6 +19,7 @@ path = "src/lib.rs"
 [dev-dependencies]
 rand_chacha = "0.9.0"
 rstest = "0.25.0"
+vfs = "0.12.1"
 
 [dependencies]
 # Utility

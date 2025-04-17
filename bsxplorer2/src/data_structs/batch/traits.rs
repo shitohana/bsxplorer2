@@ -196,7 +196,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         self.data()
             .column(POS_NAME)
             .unwrap()
-            .get(0)
+            .get(self.height() - 1)
             .map(|v| {
                 v.cast(&DataType::UInt32)
                     .try_extract()

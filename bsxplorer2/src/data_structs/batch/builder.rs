@@ -16,6 +16,8 @@ use itertools::{sorted, Itertools};
 use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
+// TODO
+//  - Add builder for report batches to unify interface
 
 /// Builder for constructing and validating BSX batch data
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -151,7 +153,7 @@ impl BsxBatchBuilder {
     ) -> anyhow::Result<DataFrame> {
         if self.check_single_chr
             && data
-                .column(colnames::CHR_NAME)?
+                .column(CHR_NAME)?
                 .n_unique()?
                 != 1
         {
@@ -162,7 +164,7 @@ impl BsxBatchBuilder {
         }
         if self.check_duplicates
             && (data
-                .column(colnames::POS_NAME)?
+                .column(POS_NAME)?
                 .n_unique()?
                 != data.height())
         {
@@ -179,7 +181,7 @@ impl BsxBatchBuilder {
     ) -> anyhow::Result<()> {
         if self.check_single_chr
             && data
-                .column(colnames::CHR_NAME)?
+                .column(CHR_NAME)?
                 .n_unique()?
                 != 1
         {
@@ -189,14 +191,14 @@ impl BsxBatchBuilder {
             check_has_nulls(data)?;
         }
         if self.check_duplicates
-            && !(data
-                .column(colnames::POS_NAME)?
+            && (data
+                .column(POS_NAME)?
                 .n_unique()?
                 != data.height())
         {
             bail!("Duplicated positions")
         };
-        if check_pos_ascending(&data) {
+        if !check_pos_ascending(&data) {
             bail!("Data not sorted")
         };
         Ok(())
@@ -303,7 +305,7 @@ impl BsxBatchBuilder {
             )?;
         } else {
             let pos_col_idx = data
-                .get_column_index(colnames::POS_NAME)
+                .get_column_index(POS_NAME)
                 .unwrap();
             unsafe {
                 let columns = data.get_columns_mut();
@@ -323,27 +325,27 @@ mod decoded {
     /// Transforms input data to a standardized schema with properly typed columns
     pub(crate) fn select_cast(lf: LazyFrame) -> LazyFrame {
         lf.select([
-            col("chr")
+            col(CHR_NAME)
                 .cast(BsxBatch::chr_type())
-                .alias(colnames::CHR_NAME),
-            col("position")
+                .alias(CHR_NAME),
+            col(POS_NAME)
                 .cast(BsxBatch::pos_type())
-                .alias(colnames::POS_NAME),
-            col("strand")
+                .alias(POS_NAME),
+            col(STRAND_NAME)
                 .cast(BsxBatch::strand_type())
-                .alias(colnames::STRAND_NAME),
-            col("context")
+                .alias(STRAND_NAME),
+            col(CONTEXT_NAME)
                 .cast(BsxBatch::context_type())
-                .alias(colnames::CONTEXT_NAME),
-            col("count_m")
+                .alias(CONTEXT_NAME),
+            col(COUNT_M_NAME)
                 .cast(BsxBatch::count_type())
-                .alias(colnames::COUNT_M_NAME),
-            col("count_total")
+                .alias(COUNT_M_NAME),
+            col(COUNT_TOTAL_NAME)
                 .cast(BsxBatch::count_type())
-                .alias(colnames::COUNT_TOTAL_NAME),
-            col("density")
+                .alias(COUNT_TOTAL_NAME),
+            col(DENSITY_NAME)
                 .cast(BsxBatch::density_type())
-                .alias(colnames::DENSITY_NAME),
+                .alias(DENSITY_NAME),
         ])
     }
 
@@ -354,7 +356,6 @@ mod decoded {
             .when(col("nuc").eq(lit("G")))
             .then(lit("-"))
             .otherwise(lit("."))
-            .alias("strand")
     }
 
     pub(crate) fn from_df(df: DataFrame) -> anyhow::Result<DataFrame> {
@@ -374,9 +375,9 @@ mod decoded {
 
     /// Converts CG map format data into standardized BSX format
     pub(crate) fn from_cgmap(df: DataFrame) -> anyhow::Result<DataFrame> {
-        let col_added = df
+        let mut col_added = df
             .lazy()
-            .with_column(nuc_to_strand_expr());
+            .with_column(nuc_to_strand_expr().alias(STRAND_NAME));
         let casted = select_cast(col_added);
         casted.collect().map_err(|e| anyhow!(e))
     }
@@ -450,21 +451,21 @@ mod encoded {
         lf.select([
             col("chr")
                 .cast(chr_dtype)
-                .alias(colnames::CHR_NAME),
+                .alias(CHR_NAME),
             col("position")
                 .cast(EncodedBsxBatch::pos_type())
-                .alias(colnames::POS_NAME),
+                .alias(POS_NAME),
             encode_strand(),
             encode_context(),
             col("count_m")
                 .cast(EncodedBsxBatch::count_type())
-                .alias(colnames::COUNT_M_NAME),
+                .alias(COUNT_M_NAME),
             col("count_total")
                 .cast(EncodedBsxBatch::count_type())
-                .alias(colnames::COUNT_TOTAL_NAME),
+                .alias(COUNT_TOTAL_NAME),
             col("density")
                 .cast(EncodedBsxBatch::density_type())
-                .alias(colnames::DENSITY_NAME),
+                .alias(DENSITY_NAME),
         ])
     }
 
@@ -544,7 +545,7 @@ fn check_has_nulls(df: &DataFrame) -> anyhow::Result<()> {
         .null_count()
         > 0
     {
-        anyhow::bail!("Nulls not allowed in 'chr' column");
+        bail!("Nulls not allowed in 'chr' column");
     }
     if df
         .column(POS_NAME)
@@ -552,7 +553,7 @@ fn check_has_nulls(df: &DataFrame) -> anyhow::Result<()> {
         .null_count()
         > 0
     {
-        anyhow::bail!("Nulls not allowed in 'position' column");
+        bail!("Nulls not allowed in 'position' column");
     }
     Ok(())
 }
@@ -575,7 +576,7 @@ fn count_total_col_expr() -> Expr {
 
 /// Creates an expression to compute methylation density from count data
 fn density_col_expr() -> Expr {
-    (col("count_m") / col("count_total")).alias("density")
+    (col("count_m").cast(DataType::Float64) / col("count_total").cast(DataType::Float64)).alias("density")
 }
 
 #[cfg(test)]
@@ -636,7 +637,7 @@ mod tests {
         let df = create_test_df(); // Unsorted
         let modified_df = builder.check_modify(df)?;
 
-        let pos_series = modified_df.column(colnames::POS_NAME)?;
+        let pos_series = modified_df.column(POS_NAME)?;
         assert!(check_pos_ascending(&modified_df));
         assert_eq!(
             pos_series
@@ -948,43 +949,43 @@ mod tests {
         assert_eq!(encoded_batch.chr_val()?, "chrTest");
         assert_eq!(
             encoded_df
-                .column(colnames::CHR_NAME)?
+                .column(CHR_NAME)?
                 .dtype(),
             &chr_dtype
         );
         assert_eq!(
             encoded_df
-                .column(colnames::STRAND_NAME)?
+                .column(STRAND_NAME)?
                 .dtype(),
             &EncodedBsxBatch::strand_type()
         ); // Boolean
         assert_eq!(
             encoded_df
-                .column(colnames::CONTEXT_NAME)?
+                .column(CONTEXT_NAME)?
                 .dtype(),
             &EncodedBsxBatch::context_type()
         ); // Boolean
 
         // Check encoded values: strand ["+", "-", "+"] -> [true, false, true]
         let expected_strand = Series::new(
-            colnames::STRAND_NAME.into(),
+            STRAND_NAME.into(),
             [Some(true), Some(false), Some(true)],
         );
         assert_eq!(
             encoded_df
-                .column(colnames::STRAND_NAME)?
+                .column(STRAND_NAME)?
                 .as_materialized_series(),
             &expected_strand
         );
 
         // Check encoded values: context ["CG", "CHG", "CHH"] -> [true, false, null] (CHH -> null)
         let expected_context = Series::new(
-            colnames::CONTEXT_NAME.into(),
+            CONTEXT_NAME.into(),
             [Some(true), Some(false), None::<bool>],
         );
         assert_eq!(
             encoded_df
-                .column(colnames::CONTEXT_NAME)?
+                .column(CONTEXT_NAME)?
                 .as_materialized_series(),
             &expected_context
         );
@@ -998,12 +999,12 @@ mod tests {
         let final_df = DataFrame::from(decoded_batch);
 
         let cols_to_compare = [
-            colnames::CHR_NAME,
-            colnames::POS_NAME,
-            colnames::STRAND_NAME,
-            colnames::CONTEXT_NAME,
-            colnames::COUNT_M_NAME,
-            colnames::COUNT_TOTAL_NAME,
+            CHR_NAME,
+            POS_NAME,
+            STRAND_NAME,
+            CONTEXT_NAME,
+            COUNT_M_NAME,
+            COUNT_TOTAL_NAME,
         ];
         assert_eq!(
             original_df.select(cols_to_compare)?,

@@ -227,7 +227,7 @@ mod tests {
     fn test_bsx_chr() {
         let batch = create_test_batch();
         // Assuming "chr1" is the first category, its physical representation is 0
-        let expected = Series::new(colnames::CHR_NAME.into(), &[0u32, 0, 0]);
+        let expected = Series::new(CHR_NAME.into(), &[0u32, 0, 0]);
         assert_eq!(
             <EncodedBsxBatch as BsxBatchMethods>::chr(&batch)
                 .clone()
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn test_position() {
         let batch = create_test_batch();
-        let expected = Series::new(colnames::POS_NAME.into(), &[10u32, 20, 30]);
+        let expected = Series::new(POS_NAME.into(), &[10u32, 20, 30]);
         assert_eq!(batch.position().clone().into_series(), expected);
     }
 
@@ -247,7 +247,7 @@ mod tests {
     fn test_strand() {
         let batch = create_test_batch();
         let expected =
-            Series::new(colnames::STRAND_NAME.into(), &[true, true, false]);
+            Series::new(STRAND_NAME.into(), &[true, true, false]);
         assert_eq!(batch.strand().clone().into_series(), expected);
     }
 
@@ -255,7 +255,7 @@ mod tests {
     fn test_context() {
         let batch = create_test_batch();
         let expected =
-            Series::new(colnames::CONTEXT_NAME.into(), &[true, false, false]);
+            Series::new(CONTEXT_NAME.into(), &[true, false, false]);
         assert_eq!(batch.context().clone().into_series(), expected);
     }
 
@@ -263,7 +263,7 @@ mod tests {
     fn test_count_m() {
         let batch = create_test_batch();
         let expected =
-            Series::new(colnames::COUNT_M_NAME.into(), &[5i16, 10, 15]);
+            Series::new(COUNT_M_NAME.into(), &[5i16, 10, 15]);
         assert_eq!(batch.count_m().clone().into_series(), expected);
     }
 
@@ -271,7 +271,7 @@ mod tests {
     fn test_count_total() {
         let batch = create_test_batch();
         let expected =
-            Series::new(colnames::COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
+            Series::new(COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
         assert_eq!(
             batch
                 .count_total()
@@ -285,7 +285,7 @@ mod tests {
     fn test_density() {
         let batch = create_test_batch();
         let expected =
-            Series::new(colnames::DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
+            Series::new(DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
         assert_eq!(batch.density().clone().into_series(), expected);
     }
 

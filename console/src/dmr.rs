@@ -198,7 +198,7 @@ pub fn init(
     force: bool,
     threads: usize,
     logger: bool,
-) -> bsxplorer2::exports::anyhow::Result<(Vec<String>, Vec<String>)> {
+) -> anyhow::Result<(Vec<String>, Vec<String>)> {
     init_rayon_threads(threads)?;
     init_logger(logger)?;
 
