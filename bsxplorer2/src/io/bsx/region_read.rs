@@ -19,7 +19,7 @@ use crate::data_structs::batch::LazyBsxBatch;
 use crate::data_structs::region::{GenomicPosition, RegionCoordinates};
 use crate::data_structs::region_data::RegionData;
 use crate::io::bsx::read::{BSXIndex, BsxFileReader};
-use crate::utils::types::{IPCEncodedEnum, Strand};
+use crate::utils::types::Strand;
 
 /// Structure, that holds chromosome-wise index of batches from BSXplorer
 /// IPC file.

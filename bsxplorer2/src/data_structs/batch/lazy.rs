@@ -249,13 +249,11 @@ mod tests {
     use super::*;
     use crate::data_structs::batch::{
         builder::BsxBatchBuilder, decoded::BsxBatch, encoded::EncodedBsxBatch,
-        traits::*, traits::BsxBatchMethods,
+        traits::BsxBatchMethods,
     };
     use crate::utils::get_categorical_dtype;
     use crate::utils::types::{Context, Strand};
     use polars::df;
-    use polars::prelude::*;
-    use std::ops::Not;
 
     // --- Helper Functions ---
 

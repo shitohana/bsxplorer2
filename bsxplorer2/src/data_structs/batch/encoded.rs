@@ -1,6 +1,5 @@
 use super::traits::{colnames, BatchType, BsxTypeTag};
 use crate::data_structs::batch::traits::BsxBatchMethods;
-use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use polars::prelude::*;
 
@@ -170,7 +169,6 @@ mod tests {
     use super::*;
     use crate::data_structs::batch::traits::colnames::*;
     use polars::df;
-    use polars::prelude::*;
 
     // Helper function to create a sample DataFrame suitable for EncodedBsxBatch
     fn create_test_df() -> DataFrame {

@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Seek};
 
-use log::{debug, trace};
 use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
 use polars::export::arrow::record_batch::RecordBatchT;

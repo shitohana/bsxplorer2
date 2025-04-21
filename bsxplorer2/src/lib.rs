@@ -1,5 +1,5 @@
 #![allow(unused)]
-#![allow(unused_assignments)]
+#![warn(unused_imports)]
 
 pub mod data_structs;
 pub mod exports;

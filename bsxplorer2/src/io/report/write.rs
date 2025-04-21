@@ -1,4 +1,4 @@
-use std::io::{sink, Write};
+use std::io::{Write};
 
 use log::{debug, info, warn};
 use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};

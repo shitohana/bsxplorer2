@@ -330,7 +330,7 @@ pub fn run(
         .from_path(&all_segments_path)
         .expect("Failed to open output file");
 
-    let mut dmr_count = 0;
+    let mut _dmr_count = 0;
     for (batch_idx, dmr) in dmr_iterator {
         if batch_idx != last_batch_idx {
             progress_bar.inc(batch_idx as u64 - last_batch_idx as u64);
@@ -344,7 +344,7 @@ pub fn run(
         ));
 
         if dmr.n_cytosines >= args.min_cytosines {
-            dmr_count += 1;
+            _dmr_count += 1;
             csv_writer
                 .serialize(dmr)
                 .expect("Failed to write DMR to file");

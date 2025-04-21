@@ -4,7 +4,6 @@ pub mod stats;
 pub mod utils;
 
 use clap::{Parser, Subcommand};
-use serde::Serialize;
 use wild::ArgsOs;
 
 pub(crate) use utils::*;

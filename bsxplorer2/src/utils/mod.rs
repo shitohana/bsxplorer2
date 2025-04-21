@@ -1,17 +1,9 @@
-use std::fmt;
 use std::sync::Arc;
 
-use anyhow::Context;
 use itertools::Itertools;
-use log::{debug, info, warn};
-use num::Float;
+use log::warn;
 use polars::datatypes::PlIndexMap;
 use polars::prelude::*;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use statrs::distribution::{ContinuousCDF, Normal};
-use statrs::statistics::Statistics;
-
-use crate::data_structs::region::GenomicPosition;
 
 pub mod types;
 mod stats;

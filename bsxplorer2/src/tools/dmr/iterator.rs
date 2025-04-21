@@ -1,17 +1,13 @@
-use std::fmt::{Debug, Display};
-use std::hash::Hash;
-use std::ops::{AddAssign, Deref, Div};
+use std::ops::Div;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use bio_types::annot::refids::RefIDSet;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
 use log::error;
 use polars::prelude::{
-    col, ArithmeticChunked, ChunkApply, ChunkedArray, Column, DataType,
-    IntoSeries, PolarsNumericType,
+    Column, DataType,
 };
 use rayon::prelude::*;
 
@@ -19,7 +15,7 @@ use crate::data_structs::batch::merge_replicates;
 use crate::data_structs::batch::{colnames, BsxBatchMethods};
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
-use crate::tools::dmr::segmentation::{tv_recurse_segment, FilterConfig};
+use crate::tools::dmr::segmentation::tv_recurse_segment;
 
 fn merge_counts(columns: Vec<&Column>) -> Column {
     let mut columns = columns;

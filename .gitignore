@@ -8,3 +8,4 @@ Cargo.lock
 dist
 .vscode
 .DS_Store
+.venv

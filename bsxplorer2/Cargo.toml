@@ -55,6 +55,9 @@ argmin = "0.10.0"
 ndarray = { version = "0.16.1", features = ["serde"] }
 statrs = "0.18.0"
 
+hdbscan = "0.10.0"
+ordered-float = "5.0"
+
 # Bio
 bio = "2.0.3"
 bio-types = "1.0.4"

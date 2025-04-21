@@ -17,7 +17,7 @@ use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::thread::JoinHandle;

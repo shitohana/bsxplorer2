@@ -1,6 +1,7 @@
 pub mod dist;
 pub mod mle;
 pub mod mom;
+mod segmentation;
 
 use num::NumCast;
 

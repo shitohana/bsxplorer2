@@ -2,14 +2,11 @@ use super::colnames::*;
 use super::encoded::EncodedBsxBatch;
 use crate::data_structs::batch::decoded::BsxBatch;
 use crate::data_structs::batch::traits::{
-    colnames, BatchType, BsxBatchMethods, BsxTypeTag,
+    BatchType, BsxBatchMethods, BsxTypeTag,
 };
 use crate::data_structs::context_data::ContextData;
-use crate::data_structs::region::GenomicPosition;
 use crate::io::report::ReportTypeSchema;
-use crate::utils::types::{Context, IPCEncodedEnum, Strand};
 use anyhow::{anyhow, bail};
-use itertools::{sorted, Itertools};
 use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
@@ -478,7 +475,7 @@ mod decoded {
 
 mod encoded {
     use super::*;
-    use crate::data_structs::batch::{colnames::*, encoded::EncodedBsxBatch};
+    use crate::data_structs::batch::encoded::EncodedBsxBatch;
 
     /// Encodes context information as boolean values ("CG" to true, "CHG" to false).
     fn encode_context() -> Expr {
@@ -824,35 +821,35 @@ mod tests {
 
         // Check common columns and types
         assert_eq!(
-            df.column(colnames::CHR_NAME)?.dtype(),
+            df.column(CHR_NAME)?.dtype(),
             &BsxBatch::chr_type()
         );
         assert_eq!(
-            df.column(colnames::POS_NAME)?.dtype(),
+            df.column(POS_NAME)?.dtype(),
             &BsxBatch::pos_type()
         );
         assert_eq!(
-            df.column(colnames::STRAND_NAME)?
+            df.column(STRAND_NAME)?
                 .dtype(),
             &BsxBatch::strand_type()
         );
         assert_eq!(
-            df.column(colnames::CONTEXT_NAME)?
+            df.column(CONTEXT_NAME)?
                 .dtype(),
             &BsxBatch::context_type()
         );
         assert_eq!(
-            df.column(colnames::COUNT_M_NAME)?
+            df.column(COUNT_M_NAME)?
                 .dtype(),
             &BsxBatch::count_type()
         );
         assert_eq!(
-            df.column(colnames::COUNT_TOTAL_NAME)?
+            df.column(COUNT_TOTAL_NAME)?
                 .dtype(),
             &BsxBatch::count_type()
         );
         assert_eq!(
-            df.column(colnames::DENSITY_NAME)?
+            df.column(DENSITY_NAME)?
                 .dtype(),
             &BsxBatch::density_type()
         );
@@ -860,9 +857,9 @@ mod tests {
         // Check specific transformations (example for CgMap strand)
         if report_type == ReportTypeSchema::CgMap {
             let expected_strand =
-                Series::new(colnames::STRAND_NAME.into(), ["+", "-"]);
+                Series::new(STRAND_NAME.into(), ["+", "-"]);
             assert!(df
-                .column(colnames::STRAND_NAME)?
+                .column(STRAND_NAME)?
                 .equals(&expected_strand.into_column()));
         }
         // Check specific transformations (example for Bismark/Coverage count_total)
@@ -870,10 +867,10 @@ mod tests {
             || report_type == ReportTypeSchema::Coverage
         {
             let count_m = df
-                .column(colnames::COUNT_M_NAME)?
+                .column(COUNT_M_NAME)?
                 .u32()?;
             let count_total = df
-                .column(colnames::COUNT_TOTAL_NAME)?
+                .column(COUNT_TOTAL_NAME)?
                 .u32()?;
             assert!(count_m
                 .into_iter()
@@ -883,17 +880,17 @@ mod tests {
         // Check specific transformations (example for BedGraph nulls)
         if report_type == ReportTypeSchema::BedGraph {
             assert!(
-                df.column(colnames::COUNT_M_NAME)?
+                df.column(COUNT_M_NAME)?
                     .null_count()
                     > 0
             );
             assert!(
-                df.column(colnames::COUNT_TOTAL_NAME)?
+                df.column(COUNT_TOTAL_NAME)?
                     .null_count()
                     > 0
             );
             assert!(
-                df.column(colnames::CONTEXT_NAME)?
+                df.column(CONTEXT_NAME)?
                     .null_count()
                     > 0
             );
@@ -921,33 +918,33 @@ mod tests {
         let df = DataFrame::from(batch);
 
         // Check common columns and types
-        assert_eq!(df.column(colnames::CHR_NAME)?.dtype(), &chr_dtype); // Check specified dtype
+        assert_eq!(df.column(CHR_NAME)?.dtype(), &chr_dtype); // Check specified dtype
         assert_eq!(
-            df.column(colnames::POS_NAME)?.dtype(),
+            df.column(POS_NAME)?.dtype(),
             &EncodedBsxBatch::pos_type()
         );
         assert_eq!(
-            df.column(colnames::STRAND_NAME)?
+            df.column(STRAND_NAME)?
                 .dtype(),
             &EncodedBsxBatch::strand_type()
         );
         assert_eq!(
-            df.column(colnames::CONTEXT_NAME)?
+            df.column(CONTEXT_NAME)?
                 .dtype(),
             &EncodedBsxBatch::context_type()
         );
         assert_eq!(
-            df.column(colnames::COUNT_M_NAME)?
+            df.column(COUNT_M_NAME)?
                 .dtype(),
             &EncodedBsxBatch::count_type()
         );
         assert_eq!(
-            df.column(colnames::COUNT_TOTAL_NAME)?
+            df.column(COUNT_TOTAL_NAME)?
                 .dtype(),
             &EncodedBsxBatch::count_type()
         );
         assert_eq!(
-            df.column(colnames::DENSITY_NAME)?
+            df.column(DENSITY_NAME)?
                 .dtype(),
             &EncodedBsxBatch::density_type()
         );
@@ -955,22 +952,22 @@ mod tests {
         // Check specific transformations (example for CgMap strand - encoded as bool)
         if report_type == ReportTypeSchema::CgMap {
             let expected_strand = Series::new(
-                colnames::STRAND_NAME.into(),
+                STRAND_NAME.into(),
                 [Some(true), Some(false)],
             ); // C -> true, G -> false
             assert!(df
-                .column(colnames::STRAND_NAME)?
+                .column(STRAND_NAME)?
                 .equals(&expected_strand.into_column()));
         }
         // Check specific transformations (example for BedGraph nulls - strand/context should be null)
         if report_type == ReportTypeSchema::BedGraph {
             assert!(
-                df.column(colnames::STRAND_NAME)?
+                df.column(STRAND_NAME)?
                     .null_count()
                     == df.height()
             );
             assert!(
-                df.column(colnames::CONTEXT_NAME)?
+                df.column(CONTEXT_NAME)?
                     .null_count()
                     == df.height()
             );
@@ -991,13 +988,13 @@ mod tests {
     // --- Test Encode/Decode Batch ---
     fn create_decoded_test_df() -> DataFrame {
         df!(
-            colnames::CHR_NAME => ["chrTest", "chrTest", "chrTest"],
-            colnames::POS_NAME => [100u32, 150, 200], // Sorted
-            colnames::STRAND_NAME => ["+", "-", "+"],
-            colnames::CONTEXT_NAME => ["CG", "CHG", "CHH"], // Mix of contexts
-            colnames::COUNT_M_NAME => [10u32, 5, 8],
-            colnames::COUNT_TOTAL_NAME => [20u32, 15, 10],
-            colnames::DENSITY_NAME => [0.5f32, 0.333, 0.8]
+            CHR_NAME => ["chrTest", "chrTest", "chrTest"],
+            POS_NAME => [100u32, 150, 200], // Sorted
+            STRAND_NAME => ["+", "-", "+"],
+            CONTEXT_NAME => ["CG", "CHG", "CHH"], // Mix of contexts
+            COUNT_M_NAME => [10u32, 5, 8],
+            COUNT_TOTAL_NAME => [20u32, 15, 10],
+            DENSITY_NAME => [0.5f32, 0.333, 0.8]
         )
         .unwrap()
     }

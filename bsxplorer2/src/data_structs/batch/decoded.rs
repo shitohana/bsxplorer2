@@ -158,7 +158,6 @@ mod tests {
     use super::*;
     use crate::data_structs::batch::traits::colnames;
     use polars::df;
-    use polars::prelude::*;
 
     // Helper function to create a sample DataFrame
     fn create_test_df() -> DataFrame {

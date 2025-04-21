@@ -12,7 +12,6 @@ use log::{debug, info, warn};
 use polars::datatypes::DataType;
 use polars::error::{PolarsError, PolarsResult};
 use polars::export::arrow::datatypes::Metadata;
-pub use polars::prelude::IpcCompression as PolarsIpcCompression;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 
 /// Writer for BSX data in Arrow IPC format with optional compression.

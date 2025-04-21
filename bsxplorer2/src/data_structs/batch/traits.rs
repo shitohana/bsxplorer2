@@ -1,5 +1,4 @@
 use super::builder::BsxBatchBuilder;
-use crate::data_structs::batch::decoded::BsxBatch;
 use anyhow::anyhow;
 use bio_types::annot::contig::Contig;
 use bio_types::strand::NoStrand;
