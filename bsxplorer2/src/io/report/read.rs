@@ -229,7 +229,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         {
             if let Some(compression) = &self.compression {
                 let file = File::open(path)?;
-                return Ok(compression.get_decoder(file));
+                return Ok(compression.get_decoder(file)?);
             }
         }
 

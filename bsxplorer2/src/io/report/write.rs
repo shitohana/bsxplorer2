@@ -1,4 +1,4 @@
-use std::io::{Write};
+use std::io::{Seek, Write};
 
 use log::{debug, info, warn};
 use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
@@ -20,7 +20,7 @@ pub struct ReportWriter {
 
 impl ReportWriter {
     /// Creates a new ReportWriter
-    pub fn try_new<W: Write + 'static>(
+    pub fn try_new<W: Write + Seek + 'static>(
         sink: W,
         schema: ReportTypeSchema,
         n_threads: usize,

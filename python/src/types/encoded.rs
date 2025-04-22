@@ -20,6 +20,18 @@ pub struct PyEncodedBsxBatch {
     pub inner: RsEncodedBsxBatch
 }
 
+impl From<RsEncodedBsxBatch> for PyEncodedBsxBatch {
+    fn from(batch: RsEncodedBsxBatch) -> Self {
+        PyEncodedBsxBatch { inner: batch }
+    }
+}
+
+impl From<PyEncodedBsxBatch> for RsEncodedBsxBatch {
+    fn from(batch: PyEncodedBsxBatch) -> Self {
+        batch.inner
+    }
+}
+
 #[pymethods]
 impl PyEncodedBsxBatch {
     #[new]
@@ -88,7 +100,7 @@ impl PyEncodedBsxBatch {
             .with_check_duplicates(check_duplicates)
             .with_rechunk(rechunk)
             .with_check_single_chr(check_single_chr)
-            .with_context_data(context_data.map(|v| v.to_rust()));
+            .with_context_data(context_data.map(|v| v.into()));
 
         let inner = builder.build::<RsEncodedBsxBatch>(df)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;

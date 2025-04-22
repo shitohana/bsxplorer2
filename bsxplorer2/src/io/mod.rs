@@ -1,4 +1,4 @@
 pub mod bsx;
 #[cfg(feature = "compression")]
-mod compression;
+pub mod compression;
 pub mod report;

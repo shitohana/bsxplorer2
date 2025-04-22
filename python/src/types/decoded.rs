@@ -20,6 +20,17 @@ pub struct PyBsxBatch {
     pub inner: RsBsxBatch
 }
 
+impl From<RsBsxBatch> for PyBsxBatch {
+    fn from(inner: RsBsxBatch) -> Self {
+        PyBsxBatch { inner }
+    }
+}
+impl From<PyBsxBatch> for RsBsxBatch {
+    fn from(py_batch: PyBsxBatch) -> Self {
+        py_batch.inner
+    }
+}
+
 #[pymethods]
 impl PyBsxBatch {
     #[new]
@@ -88,7 +99,7 @@ impl PyBsxBatch {
             .with_check_duplicates(check_duplicates)
             .with_rechunk(rechunk)
             .with_check_single_chr(check_single_chr)
-            .with_context_data(context_data.map(|v| v.to_rust()));
+            .with_context_data(context_data.map(|v| v.into()));
 
         let inner = builder.build::<RsBsxBatch>(df)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;

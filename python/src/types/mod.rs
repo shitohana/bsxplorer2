@@ -7,7 +7,7 @@ pub mod context_data;
 pub mod report_schema;
 
 pub fn register_data_structs_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
-    let module = PyModule::new_bound(parent_module.py(), "data_structs")?;
+    let module = PyModule::new_bound(parent_module.py(), "types")?;
     module.add_class::<utils::Strand>()?;
     module.add_class::<utils::Context>()?;
     module.add_class::<decoded::PyBsxBatch>()?;

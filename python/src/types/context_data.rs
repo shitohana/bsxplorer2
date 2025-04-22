@@ -14,9 +14,15 @@ pub struct PyContextData {
     data: RustContextData,
 }   
 
-impl PyContextData {
-    pub fn to_rust(self) -> RustContextData {
-        self.data
+impl From<RustContextData> for PyContextData {
+    fn from(data: RustContextData) -> Self {
+        Self { data }
+    }
+}
+
+impl From<PyContextData> for RustContextData {
+    fn from(py: PyContextData) -> Self {
+        py.data
     }
 }
 

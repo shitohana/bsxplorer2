@@ -1,0 +1,18 @@
+use pyo3::prelude::*;
+
+mod report;
+mod bsx;
+mod compression;
+
+pub fn register_io_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
+    let module = PyModule::new_bound(parent_module.py(), "io")?;
+    module.add_class::<bsx::PyBsxFileReader>()?;
+    module.add_class::<bsx::PyBsxFileWriter>()?;
+    module.add_class::<bsx::PyIpcCompression>()?;
+    module.add_class::<compression::PyCompression>()?;
+    module.add_class::<report::PyReportReader>()?;
+    module.add_class::<report::PyReportWriter>()?;
+
+    parent_module.add_submodule(&module)?;
+    Ok(())
+}

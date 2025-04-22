@@ -25,6 +25,18 @@ pub enum PyReportTypeSchema {
     Coverage,
 }
 
+impl From<RustReportTypeSchema> for PyReportTypeSchema {
+    fn from(rust: RustReportTypeSchema) -> Self {
+        PyReportTypeSchema::from_rust(rust)
+    }
+}
+
+impl From<PyReportTypeSchema> for RustReportTypeSchema {
+    fn from(py: PyReportTypeSchema) -> Self {
+        PyReportTypeSchema::to_rust(&py)
+    }
+}
+
 #[pymethods]
 impl PyReportTypeSchema {
     /// Get the list of column names for this report format.
