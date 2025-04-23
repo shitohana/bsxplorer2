@@ -156,6 +156,7 @@ impl PyBsxBatch {
     /// -------
     /// Series
     ///     The chromosome data (Utf8).
+    #[getter]
     pub fn chr(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.chr().clone().into_series()))
     }
@@ -166,6 +167,7 @@ impl PyBsxBatch {
     /// -------
     /// Series
     ///     The position data (UInt32).
+    #[getter]
     pub fn position(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.position().clone().into_series()))
     }
@@ -176,6 +178,7 @@ impl PyBsxBatch {
     /// -------
     /// Series
     ///     The strand data (Utf8).
+    #[getter]
     pub fn strand(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.strand().clone().into_series()))
     }
@@ -186,6 +189,7 @@ impl PyBsxBatch {
     /// -------
     /// Series
     ///     The context data (Utf8).
+    #[getter]
     pub fn context(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.context().clone().into_series()))
     }
@@ -196,6 +200,7 @@ impl PyBsxBatch {
     /// -------
     /// Series
     ///     The methylated count data (UInt32).
+    #[getter]
     pub fn count_m(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.count_m().clone().into_series()))
     }
@@ -206,6 +211,7 @@ impl PyBsxBatch {
     /// -------
     /// Series
     ///     The total count data (UInt32).
+    #[getter]
     pub fn count_total(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.count_total().clone().into_series()))
     }
@@ -216,6 +222,7 @@ impl PyBsxBatch {
     /// -------
     /// Series
     ///     The density data (Float32).
+    #[getter]
     pub fn density(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.density().clone().into_series()))
     }
@@ -253,6 +260,7 @@ impl PyBsxBatch {
     /// -------
     /// DataFrame
     ///     A clone of the internal DataFrame.
+    #[getter]
     pub fn data(&self) -> PyResult<PyDataFrame> {
         Ok(PyDataFrame(self.inner.data().clone()))
     }

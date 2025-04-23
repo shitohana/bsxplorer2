@@ -3,6 +3,10 @@ requires = ["maturin>=1,<2"]
 build-backend = "maturin"
 
 [project]
-name = "bsxplorer2"
+name = "bsx2"
 version = "0.1.0"
 requires-python = ">=3.9,<3.12"
+dependencies = [
+    "polars",
+    "pyarrow"
+]

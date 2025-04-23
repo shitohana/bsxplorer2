@@ -12,6 +12,14 @@ readme = "../README.md"
 
 [features]
 compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip"]
+performant = ["polars/performant"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
 
 [lib]
 path = "src/lib.rs"
@@ -75,8 +83,6 @@ flate2 = { version = "1.1.1", optional = true}
 version = "=0.45.0"
 default-features = false
 features = [
-    # Performance
-    # "performant",
     # Data types
     "dtype-i16",
     "dtype-u8",

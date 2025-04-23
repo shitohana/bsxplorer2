@@ -157,6 +157,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// Series
     ///     The chromosome data (Categorical).
+    #[getter]
     pub fn chr(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.chr().clone().into_series()))
     }
@@ -172,6 +173,7 @@ impl PyEncodedBsxBatch {
     /// ------
     /// ValueError
     ///     If the 'chr' column is not found or is not categorical.
+    #[getter]
     pub fn chr_categorical(&self) -> PyResult<PySeries> {
         let categorical_chunked: &CategoricalChunked = self.inner.data()
             .column(bsxplorer2::data_structs::batch::colnames::CHR_NAME)
@@ -187,6 +189,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// Series
     ///     The position data (UInt32).
+    #[getter]
     pub fn position(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.position().clone().into_series()))
     }
@@ -197,6 +200,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// Series
     ///     The strand data (Categorical).
+    #[getter]
     pub fn strand(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.strand().clone().into_series()))
     }
@@ -207,6 +211,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// Series
     ///     The context data (Categorical).
+    #[getter]
     pub fn context(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.context().clone().into_series()))
     }
@@ -217,6 +222,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// Series
     ///     The methylated count data (UInt32).
+    #[getter]
     pub fn count_m(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.count_m().clone().into_series()))
     }
@@ -227,6 +233,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// Series
     ///     The total count data (UInt32).
+    #[getter]
     pub fn count_total(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.count_total().clone().into_series()))
     }
@@ -237,6 +244,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// Series
     ///     The density data (Float32).
+    #[getter]
     pub fn density(&self) -> PyResult<PySeries> {
         Ok(PySeries(self.inner.density().clone().into_series()))
     }
@@ -274,6 +282,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// DataFrame
     ///     A clone of the internal DataFrame.
+    #[getter]
     pub fn data(&self) -> PyResult<PyDataFrame> {
         Ok(PyDataFrame(self.inner.data().clone()))
     }
@@ -284,6 +293,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// DataFrame
     ///     The internal DataFrame.
+    #[getter]
     pub fn take(&self) -> PyResult<PyDataFrame> {
         Ok(PyDataFrame(self.inner.clone().take()))
     }
