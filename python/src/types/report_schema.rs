@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use pyo3::prelude::*;
-use pyo3_polars::{PySchema};
 use bsxplorer2::io::report::ReportTypeSchema as RustReportTypeSchema;
+use pyo3::prelude::*;
+use pyo3_polars::PySchema;
 
 /// Represents different input/output file formats for methylation data.
 ///
@@ -16,7 +16,7 @@ use bsxplorer2::io::report::ReportTypeSchema as RustReportTypeSchema;
 ///     Represents the BedGraph format.
 /// Coverage
 ///     Represents the Bismark coverage format.
-#[pyclass(name="ReportTypeSchema", eq, eq_int)]
+#[pyclass(name = "ReportTypeSchema", eq, eq_int)]
 #[derive(PartialEq, Clone)]
 pub enum PyReportTypeSchema {
     Bismark,

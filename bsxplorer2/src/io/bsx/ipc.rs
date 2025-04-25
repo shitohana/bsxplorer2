@@ -25,8 +25,7 @@
 // specified RecordBatch of an IPC file. GitHub: shitohana
 
 use std::default::Default;
-use std::io::{Read, Seek};
-
+use std::io::{Read, Seek, SeekFrom};
 use polars::export::arrow::array::Array;
 use polars::export::arrow::io::ipc::read::{
     read_batch, read_file_dictionaries, read_file_metadata, Dictionaries,
@@ -133,6 +132,17 @@ impl<R: Read + Seek> IpcFileReader<R> {
             blocks_total,
             data_scratch: Default::default(),
             message_scratch: Default::default(),
+        }
+    }
+
+    pub(crate) fn reopen(mut self) -> Self {
+        self.reader.seek(SeekFrom::Start(0)).unwrap();
+        Self {
+            reader: self.reader,
+            metadata: self.metadata,
+            projection: self.projection,
+            blocks_total: self.blocks_total,
+            ..self
         }
     }
 

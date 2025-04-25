@@ -3,10 +3,13 @@ use crate::types::report_schema::PyReportTypeSchema;
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::exports::polars::frame::DataFrame;
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{ReportReader as RustReportReader, ReportReaderBuilder, ReportWriter as RustReportWriter};
+use bsxplorer2::io::report::{
+    ReportReader as RustReportReader, ReportReaderBuilder,
+    ReportWriter as RustReportWriter,
+};
 use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3_polars::{PyDataFrame};
+use pyo3_polars::PyDataFrame;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
@@ -120,16 +123,26 @@ impl PyReportReader {
 
         let reader = builder.build(path).map_err(|e| {
             // Attempt to classify error
-            if e.to_string().contains("No such file or directory") {
+            if e.to_string()
+                .contains("No such file or directory")
+            {
                 PyFileNotFoundError::new_err(e.to_string())
-            } else if e.to_string().contains("must be specified") {
+            } else if e
+                .to_string()
+                .contains("must be specified")
+            {
                 PyValueError::new_err(e.to_string())
             } else {
-                PyRuntimeError::new_err(format!("Failed to build ReportReader: {}", e))
+                PyRuntimeError::new_err(format!(
+                    "Failed to build ReportReader: {}",
+                    e
+                ))
             }
         })?;
 
-        Ok(Self { reader: Some(reader) })
+        Ok(Self {
+            reader: Some(reader),
+        })
     }
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
@@ -160,7 +173,7 @@ impl PyReportReader {
                 None => {
                     slf.reader = None; // Consume the reader
                     Ok(None) // Signals Python StopIteration
-                }
+                },
             },
             None => Ok(None), // Already consumed or failed previously
         }
@@ -230,7 +243,9 @@ impl PyReportWriter {
         })?;
         let sink = BufWriter::new(file);
 
-        let comp_enum = Compression::from(compression.unwrap_or_else(|| PyCompression(Compression::None)));
+        let comp_enum = Compression::from(
+            compression.unwrap_or_else(|| PyCompression(Compression::None)),
+        );
 
         let writer = RustReportWriter::try_new(
             sink,
@@ -240,10 +255,15 @@ impl PyReportWriter {
             compression_level,
         )
         .map_err(|e| {
-            PyRuntimeError::new_err(format!("Failed to create ReportWriter: {}", e))
+            PyRuntimeError::new_err(format!(
+                "Failed to create ReportWriter: {}",
+                e
+            ))
         })?;
 
-        Ok(Self { writer: Some(writer) })
+        Ok(Self {
+            writer: Some(writer),
+        })
     }
 
     /// Writes a BsxBatch to the output file.
@@ -257,13 +277,18 @@ impl PyReportWriter {
     /// ------
     /// RuntimeError
     ///     If the writer is already closed or if writing fails.
-    pub fn write_batch(&mut self, batch: PyBsxBatch) -> PyResult<()> {
+    pub fn write_batch(
+        &mut self,
+        batch: PyBsxBatch,
+    ) -> PyResult<()> {
         if let Some(writer) = self.writer.as_mut() {
             writer
                 .write_batch(batch.into()) // Clone might be necessary depending on ownership
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to write batch: {}", e)))
         } else {
-            Err(PyRuntimeError::new_err("Writer is closed or uninitialized."))
+            Err(PyRuntimeError::new_err(
+                "Writer is closed or uninitialized.",
+            ))
         }
     }
 
@@ -281,23 +306,31 @@ impl PyReportWriter {
     /// ------
     /// RuntimeError
     ///     If the writer is already closed or if writing fails.
-    pub fn write_df(&mut self, df: PyDataFrame) -> PyResult<()> {
-         if let Some(writer) = self.writer.as_mut() {
+    pub fn write_df(
+        &mut self,
+        df: PyDataFrame,
+    ) -> PyResult<()> {
+        if let Some(writer) = self.writer.as_mut() {
             let rust_df: DataFrame = df.into();
-            writer
-                .write_df(&rust_df)
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to write DataFrame: {}", e)))
+            writer.write_df(&rust_df).map_err(|e| {
+                PyRuntimeError::new_err(format!(
+                    "Failed to write DataFrame: {}",
+                    e
+                ))
+            })
         } else {
-            Err(PyRuntimeError::new_err("Writer is closed or uninitialized."))
+            Err(PyRuntimeError::new_err(
+                "Writer is closed or uninitialized.",
+            ))
         }
     }
 
-     /// Closes the writer and finalizes the output file.
-     ///
-     /// This method should be called explicitly when done writing,
-     /// especially if not using a `with` statement context manager
-     /// (which is not directly implemented here but recommended in Python usage).
-     /// It ensures all buffered data is flushed to the file.
+    /// Closes the writer and finalizes the output file.
+    ///
+    /// This method should be called explicitly when done writing,
+    /// especially if not using a `with` statement context manager
+    /// (which is not directly implemented here but recommended in Python usage).
+    /// It ensures all buffered data is flushed to the file.
     pub fn close(&mut self) -> PyResult<()> {
         if let Some(writer) = self.writer.take() {
             // The underlying BatchedCsvWriter flushes on drop, which happens when `writer` goes out of scope here.
@@ -305,10 +338,8 @@ impl PyReportWriter {
             drop(writer);
             Ok(())
         } else {
-             // Already closed, maybe warn or just do nothing? Let's return Ok for idempotency.
+            // Already closed, maybe warn or just do nothing? Let's return Ok for idempotency.
             Ok(())
         }
     }
-
-
 }

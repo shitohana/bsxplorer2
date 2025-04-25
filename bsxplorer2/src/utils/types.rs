@@ -13,6 +13,7 @@ pub trait IPCEncodedEnum {
 }
 
 pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
+
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Context {
     CG,

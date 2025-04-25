@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
-use bsxplorer2::io::compression::Compression; // Assuming bsxplorer2 is the crate name
+use bsxplorer2::io::compression::Compression;
+use pyo3::prelude::*; // Assuming bsxplorer2 is the crate name
 
 #[pyclass(name = "Compression")]
 #[derive(Clone)]

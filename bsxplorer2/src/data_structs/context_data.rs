@@ -109,16 +109,19 @@ impl ContextData {
                         Strand::Forward,
                         Context::CHG,
                     ));
-                    
                 },
-                trinuc @ &[b'C', _, _] if trinuc[1] != b'G'&& trinuc[2] != b'G' => {
+                trinuc @ &[b'C', _, _]
+                    if trinuc[1] != b'G' && trinuc[2] != b'G' =>
+                {
                     self.entries.insert(Entry(
                         start + shift as u32,
                         Strand::Forward,
                         Context::CHH,
                     ));
                 },
-                trinuc @ &[_, _, b'G'] if trinuc[0] != b'C' && trinuc[1] != b'C' => {
+                trinuc @ &[_, _, b'G']
+                    if trinuc[0] != b'C' && trinuc[1] != b'C' =>
+                {
                     self.entries.insert(Entry(
                         start + shift as u32 + 2,
                         Strand::Reverse,

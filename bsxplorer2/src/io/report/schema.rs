@@ -1,5 +1,6 @@
 use polars::prelude::*;
-
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Supported methylation report file formats.
@@ -157,4 +158,9 @@ impl ReportTypeSchema {
 
         read_options
     }
+}
+
+trait ReportRow<'a>: Deserialize<'a> {
+    fn get_chr(&self) -> String;
+    fn get_pos(&self) -> usize;
 }

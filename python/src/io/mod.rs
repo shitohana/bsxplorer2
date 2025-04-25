@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 
-mod report;
 mod bsx;
 mod compression;
+mod report;
 
 pub fn register_io_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let module = PyModule::new_bound(parent_module.py(), "io")?;

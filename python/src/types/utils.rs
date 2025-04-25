@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use bsxplorer2::utils::types::{Context as RsContext, Strand as RsStrand};
+use pyo3::prelude::*;
 
 /// Represents DNA strand information.
 ///
@@ -104,5 +104,3 @@ impl From<Context> for RsContext {
         }
     }
 }
-
-

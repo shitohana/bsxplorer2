@@ -1,6 +1,8 @@
-use pyo3::prelude::*;
+use bsxplorer2::data_structs::batch::{
+    BsxBatch as RsBsxBatch, EncodedBsxBatch as RsEncodedBsxBatch,
+};
 use bsxplorer2::data_structs::context_data::ContextData as RustContextData;
-use bsxplorer2::data_structs::batch::{BsxBatch as RsBsxBatch, EncodedBsxBatch as RsEncodedBsxBatch};
+use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
 /// Stores methylation context information derived from a DNA sequence.
@@ -8,11 +10,11 @@ use pyo3_polars::PyDataFrame;
 /// This class pre-calculates the positions, strands, and contexts (CG, CHG, CHH)
 /// for cytosines within a given sequence, allowing for efficient alignment
 /// with methylation data.
-#[pyclass(name="ContextData")]
+#[pyclass(name = "ContextData")]
 #[derive(Clone)]
 pub struct PyContextData {
     data: RustContextData,
-}   
+}
 
 impl From<RustContextData> for PyContextData {
     fn from(data: RustContextData) -> Self {
@@ -70,7 +72,10 @@ impl PyContextData {
     /// DataFrame
     ///     A Polars DataFrame with encoded context information.
     pub fn to_encoded_df(&self) -> PyResult<PyDataFrame> {
-        let df = self.data.clone().to_df::<RsEncodedBsxBatch>();
+        let df = self
+            .data
+            .clone()
+            .to_df::<RsEncodedBsxBatch>();
         Ok(PyDataFrame(df))
     }
 }
