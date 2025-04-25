@@ -1,5 +1,6 @@
+use std::error::Error;
+
 use polars::prelude::*;
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
@@ -158,9 +159,95 @@ impl ReportTypeSchema {
 
         read_options
     }
+
+    /// Returns a `csv::StringRecord` with the column names for this format.
+    pub(crate) fn header_record(&self) -> csv::StringRecord {
+        let mut record = csv::StringRecord::new();
+        for name in self.col_names() {
+            record.push_field(name);
+        }
+        record
+    }
 }
 
-trait ReportRow<'a>: Deserialize<'a> {
+pub(crate) trait ReportRow<'a>: Deserialize<'a> {
     fn get_chr(&self) -> String;
     fn get_pos(&self) -> usize;
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct BismarkRow {
+    chr: String,
+    position: usize,
+    strand: String,
+    count_m: u32,
+    count_um: u32,
+    context: String,
+    trinuc: String,
+}
+
+impl<'a> ReportRow<'a> for BismarkRow {
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
+    fn get_pos(&self) -> usize {
+        self.position
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct CgMapRow {
+    chr: String,
+    nuc: String,
+    position: usize,
+    context: String,
+    dinuc: String,
+    density: f64,
+    count_m: u32,
+    count_total: u32,
+}
+
+impl<'a> ReportRow<'a> for CgMapRow {
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
+    fn get_pos(&self) -> usize {
+        self.position
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct BedGraphRow {
+    chr: String,
+    start: usize,
+    end: usize,
+    density: f64,
+}
+
+impl<'a> ReportRow<'a> for BedGraphRow {
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
+    fn get_pos(&self) -> usize {
+        self.start
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct CoverageRow {
+    chr: String,
+    start: usize,
+    end: usize,
+    density: f64,
+    count_m: u32,
+    count_um: u32,
+}
+
+impl<'a> ReportRow<'a> for CoverageRow {
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
+    fn get_pos(&self) -> usize {
+        self.start
+    }
 }

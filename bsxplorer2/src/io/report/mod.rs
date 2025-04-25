@@ -4,6 +4,10 @@ mod write;
 
 pub use {
     read::{ReportReader, ReportReaderBuilder},
-    schema::ReportTypeSchema,
+    schema::{ReportTypeSchema},
     write::ReportWriter
+};
+
+pub(crate) use {
+    schema::{BedGraphRow, CgMapRow, CoverageRow, BismarkRow, ReportRow}
 };

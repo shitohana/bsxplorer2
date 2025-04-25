@@ -1,4 +1,5 @@
 use core::panic;
+use bio_types::annot::pos;
 use itertools::Itertools;
 use memmap2::Mmap;
 use num::{ToPrimitive, Unsigned};
@@ -7,7 +8,7 @@ use polars_arrow::array::TryExtend;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
-use std::io::{Cursor, Read, Seek};
+use std::io::{BufRead, Cursor, Read, Seek};
 use std::marker::PhantomData;
 use std::ops::Bound::{Excluded, Included};
 use std::os::fd::AsRawFd;
@@ -17,7 +18,7 @@ use crate::data_structs::batch::{
     BatchType, BsxBatchBuilder, BsxBatchMethods, BsxTypeTag,
     EncodedBsxBatch, LazyBsxBatch,
 };
-use crate::io::report::ReportTypeSchema;
+use crate::io::report::{BedGraphRow, BismarkRow, CgMapRow, CoverageRow, ReportRow, ReportTypeSchema};
 use crate::utils::get_categorical_dtype;
 
 trait GenomicQuery {
@@ -293,7 +294,7 @@ struct IndexedReportReader<'a, B: BsxBatchMethods> {
     chr_index: ChrIndex,
     /// Values are offsets in the file to the start (inclusive)
     /// and end (exclusive) offsets of chunk's data
-    batch_index: BTreeMap<ChunkLabel, (usize, usize)>,
+    batch_index: BTreeMap<ChunkLabel, usize>,
     _lifetime: &'a (),
     _batch: PhantomData<B>,
 }
@@ -313,7 +314,7 @@ impl<'a, B: BsxBatchMethods> IndexedReportReader<'a, B> {
 }
 
 impl<'a, B: BsxBatchMethods> IndexedHandle<'_> for IndexedReportReader<'a, B> {
-    type Value = (usize, usize);
+    type Value = usize;
     type Output = B;
 
     fn get_tree(&self) -> &BTreeMap<ChunkLabel, Self::Value> {
@@ -338,31 +339,39 @@ impl<'a, B: BsxBatchMethods> IndexedHandle<'_> for IndexedReportReader<'a, B> {
         start: N,
         end: N,
     ) -> anyhow::Result<Option<Self::Output>> {
-        let batch_indices = self.range_records(chr, start, end);
+        let batch_indices = self.range_records(chr.as_ref(), start, end);
         if batch_indices.is_empty() {
             return Ok(None);
         };
-        let start_offset = batch_indices.first().unwrap().0;
-        let end_offset = batch_indices.last().unwrap().1;
+        let start_offset = *batch_indices.first().unwrap();
 
-        let cursor = Cursor::new(&self.mmap[start_offset..end_offset]);
-        let df = self
+        let cursor = Cursor::new(&self.mmap[start_offset..(start_offset + CHUNK_SIZE)]);
+        let mut res = self
             .report_type
             .read_options()
             .into_reader_with_file_handle(cursor)
-            .finish()?;
-
-        let batch = BsxBatchBuilder::all_checks()
-            .with_check_single_chr(false)
-            .with_chr_dtype({
-                if matches!(B::type_enum(), BatchType::Encoded) {
-                    Some(get_categorical_dtype(self.chr_index.keys()))
-                } else {
-                    None
-                }
+            .finish()?
+            .partition_by_stable([self.report_type.chr_col()], true)?
+            .into_iter()
+            .map(|df| {
+                BsxBatchBuilder::all_checks()
+                    .with_check_single_chr(false)
+                    .with_chr_dtype({
+                        if matches!(B::type_enum(), BatchType::Encoded) {
+                            Some(get_categorical_dtype(self.chr_index.keys()))
+                        } else {
+                            None
+                        }
+                    })
+                    .with_report_type(self.report_type)
+                    .build::<B>(df).unwrap()
             })
-            .with_report_type(self.report_type)
-            .build::<B>(df)?;
+            .filter(|batch| batch.chr_val().unwrap() == chr.as_ref())
+            .collect_vec();
+
+        if res.len() == 0 { anyhow::bail!("Index maps to wrong location. Chromosome mismatch") }
+        let batch = res.pop().unwrap();
+
         let batch_filtered = LazyBsxBatch::from(batch)
             .filter_pos_gt(
                 start
@@ -379,13 +388,37 @@ impl<'a, B: BsxBatchMethods> IndexedHandle<'_> for IndexedReportReader<'a, B> {
 
 /// 64 kb
 const CHUNK_SIZE: usize = 64 * 1024;
-fn index_buffer(buffer: &[u8], report_type: ReportTypeSchema) -> anyhow::Result<BTreeMap<ChunkLabel, (usize, usize)>> {
-    let buffer_len = buffer.len();
-    let map = BTreeMap::<ChunkLabel, (usize, usize)>::new();
-    let global_offset = 0usize;
-    while global_offset < buffer_len {
-        let next_offset = global_offset + CHUNK_SIZE;
-        let real_offset = buffer[global_offset..next_offset].iter().rev().position(|&x| x == b'\n').ok_or(anyhow!("File has too long lines (> 64kb) and cannot be processed"))?;
-    }
+fn index_buffer<B: AsRef<[u8]>>(buffer: B, report_type: ReportTypeSchema) -> anyhow::Result<BTreeMap<ChunkLabel, usize>> {
     todo!()
+}
+
+/// Extracts the label from the buffer based on the report type.
+/// 
+/// # Arguments
+/// * `buffer` - The buffer containing the data (single CSV row).
+/// * `report_type` - The type of report (Bismark, BedGraph, CgMap, Coverage).
+fn extract_label(
+    buffer: &[u8],
+    report_type: &ReportTypeSchema,
+) -> anyhow::Result<(String, usize)> {
+    let record = report_type.header_record();
+    let (chr, pos) = match report_type {
+        ReportTypeSchema::Bismark => {
+            let row: BismarkRow = record.deserialize(None)?;
+            (row.get_chr(), row.get_pos())
+        },
+        ReportTypeSchema::BedGraph => {
+            let row: BedGraphRow = record.deserialize(None)?;
+            (row.get_chr(), row.get_pos())
+        },
+        ReportTypeSchema::CgMap => {
+            let row: CgMapRow = record.deserialize(None)?;
+            (row.get_chr(), row.get_pos())
+        },
+        ReportTypeSchema::Coverage => {
+            let row: CoverageRow = record.deserialize(None)?;
+            (row.get_chr(), row.get_pos())
+        },
+    };
+    Ok((chr, pos))
 }
