@@ -1,7 +1,9 @@
+use crate::data_structs::coords::{Contig, GenomicPosition};
+use crate::data_structs::enums::Strand;
+
+
 use super::builder::BsxBatchBuilder;
 use anyhow::anyhow;
-use bio_types::annot::contig::Contig;
-use bio_types::strand::NoStrand;
 use polars::datatypes::BooleanChunked;
 use polars::error::PolarsResult;
 use polars::frame::DataFrame;
@@ -208,6 +210,20 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
             .ok()
     }
 
+    fn start_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
+        let pos = self.start_pos().ok_or(anyhow!("no data"))?;
+        let chr = self.chr_val()?;
+        let gpos = GenomicPosition::new(chr, pos);
+        Ok(gpos)
+    }
+
+    fn end_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
+        let pos = self.end_pos().ok_or(anyhow!("no data"))?;
+        let chr = self.chr_val()?;
+        let gpos = GenomicPosition::new(chr, pos);
+        Ok(gpos)
+    }
+
     /// Vertically stack with another batch
     fn vstack(
         &self,
@@ -247,7 +263,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Convert batch to genomic contig
-    fn as_contig(&self) -> anyhow::Result<Contig<&str, NoStrand>>
+    fn as_contig(&self) -> anyhow::Result<Contig<String, u32>>
     where
         u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>,
     {
@@ -260,10 +276,10 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         let chr = self.chr_val()?;
 
         Ok(Contig::new(
-            chr,
-            start as isize,
-            (end + 1 - start) as usize,
-            NoStrand::Unknown,
+            chr.to_owned(),
+            start,
+            end + 1,
+            Strand::None,
         ))
     }
 }

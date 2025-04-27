@@ -5,7 +5,8 @@ use itertools::{izip, Itertools};
 use crate::tools::dmr::data_structs::SegmentView;
 use crate::tools::dmr::tv1d_clone::condat;
 use crate::utils::mann_whitney_u;
-use crate::utils::types::Context;
+use crate::data_structs::enums::Context;
+
 
 /// Splits a segment based on the distance between positions.
 ///

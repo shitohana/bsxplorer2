@@ -6,7 +6,7 @@ use itertools::Itertools;
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+use crate::data_structs::enums::{Context, Strand};
 
 /// Serializes a HashMap in a deterministic order based on keys.
 /// This is useful for consistent JSON outputs and testing.

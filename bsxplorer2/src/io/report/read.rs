@@ -1,18 +1,16 @@
 use crate::data_structs::batch::{
     BatchType, BsxBatchBuilder, BsxBatchMethods, BsxTypeTag, LazyBsxBatch,
 };
+use crate::io::read_chrom;
 use crate::io::report::schema::ReportTypeSchema;
 use anyhow::bail;
 use bio::io::fasta::{Reader as FastaReader, Record as FastaRecord};
-use noodles::fasta::fai::io::Reader as FaiReader;
-use noodles::fasta::fs::index as index_fasta;
 
 use crate::data_structs::context_data::ContextData;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::utils::get_categorical_dtype;
 use crossbeam::channel::Receiver;
-use itertools::Itertools;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use std::collections::{BTreeMap, HashMap};
@@ -182,24 +180,13 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     fn get_chr_dtype(&self) -> anyhow::Result<Option<DataType>> {
-        let index = if let Some(fai_path) = self.fai_path.as_ref() {
-            FaiReader::new(BufReader::new(File::open(fai_path)?))
-                .read_index()?
-                .into()
-        } else if let Some(fasta_path) = self.fasta_path.as_ref() {
-            Some(index_fasta(fasta_path)?)
-        } else {
-            None
+        let chroms = match (self.fasta_path.as_ref(), self.fai_path.as_ref()) {
+            (_, Some(fai)) => Some(read_chrom(fai, true)?),
+            (Some(fasta), None) => Some(read_chrom(fasta, false)?),
+            (None, None) => return Ok(None),
         };
-
-        let dtype = index
-            .map(|i| {
-                i.as_ref()
-                    .iter()
-                    .map(|r| String::from_utf8(r.name().to_vec()).unwrap())
-                    .collect_vec()
-            })
-            .map(get_categorical_dtype);
+        
+        let dtype = chroms.map(|v| get_categorical_dtype(v));
         Ok(dtype)
     }
 

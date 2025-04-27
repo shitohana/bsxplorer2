@@ -3,7 +3,8 @@ use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
 use crate::tools::dmr::{segment_reading, DmrIterator};
-use crate::utils::types::Context;
+use crate::data_structs::enums::Context;
+
 use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 use polars::io::mmap::MmapBytesReader;

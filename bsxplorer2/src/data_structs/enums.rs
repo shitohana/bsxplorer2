@@ -2,14 +2,12 @@ use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use num::{PrimInt, Unsigned};
 use serde::{Deserialize, Serialize};
 
 pub trait IPCEncodedEnum {
     fn from_bool(value: Option<bool>) -> Self;
     fn to_bool(&self) -> Option<bool>;
     fn from_str(value: &str) -> Self;
-    fn to_string(&self) -> String;
 }
 
 pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
@@ -19,6 +17,16 @@ pub enum Context {
     CG,
     CHG,
     CHH,
+}
+
+impl Display for Context {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Context::CG => String::from("CG"),
+            Context::CHG => String::from("CHG"),
+            Context::CHH => String::from("CHH"),
+        })
+    }
 }
 
 impl PartialOrd<Self> for Context {
@@ -74,14 +82,6 @@ impl IPCEncodedEnum for Context {
             other => unimplemented!("Context {} is not yet supported", other),
         }
     }
-
-    fn to_string(&self) -> String {
-        match self {
-            Context::CG => String::from("CG"),
-            Context::CHG => String::from("CHG"),
-            Context::CHH => String::from("CHH"),
-        }
-    }
 }
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
@@ -89,6 +89,16 @@ pub enum Strand {
     Forward,
     Reverse,
     None,
+}
+
+impl Display for Strand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Strand::Forward => String::from("+"),
+            Strand::Reverse => String::from("-"),
+            Strand::None => String::from("."),
+        })
+    }
 }
 
 impl PartialOrd<Self> for Strand {
@@ -143,36 +153,4 @@ impl IPCEncodedEnum for Strand {
             _ => Strand::None,
         }
     }
-
-    fn to_string(&self) -> String {
-        match self {
-            Strand::Forward => String::from("+"),
-            Strand::Reverse => String::from("-"),
-            Strand::None => String::from("."),
-        }
-    }
 }
-
-pub trait PosNum:
-    PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash
-{
-}
-
-impl<T> PosNum for T where
-    T: PrimInt + Unsigned + Clone + Serialize + Display + Sync + Hash
-{
-}
-
-pub trait RefId:
-    Eq + Hash + From<String> + Clone + Default + Ord + Display
-{
-}
-
-impl<T> RefId for T where
-    T: Eq + Hash + From<String> + Clone + Default + Ord + Display
-{
-}
-
-pub trait Data: Sized + Clone {}
-
-impl<T> Data for T where T: Sized + Clone {}

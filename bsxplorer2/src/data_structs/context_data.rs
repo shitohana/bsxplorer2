@@ -1,5 +1,6 @@
 use crate::data_structs::batch::{BatchType, BsxTypeTag};
-use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
+
 use itertools::Itertools;
 use polars::df;
 use polars::frame::DataFrame;

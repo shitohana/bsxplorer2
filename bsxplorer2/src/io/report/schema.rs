@@ -1,4 +1,3 @@
-use std::error::Error;
 
 use polars::prelude::*;
 use serde::Deserialize;

@@ -8,6 +8,3 @@ pub use {
     write::ReportWriter
 };
 
-pub(crate) use {
-    schema::{BedGraphRow, CgMapRow, CoverageRow, BismarkRow, ReportRow}
-};

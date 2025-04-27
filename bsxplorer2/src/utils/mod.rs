@@ -5,7 +5,6 @@ use log::warn;
 use polars::datatypes::PlIndexMap;
 use polars::prelude::*;
 
-pub mod types;
 mod stats;
 pub use stats::*;
 

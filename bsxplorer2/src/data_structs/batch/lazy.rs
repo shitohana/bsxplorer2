@@ -7,7 +7,8 @@ use super::{
 use crate::data_structs::batch::traits::colnames::*;
 use crate::data_structs::context_data::ContextData;
 use crate::io::report::ReportTypeSchema;
-use crate::utils::types::{Context, IPCEncodedEnum, Strand};
+use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
+
 use itertools::Itertools;
 use polars::prelude::*;
 use std::marker::PhantomData;
@@ -252,7 +253,8 @@ mod tests {
         traits::BsxBatchMethods,
     };
     use crate::utils::get_categorical_dtype;
-    use crate::utils::types::{Context, Strand};
+    use crate::data_structs::enums::{Context, Strand};
+
     use polars::df;
 
     // --- Helper Functions ---
