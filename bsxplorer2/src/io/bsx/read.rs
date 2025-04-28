@@ -95,13 +95,13 @@ impl<R: Read + Seek> BsxFileReader<R> {
         let mut batches = batch_indices.into_iter()
             .map(|idx| self.get_batch(idx).ok_or(anyhow!("Batch with index {} not found", idx)))
             .collect::<anyhow::Result<PolarsResult<Vec<_>>>>()??;
+        batches.sort_by_key(|b| b.start_pos().expect("Unexpected no data"));
 
         let res = BsxBatchBuilder::concat(batches)?
             .lazy()
             .filter_pos_gt(contig.start().position() - 1)
             .filter_pos_lt(contig.end().position())
             .collect()?;
-
         Ok(Some(res))
     }
 

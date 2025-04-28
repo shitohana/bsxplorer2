@@ -261,7 +261,7 @@ impl BsxBatchBuilder {
         let batch_data = DataFrame::from(batch);
         let mut batch_lazy = batch_data.lazy();
 
-        let casted = encoded::select_cast(batch_lazy, chr_dtype).collect()?;
+        let casted = encoded::select_cast(batch_lazy, chr_dtype, true).collect()?;
         let encoded = EncodedBsxBatch::new_with_fields(casted, chr);
         Ok(encoded)
     }
@@ -305,9 +305,10 @@ impl BsxBatchBuilder {
             Default::default(),
         )?
         .collect()?;
-        let res = BsxBatchBuilder::no_checks()
+        let res: B = BsxBatchBuilder::no_checks()
             .with_rechunk(true)
             .with_check_duplicates(true)
+            .with_chr_dtype(Some(data.schema().get(CHR_NAME).unwrap().clone()))
             .build(data)?;
         Ok(res)
     }
@@ -523,7 +524,7 @@ mod encoded {
         df: DataFrame,
         chr_dtype: DataType,
     ) -> anyhow::Result<DataFrame> {
-        let casted = select_cast(df.lazy(), chr_dtype);
+        let casted = select_cast(df.lazy(), chr_dtype, false);
         casted.collect().map_err(|e| anyhow!(e))
     }
 
@@ -533,6 +534,7 @@ mod encoded {
     pub(crate) fn select_cast(
         lf: LazyFrame,
         chr_dtype: DataType,
+        encode: bool,
     ) -> LazyFrame {
         lf.select([
             col("chr")
@@ -541,8 +543,8 @@ mod encoded {
             col("position")
                 .cast(EncodedBsxBatch::pos_type())
                 .alias(POS_NAME),
-            encode_strand(),
-            encode_context(),
+            if encode {encode_strand()} else {col("strand").cast(EncodedBsxBatch::strand_type()).alias(STRAND_NAME)},
+            if encode {encode_context()} else {col("context").cast(EncodedBsxBatch::context_type()).alias(CONTEXT_NAME)},
             col("count_m")
                 .cast(EncodedBsxBatch::count_type())
                 .alias(COUNT_M_NAME),
@@ -574,7 +576,7 @@ mod encoded {
             .lazy()
             .with_column(count_total_col_expr())
             .with_column(density_col_expr());
-        let casted = select_cast(col_added, chr_dtype);
+        let casted = select_cast(col_added, chr_dtype, true);
         casted.collect().map_err(|e| anyhow!(e))
     }
 
@@ -586,7 +588,7 @@ mod encoded {
         let col_added = df
             .lazy()
             .with_column(nuc_to_strand_expr());
-        let casted = select_cast(col_added, chr_dtype);
+        let casted = select_cast(col_added, chr_dtype, true);
         casted.collect().map_err(|e| anyhow!(e))
     }
 
@@ -603,7 +605,7 @@ mod encoded {
                 lit(NULL).alias("strand"),
                 lit(NULL).alias("context"),
             ]);
-        let casted = select_cast(col_added, chr_dtype);
+        let casted = select_cast(col_added, chr_dtype, true);
         casted.collect().map_err(|e| anyhow!(e))
     }
 
@@ -619,7 +621,7 @@ mod encoded {
             lit(NULL).alias("count_m"),
             lit(NULL).alias("count_total"),
         ]);
-        let casted = select_cast(col_added, chr_dtype);
+        let casted = select_cast(col_added, chr_dtype, true);
         casted.collect().map_err(|e| anyhow!(e))
     }
 }

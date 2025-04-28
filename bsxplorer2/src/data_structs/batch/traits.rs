@@ -162,7 +162,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
 
     /// Split batch at specified index
     fn split_at(
-        self,
+        &self,
         index: usize,
     ) -> (Self, Self)
     where
@@ -191,7 +191,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         self.data()
             .column(POS_NAME)
             .unwrap()
-            .get(self.data().height() - 1)
+            .get(0)
             .map(|v| {
                 v.cast(&DataType::UInt32)
                     .try_extract()
