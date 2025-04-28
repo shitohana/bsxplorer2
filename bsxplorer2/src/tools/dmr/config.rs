@@ -1,9 +1,9 @@
 use crate::data_structs::batch::EncodedBsxBatch;
+use crate::data_structs::enums::Context;
 use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
 use crate::tools::dmr::{segment_reading, DmrIterator};
-use crate::data_structs::enums::Context;
 
 use bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;

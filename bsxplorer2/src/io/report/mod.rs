@@ -4,7 +4,6 @@ mod write;
 
 pub use {
     read::{ReportReader, ReportReaderBuilder},
-    schema::{ReportTypeSchema},
-    write::ReportWriter
+    schema::ReportTypeSchema,
+    write::ReportWriter,
 };
-

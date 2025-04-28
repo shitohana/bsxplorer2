@@ -20,12 +20,19 @@ pub enum Context {
 }
 
 impl Display for Context {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Context::CG => String::from("CG"),
-            Context::CHG => String::from("CHG"),
-            Context::CHH => String::from("CHH"),
-        })
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Context::CG => String::from("CG"),
+                Context::CHG => String::from("CHG"),
+                Context::CHH => String::from("CHH"),
+            }
+        )
     }
 }
 
@@ -92,12 +99,19 @@ pub enum Strand {
 }
 
 impl Display for Strand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Strand::Forward => String::from("+"),
-            Strand::Reverse => String::from("-"),
-            Strand::None => String::from("."),
-        })
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Strand::Forward => String::from("+"),
+                Strand::Reverse => String::from("-"),
+                Strand::None => String::from("."),
+            }
+        )
     }
 }
 

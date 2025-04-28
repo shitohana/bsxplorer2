@@ -194,13 +194,13 @@ mod tests {
             Series::new(DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
 
         df!(
-            colnames::CHR_NAME => chr_series,
-            colnames::POS_NAME => pos_series,
-            colnames::STRAND_NAME => strand_series,
-            colnames::CONTEXT_NAME => context_series,
-            colnames::COUNT_M_NAME => count_m_series,
-            colnames::COUNT_TOTAL_NAME => count_total_series,
-            colnames::DENSITY_NAME => density_series,
+            CHR_NAME => chr_series,
+            POS_NAME => pos_series,
+            STRAND_NAME => strand_series,
+            CONTEXT_NAME => context_series,
+            COUNT_M_NAME => count_m_series,
+            COUNT_TOTAL_NAME => count_total_series,
+            DENSITY_NAME => density_series,
         )
         .unwrap()
     }
@@ -244,32 +244,28 @@ mod tests {
     #[test]
     fn test_strand() {
         let batch = create_test_batch();
-        let expected =
-            Series::new(STRAND_NAME.into(), &[true, true, false]);
+        let expected = Series::new(STRAND_NAME.into(), &[true, true, false]);
         assert_eq!(batch.strand().clone().into_series(), expected);
     }
 
     #[test]
     fn test_context() {
         let batch = create_test_batch();
-        let expected =
-            Series::new(CONTEXT_NAME.into(), &[true, false, false]);
+        let expected = Series::new(CONTEXT_NAME.into(), &[true, false, false]);
         assert_eq!(batch.context().clone().into_series(), expected);
     }
 
     #[test]
     fn test_count_m() {
         let batch = create_test_batch();
-        let expected =
-            Series::new(COUNT_M_NAME.into(), &[5i16, 10, 15]);
+        let expected = Series::new(COUNT_M_NAME.into(), &[5i16, 10, 15]);
         assert_eq!(batch.count_m().clone().into_series(), expected);
     }
 
     #[test]
     fn test_count_total() {
         let batch = create_test_batch();
-        let expected =
-            Series::new(COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
+        let expected = Series::new(COUNT_TOTAL_NAME.into(), &[10i16, 20, 30]);
         assert_eq!(
             batch
                 .count_total()
@@ -282,8 +278,7 @@ mod tests {
     #[test]
     fn test_density() {
         let batch = create_test_batch();
-        let expected =
-            Series::new(DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
+        let expected = Series::new(DENSITY_NAME.into(), &[0.5f32, 0.5, 0.5]);
         assert_eq!(batch.density().clone().into_series(), expected);
     }
 
@@ -359,13 +354,13 @@ mod tests {
     #[test]
     fn test_chr_val_empty() {
         let empty_df = df!(
-             colnames::CHR_NAME => Series::new_empty(colnames::CHR_NAME.into(), &DataType::Categorical(None, CategoricalOrdering::Physical)),
-            colnames::POS_NAME => Series::new_empty(colnames::POS_NAME.into(), &DataType::UInt32),
-            colnames::STRAND_NAME => Series::new_empty(colnames::STRAND_NAME.into(), &DataType::Boolean),
-            colnames::CONTEXT_NAME => Series::new_empty(colnames::CONTEXT_NAME.into(), &DataType::Boolean),
-            colnames::COUNT_M_NAME => Series::new_empty(colnames::COUNT_M_NAME.into(), &DataType::Int16),
-            colnames::COUNT_TOTAL_NAME => Series::new_empty(colnames::COUNT_TOTAL_NAME.into(), &DataType::Int16),
-            colnames::DENSITY_NAME => Series::new_empty(colnames::DENSITY_NAME.into(), &DataType::Float32),
+            CHR_NAME => Series::new_empty(CHR_NAME.into(), &DataType::Categorical(None, CategoricalOrdering::Physical)),
+            POS_NAME => Series::new_empty(POS_NAME.into(), &DataType::UInt32),
+            STRAND_NAME => Series::new_empty(STRAND_NAME.into(), &DataType::Boolean),
+            CONTEXT_NAME => Series::new_empty(CONTEXT_NAME.into(), &DataType::Boolean),
+            COUNT_M_NAME => Series::new_empty(COUNT_M_NAME.into(), &DataType::Int16),
+            COUNT_TOTAL_NAME => Series::new_empty(COUNT_TOTAL_NAME.into(), &DataType::Int16),
+            DENSITY_NAME => Series::new_empty(DENSITY_NAME.into(), &DataType::Float32),
         )
         .unwrap();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(empty_df) };

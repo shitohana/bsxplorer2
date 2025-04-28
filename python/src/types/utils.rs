@@ -1,4 +1,4 @@
-use bsxplorer2::utils::types::{Context as RsContext, Strand as RsStrand};
+use bsxplorer2::data_structs::enums::{Context as RsContext, Strand as RsStrand};
 use pyo3::prelude::*;
 
 /// Represents DNA strand information.

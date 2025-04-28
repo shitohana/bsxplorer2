@@ -24,8 +24,6 @@
 // polars_core::utils::arrow::io::ipc::read::FileReader with method to select
 // specified RecordBatch of an IPC file. GitHub: shitohana
 
-use std::default::Default;
-use std::io::{Read, Seek, SeekFrom};
 use polars::export::arrow::array::Array;
 use polars::export::arrow::io::ipc::read::{
     read_batch, read_file_dictionaries, read_file_metadata, Dictionaries,
@@ -35,6 +33,8 @@ use polars::export::arrow::record_batch::RecordBatchT;
 use polars::prelude::{
     ArrowSchema, DataFrame, PlHashMap, PolarsError, PolarsResult,
 };
+use std::default::Default;
+use std::io::{Read, Seek, SeekFrom};
 
 fn apply_projection(
     chunk: RecordBatchT<Box<dyn Array>>,
@@ -136,7 +136,9 @@ impl<R: Read + Seek> IpcFileReader<R> {
     }
 
     pub(crate) fn reopen(mut self) -> Self {
-        self.reader.seek(SeekFrom::Start(0)).unwrap();
+        self.reader
+            .seek(SeekFrom::Start(0))
+            .unwrap();
         Self {
             reader: self.reader,
             metadata: self.metadata,

@@ -11,7 +11,6 @@ use statrs::function::gamma::{digamma, ln_gamma};
 /// performs better
 use crate::tools::dimred::mom::BetaBinomParams;
 
-
 #[derive(Clone)]
 pub struct MethylationData {
     methylated_reads: Vec<u32>,

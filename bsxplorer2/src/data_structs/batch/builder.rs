@@ -5,11 +5,14 @@ use crate::data_structs::batch::traits::{
     BatchType, BsxBatchMethods, BsxTypeTag,
 };
 use crate::data_structs::context_data::ContextData;
+use crate::data_structs::coords::Contig;
 use crate::io::report::ReportTypeSchema;
 use anyhow::{anyhow, bail};
+use itertools::Itertools;
 use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
+
 /// Encodes strand information to boolean ( "+" to true, "-" to false).
 pub fn encode_strand(
     lazy_frame: LazyFrame,
@@ -211,22 +214,14 @@ impl BsxBatchBuilder {
         &self,
         data: DataFrame,
     ) -> anyhow::Result<DataFrame> {
-        if self.check_single_chr
-            && data
-                .column(CHR_NAME)?
-                .n_unique()?
-                != 1
-        {
+        if self.check_single_chr && data.column(CHR_NAME)?.n_unique()? != 1 {
             bail!("Multiple chromosomes")
         }
         if self.check_nulls {
             check_has_nulls(&data)?;
         }
         if self.check_duplicates
-            && (data
-                .column(POS_NAME)?
-                .n_unique()?
-                != data.height())
+            && (data.column(POS_NAME)?.n_unique()? != data.height())
         {
             bail!("Duplicated positions")
         };
@@ -240,22 +235,14 @@ impl BsxBatchBuilder {
         &self,
         data: &DataFrame,
     ) -> anyhow::Result<()> {
-        if self.check_single_chr
-            && data
-                .column(CHR_NAME)?
-                .n_unique()?
-                != 1
-        {
+        if self.check_single_chr && data.column(CHR_NAME)?.n_unique()? != 1 {
             bail!("Multiple chromosomes")
         }
         if self.check_nulls {
             check_has_nulls(data)?;
         }
         if self.check_duplicates
-            && (data
-                .column(POS_NAME)?
-                .n_unique()?
-                != data.height())
+            && (data.column(POS_NAME)?.n_unique()? != data.height())
         {
             bail!("Duplicated positions")
         };
@@ -289,6 +276,40 @@ impl BsxBatchBuilder {
 
         let result = casted.collect()?;
         Ok(unsafe { BsxBatch::new_unchecked(result) })
+    }
+
+    pub fn concat<B: BsxBatchMethods>(batches: Vec<B>) -> anyhow::Result<B> {
+        let contigs = batches
+            .iter()
+            .map(|b| b.as_contig())
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        if !contigs
+            .iter()
+            .map(Contig::seqname)
+            .all_equal()
+        {
+            bail!("Chromosomes do not match")
+        }
+        if !contigs
+            .windows(2)
+            .map(|w| w[1].start() >= w[0].end())
+            .all(|a| a)
+        {
+            bail!("Batch positions are not sorted")
+        }
+        let data = concat(
+            batches
+                .into_iter()
+                .map(|b| b.take().lazy())
+                .collect_vec(),
+            Default::default(),
+        )?
+        .collect()?;
+        let res = BsxBatchBuilder::no_checks()
+            .with_rechunk(true)
+            .with_check_duplicates(true)
+            .build(data)?;
+        Ok(res)
     }
 }
 
@@ -366,9 +387,7 @@ impl BsxBatchBuilder {
                 SortMultipleOptions::default().with_order_descending(false),
             )?;
         } else {
-            let pos_col_idx = data
-                .get_column_index(POS_NAME)
-                .unwrap();
+            let pos_col_idx = data.get_column_index(POS_NAME).unwrap();
             unsafe {
                 let columns = data.get_columns_mut();
                 let pos_col = columns.get_mut(pos_col_idx).unwrap();
@@ -644,7 +663,9 @@ fn count_total_col_expr() -> Expr {
 
 /// Creates an expression to compute methylation density from count data.
 fn density_col_expr() -> Expr {
-    (col("count_m").cast(DataType::Float64) / col("count_total").cast(DataType::Float64)).alias("density")
+    (col("count_m").cast(DataType::Float64)
+        / col("count_total").cast(DataType::Float64))
+    .alias("density")
 }
 
 #[cfg(test)]
@@ -820,44 +841,20 @@ mod tests {
         let df = DataFrame::from(batch);
 
         // Check common columns and types
+        assert_eq!(df.column(CHR_NAME)?.dtype(), &BsxBatch::chr_type());
+        assert_eq!(df.column(POS_NAME)?.dtype(), &BsxBatch::pos_type());
+        assert_eq!(df.column(STRAND_NAME)?.dtype(), &BsxBatch::strand_type());
+        assert_eq!(df.column(CONTEXT_NAME)?.dtype(), &BsxBatch::context_type());
+        assert_eq!(df.column(COUNT_M_NAME)?.dtype(), &BsxBatch::count_type());
         assert_eq!(
-            df.column(CHR_NAME)?.dtype(),
-            &BsxBatch::chr_type()
-        );
-        assert_eq!(
-            df.column(POS_NAME)?.dtype(),
-            &BsxBatch::pos_type()
-        );
-        assert_eq!(
-            df.column(STRAND_NAME)?
-                .dtype(),
-            &BsxBatch::strand_type()
-        );
-        assert_eq!(
-            df.column(CONTEXT_NAME)?
-                .dtype(),
-            &BsxBatch::context_type()
-        );
-        assert_eq!(
-            df.column(COUNT_M_NAME)?
-                .dtype(),
+            df.column(COUNT_TOTAL_NAME)?.dtype(),
             &BsxBatch::count_type()
         );
-        assert_eq!(
-            df.column(COUNT_TOTAL_NAME)?
-                .dtype(),
-            &BsxBatch::count_type()
-        );
-        assert_eq!(
-            df.column(DENSITY_NAME)?
-                .dtype(),
-            &BsxBatch::density_type()
-        );
+        assert_eq!(df.column(DENSITY_NAME)?.dtype(), &BsxBatch::density_type());
 
         // Check specific transformations (example for CgMap strand)
         if report_type == ReportTypeSchema::CgMap {
-            let expected_strand =
-                Series::new(STRAND_NAME.into(), ["+", "-"]);
+            let expected_strand = Series::new(STRAND_NAME.into(), ["+", "-"]);
             assert!(df
                 .column(STRAND_NAME)?
                 .equals(&expected_strand.into_column()));
@@ -866,12 +863,8 @@ mod tests {
         if report_type == ReportTypeSchema::Bismark
             || report_type == ReportTypeSchema::Coverage
         {
-            let count_m = df
-                .column(COUNT_M_NAME)?
-                .u32()?;
-            let count_total = df
-                .column(COUNT_TOTAL_NAME)?
-                .u32()?;
+            let count_m = df.column(COUNT_M_NAME)?.u32()?;
+            let count_total = df.column(COUNT_TOTAL_NAME)?.u32()?;
             assert!(count_m
                 .into_iter()
                 .zip(count_total.into_iter())
@@ -879,21 +872,13 @@ mod tests {
         }
         // Check specific transformations (example for BedGraph nulls)
         if report_type == ReportTypeSchema::BedGraph {
-            assert!(
-                df.column(COUNT_M_NAME)?
-                    .null_count()
-                    > 0
-            );
+            assert!(df.column(COUNT_M_NAME)?.null_count() > 0);
             assert!(
                 df.column(COUNT_TOTAL_NAME)?
                     .null_count()
                     > 0
             );
-            assert!(
-                df.column(CONTEXT_NAME)?
-                    .null_count()
-                    > 0
-            );
+            assert!(df.column(CONTEXT_NAME)?.null_count() > 0);
         }
 
         Ok(())
@@ -919,58 +904,40 @@ mod tests {
 
         // Check common columns and types
         assert_eq!(df.column(CHR_NAME)?.dtype(), &chr_dtype); // Check specified dtype
+        assert_eq!(df.column(POS_NAME)?.dtype(), &EncodedBsxBatch::pos_type());
         assert_eq!(
-            df.column(POS_NAME)?.dtype(),
-            &EncodedBsxBatch::pos_type()
-        );
-        assert_eq!(
-            df.column(STRAND_NAME)?
-                .dtype(),
+            df.column(STRAND_NAME)?.dtype(),
             &EncodedBsxBatch::strand_type()
         );
         assert_eq!(
-            df.column(CONTEXT_NAME)?
-                .dtype(),
+            df.column(CONTEXT_NAME)?.dtype(),
             &EncodedBsxBatch::context_type()
         );
         assert_eq!(
-            df.column(COUNT_M_NAME)?
-                .dtype(),
+            df.column(COUNT_M_NAME)?.dtype(),
             &EncodedBsxBatch::count_type()
         );
         assert_eq!(
-            df.column(COUNT_TOTAL_NAME)?
-                .dtype(),
+            df.column(COUNT_TOTAL_NAME)?.dtype(),
             &EncodedBsxBatch::count_type()
         );
         assert_eq!(
-            df.column(DENSITY_NAME)?
-                .dtype(),
+            df.column(DENSITY_NAME)?.dtype(),
             &EncodedBsxBatch::density_type()
         );
 
         // Check specific transformations (example for CgMap strand - encoded as bool)
         if report_type == ReportTypeSchema::CgMap {
-            let expected_strand = Series::new(
-                STRAND_NAME.into(),
-                [Some(true), Some(false)],
-            ); // C -> true, G -> false
+            let expected_strand =
+                Series::new(STRAND_NAME.into(), [Some(true), Some(false)]); // C -> true, G -> false
             assert!(df
                 .column(STRAND_NAME)?
                 .equals(&expected_strand.into_column()));
         }
         // Check specific transformations (example for BedGraph nulls - strand/context should be null)
         if report_type == ReportTypeSchema::BedGraph {
-            assert!(
-                df.column(STRAND_NAME)?
-                    .null_count()
-                    == df.height()
-            );
-            assert!(
-                df.column(CONTEXT_NAME)?
-                    .null_count()
-                    == df.height()
-            );
+            assert_eq!(df.column(STRAND_NAME)?.null_count(), df.height());
+            assert_eq!(df.column(CONTEXT_NAME)?.null_count(), df.height());
         }
 
         Ok(())
@@ -1015,22 +982,13 @@ mod tests {
 
         // 3. Check encoded batch properties
         assert_eq!(encoded_batch.chr_val()?, "chrTest");
+        assert_eq!(encoded_df.column(CHR_NAME)?.dtype(), &chr_dtype);
         assert_eq!(
-            encoded_df
-                .column(CHR_NAME)?
-                .dtype(),
-            &chr_dtype
-        );
-        assert_eq!(
-            encoded_df
-                .column(STRAND_NAME)?
-                .dtype(),
+            encoded_df.column(STRAND_NAME)?.dtype(),
             &EncodedBsxBatch::strand_type()
         ); // Boolean
         assert_eq!(
-            encoded_df
-                .column(CONTEXT_NAME)?
-                .dtype(),
+            encoded_df.column(CONTEXT_NAME)?.dtype(),
             &EncodedBsxBatch::context_type()
         ); // Boolean
 

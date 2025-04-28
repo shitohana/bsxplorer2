@@ -7,7 +7,7 @@ use bsxplorer2::data_structs::{
 };
 use itertools::Itertools;
 use polars::prelude::{AnyValue, Column, DataType, Scalar};
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{random, Rng, RngCore, SeedableRng};
 use rand_distr::{Binomial, Distribution, Normal};
 
 pub struct DemoReportBuilder<R: SeedableRng + RngCore> {
@@ -22,7 +22,10 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
     type Item = (Record, BsxBatch);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let chr_name = self.rng.gen_range(0..1000000).to_string();
+        let chr_name = self
+            .rng
+            .gen_range(0..1000000)
+            .to_string();
         let record = self.generate_record(self.chr_length, chr_name.clone());
         let context_data = self.generate_context_data(&record);
         let target_length = context_data.len();
@@ -48,11 +51,18 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
             .unwrap();
         context_df
             .with_column(
-                (context_df.column("count_m").unwrap().cast(&DataType::Float64).unwrap()
+                (context_df
+                    .column("count_m")
+                    .unwrap()
+                    .cast(&DataType::Float64)
+                    .unwrap()
                     / context_df
                         .column("count_total")
-                        .unwrap().cast(&DataType::Float64).unwrap())
-                .unwrap().with_name("density".into()),
+                        .unwrap()
+                        .cast(&DataType::Float64)
+                        .unwrap())
+                .unwrap()
+                .with_name("density".into()),
             )
             .unwrap();
 
@@ -70,7 +80,7 @@ impl<R: SeedableRng + RngCore> Default for DemoReportBuilder<R> {
 }
 
 impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
-    pub(crate) fn new(
+    pub fn new(
         chr_length: usize,
         mean_coverage: u32,
         std_coverage: f32,
@@ -84,7 +94,7 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
             "mean_methylation must be between 0.0 and 1.0"
         );
         let rng =
-            R::seed_from_u64(seed.unwrap_or_else(|| rand::thread_rng().gen()));
+            R::seed_from_u64(seed.unwrap_or_else(|| random()));
 
         Self {
             chr_length,

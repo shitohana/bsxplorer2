@@ -87,7 +87,10 @@ where
         + num::Float
         + num::ToPrimitive,
 {
-    assert!(!input.is_empty(), "Input list should have at least one value.");
+    assert!(
+        !input.is_empty(),
+        "Input list should have at least one value."
+    );
 
     assert!(
         lambda >= num::zero(),
@@ -282,7 +285,10 @@ where
         + ops::AddAssign<T>
         + Copy,
 {
-    assert!(!input.is_empty(), "Input list should have at least one value.");
+    assert!(
+        !input.is_empty(),
+        "Input list should have at least one value."
+    );
 
     assert!(
         lambda >= num::zero(),

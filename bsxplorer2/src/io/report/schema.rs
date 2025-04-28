@@ -1,7 +1,6 @@
-
+use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 use polars::prelude::*;
 use serde::Deserialize;
-use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Supported methylation report file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

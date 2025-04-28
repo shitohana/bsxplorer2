@@ -62,7 +62,7 @@ impl ReportWriter {
         batch: BsxBatch,
     ) -> anyhow::Result<()> {
         let mut converted =
-            LazyBsxBatch::<BsxBatch>::from(batch).as_report(&self.schema)?;
+            LazyBsxBatch::<BsxBatch>::from(batch).into_report(&self.schema)?;
 
         converted.rechunk_mut();
 

@@ -3,7 +3,10 @@ use std::fmt;
 use log::*;
 use num::Float;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use statrs::{distribution::{ContinuousCDF, Normal}, statistics::Statistics};
+use statrs::{
+    distribution::{ContinuousCDF, Normal},
+    statistics::Statistics,
+};
 
 pub fn ks2d_2sample<X, Y>(
     x1: &[X],

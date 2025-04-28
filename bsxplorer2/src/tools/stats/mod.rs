@@ -197,7 +197,7 @@ impl MethylationStats {
     /// This is useful as a starting point before aggregating data_structs from
     /// multiple sources.
     pub fn new() -> Self {
-        debug!("Creating new empty MethylationStats");       
+        debug!("Creating new empty MethylationStats");
         Self {
             mean_methylation: 0.0,
             methylation_var: 0.0,

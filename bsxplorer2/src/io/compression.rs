@@ -1,8 +1,8 @@
 #[cfg(feature = "compression")]
 mod inner {
     use polars::io::mmap::MmapBytesReader;
-    use std::io::{Seek, Write, copy, SeekFrom}; // Added copy, Seek, SeekFrom
-    use std::{fs::File};
+    use std::fs::File;
+    use std::io::{copy, Seek, SeekFrom, Write}; // Added copy, Seek, SeekFrom
     use tempfile::tempfile; // Added tempfile
 
     #[derive(Clone, Debug)]
@@ -32,7 +32,8 @@ mod inner {
         pub fn get_decoder(
             &self,
             mut handle: File, // Added mut
-        ) -> anyhow::Result<Box<dyn MmapBytesReader>> { // Changed return type
+        ) -> anyhow::Result<Box<dyn MmapBytesReader>> {
+            // Changed return type
             let mut temp_file = tempfile()?; // Create a temp file
 
             match self {

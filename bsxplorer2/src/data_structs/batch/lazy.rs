@@ -2,12 +2,13 @@ use super::{
     builder::BsxBatchBuilder,
     decoded::BsxBatch,
     encoded::EncodedBsxBatch,
-    traits::{BsxBatchMethods, BsxTypeTag}, BatchType,
+    traits::{BsxBatchMethods, BsxTypeTag},
+    BatchType,
 };
 use crate::data_structs::batch::traits::colnames::*;
 use crate::data_structs::context_data::ContextData;
-use crate::io::report::ReportTypeSchema;
 use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
+use crate::io::report::ReportTypeSchema;
 
 use itertools::Itertools;
 use polars::prelude::*;
@@ -21,7 +22,7 @@ pub struct LazyBsxBatch<T: BsxTypeTag + BsxBatchMethods> {
 
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     /// Converts the batch to a specified report type.
-    pub fn as_report(
+    pub fn into_report(
         self,
         report_type: &ReportTypeSchema,
     ) -> anyhow::Result<DataFrame> {
@@ -29,7 +30,8 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
             ReportTypeSchema::Bismark => self
                 .data
                 .with_column(
-                    (col(COUNT_TOTAL_NAME) - col(COUNT_M_NAME)).alias("count_um"),
+                    (col(COUNT_TOTAL_NAME) - col(COUNT_M_NAME))
+                        .alias("count_um"),
                 )
                 .with_column(col(CONTEXT_NAME).alias("trinuc")),
             ReportTypeSchema::CgMap => {
@@ -78,7 +80,11 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     /// Collects the lazy batch into a concrete BSX batch type.
     pub fn collect(self) -> anyhow::Result<T> {
-        let data = self.data.collect()?.select(T::schema().iter_names_cloned().collect_vec())?;
+        let data = self.data.collect()?.select(
+            T::schema()
+                .iter_names_cloned()
+                .collect_vec(),
+        )?;
         Ok(unsafe { T::new_unchecked(data) })
     }
     /// Applies a filter expression to the batch.
@@ -194,11 +200,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
             .drop([col(CONTEXT_NAME), col(STRAND_NAME)]);
         let joined = context_df
             .lazy()
-            .left_join(
-                self_selected,
-                col(POS_NAME),
-                col(POS_NAME),
-            )
+            .left_join(self_selected, col(POS_NAME), col(POS_NAME))
             .with_columns([
                 col(CHR_NAME)
                     .fill_null(lit(chr_val))
@@ -252,8 +254,8 @@ mod tests {
         builder::BsxBatchBuilder, decoded::BsxBatch, encoded::EncodedBsxBatch,
         traits::BsxBatchMethods,
     };
-    use crate::utils::get_categorical_dtype;
     use crate::data_structs::enums::{Context, Strand};
+    use crate::utils::get_categorical_dtype;
 
     use polars::df;
 
@@ -305,7 +307,7 @@ mod tests {
 
         // Convert to the report format
         let report_df = LazyBsxBatch::<BsxBatch>::from(batch)
-            .as_report(&report_type)
+            .into_report(&report_type)
             .unwrap();
 
         // Convert back to BsxBatch
@@ -316,7 +318,7 @@ mod tests {
 
         // Convert back to the original report format
         let reverse_transform = LazyBsxBatch::<BsxBatch>::from(bsx_batch)
-            .as_report(&report_type)
+            .into_report(&report_type)
             .unwrap();
 
         // The round-trip conversion should preserve the data

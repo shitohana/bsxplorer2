@@ -1,7 +1,6 @@
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::enums::Strand;
 
-
 use super::builder::BsxBatchBuilder;
 use anyhow::anyhow;
 use polars::datatypes::BooleanChunked;
@@ -37,6 +36,7 @@ pub mod colnames {
     }
 }
 use colnames::*;
+use crate::data_structs::batch::LazyBsxBatch;
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
 pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
@@ -139,9 +139,9 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Create a new batch from a DataFrame without checks
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// This function assumes that the DataFrame is valid and that the columns are of the correct type.
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self
     where
@@ -180,6 +180,9 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     where
         Self: Sized;
 
+    fn lazy(self) -> LazyBsxBatch<Self> where Self: Sized {
+        LazyBsxBatch::from(self)
+    }
     /// Get chromosome value as string
     fn chr_val(&self) -> anyhow::Result<&str>;
 
@@ -211,14 +214,18 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     fn start_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
-        let pos = self.start_pos().ok_or(anyhow!("no data"))?;
+        let pos = self
+            .start_pos()
+            .ok_or(anyhow!("no data"))?;
         let chr = self.chr_val()?;
         let gpos = GenomicPosition::new(chr, pos);
         Ok(gpos)
     }
 
     fn end_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
-        let pos = self.end_pos().ok_or(anyhow!("no data"))?;
+        let pos = self
+            .end_pos()
+            .ok_or(anyhow!("no data"))?;
         let chr = self.chr_val()?;
         let gpos = GenomicPosition::new(chr, pos);
         Ok(gpos)
@@ -263,10 +270,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Convert batch to genomic contig
-    fn as_contig(&self) -> anyhow::Result<Contig<String, u32>>
-    where
-        u32: TryFrom<<Self::PosType as PolarsDataType>::OwnedPhysical>,
-    {
+    fn as_contig(&self) -> anyhow::Result<Contig<String, u32>> {
         let start = self
             .start_pos()
             .ok_or(anyhow!("no data"))?;
@@ -275,12 +279,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
             .ok_or(anyhow!("no data"))?;
         let chr = self.chr_val()?;
 
-        Ok(Contig::new(
-            chr.to_owned(),
-            start,
-            end + 1,
-            Strand::None,
-        ))
+        Ok(Contig::new(chr.to_owned(), start, end + 1, Strand::None))
     }
 }
 

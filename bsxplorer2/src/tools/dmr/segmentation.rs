@@ -2,11 +2,10 @@ use std::collections::BTreeSet;
 
 use itertools::{izip, Itertools};
 
+use crate::data_structs::enums::Context;
 use crate::tools::dmr::data_structs::SegmentView;
 use crate::tools::dmr::tv1d_clone::condat;
 use crate::utils::mann_whitney_u;
-use crate::data_structs::enums::Context;
-
 
 /// Splits a segment based on the distance between positions.
 ///

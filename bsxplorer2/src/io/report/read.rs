@@ -15,7 +15,7 @@ use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
-use std::io::{BufReader};
+use std::io::BufReader;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
@@ -185,7 +185,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             (Some(fasta), None) => Some(read_chrom(fasta, false)?),
             (None, None) => return Ok(None),
         };
-        
+
         let dtype = chroms.map(|v| get_categorical_dtype(v));
         Ok(dtype)
     }
@@ -403,7 +403,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
             anyhow::anyhow!("Channel closed unexpectedly while reading a batch")
                 .context(e)
         })?;
-        let last_one = self.data_receiver.is_empty() && self._join_handle.is_finished();
+        let last_one =
+            self.data_receiver.is_empty() && self._join_handle.is_finished();
         // Partition by chromosome
         let partitioned = new_batch
             .partition_by_stable([self.report_type.chr_col()], true)
@@ -420,7 +421,6 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
                 .with_check_single_chr(false)
                 .with_chr_dtype(self.chr_dtype.clone()) // Will raise if not specified
                 .build::<B>(data)?;
-
 
             // Align batch if required
             if self.report_type.need_align() {
@@ -447,8 +447,11 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
 
         Ok(())
     }
-    
-    pub fn set_fasta_reader(&mut self, fasta_reader: Option<Box<dyn Iterator<Item = FastaRecord>>>) {
+
+    pub fn set_fasta_reader(
+        &mut self,
+        fasta_reader: Option<Box<dyn Iterator<Item = FastaRecord>>>,
+    ) {
         self.fasta_reader = fasta_reader;
     }
 }

@@ -6,9 +6,7 @@ use bio_types::annot::refids::RefIDSet;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
 use log::error;
-use polars::prelude::{
-    Column, DataType,
-};
+use polars::prelude::{Column, DataType};
 use rayon::prelude::*;
 
 use crate::data_structs::batch::merge_replicates;
