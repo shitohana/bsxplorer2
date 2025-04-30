@@ -1,3 +1,5 @@
+
+
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::enums::Strand;
 
@@ -170,6 +172,11 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     {
         let (a, b) = self.data().split_at(index as i64);
         unsafe { (Self::new_unchecked(a), Self::new_unchecked(b)) }
+    }
+
+    fn slice(&self, start: u32, length: u32) -> Self where Self: Sized {
+        let slice = self.data().slice(start as i64, length as usize);
+        unsafe { Self::new_unchecked(slice) }
     }
 
     /// Returns reference to inner [DataFrame]

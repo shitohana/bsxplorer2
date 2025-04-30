@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use std::io::{Read, Seek};
-use std::ops::Range;
 use anyhow::anyhow;
 use bio::data_structures::interval_tree::IntervalTree;
 use itertools::Itertools;
@@ -8,10 +5,13 @@ use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
 use polars::export::arrow::record_batch::RecordBatchT;
 use polars::frame::DataFrame;
+use std::collections::HashMap;
+use std::io::{Read, Seek};
+use std::ops::Range;
 
 use super::ipc::IpcFileReader;
+use crate::data_structs::batch::BsxBatchMethods;
 use crate::data_structs::batch::{BsxBatchBuilder, EncodedBsxBatch};
-use crate::data_structs::batch::{BsxBatchMethods};
 use crate::data_structs::coords::{Contig, GenomicPosition};
 
 type BatchIndexMap =
@@ -40,7 +40,8 @@ impl<R: Read + Seek> BsxFileReader<R> {
             let mut new_index = BatchIndexMap::new();
 
             for batch_idx in 0..self.reader.blocks_total() {
-                let batch = self.get_batch(batch_idx)
+                let batch = self
+                    .get_batch(batch_idx)
                     .expect("Batch index out of bounds")?;
                 let contig = batch.as_contig()?;
 
@@ -66,14 +67,14 @@ impl<R: Read + Seek> BsxFileReader<R> {
 
     pub fn find(
         &mut self,
-        contig: Contig<String, u32>,
+        contig: &Contig<String, u32>,
     ) -> Option<Vec<usize>> {
         let index = self
             .index()
             .expect("Failed to retrieve index");
         if let Some(tree) = index.get(&contig.seqname()) {
             let batches = tree
-                .find(Range::<_>::from(contig))
+                .find(Range::<_>::from(contig.clone()))
                 .map(|entry| entry.data().clone())
                 .collect_vec();
             Some(batches)
@@ -84,23 +85,31 @@ impl<R: Read + Seek> BsxFileReader<R> {
 
     pub fn query(
         &mut self,
-        contig: Contig<String, u32>,
+        contig: &Contig<String, u32>,
     ) -> anyhow::Result<Option<EncodedBsxBatch>> {
-        let batch_indices = self.find(contig.clone())
+        let batch_indices = self
+            .find(contig)
             .ok_or(anyhow!("No batches found for contig: {}", contig))?;
         if batch_indices.is_empty() {
             return Ok(None);
         }
 
-        let mut batches = batch_indices.into_iter()
-            .map(|idx| self.get_batch(idx).ok_or(anyhow!("Batch with index {} not found", idx)))
+        let mut batches = batch_indices
+            .into_iter()
+            .map(|idx| {
+                self.get_batch(idx)
+                    .ok_or(anyhow!("Batch with index {} not found", idx))
+            })
             .collect::<anyhow::Result<PolarsResult<Vec<_>>>>()??;
-        batches.sort_by_key(|b| b.start_pos().expect("Unexpected no data"));
+        batches.sort_by_key(|b| {
+            b.start_pos()
+                .expect("Unexpected no data")
+        });
 
         let res = BsxBatchBuilder::concat(batches)?
             .lazy()
-            .filter_pos_gt(contig.start().position() - 1)
-            .filter_pos_lt(contig.end().position())
+            .filter_pos_gt(contig.start() - 1)
+            .filter_pos_lt(contig.end())
             .collect()?;
         Ok(Some(res))
     }
@@ -138,13 +147,8 @@ impl<R: Read + Seek> BsxFileReader<R> {
         let count = self.reader.blocks_total();
         count
     }
-}
 
-impl<R: Read + Seek> Iterator for BsxFileReader<R> {
-    type Item = PolarsResult<EncodedBsxBatch>;
-
-    /// Returns the next batch or None when finished
-    fn next(&mut self) -> Option<Self::Item> {
+    fn _next(&mut self) -> Option<PolarsResult<EncodedBsxBatch>> {
         let next = self.reader.next();
         let res = next.map(|res| self.process_record_batch(res));
 
@@ -155,5 +159,33 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
         }
 
         res
+    }
+
+    fn iter(&mut self) -> BsxFileIterator<R> {
+        BsxFileIterator {
+            reader: self,
+        }
+    }
+}
+
+impl<R: Read + Seek> Iterator for BsxFileReader<R> {
+    type Item = PolarsResult<EncodedBsxBatch>;
+
+    /// Returns the next batch or None when finished
+    fn next(&mut self) -> Option<Self::Item> {
+        self._next()
+    }
+}
+
+pub struct BsxFileIterator<'a, R: Read + Seek> {
+    reader: &'a mut BsxFileReader<R>,
+}
+
+impl<'a, R: Read + Seek> Iterator for BsxFileIterator<'a, R> {
+    type Item = PolarsResult<EncodedBsxBatch>;
+
+    /// Returns the next batch or None when finished
+    fn next(&mut self) -> Option<Self::Item> {
+        self.reader._next()
     }
 }

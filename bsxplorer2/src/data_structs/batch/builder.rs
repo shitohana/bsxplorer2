@@ -261,7 +261,8 @@ impl BsxBatchBuilder {
         let batch_data = DataFrame::from(batch);
         let mut batch_lazy = batch_data.lazy();
 
-        let casted = encoded::select_cast(batch_lazy, chr_dtype, true).collect()?;
+        let casted =
+            encoded::select_cast(batch_lazy, chr_dtype, true).collect()?;
         let encoded = EncodedBsxBatch::new_with_fields(casted, chr);
         Ok(encoded)
     }
@@ -308,7 +309,12 @@ impl BsxBatchBuilder {
         let res: B = BsxBatchBuilder::no_checks()
             .with_rechunk(true)
             .with_check_duplicates(true)
-            .with_chr_dtype(Some(data.schema().get(CHR_NAME).unwrap().clone()))
+            .with_chr_dtype(Some(
+                data.schema()
+                    .get(CHR_NAME)
+                    .unwrap()
+                    .clone(),
+            ))
             .build(data)?;
         Ok(res)
     }
@@ -543,8 +549,20 @@ mod encoded {
             col("position")
                 .cast(EncodedBsxBatch::pos_type())
                 .alias(POS_NAME),
-            if encode {encode_strand()} else {col("strand").cast(EncodedBsxBatch::strand_type()).alias(STRAND_NAME)},
-            if encode {encode_context()} else {col("context").cast(EncodedBsxBatch::context_type()).alias(CONTEXT_NAME)},
+            if encode {
+                encode_strand()
+            } else {
+                col("strand")
+                    .cast(EncodedBsxBatch::strand_type())
+                    .alias(STRAND_NAME)
+            },
+            if encode {
+                encode_context()
+            } else {
+                col("context")
+                    .cast(EncodedBsxBatch::context_type())
+                    .alias(CONTEXT_NAME)
+            },
             col("count_m")
                 .cast(EncodedBsxBatch::count_type())
                 .alias(COUNT_M_NAME),

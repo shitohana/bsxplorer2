@@ -176,7 +176,7 @@ fn init_bsx_readers<F: Read + Seek + 'static>(
     let n_batches = bsx_readers[0].blocks_total();
     let iterators = bsx_readers
         .into_iter()
-        .map(|reader| {
+        .map(|mut reader| {
             reader.map(|batch_res| batch_res.expect("could not read batch"))
         })
         .map(|reader| {

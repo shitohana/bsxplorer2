@@ -1,17 +1,24 @@
 mod common;
-use std::collections::BTreeMap;
+use std::collections::HashSet;
+use std::error::Error;
 use std::io::Cursor;
+use std::path::PathBuf;
+use std::{collections::BTreeMap, fs::File};
 
+use bsxplorer2::data_structs::batch::{BsxBatch, EncodedBsxBatch};
+use bsxplorer2::io::bsx::BsxIpcWriter;
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportTypeSchema};
 use bsxplorer2::{
     data_structs::{
         batch::{BsxBatchBuilder, BsxBatchMethods},
         coords::Contig,
         enums::Strand,
     },
-    io::bsx::BsxFileReader,
+    io::bsx::{BsxFileReader, RegionReader},
 };
 use common::DemoReportBuilder;
 use itertools::{izip, Itertools};
+use polars::prelude::IpcCompression;
 use rand::rngs::StdRng;
 use rstest::{fixture, rstest};
 
@@ -95,13 +102,13 @@ fn test_bsx_index() -> anyhow::Result<()> {
         .cloned()
         .unwrap()
         .lazy()
-        .filter_pos_gt(test_region.start().position() - 1)
-        .filter_pos_lt(test_region.end().position())
+        .filter_pos_gt(test_region.start() - 1)
+        .filter_pos_lt(test_region.end())
         .collect()?;
 
     let mut reader = BsxFileReader::new(Cursor::new(&sink_buffer));
 
-    let query_res = reader.query(test_region)?.unwrap();
+    let query_res = reader.query(&test_region)?.unwrap();
     let read_test_region = BsxBatchBuilder::decode_batch(query_res)?;
 
     let orig_nodensity = true_test_region
@@ -111,6 +118,62 @@ fn test_bsx_index() -> anyhow::Result<()> {
         .data()
         .drop("density")?;
     assert_eq!(orig_nodensity, read_nodensity);
+
+    let mut region_reader = RegionReader::new(reader);
+    let query_res = region_reader
+        .query(test_region)?
+        .unwrap();
+    let read_test_region = BsxBatchBuilder::decode_batch(query_res)?;
+
+    let orig_nodensity = true_test_region
+        .data()
+        .drop("density")?;
+    let read_nodensity = read_test_region
+        .data()
+        .drop("density")?;
+    assert_eq!(orig_nodensity, read_nodensity);
+
+    Ok(())
+}
+
+#[test]
+fn convert_report() -> Result<(), Box<dyn Error>> {
+    let file_handle =
+        File::open("/Users/shitohana/Documents/CX_reports/old/A_thaliana.txt")?;
+    let fai_path: PathBuf =
+        "/Users/shitohana/Documents/CX_reports/old/arabidopsis.fa.fai".into();
+
+    let reader = ReportReaderBuilder::<BsxBatch>::default()
+        .with_report_type(ReportTypeSchema::Bismark)
+        .with_chunk_size(10_000)
+        .with_fai_path(fai_path.clone())
+        .build_from_handle(Box::new(file_handle))?;
+
+    let file_sink = File::create(
+        "/Users/shitohana/Documents/CX_reports/old/A_thaliana.bsx",
+    )?;
+    let mut writer = BsxIpcWriter::try_from_sink_and_fai(
+        file_sink,
+        fai_path,
+        Some(IpcCompression::ZSTD),
+        None,
+    )?;
+
+    let mut selected_chroms = HashSet::new();
+    for batch in reader {
+        let batch = batch?;
+        let chr = batch.chr_val()?.to_string();
+
+        if !selected_chroms.contains(&chr) && selected_chroms.len() >= 3{
+            break;
+        } else {
+            selected_chroms.insert(chr);
+        }
+        writer.write_batch(batch)?;
+    }
+    writer.close()?;
+    println!("Conversion completed successfully.");
+    println!("Selected chromosomes: {:?}", selected_chroms);
 
     Ok(())
 }

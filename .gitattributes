@@ -1,0 +1,1 @@
+bsxplorer2/tests/data/* filter=lfs diff=lfs merge=lfs -text

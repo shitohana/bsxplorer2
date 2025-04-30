@@ -216,6 +216,102 @@ where
     strand: Strand,
 }
 
+impl<R, P> Contig<R, P>
+where
+    R: AsRef<str> + Clone,
+    P: Unsigned + PrimInt,
+{
+    /// Creates a new `Contig`.
+    pub fn new(
+        seqname: R,
+        start: P,
+        end: P,
+        strand: Strand,
+    ) -> Self {
+        assert!(
+            start <= end,
+            "Start position must be less than or equal to end position"
+        );
+        Self {
+            seqname,
+            start,
+            end,
+            strand,
+        }
+    }
+
+    pub fn start(&self) -> P {
+        self.start
+    }
+
+    pub fn end(&self) -> P {
+        self.end
+    }
+
+    /// Returns the start position of the contig.
+    pub fn start_gpos(&self) -> GenomicPosition<R, P> {
+        GenomicPosition::new(self.seqname.clone(), self.start)
+    }
+
+    /// Returns the end position of the contig.
+    pub fn end_gpos(&self) -> GenomicPosition<R, P> {
+        GenomicPosition::new(self.seqname.clone(), self.end)
+    }
+
+    /// Returns the strand of the contig.
+    pub fn strand(&self) -> Strand {
+        self.strand
+    }
+
+    /// Returns the sequence name of the contig.
+    pub fn seqname(&self) -> R {
+        self.seqname.clone()
+    }
+
+    /// Returns the length of the contig.
+    pub fn length(&self) -> P {
+        self.end - self.start
+    }
+
+    pub fn extend_upstream(
+        &mut self,
+        length: P,
+    ) {
+        self.start = self.start.saturating_sub(length);
+    }
+    pub fn extend_downstream(
+        &mut self,
+        length: P,
+    ) {
+        self.end = self.end.saturating_add(length);
+    }
+
+    pub fn set_start(&mut self, start: P) {
+        self.start = start;
+    }
+
+    pub fn set_end(&mut self, end: P) {
+        self.end = end;
+    }
+
+    pub fn is_in(&self, other: &Self) -> bool {
+        self.seqname.as_ref() == other.seqname.as_ref() && self.start >= other.start && self.end <= other.end
+    }
+
+    pub fn cast<R2: AsRef<str> + Clone, P2: Unsigned + PrimInt>(
+        self,
+        seqname_fn: fn(R) -> R2,
+        pos_fn: fn(P) -> P2,
+    ) -> Contig<R2, P2> {
+        Contig {
+            seqname: seqname_fn(self.seqname),
+            start: pos_fn(self.start),
+            end: pos_fn(self.end),
+            strand: self.strand,
+        }
+    }
+}
+
 impl<R, P> From<Range<GenomicPosition<R, P>>> for Contig<R, P>
 where
     R: AsRef<str> + Clone,
@@ -238,7 +334,7 @@ where
     P: Unsigned + PrimInt,
 {
     fn from(value: Contig<R, P>) -> Self {
-        value.start()..value.end()
+        value.start_gpos()..value.end_gpos()
     }
 }
 
@@ -362,69 +458,6 @@ where
     }
 }
 
-impl<R, P> Contig<R, P>
-where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
-{
-    /// Creates a new `Contig`.
-    pub fn new(
-        seqname: R,
-        start: P,
-        end: P,
-        strand: Strand,
-    ) -> Self {
-        assert!(
-            start <= end,
-            "Start position must be less than or equal to end position"
-        );
-        Self {
-            seqname,
-            start,
-            end,
-            strand,
-        }
-    }
-
-    /// Returns the start position of the contig.
-    pub fn start(&self) -> GenomicPosition<R, P> {
-        GenomicPosition::new(self.seqname.clone(), self.start)
-    }
-
-    /// Returns the end position of the contig.
-    pub fn end(&self) -> GenomicPosition<R, P> {
-        GenomicPosition::new(self.seqname.clone(), self.end)
-    }
-
-    /// Returns the strand of the contig.
-    pub fn strand(&self) -> Strand {
-        self.strand
-    }
-
-    /// Returns the sequence name of the contig.
-    pub fn seqname(&self) -> R {
-        self.seqname.clone()
-    }
-
-    /// Returns the length of the contig.
-    pub fn length(&self) -> P {
-        self.end - self.start
-    }
-
-    pub fn extend_upstream(
-        &mut self,
-        length: P,
-    ) {
-        self.start = self.start.saturating_sub(length);
-    }
-    pub fn extend_downstream(
-        &mut self,
-        length: P,
-    ) {
-        self.end = self.end.saturating_add(length);
-    }
-}
-
 impl<R, P> PartialOrd for Contig<R, P>
 where
     R: AsRef<str> + Clone,
@@ -432,7 +465,7 @@ where
 {
     /// Compares two `Contig`s.
     ///
-    /// Returns `None` if the sequence names are different.
+    /// Returns `None` if the sequence names are different or regions intersect.
     fn partial_cmp(
         &self,
         other: &Self,
