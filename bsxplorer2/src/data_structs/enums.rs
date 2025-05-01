@@ -50,17 +50,18 @@ impl Ord for Context {
         &self,
         other: &Self,
     ) -> Ordering {
-        if self == other {
-            Ordering::Equal
-        } else {
-            match (self, other) {
-                (Context::CG, _) => Ordering::Greater,
-                (_, Context::CG) => Ordering::Less,
-                (Context::CHG, _) => Ordering::Greater,
-                (_, Context::CHG) => Ordering::Less,
-                (Context::CHH, _) => Ordering::Greater,
-            }
-        }
+        // Define an explicit order
+        let self_val = match self {
+            Context::CG => 2,
+            Context::CHG => 1,
+            Context::CHH => 0,
+        };
+        let other_val = match other {
+            Context::CG => 2,
+            Context::CHG => 1,
+            Context::CHH => 0,
+        };
+        self_val.cmp(&other_val)
     }
 }
 
@@ -129,17 +130,18 @@ impl Ord for Strand {
         &self,
         other: &Self,
     ) -> Ordering {
-        if self == other {
-            Ordering::Equal
-        } else {
-            match (self, other) {
-                (Strand::Forward, _) => Ordering::Greater,
-                (_, Strand::Forward) => Ordering::Less,
-                (Strand::Reverse, _) => Ordering::Greater,
-                (_, Strand::Reverse) => Ordering::Less,
-                (Strand::None, _) => Ordering::Greater,
-            }
-        }
+        // Define an explicit order
+        let self_val = match self {
+            Strand::Forward => 2,
+            Strand::Reverse => 1,
+            Strand::None => 0,
+        };
+        let other_val = match other {
+            Strand::Forward => 2,
+            Strand::Reverse => 1,
+            Strand::None => 0,
+        };
+        self_val.cmp(&other_val)
     }
 }
 
@@ -164,7 +166,96 @@ impl IPCEncodedEnum for Strand {
         match value.to_lowercase().as_str() {
             "+" => Strand::Forward,
             "-" => Strand::Reverse,
-            _ => Strand::None,
+            _ => Strand::None, // Default to None for any other string including "."
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::panic;
+
+    // --- Context Tests ---
+
+    #[test]
+    fn test_context_from_str() {
+        assert_eq!(Context::from_str("CG"), Context::CG);
+        assert_eq!(Context::from_str("cg"), Context::CG);
+        assert_eq!(Context::from_str("CHG"), Context::CHG);
+        assert_eq!(Context::from_str("chg"), Context::CHG);
+        assert_eq!(Context::from_str("CHH"), Context::CHH);
+        assert_eq!(Context::from_str("chh"), Context::CHH);
+    }
+
+    #[test]
+    fn test_context_from_str_unimplemented() {
+        let result = panic::catch_unwind(|| Context::from_str("XYZ"));
+        assert!(result.is_err()); // Expecting a panic
+    }
+
+    #[test]
+    fn test_context_ord() {
+        assert_eq!(Context::CG.cmp(&Context::CG), Ordering::Equal);
+        assert_eq!(Context::CHG.cmp(&Context::CHG), Ordering::Equal);
+        assert_eq!(Context::CHH.cmp(&Context::CHH), Ordering::Equal);
+
+        assert_eq!(Context::CG.cmp(&Context::CHG), Ordering::Greater);
+        assert_eq!(Context::CG.cmp(&Context::CHH), Ordering::Greater);
+        assert_eq!(Context::CHG.cmp(&Context::CHH), Ordering::Greater);
+
+        assert_eq!(Context::CHG.cmp(&Context::CG), Ordering::Less);
+        assert_eq!(Context::CHH.cmp(&Context::CG), Ordering::Less);
+        assert_eq!(Context::CHH.cmp(&Context::CHG), Ordering::Less);
+    }
+
+     #[test]
+    fn test_context_ipc_encoded() {
+        assert_eq!(Context::from_bool(Some(true)), Context::CG);
+        assert_eq!(Context::from_bool(Some(false)), Context::CHG);
+        assert_eq!(Context::from_bool(None), Context::CHH);
+
+        assert_eq!(Context::CG.to_bool(), Some(true));
+        assert_eq!(Context::CHG.to_bool(), Some(false));
+        assert_eq!(Context::CHH.to_bool(), None);
+    }
+
+    // --- Strand Tests ---
+
+    #[test]
+    fn test_strand_from_str() {
+        assert_eq!(Strand::from_str("+"), Strand::Forward);
+        assert_eq!(Strand::from_str("-"), Strand::Reverse);
+        assert_eq!(Strand::from_str("."), Strand::None);
+        assert_eq!(Strand::from_str("forward"), Strand::None); // Defaults to None
+        assert_eq!(Strand::from_str(""), Strand::None);
+        assert_eq!(Strand::from_str("AnythingElse"), Strand::None);
+    }
+
+    #[test]
+    fn test_strand_ord() {
+        assert_eq!(Strand::Forward.cmp(&Strand::Forward), Ordering::Equal);
+        assert_eq!(Strand::Reverse.cmp(&Strand::Reverse), Ordering::Equal);
+        assert_eq!(Strand::None.cmp(&Strand::None), Ordering::Equal);
+
+        assert_eq!(Strand::Forward.cmp(&Strand::Reverse), Ordering::Greater);
+        assert_eq!(Strand::Forward.cmp(&Strand::None), Ordering::Greater);
+        assert_eq!(Strand::Reverse.cmp(&Strand::None), Ordering::Greater);
+
+        assert_eq!(Strand::Reverse.cmp(&Strand::Forward), Ordering::Less);
+        assert_eq!(Strand::None.cmp(&Strand::Forward), Ordering::Less);
+        assert_eq!(Strand::None.cmp(&Strand::Reverse), Ordering::Less);
+    }
+
+    #[test]
+    fn test_strand_ipc_encoded() {
+        assert_eq!(Strand::from_bool(Some(true)), Strand::Forward);
+        assert_eq!(Strand::from_bool(Some(false)), Strand::Reverse);
+        assert_eq!(Strand::from_bool(None), Strand::None);
+
+        assert_eq!(Strand::Forward.to_bool(), Some(true));
+        assert_eq!(Strand::Reverse.to_bool(), Some(false));
+        assert_eq!(Strand::None.to_bool(), None);
     }
 }

@@ -104,6 +104,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_report_type(
         mut self,
         report_type: ReportTypeSchema,
@@ -112,6 +113,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_chunk_size(
         mut self,
         chunk_size: usize,
@@ -120,6 +122,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_fasta_path(
         mut self,
         fasta_path: PathBuf,
@@ -128,6 +131,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_fai_path(
         mut self,
         fai_path: PathBuf,
@@ -136,6 +140,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_batch_size(
         mut self,
         batch_size: usize,
@@ -144,6 +149,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_n_threads(
         mut self,
         n_threads: usize,
@@ -152,6 +158,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_low_memory(
         mut self,
         low_memory: bool,
@@ -160,6 +167,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_queue_len(
         mut self,
         queue_len: usize,
@@ -169,6 +177,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     }
 
     #[cfg(feature = "compression")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_compression(
         mut self,
         compression: Compression,
@@ -236,7 +245,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             .with_chunk_size(self.batch_size)
             .into_reader_with_file_handle(handle);
 
-        let mut owned_batched = OwnedBatchedCsvReader::new(
+        let owned_batched = OwnedBatchedCsvReader::new(
             csv_reader,
             self.report_type.schema().into(),
         );
@@ -438,7 +447,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
             // Update cached batch
             self.cached_batch
                 .entry(*chr_idx)
-                .and_modify(|mut b| {
+                .and_modify(|b| {
                     b.extend(&bsx_batch)
                         .expect("vstack failed");
                 })

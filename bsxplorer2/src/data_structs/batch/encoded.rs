@@ -156,9 +156,11 @@ impl BsxBatchMethods for EncodedBsxBatch {
 }
 
 impl BsxTypeTag for EncodedBsxBatch {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn type_name() -> &'static str {
         "encoded"
     }
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn type_enum() -> BatchType {
         BatchType::Encoded
     }

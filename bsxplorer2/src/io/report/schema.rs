@@ -41,6 +41,7 @@ impl ReportTypeSchema {
     }
 
     /// Returns data types for each column.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     const fn col_types(&self) -> &[DataType] {
         match self {
             Self::Bismark => {
@@ -88,6 +89,7 @@ impl ReportTypeSchema {
     }
 
     /// Returns chromosome column name.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn chr_col(&self) -> &'static str {
         match self {
             Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => {
@@ -97,6 +99,7 @@ impl ReportTypeSchema {
     }
 
     /// Returns position column name.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn position_col(&self) -> &'static str {
         match self {
             Self::Coverage | Self::BedGraph => "start",
@@ -105,6 +108,7 @@ impl ReportTypeSchema {
     }
 
     /// Returns context column name if available.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn context_col(&self) -> Option<&'static str> {
         match self {
             Self::Bismark | Self::CgMap => Some("context"),
@@ -113,6 +117,7 @@ impl ReportTypeSchema {
     }
 
     /// Returns strand column name if available.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn strand_col(&self) -> Option<&'static str> {
         match self {
             Self::Bismark | Self::CgMap => Some("strand"),
@@ -121,6 +126,7 @@ impl ReportTypeSchema {
     }
 
     /// Whether this format needs alignment when processing.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn need_align(&self) -> bool {
         match self {
             Self::Bismark | Self::CgMap => false,

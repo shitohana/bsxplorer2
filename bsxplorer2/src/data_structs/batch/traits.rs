@@ -25,6 +25,7 @@ pub mod colnames {
     /// Density column name
     pub const DENSITY_NAME: &str = "density";
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn col_names() -> [&'static str; 7] {
         [
             CHR_NAME,
@@ -109,6 +110,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Create schema for the batch data
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn schema() -> Schema
     where
         Self: Sized,
@@ -125,6 +127,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Create hashmap of column names to data types
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn hashmap() -> PlHashMap<&'static str, DataType>
     where
         Self: Sized,
@@ -187,6 +190,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     where
         Self: Sized;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn lazy(self) -> LazyBsxBatch<Self> where Self: Sized {
         LazyBsxBatch::from(self)
     }
@@ -277,16 +281,19 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Convert batch to genomic contig
-    fn as_contig(&self) -> anyhow::Result<Contig<String, u32>> {
-        let start = self
-            .start_pos()
-            .ok_or(anyhow!("no data"))?;
-        let end = self
-            .end_pos()
-            .ok_or(anyhow!("no data"))?;
-        let chr = self.chr_val()?;
-
-        Ok(Contig::new(chr.to_owned(), start, end + 1, Strand::None))
+    fn as_contig(&self) -> anyhow::Result<Option<Contig<String, u32>>> {
+        if self.is_empty() {
+            Ok(None)
+        } else {
+            let start = self
+                .start_pos()
+                .unwrap();
+            let end = self
+                .end_pos()
+                .unwrap();
+            let chr = self.chr_val()?;
+            Ok(Some(Contig::new(chr.to_owned(), start, end + 1, Strand::None)))
+        }
     }
 }
 

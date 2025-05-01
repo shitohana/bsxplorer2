@@ -2,21 +2,10 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use log::warn;
-use polars::datatypes::PlIndexMap;
 use polars::prelude::*;
 
 mod stats;
 pub use stats::*;
-
-/// Converts an array of name-datatype pairs to a Polars Schema.
-pub fn array_to_schema(array: &[(&str, DataType)]) -> Schema {
-    Schema::from(PlIndexMap::from_iter(
-        array
-            .iter()
-            .cloned()
-            .map(|(k, v)| (PlSmallStr::from(k), v)),
-    ))
-}
 
 /// Creates a categorical data_structs type from a list of categories.
 pub fn get_categorical_dtype(categories: Vec<String>) -> DataType {

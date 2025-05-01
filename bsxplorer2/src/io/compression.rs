@@ -31,7 +31,7 @@ mod inner {
 
         pub fn get_decoder(
             &self,
-            mut handle: File, // Added mut
+            handle: File, // Added mut
         ) -> anyhow::Result<Box<dyn MmapBytesReader>> {
             // Changed return type
             let mut temp_file = tempfile()?; // Create a temp file

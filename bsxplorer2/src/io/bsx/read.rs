@@ -1,11 +1,14 @@
 use anyhow::anyhow;
 use bio::data_structures::interval_tree::IntervalTree;
+use indexmap::IndexSet;
 use itertools::Itertools;
+use num::{PrimInt, Unsigned};
 use polars::error::PolarsResult;
 use polars::export::arrow::array::Array;
 use polars::export::arrow::record_batch::RecordBatchT;
 use polars::frame::DataFrame;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::io::{Read, Seek};
 use std::ops::Range;
 
@@ -14,13 +17,84 @@ use crate::data_structs::batch::BsxBatchMethods;
 use crate::data_structs::batch::{BsxBatchBuilder, EncodedBsxBatch};
 use crate::data_structs::coords::{Contig, GenomicPosition};
 
-type BatchIndexMap =
-    HashMap<String, IntervalTree<GenomicPosition<String, u32>, usize>>;
+pub struct BatchIndex<S, P>
+where
+    S: AsRef<str> + Clone,
+    P: Unsigned + PrimInt,
+{
+    map: HashMap<S, IntervalTree<GenomicPosition<S, P>, usize>>,
+    chr_order: IndexSet<S>,
+}
+
+impl<S, P> BatchIndex<S, P>
+where
+    S: AsRef<str> + Clone + Eq + Hash,
+    P: Unsigned + PrimInt,
+{
+    fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+            chr_order: IndexSet::new(),
+        }
+    }
+
+    pub fn insert(&mut self, contig: Contig<S, P>, batch_idx: usize) {
+        self.chr_order.insert(contig.seqname().clone());
+
+        self.map
+            .entry(contig.seqname())
+            .and_modify(|tree| {
+                tree.insert(
+                    Range::<_>::from(contig.clone()),
+                    batch_idx,
+                );
+            })
+            .or_insert_with(|| {
+                let mut tree = IntervalTree::new();
+                tree.insert(Range::<_>::from(contig), batch_idx);
+                tree
+            });
+    }
+
+    pub fn sort<I>(&self, contigs: I) -> Vec<Contig<S, P>>
+    where
+        I: IntoIterator<Item = Contig<S, P>>,
+    {
+        contigs.into_iter()
+            .map(|contig| (self.chr_order.get_index_of(&contig.seqname()).unwrap_or(0), contig))
+            .sorted_by(|(left_chr, left_contig), (right_chr, right_contig)| left_chr.cmp(&right_chr).then(left_contig.start().cmp(&right_contig.start())))
+            .map(|(_, contig)| contig)
+            .collect::<Vec<_>>()
+    }
+
+    pub fn find(
+        &self,
+        contig: &Contig<S, P>,
+    ) -> Option<Vec<usize>> {
+        if let Some(tree) = self.map.get(&contig.seqname()) {
+            let batches = tree
+                .find(Range::<_>::from(contig.clone()))
+                .map(|entry| entry.data().clone())
+                .collect_vec();
+            Some(batches)
+        } else {
+            None
+        }
+    }
+
+    pub fn chr_order(&self) -> &IndexSet<S> {
+        &self.chr_order
+    }
+
+    pub fn map(&self) -> &HashMap<S, IntervalTree<GenomicPosition<S, P>, usize>> {
+        &self.map
+    }
+}
 
 /// Reader for BSX files
 pub struct BsxFileReader<R: Read + Seek> {
     reader: IpcFileReader<R>,
-    index: Option<BatchIndexMap>,
+    index: Option<BatchIndex<String, u32>>,
 }
 
 impl<R: Read + Seek> BsxFileReader<R> {
@@ -32,54 +106,25 @@ impl<R: Read + Seek> BsxFileReader<R> {
         }
     }
 
-    pub fn index(&mut self) -> anyhow::Result<&BatchIndexMap> {
+    pub fn index(&mut self) -> anyhow::Result<&BatchIndex<String, u32>> {
         let initialized = self.index.is_some();
         if initialized {
             Ok(self.index.as_ref().unwrap())
         } else {
-            let mut new_index = BatchIndexMap::new();
+            let mut new_index = BatchIndex::new();
 
             for batch_idx in 0..self.reader.blocks_total() {
                 let batch = self
                     .get_batch(batch_idx)
                     .expect("Batch index out of bounds")?;
-                let contig = batch.as_contig()?;
+                // We unwrap as we expect that there is NO empty batches in bsx file
+                let contig = batch.as_contig()?.unwrap();
 
-                new_index
-                    .entry(contig.seqname().to_string())
-                    .and_modify(|tree| {
-                        tree.insert(
-                            Range::<_>::from(contig.clone()),
-                            batch_idx,
-                        );
-                    })
-                    .or_insert_with(|| {
-                        let mut tree = IntervalTree::new();
-                        tree.insert(Range::<_>::from(contig), batch_idx);
-                        tree
-                    });
+                new_index.insert(contig, batch_idx);
             }
-            self.index = Some(new_index.clone());
+            self.index = Some(new_index);
 
             Ok(self.index.as_ref().unwrap())
-        }
-    }
-
-    pub fn find(
-        &mut self,
-        contig: &Contig<String, u32>,
-    ) -> Option<Vec<usize>> {
-        let index = self
-            .index()
-            .expect("Failed to retrieve index");
-        if let Some(tree) = index.get(&contig.seqname()) {
-            let batches = tree
-                .find(Range::<_>::from(contig.clone()))
-                .map(|entry| entry.data().clone())
-                .collect_vec();
-            Some(batches)
-        } else {
-            None
         }
     }
 
@@ -87,7 +132,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
         &mut self,
         contig: &Contig<String, u32>,
     ) -> anyhow::Result<Option<EncodedBsxBatch>> {
-        let batch_indices = self
+        let batch_indices = self.index()?
             .find(contig)
             .ok_or(anyhow!("No batches found for contig: {}", contig))?;
         if batch_indices.is_empty() {

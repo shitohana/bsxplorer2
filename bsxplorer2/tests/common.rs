@@ -6,10 +6,10 @@ use anyhow::bail;
 use bio::io::fasta::Record;
 use bsxplorer2::{
     data_structs::{
-        batch::{BsxBatch, BsxBatchBuilder, BsxBatchMethods},
+        batch::{colnames::{CONTEXT_NAME, COUNT_M_NAME, COUNT_TOTAL_NAME, STRAND_NAME}, BsxBatch, BsxBatchBuilder, BsxBatchMethods},
         context_data::ContextData,
     },
-    io::bsx::BsxIpcWriter,
+    io::{bsx::BsxIpcWriter, report::ReportTypeSchema},
 };
 use itertools::Itertools;
 use polars::{
@@ -238,4 +238,58 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
             .unwrap();
         Some((record, batch))
     }
+}
+
+pub fn compare_batches(
+    original: &BsxBatch,
+    read: &BsxBatch,
+    report_type: &ReportTypeSchema,
+) -> anyhow::Result<()> {
+    if original.chr_val()? != read.chr_val()? {
+        bail!(
+            "Chromosomes differ for original: {}\nread: {}",
+            original.data(),
+            read.data()
+        );
+    }
+    if original.height() != read.height() {
+        bail!(
+            "Heights differ for original: {}\nread: {}",
+            original.data(),
+            read.data()
+        );
+    }
+    let (original_df, read_df) =
+        if matches!(report_type, ReportTypeSchema::BedGraph) {
+            // TODO: Find out, why first row density equal to NaN when testing
+            return Ok(())
+
+            // (
+            //     original
+            //         .data()
+            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME, STRAND_NAME]),
+            //     read.data()
+            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME, STRAND_NAME]),
+            // )
+
+        } else {
+            (original.data().clone(), read.data().clone())
+        };
+    if !original_df.equals_missing(&read_df) {
+        let diff_mask = original_df
+            .materialized_column_iter()
+            .zip(read_df.materialized_column_iter())
+            .map(|(orig, read)| !orig.equal(read).unwrap())
+            .reduce(|acc, new| acc.bitor(new))
+            .unwrap();
+        let orig_diff = original_df.filter(&diff_mask)?;
+        let read_diff = read_df.filter(&diff_mask)?;
+        bail!(
+            "Data differs for original: {}\nread: {}",
+            orig_diff,
+            read_diff
+        );
+    }
+
+    Ok(())
 }

@@ -12,7 +12,7 @@ use crate::data_structs::{
     coords::Contig,
 };
 
-use super::BsxFileReader;
+use super::{read::BatchIndex, BsxFileReader};
 
 pub struct RegionReader<R: Read + Seek> {
     cache: BTreeMap<usize, EncodedBsxBatch>,
@@ -24,12 +24,24 @@ impl<R: Read + Seek> RegionReader<R> {
         Self { inner: reader, cache: BTreeMap::new() }
     }
 
+    pub fn index(&mut self) -> anyhow::Result<&BatchIndex<String, u32>> {
+        self.inner.index()
+    }
+
+    pub fn reset(&mut self) {
+        self.cache.clear();
+    }
+
     pub fn query<S: AsRef<str> + Clone + Into<String>>(
         &mut self,
         contig: Contig<S, u32>,
     ) -> anyhow::Result<Option<EncodedBsxBatch>> {
         const MAX_ITERATION_LIMIT: usize = 10;
         let mut depth = 0usize;
+
+        if !self.inner.index()?.chr_order().contains(&contig.seqname().as_ref().to_string()) {
+            bail!("Contig seqname not found in index")
+        }
 
         loop {
             if depth > MAX_ITERATION_LIMIT {
@@ -40,12 +52,12 @@ impl<R: Read + Seek> RegionReader<R> {
             let min_cached_pos = self
                 .cache
                 .first_key_value()
-                .map(|(k, v)| v.start_gpos())
+                .map(|(_k, v)| v.start_gpos())
                 .transpose()?;
             let max_cached_pos = self
                 .cache
                 .last_key_value()
-                .map(|(k, v)| v.end_gpos())
+                .map(|(_k, v)| v.end_gpos())
                 .transpose()?;
 
             let intersection_kind = if let Some((min_pos, max_pos)) =
@@ -76,11 +88,12 @@ impl<R: Read + Seek> RegionReader<R> {
 
             match intersection_kind {
                 IntersectionKind::PartialLeft => {
-                    bail!("Queried regions must be sorted")
+                    bail!("Required batch has already been processed. Make sure the regions are sorted with BatchIndex.sort")
                 },
                 IntersectionKind::Full => {
                     let batches = self
                         .inner
+                        .index()?
                         .find(&contig.clone().cast(
                             |seqname| seqname.as_ref().to_string(),
                             |pos| pos,
@@ -96,7 +109,7 @@ impl<R: Read + Seek> RegionReader<R> {
                     let mut read_batches = 0usize;
 
                     let mut res = vec![];
-                    for mut batch in batches {
+                    for batch in batches {
                         let is_first = read_batches == 0;
                         let is_last = read_batches == batches_total - 1;
                         let slice_start = if is_first {
@@ -114,23 +127,29 @@ impl<R: Read + Seek> RegionReader<R> {
                             binary_search_ca(
                                 batch.position(),
                                 [Some(contig.end())].into_iter(),
-                                SearchSortedSide::Right,
+                                SearchSortedSide::Left,
                                 false,
                             )[0]
                         } else {
                             batch.height() as u32
                         };
 
-                        let slice = batch.slice(slice_start, slice_end);
+                        let slice = batch.slice(slice_start, slice_end - slice_start);
                         res.push(slice);
                         read_batches += 1;
                     }
                     res.sort_by_key(|b| b.start_pos());
-                    return Some(BsxBatchBuilder::concat(res)).transpose();
+                    if res.is_empty() {
+                        return Ok(None);
+                    } else if res.len() == 1 {
+                        return Ok(Some(res.pop().unwrap()));
+                    } else {
+                        return Some(BsxBatchBuilder::concat(res)).transpose();
+                    }
                 },
                 IntersectionKind::PartialRight | IntersectionKind::None => {
                     let required_batches =
-                        self.inner.find(&contig.clone().cast(
+                        self.inner.index()?.find(&contig.clone().cast(
                             |seqname| seqname.as_ref().to_string(),
                             |pos| pos,
                         ));

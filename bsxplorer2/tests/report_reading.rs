@@ -1,9 +1,6 @@
 use std::io::Cursor;
-use std::ops::BitOr;
 
-use anyhow::bail;
 use bio::io::fasta::Writer as FastaWriter;
-use bsxplorer2::data_structs::batch::colnames::*;
 use bsxplorer2::data_structs::batch::LazyBsxBatch;
 use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchMethods};
 use bsxplorer2::io::report::ReportReaderBuilder;
@@ -21,55 +18,7 @@ fn report_data() -> DemoReportBuilder<StdRng> {
     DemoReportBuilder::new(123_456, 20, 15.0, 0.5, Some(42))
 }
 
-fn compare_batches(
-    original: &BsxBatch,
-    read: &BsxBatch,
-    report_type: &ReportTypeSchema,
-) -> anyhow::Result<()> {
-    if original.chr_val()? != read.chr_val()? {
-        bail!(
-            "Chromosomes differ for original: {}\nread: {}",
-            original.data(),
-            read.data()
-        );
-    }
-    if original.height() != read.height() {
-        bail!(
-            "Heights differ for original: {}\nread: {}",
-            original.data(),
-            read.data()
-        );
-    }
-    let (original_df, read_df) =
-        if matches!(report_type, ReportTypeSchema::BedGraph) {
-            (
-                original
-                    .data()
-                    .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME]),
-                read.data()
-                    .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME]),
-            )
-        } else {
-            (original.data().clone(), read.data().clone())
-        };
-    if !original_df.equals_missing(&read_df) {
-        let diff_mask = original_df
-            .materialized_column_iter()
-            .zip(read_df.materialized_column_iter())
-            .map(|(orig, read)| !orig.equal(read).unwrap())
-            .reduce(|acc, new| acc.bitor(new))
-            .unwrap();
-        let orig_diff = original_df.filter(&diff_mask)?;
-        let read_diff = read_df.filter(&diff_mask)?;
-        bail!(
-            "Data differs for original: {}\nread: {}",
-            orig_diff,
-            read_diff
-        );
-    }
 
-    Ok(())
-}
 
 const N_CHR: usize = 3;
 const CHUNK_SIZE: usize = 10000;
@@ -100,6 +49,8 @@ fn test_report_reading_with_alignment(
     report_data: DemoReportBuilder<StdRng>,
 ) -> anyhow::Result<()> {
     // Initialize buffers for report data and sequence data
+
+    use common::compare_batches;
     let mut report_buffer = Vec::new();
     let sequence_file = tempfile::NamedTempFile::new()?;
 

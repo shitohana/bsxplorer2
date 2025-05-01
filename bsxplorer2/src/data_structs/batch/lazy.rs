@@ -188,12 +188,11 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
 
     /// Aligns the batch with provided context data for specified chromosome.
     pub fn align_with_contexts(
-        mut self,
+        self,
         context_data: ContextData,
         chr_val: &str,
     ) -> Self {
         let context_df = context_data.to_df::<T>();
-        let test = self.data.clone().collect().unwrap();
 
         let self_selected = self
             .data
@@ -669,7 +668,7 @@ mod tests {
     fn test_align_with_contexts_encoded() {
         let batch = create_test_encoded_batch(); // pos: 10, 20, 30, 40, 50
         let chr_dtype = batch.chr().dtype().clone();
-        let mut lazy_batch =
+        let lazy_batch =
             LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
 
         // Context data: include existing pos (20, 40), new pos (15, 55), different context/strand for existing pos

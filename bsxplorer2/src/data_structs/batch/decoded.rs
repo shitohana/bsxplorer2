@@ -145,9 +145,11 @@ impl From<BsxBatch> for DataFrame {
 }
 
 impl BsxTypeTag for BsxBatch {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn type_name() -> &'static str {
         "decoded"
     }
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn type_enum() -> BatchType {
         BatchType::Decoded
     }

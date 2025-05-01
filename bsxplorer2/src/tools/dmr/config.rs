@@ -59,7 +59,7 @@ impl DmrConfig {
         let mut readers_pair = BTreeMap::from_iter(
             readers
                 .into_iter()
-                .into_group_map_by(|(label, reader)| label.clone()),
+                .into_group_map_by(|(label, _reader)| label.clone()),
         )
         .into_values()
         .collect_vec();
@@ -71,7 +71,9 @@ impl DmrConfig {
         }
 
         let (sender, receiver) = crossbeam::channel::bounded(10);
-        let mut block_count = 0;
+        // TODO: fix, that the block_count doesn't really calculate anything, as it is passed
+        // to a thread
+        let block_count = 0;
         let join_handle = std::thread::spawn(move || {
             let (right_n, right_readers) = init_bsx_readers(
                 readers_pair
@@ -90,7 +92,7 @@ impl DmrConfig {
                     .collect_vec(),
             );
             assert_eq!(left_n, right_n, "Number of batches does not match");
-            block_count += left_n;
+            // block_count += left_n;
             segment_reading(left_readers, right_readers, sender)
         });
 
@@ -176,7 +178,7 @@ fn init_bsx_readers<F: Read + Seek + 'static>(
     let n_batches = bsx_readers[0].blocks_total();
     let iterators = bsx_readers
         .into_iter()
-        .map(|mut reader| {
+        .map(|reader| {
             reader.map(|batch_res| batch_res.expect("could not read batch"))
         })
         .map(|reader| {

@@ -13,72 +13,6 @@ use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
 
-/// Encodes strand information to boolean ( "+" to true, "-" to false).
-pub fn encode_strand(
-    lazy_frame: LazyFrame,
-    strand_col: &str,
-) -> LazyFrame {
-    lazy_frame.with_column(
-        when(col(strand_col).eq(lit("+")))
-            .then(lit(true))
-            .when(col(strand_col).eq(lit("-")))
-            .then(lit(false))
-            .otherwise(lit(NULL))
-            .cast(DataType::Boolean)
-            .alias("strand"),
-    )
-}
-
-/// Encodes methylation context information as boolean values ("CG" to true, "CHG" to false).
-pub fn encode_context(
-    lazy_frame: LazyFrame,
-    context_col: &str,
-) -> LazyFrame {
-    lazy_frame.with_column(
-        when(col(context_col).eq(lit("CG")))
-            .then(lit(true))
-            .when(col(context_col).eq(lit("CHG")))
-            .then(lit(false))
-            .otherwise(lit(NULL))
-            .cast(DataType::Boolean)
-            .alias(context_col),
-    )
-}
-
-/// Decodes boolean strand information back to string representation (true to "+", false to "-", null to ".").
-pub fn decode_strand(
-    lazy_frame: LazyFrame,
-    strand_col: &str,
-    result_name: &str,
-) -> LazyFrame {
-    lazy_frame.with_column(
-        when(col(strand_col).eq(lit(true)))
-            .then(lit("+"))
-            .when(col(strand_col).eq(lit(false)))
-            .then(lit("-"))
-            .otherwise(lit("."))
-            .cast(DataType::String)
-            .alias(result_name),
-    )
-}
-
-/// Decodes boolean context information back to string representation (true to "CG", false to "CHG", null to "CHH").
-pub fn decode_context(
-    lazy_frame: LazyFrame,
-    context_col: &str,
-    result_name: &str,
-) -> LazyFrame {
-    lazy_frame.with_column(
-        when(col(context_col).eq(lit(true)))
-            .then(lit("CG"))
-            .when(col(context_col).eq(lit(false)))
-            .then(lit("CHG"))
-            .otherwise(lit("CHH"))
-            .cast(DataType::String)
-            .alias(result_name),
-    )
-}
-
 /// Builder for constructing and validating BSX batch data.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BsxBatchBuilder {
@@ -101,6 +35,7 @@ impl Default for BsxBatchBuilder {
 // Public methods
 impl BsxBatchBuilder {
     /// Creates a builder with all data validation checks enabled.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn all_checks() -> Self {
         Self {
             report_type: None,
@@ -115,6 +50,7 @@ impl BsxBatchBuilder {
     }
 
     /// Creates a builder with all validation checks disabled.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn no_checks() -> Self {
         Self {
             report_type: None,
@@ -129,6 +65,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets the report type schema for data conversion.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_report_type(
         mut self,
         report_type: ReportTypeSchema,
@@ -138,6 +75,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets whether to check for null values in critical columns.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_check_nulls(
         mut self,
         check_nulls: bool,
@@ -147,6 +85,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets whether to check and ensure positions are sorted.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_check_sorted(
         mut self,
         check_sorted: bool,
@@ -156,6 +95,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets whether to rechunk the data for memory efficiency.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_rechunk(
         mut self,
         rechunk: bool,
@@ -165,6 +105,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets whether to check if all data is from a single chromosome.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_check_single_chr(
         mut self,
         check: bool,
@@ -174,6 +115,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets whether to check for duplicate positions.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_check_duplicates(
         mut self,
         check_duplicates: bool,
@@ -183,6 +125,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets the data type for the chromosome column.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_chr_dtype(
         mut self,
         chr_dtype: Option<DataType>,
@@ -192,6 +135,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sets the context data.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_context_data(
         mut self,
         context_data: Option<ContextData>,
@@ -259,7 +203,7 @@ impl BsxBatchBuilder {
     ) -> anyhow::Result<EncodedBsxBatch> {
         let chr = batch.chr_val()?.to_string();
         let batch_data = DataFrame::from(batch);
-        let mut batch_lazy = batch_data.lazy();
+        let batch_lazy = batch_data.lazy();
 
         let casted =
             encoded::select_cast(batch_lazy, chr_dtype, true).collect()?;
@@ -282,8 +226,9 @@ impl BsxBatchBuilder {
     pub fn concat<B: BsxBatchMethods>(batches: Vec<B>) -> anyhow::Result<B> {
         let contigs = batches
             .iter()
+            .filter(|b| !b.is_empty())
             .map(|b| b.as_contig())
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .collect::<anyhow::Result<Option<Vec<_>>>>()?.unwrap();
         if !contigs
             .iter()
             .map(Contig::seqname)
@@ -318,6 +263,40 @@ impl BsxBatchBuilder {
             .build(data)?;
         Ok(res)
     }
+}
+
+/// Decodes boolean strand information back to string representation (true to "+", false to "-", null to ".").
+pub fn decode_strand(
+    lazy_frame: LazyFrame,
+    strand_col: &str,
+    result_name: &str,
+) -> LazyFrame {
+    lazy_frame.with_column(
+        when(col(strand_col).eq(lit(true)))
+            .then(lit("+"))
+            .when(col(strand_col).eq(lit(false)))
+            .then(lit("-"))
+            .otherwise(lit("."))
+            .cast(DataType::String)
+            .alias(result_name),
+    )
+}
+
+/// Decodes boolean context information back to string representation (true to "CG", false to "CHG", null to "CHH").
+pub fn decode_context(
+    lazy_frame: LazyFrame,
+    context_col: &str,
+    result_name: &str,
+) -> LazyFrame {
+    lazy_frame.with_column(
+        when(col(context_col).eq(lit(true)))
+            .then(lit("CG"))
+            .when(col(context_col).eq(lit(false)))
+            .then(lit("CHG"))
+            .otherwise(lit("CHH"))
+            .cast(DataType::String)
+            .alias(result_name),
+    )
 }
 
 // Private methods
@@ -362,9 +341,7 @@ impl BsxBatchBuilder {
             (BT::Encoded, _, None) => {
                 bail!("Chr dtype must be specified for encoded conversion")
             },
-            (batch_type, report_type, _) => {
-                unimplemented!("Conversion from {batch_type:?} to {report_type:?} is not supported")
-            },
+
         };
         Ok(res)
     }
@@ -464,7 +441,7 @@ mod decoded {
 
     /// Converts CG map format data into standardized BSX format.
     pub(crate) fn from_cgmap(df: DataFrame) -> anyhow::Result<DataFrame> {
-        let mut col_added = df
+        let col_added = df
             .lazy()
             .with_column(nuc_to_strand_expr().alias(STRAND_NAME));
         let casted = select_cast(col_added);
