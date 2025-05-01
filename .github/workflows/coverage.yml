@@ -7,6 +7,10 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
       - uses: actions/checkout@v4
       - name: Install Rust
         run: rustup toolchain install nightly
