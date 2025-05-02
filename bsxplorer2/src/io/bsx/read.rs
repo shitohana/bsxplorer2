@@ -17,6 +17,8 @@ use crate::data_structs::batch::BsxBatchMethods;
 use crate::data_structs::batch::{BsxBatchBuilder, EncodedBsxBatch};
 use crate::data_structs::coords::{Contig, GenomicPosition};
 
+/// Index for batches in a BSX file.
+#[derive(Debug, Clone)]
 pub struct BatchIndex<S, P>
 where
     S: AsRef<str> + Clone,
@@ -38,6 +40,7 @@ where
         }
     }
 
+    /// Insert a contig and its corresponding batch index.
     pub fn insert(&mut self, contig: Contig<S, P>, batch_idx: usize) {
         self.chr_order.insert(contig.seqname().clone());
 
@@ -56,6 +59,7 @@ where
             });
     }
 
+    /// Sort a set of contigs according to the chromosome order and start position.
     pub fn sort<I>(&self, contigs: I) -> Vec<Contig<S, P>>
     where
         I: IntoIterator<Item = Contig<S, P>>,
@@ -67,6 +71,7 @@ where
             .collect::<Vec<_>>()
     }
 
+    /// Find the batch indices that overlap with a given contig.
     pub fn find(
         &self,
         contig: &Contig<S, P>,
@@ -82,10 +87,12 @@ where
         }
     }
 
+    /// Returns the chromosome order.
     pub fn chr_order(&self) -> &IndexSet<S> {
         &self.chr_order
     }
 
+    /// Returns the underlying map.
     pub fn map(&self) -> &HashMap<S, IntervalTree<GenomicPosition<S, P>, usize>> {
         &self.map
     }
@@ -93,7 +100,7 @@ where
 
 /// Reader for BSX files
 pub struct BsxFileReader<R: Read + Seek> {
-    reader: IpcFileReader<R>,
+    ipc_reader: IpcFileReader<R>,
     index: Option<BatchIndex<String, u32>>,
 }
 
@@ -101,11 +108,12 @@ impl<R: Read + Seek> BsxFileReader<R> {
     /// Creates a new BSX file reader
     pub fn new(handle: R) -> Self {
         Self {
-            reader: IpcFileReader::new(handle, None, None),
+            ipc_reader: IpcFileReader::new(handle, None, None),
             index: None,
         }
     }
 
+    /// Indexes the BSX file and returns the index.
     pub fn index(&mut self) -> anyhow::Result<&BatchIndex<String, u32>> {
         let initialized = self.index.is_some();
         if initialized {
@@ -113,7 +121,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
         } else {
             let mut new_index = BatchIndex::new();
 
-            for batch_idx in 0..self.reader.blocks_total() {
+            for batch_idx in 0..self.ipc_reader.blocks_total() {
                 let batch = self
                     .get_batch(batch_idx)
                     .expect("Batch index out of bounds")?;
@@ -128,6 +136,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
         }
     }
 
+    /// Queries the BSX file for a given contig.
     pub fn query(
         &mut self,
         contig: &Contig<String, u32>,
@@ -168,7 +177,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
             .map(|batch| {
                 DataFrame::try_from((
                     batch,
-                    self.reader.metadata().schema.as_ref(),
+                    self.ipc_reader.metadata().schema.as_ref(),
                 ))
                 .expect(
                     "Failed to create DataFrame from batch - schema mismatch",
@@ -182,19 +191,20 @@ impl<R: Read + Seek> BsxFileReader<R> {
         &mut self,
         batch_idx: usize,
     ) -> Option<PolarsResult<EncodedBsxBatch>> {
-        self.reader
+        self.ipc_reader
             .read_at(batch_idx)
             .map(|res| self.process_record_batch(res))
     }
 
     /// Returns the total number of blocks in the file
     pub fn blocks_total(&self) -> usize {
-        let count = self.reader.blocks_total();
+        let count = self.ipc_reader.blocks_total();
         count
     }
 
+    /// Retrieves the next batch
     fn _next(&mut self) -> Option<PolarsResult<EncodedBsxBatch>> {
-        let next = self.reader.next();
+        let next = self.ipc_reader.next();
         let res = next.map(|res| self.process_record_batch(res));
 
         if let Some(Ok(data)) = res.as_ref() {
@@ -206,6 +216,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
         res
     }
 
+    /// Creates an iterator for the BSX file.
     fn iter(&mut self) -> BsxFileIterator<R> {
         BsxFileIterator {
             reader: self,
@@ -222,6 +233,7 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
     }
 }
 
+/// Iterator for BSX files.
 pub struct BsxFileIterator<'a, R: Read + Seek> {
     reader: &'a mut BsxFileReader<R>,
 }
@@ -232,5 +244,28 @@ impl<'a, R: Read + Seek> Iterator for BsxFileIterator<'a, R> {
     /// Returns the next batch or None when finished
     fn next(&mut self) -> Option<Self::Item> {
         self.reader._next()
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.reader.ipc_reader.set_current_block(self.reader.ipc_reader.current_block() + n);
+        self.reader._next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.reader.ipc_reader.blocks_total(), Some(self.reader.ipc_reader.blocks_total()))
+    }
+
+    fn count(self) -> usize
+    where
+        Self: Sized,
+    {
+        self.reader.ipc_reader.blocks_total() - self.reader.ipc_reader.current_block()
+    }
+
+    fn last(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.reader.get_batch(self.reader.blocks_total() - 1)
     }
 }

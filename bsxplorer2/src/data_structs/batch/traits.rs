@@ -1,7 +1,6 @@
-
-
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::enums::Strand;
+
 
 use super::builder::BsxBatchBuilder;
 use anyhow::anyhow;
@@ -58,12 +57,18 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
 
     /// Access chromosome column
     fn chr(&self) -> &ChunkedArray<Self::ChrType>;
+    /// Access position column
     fn position(&self) -> &ChunkedArray<Self::PosType>;
+    /// Access strand column
     fn strand(&self) -> &ChunkedArray<Self::StrandType>;
+    /// Access context column
     fn context(&self) -> &ChunkedArray<Self::ContextType>;
+    /// Access methylated count column
     fn count_m(&self) -> &ChunkedArray<Self::CountType>;
+    /// Access total count column
     fn count_total(&self) -> &ChunkedArray<Self::CountType>;
 
+    /// Access density column
     fn density(&self) -> &ChunkedArray<Self::DensityType>;
 
     /// Get chromosome data type
@@ -161,6 +166,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
             Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema()))
         }
     }
+    /// Checks if the batch is empty
     fn is_empty(&self) -> bool {
         self.data().is_empty()
     }
@@ -177,6 +183,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         unsafe { (Self::new_unchecked(a), Self::new_unchecked(b)) }
     }
 
+    /// Slice the batch
     fn slice(&self, start: u32, length: u32) -> Self where Self: Sized {
         let slice = self.data().slice(start as i64, length as usize);
         unsafe { Self::new_unchecked(slice) }
@@ -184,8 +191,10 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
 
     /// Returns reference to inner [DataFrame]
     fn data(&self) -> &DataFrame;
+    /// Returns mutable reference to inner [DataFrame]
     fn data_mut(&mut self) -> &mut DataFrame;
 
+    /// Consumes and returns the inner DataFrame
     fn take(self) -> DataFrame
     where
         Self: Sized;
@@ -224,6 +233,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
             .ok()
     }
 
+    /// Returns the genomic position at the start of the batch
     fn start_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
         let pos = self
             .start_pos()
@@ -233,6 +243,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         Ok(gpos)
     }
 
+    /// Returns the genomic position at the end of the batch
     fn end_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
         let pos = self
             .end_pos()
@@ -255,6 +266,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         Ok(unsafe { Self::new_unchecked(res) })
     }
 
+    /// Extends the batch with another batch
     fn extend(
         &mut self,
         other: &Self,
@@ -305,6 +317,7 @@ pub trait BsxTypeTag {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+/// Enum that signifies decoded or encoded state
 pub enum BatchType {
     Decoded,
     Encoded,

@@ -5,8 +5,11 @@ use std::hash::Hash;
 use serde::{Deserialize, Serialize};
 
 pub trait IPCEncodedEnum {
+    /// Converts an optional boolean value to the enum.
     fn from_bool(value: Option<bool>) -> Self;
+    /// Converts the enum to an optional boolean value.
     fn to_bool(&self) -> Option<bool>;
+    /// Converts a string slice to the enum.
     fn from_str(value: &str) -> Self;
 }
 
@@ -14,8 +17,11 @@ pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Context {
+    /// CG context.
     CG,
+    /// CHG context.
     CHG,
+    /// CHH context.
     CHH,
 }
 
@@ -94,8 +100,11 @@ impl IPCEncodedEnum for Context {
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Strand {
+    /// Forward strand.
     Forward,
+    /// Reverse strand.
     Reverse,
+    /// No strand.
     None,
 }
 

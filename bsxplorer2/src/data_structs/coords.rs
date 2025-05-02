@@ -10,7 +10,6 @@ use bio_types::{
 use num::{PrimInt, Unsigned};
 
 use crate::data_structs::enums::Strand;
-
 /// Represents a genomic position with a sequence name and a position.
 #[derive(Debug, Clone)]
 pub struct GenomicPosition<R, P>
@@ -27,6 +26,7 @@ impl<P> From<bio_types::annot::pos::SeqPosUnstranded>
 where
     P: Unsigned + PrimInt,
 {
+    /// Converts from `bio_types::annot::pos::SeqPosUnstranded`.
     fn from(value: bio_types::annot::pos::SeqPosUnstranded) -> Self {
         Self {
             seqname: value.refid().to_owned(),
@@ -42,6 +42,7 @@ where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
 {
+    /// Converts into `bio_types::annot::pos::SeqPosUnstranded`.
     fn from(value: GenomicPosition<R, P>) -> Self {
         bio_types::annot::pos::SeqPosUnstranded::new(
             value.seqname.as_ref().to_string(),
@@ -114,10 +115,12 @@ where
         Self { seqname, position }
     }
 
+    /// Returns the sequence name.
     pub fn seqname(&self) -> R {
         self.seqname.clone()
     }
 
+    /// Returns the position.
     pub fn position(&self) -> P {
         self.position
     }
@@ -240,10 +243,12 @@ where
         }
     }
 
+    /// Returns the start position.
     pub fn start(&self) -> P {
         self.start
     }
 
+    /// Returns the end position.
     pub fn end(&self) -> P {
         self.end
     }
@@ -273,12 +278,15 @@ where
         self.end - self.start
     }
 
+    /// Extends the contig upstream by a given length.
     pub fn extend_upstream(
         &mut self,
         length: P,
     ) {
         self.start = self.start.saturating_sub(length);
     }
+
+    /// Extends the contig downstream by a given length.
     pub fn extend_downstream(
         &mut self,
         length: P,
@@ -286,18 +294,22 @@ where
         self.end = self.end.saturating_add(length);
     }
 
+    /// Sets the start position of the contig.
     pub fn set_start(&mut self, start: P) {
         self.start = start;
     }
 
+    /// Sets the end position of the contig.
     pub fn set_end(&mut self, end: P) {
         self.end = end;
     }
 
+    /// Checks if this contig is fully contained within another contig.
     pub fn is_in(&self, other: &Self) -> bool {
         self.seqname.as_ref() == other.seqname.as_ref() && self.start >= other.start && self.end <= other.end
     }
 
+    /// Casts the contig to a new type.
     pub fn cast<R2: AsRef<str> + Clone, P2: Unsigned + PrimInt>(
         self,
         seqname_fn: fn(R) -> R2,
@@ -317,6 +329,7 @@ where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
 {
+    /// Converts from a range of `GenomicPosition`s.
     fn from(value: Range<GenomicPosition<R, P>>) -> Self {
         assert_eq!(value.start.seqname.as_ref(), value.end.seqname.as_ref(), "Start and end positions must have the same sequence name");
         Self {
@@ -333,6 +346,7 @@ where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
 {
+    /// Converts into a range of `GenomicPosition`s.
     fn from(value: Contig<R, P>) -> Self {
         value.start_gpos()..value.end_gpos()
     }
@@ -342,6 +356,7 @@ impl<P> From<bio::io::bed::Record> for Contig<String, P>
 where
     P: Unsigned + PrimInt,
 {
+    /// Converts from a `bio::io::bed::Record`.
     fn from(value: bio::io::bed::Record) -> Self {
         Self {
             seqname: value.chrom().to_owned(),
@@ -363,6 +378,7 @@ where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
 {
+    /// Converts into a `bio::io::bed::Record`.
     fn from(value: Contig<R, P>) -> Self {
         let mut record = bio::io::bed::Record::new();
         record.set_chrom(value.seqname.as_ref());
@@ -386,6 +402,7 @@ impl<P> From<bio::io::gff::Record> for Contig<String, P>
 where
     P: Unsigned + PrimInt,
 {
+    /// Converts from a `bio::io::gff::Record`.
     fn from(value: bio::io::gff::Record) -> Self {
         Self {
             seqname: value.seqname().to_owned(),
@@ -409,6 +426,7 @@ where
     P: Unsigned + PrimInt,
     S: Into<Option<ReqStrand>> + Copy,
 {
+    /// Converts from a `bio_types::annot::contig::Contig`.
     fn from(value: bio_types::annot::contig::Contig<R, S>) -> Self {
         let s: Option<ReqStrand> = value.strand().into();
         let strand = match s {
@@ -432,6 +450,7 @@ where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
 {
+    /// Converts into a `bio_types::annot::contig::Contig`.
     fn from(value: Contig<R, P>) -> Self {
         let strand = match value.strand {
             Strand::Forward => Some(ReqStrand::Forward),

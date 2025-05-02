@@ -1,10 +1,13 @@
+use std::io::Read;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::{Read, Seek},
+    hash::Hash,
+    io::Seek,
 };
 
 use anyhow::{anyhow, bail};
 use itertools::Itertools;
+use num::{PrimInt, Unsigned};
 use polars::prelude::{search_sorted::binary_search_ca, SearchSortedSide};
 
 use crate::data_structs::{
@@ -14,32 +17,275 @@ use crate::data_structs::{
 
 use super::{read::BatchIndex, BsxFileReader};
 
-pub struct RegionReader<R: Read + Seek> {
+/// RegionReader is a reader for BSX files that operates on a specific region of the genome.
+pub struct RegionReader<R, S, P>
+where
+    R: Read + Seek,
+    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
+    P: Unsigned + PrimInt,
+{
+    /// Cache of encoded BSX batches.
     cache: BTreeMap<usize, EncodedBsxBatch>,
+    /// Inner reader for the BSX file.
     inner: BsxFileReader<R>,
+    /// Index of the BSX file.
+    index: BatchIndex<S, P>,
+    /// Preprocessing function to be applied to each batch before it is cached.
+    preprocess_fn:
+        Option<fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>>,
 }
 
-impl<R: Read + Seek> RegionReader<R> {
-    pub fn new(reader: BsxFileReader<R>) -> Self {
-        Self { inner: reader, cache: BTreeMap::new() }
+// PRIVATE METHODS
+impl<R, S, P> RegionReader<R, S, P>
+where
+    R: Read + Seek,
+    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
+    P: Unsigned + PrimInt,
+{
+    /// Finds the batches that overlap the given contig.
+    fn find(
+        &self,
+        contig: &Contig<S, P>,
+    ) -> Option<Vec<usize>> {
+        let required_batches = self.index().find(&contig.clone());
+
+        let batches_found = !{
+            required_batches.is_none()
+                || (required_batches.is_some()
+                    && required_batches
+                        .as_ref()
+                        .unwrap()
+                        .is_empty())
+        };
+
+        if batches_found {
+            required_batches
+        } else {
+            None
+        }
     }
 
-    pub fn index(&mut self) -> anyhow::Result<&BatchIndex<String, u32>> {
-        self.inner.index()
+    /// Updates the cache with the given batches.
+    fn update_cache(
+        &mut self,
+        batches: &[usize],
+    ) -> anyhow::Result<()> {
+        let required_batches = BTreeSet::from_iter(batches.iter().cloned());
+        let existing_batches = BTreeSet::from_iter(self.cache.keys().cloned());
+
+        let min_required = required_batches.first().unwrap();
+
+        let to_discard = existing_batches
+            .difference(&required_batches)
+            .cloned()
+            .filter(|idx| idx < min_required)
+            .collect_vec();
+        let to_read = required_batches
+            .difference(&existing_batches)
+            .cloned()
+            .collect_vec();
+
+        for idx in to_discard {
+            self.cache.remove(&idx);
+        }
+
+        for idx in to_read {
+            let mut data = self.inner
+                .get_batch(idx)
+                .transpose()?
+                .ok_or_else(|| anyhow!("Batch index {} reported by find() but not found by get_batch()", idx))?;
+
+            if let Some(postprocess_fn) = self.preprocess_fn {
+                data = postprocess_fn(data)?;
+            }
+
+            self.cache.insert(idx, data);
+        }
+        Ok(())
     }
 
+    /// Gets the batches for the given contig from the cache.
+    fn get_batches_for_contig(
+        &self,
+        contig: &Contig<S, P>,
+    ) -> anyhow::Result<Vec<&EncodedBsxBatch>> {
+        self.index()
+            .find(&contig.clone())
+            .unwrap()
+            .into_iter()
+            .sorted()
+            .map(|idx| self.cache.get(&idx))
+            .collect::<Option<Vec<&EncodedBsxBatch>>>()
+            .ok_or(anyhow!("Batch data missing"))
+    }
+
+    /// Assembles the region from the given batches.
+    ///
+    /// This method assumes that the cache is up-to-date and that the required batches are present.
+    fn assemble_region(
+        &self,
+        contig: &Contig<S, P>,
+        batches: Vec<&EncodedBsxBatch>,
+    ) -> anyhow::Result<Option<EncodedBsxBatch>> {
+        let batches_total = batches.len();
+        let mut read_batches = 0usize;
+
+        let mut res = vec![];
+        for batch in batches {
+            let is_first = read_batches == 0;
+            let is_last = read_batches == batches_total - 1;
+            let slice_start = if is_first {
+                binary_search_ca(
+                    batch.position(),
+                    [Some(contig.start().to_u32().unwrap())].into_iter(),
+                    SearchSortedSide::Left,
+                    false,
+                )[0]
+            } else {
+                0
+            };
+
+            let slice_end = if is_last {
+                binary_search_ca(
+                    batch.position(),
+                    [Some(contig.end().to_u32().unwrap())].into_iter(),
+                    SearchSortedSide::Left,
+                    false,
+                )[0]
+            } else {
+                batch.height() as u32
+            };
+
+            let slice = batch.slice(slice_start, slice_end - slice_start);
+            res.push(slice);
+            read_batches += 1;
+        }
+        res.sort_by_key(|b| b.start_pos());
+        if res.is_empty() {
+            return Ok(None);
+        } else if res.len() == 1 {
+            return Ok(Some(res.pop().unwrap()));
+        } else {
+            return Some(BsxBatchBuilder::concat(res)).transpose();
+        }
+    }
+
+    /// Determines the intersection kind between the cached region and the query contig.
+    fn determine_intersection(
+        &mut self,
+        contig: &Contig<S, P>,
+    ) -> anyhow::Result<IntersectionKind> {
+        let min_cached_pos = self
+            .cache
+            .first_key_value()
+            .map(|(_k, v)| v.start_gpos())
+            .transpose()?;
+        let max_cached_pos = self
+            .cache
+            .last_key_value()
+            .map(|(_k, v)| v.end_gpos())
+            .transpose()?;
+
+        let intersection_kind = if let Some((min_pos, max_pos)) =
+            min_cached_pos.zip(max_cached_pos)
+        {
+            assert_eq!(min_pos.seqname(), max_pos.seqname());
+            if min_pos.seqname() == contig.seqname().as_ref()
+                && P::from(min_pos.position()).unwrap() <= contig.start()
+                && P::from(max_pos.position()).unwrap() >= contig.end()
+            {
+                IntersectionKind::Full
+            } else if min_pos.seqname() == contig.seqname().as_ref()
+                && P::from(min_pos.position()).unwrap() <= contig.start()
+                && P::from(max_pos.position()).unwrap() >= contig.end()
+            {
+                IntersectionKind::PartialRight
+            } else if min_pos.seqname() == contig.seqname().as_ref()
+                && P::from(min_pos.position()).unwrap() > contig.start()
+                && P::from(max_pos.position()).unwrap() >= contig.end()
+            {
+                IntersectionKind::PartialLeft
+            } else {
+                IntersectionKind::None
+            }
+        } else {
+            IntersectionKind::None
+        };
+
+        Ok(intersection_kind)
+    }
+}
+
+// PUBLIC METHODS
+impl<R> RegionReader<R, String, u32>
+where
+    R: Read + Seek,
+{
+    pub fn from_reader(reader: BsxFileReader<R>) -> anyhow::Result<Self> {
+        let mut reader = reader;
+        let index = reader.index()?.clone();
+        Ok(Self::new(reader, index, None))
+    }
+}
+
+impl<R, S, P> RegionReader<R, S, P>
+where
+    R: Read + Seek,
+    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
+    P: PrimInt + Unsigned,
+{
+    /// Sets the preprocessing function.
+    pub fn set_preprocess_fn(
+        &mut self,
+        preprocess_fn: Option<
+            fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>,
+        >,
+    ) {
+        self.preprocess_fn = preprocess_fn;
+    }
+
+    /// Creates a new RegionReader.
+    pub fn new(
+        inner: BsxFileReader<R>,
+        index: BatchIndex<S, P>,
+        preprocess_fn: Option<
+            fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>,
+        >,
+    ) -> Self {
+        Self {
+            cache: BTreeMap::new(),
+            inner,
+            index,
+            preprocess_fn,
+        }
+    }
+
+    /// Returns the index of the BSX file.
+    pub fn index(&self) -> &BatchIndex<S, P> {
+        &self.index
+    }
+
+    /// Resets the cache.
     pub fn reset(&mut self) {
         self.cache.clear();
     }
 
-    pub fn query<S: AsRef<str> + Clone + Into<String>>(
+    /// Queries the BSX file for the given contig.
+    pub fn query(
         &mut self,
-        contig: Contig<S, u32>,
+        contig: Contig<S, P>,
+        postprocess_fn: Option<
+            fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>,
+        >,
     ) -> anyhow::Result<Option<EncodedBsxBatch>> {
         const MAX_ITERATION_LIMIT: usize = 10;
         let mut depth = 0usize;
 
-        if !self.inner.index()?.chr_order().contains(&contig.seqname().as_ref().to_string()) {
+        if !self
+            .index()
+            .chr_order()
+            .contains(&contig.seqname())
+        {
             bail!("Contig seqname not found in index")
         }
 
@@ -49,155 +295,34 @@ impl<R: Read + Seek> RegionReader<R> {
             }
             depth += 1;
 
-            let min_cached_pos = self
-                .cache
-                .first_key_value()
-                .map(|(_k, v)| v.start_gpos())
-                .transpose()?;
-            let max_cached_pos = self
-                .cache
-                .last_key_value()
-                .map(|(_k, v)| v.end_gpos())
-                .transpose()?;
-
-            let intersection_kind = if let Some((min_pos, max_pos)) =
-                min_cached_pos.zip(max_cached_pos)
-            {
-                assert_eq!(min_pos.seqname(), max_pos.seqname());
-                if min_pos.seqname() == contig.seqname().as_ref()
-                    && min_pos.position() <= contig.start()
-                    && max_pos.position() >= contig.end()
-                {
-                    IntersectionKind::Full
-                } else if min_pos.seqname() == contig.seqname().as_ref()
-                    && min_pos.position() <= contig.start()
-                    && max_pos.position() < contig.end()
-                {
-                    IntersectionKind::PartialRight
-                } else if min_pos.seqname() == contig.seqname().as_ref()
-                    && min_pos.position() > contig.start()
-                    && max_pos.position() >= contig.end()
-                {
-                    IntersectionKind::PartialLeft
-                } else {
-                    IntersectionKind::None
-                }
-            } else {
-                IntersectionKind::None
-            };
-
-            match intersection_kind {
+            match self.determine_intersection(&contig)? {
                 IntersectionKind::PartialLeft => {
                     bail!("Required batch has already been processed. Make sure the regions are sorted with BatchIndex.sort")
                 },
                 IntersectionKind::Full => {
-                    let batches = self
-                        .inner
-                        .index()?
-                        .find(&contig.clone().cast(
-                            |seqname| seqname.as_ref().to_string(),
-                            |pos| pos,
-                        ))
-                        .unwrap()
-                        .into_iter()
-                        .sorted()
-                        .map(|idx| self.cache.get(&idx))
-                        .collect::<Option<Vec<&EncodedBsxBatch>>>()
-                        .ok_or(anyhow!("Batch data missing"))?;
-
-                    let batches_total = batches.len();
-                    let mut read_batches = 0usize;
-
-                    let mut res = vec![];
-                    for batch in batches {
-                        let is_first = read_batches == 0;
-                        let is_last = read_batches == batches_total - 1;
-                        let slice_start = if is_first {
-                            binary_search_ca(
-                                batch.position(),
-                                [Some(contig.start())].into_iter(),
-                                SearchSortedSide::Left,
-                                false,
-                            )[0]
-                        } else {
-                            0
-                        };
-
-                        let slice_end = if is_last {
-                            binary_search_ca(
-                                batch.position(),
-                                [Some(contig.end())].into_iter(),
-                                SearchSortedSide::Left,
-                                false,
-                            )[0]
-                        } else {
-                            batch.height() as u32
-                        };
-
-                        let slice = batch.slice(slice_start, slice_end - slice_start);
-                        res.push(slice);
-                        read_batches += 1;
-                    }
-                    res.sort_by_key(|b| b.start_pos());
-                    if res.is_empty() {
-                        return Ok(None);
-                    } else if res.len() == 1 {
-                        return Ok(Some(res.pop().unwrap()));
+                    let batches = self.get_batches_for_contig(&contig)?;
+                    let res = self.assemble_region(&contig, batches)?;
+                    if let Some(data) = res {
+                        return Some(postprocess_fn.unwrap_or(|x| Ok(x))(data))
+                            .transpose();
                     } else {
-                        return Some(BsxBatchBuilder::concat(res)).transpose();
+                        return Ok(None);
                     }
                 },
                 IntersectionKind::PartialRight | IntersectionKind::None => {
-                    let required_batches =
-                        self.inner.index()?.find(&contig.clone().cast(
-                            |seqname| seqname.as_ref().to_string(),
-                            |pos| pos,
-                        ));
-                    if required_batches.is_none()
-                        || (required_batches.is_some()
-                            && required_batches
-                                .as_ref()
-                                .unwrap()
-                                .is_empty())
-                    {
+                    if let Some(required_batches) = self.find(&contig) {
+                        self.update_cache(&required_batches)?;
+                        continue;
+                    } else {
                         return Ok(None);
                     }
-                    let required_batches =
-                        BTreeSet::from_iter(required_batches.unwrap());
-                    let existing_batches =
-                        BTreeSet::from_iter(self.cache.keys().cloned());
-
-                    let min_required = required_batches.first().unwrap();
-
-                    let to_discard = existing_batches
-                        .difference(&required_batches)
-                        .cloned()
-                        .filter(|idx| idx < min_required)
-                        .collect_vec();
-                    let to_read = required_batches
-                        .difference(&existing_batches)
-                        .cloned()
-                        .collect_vec();
-
-                    for idx in to_discard {
-                        self.cache.remove(&idx);
-                    }
-                    for idx in to_read {
-                        self.cache.insert(
-                            idx,
-                            self.inner
-                                .get_batch(idx)
-                                .transpose()?
-                                .ok_or_else(|| anyhow!("Batch index {} reported by find() but not found by get_batch()", idx))?,
-                        );
-                    }
-                    continue;
                 },
             }
         }
     }
 }
 
+/// Enum representing the intersection kind between the cached region and the query contig.
 enum IntersectionKind {
     Full,
     PartialRight,

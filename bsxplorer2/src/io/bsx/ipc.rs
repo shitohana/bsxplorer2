@@ -246,6 +246,14 @@ impl<R: Read + Seek> IpcFileReader<R> {
             DataFrame::try_from((batch?, self.metadata.schema.as_ref()));
         result
     }
+
+    pub fn set_current_block(&mut self, current_block: usize) {
+        self.current_block = current_block;
+    }
+
+    pub fn current_block(&self) -> usize {
+        self.current_block
+    }
 }
 
 impl<R: Read + Seek> Iterator for IpcFileReader<R> {

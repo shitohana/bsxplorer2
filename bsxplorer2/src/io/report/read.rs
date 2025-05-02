@@ -71,6 +71,7 @@ where
     }
 }
 
+/// Builder for `ReportReader` to configure its behavior.
 pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
     report_type: ReportTypeSchema,
     chunk_size: usize,
@@ -104,6 +105,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+    /// Sets the report type schema.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_report_type(
         mut self,
@@ -113,6 +115,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the chunk size.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_chunk_size(
         mut self,
@@ -122,6 +125,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the path to the FASTA file.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_fasta_path(
         mut self,
@@ -131,6 +135,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the path to the FASTA index file.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_fai_path(
         mut self,
@@ -140,6 +145,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the batch size.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_batch_size(
         mut self,
@@ -149,6 +155,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the number of threads to use.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_n_threads(
         mut self,
@@ -158,6 +165,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the low memory flag.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_low_memory(
         mut self,
@@ -167,6 +175,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the queue length.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_queue_len(
         mut self,
@@ -176,6 +185,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self
     }
 
+    /// Sets the compression type.
     #[cfg(feature = "compression")]
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_compression(
@@ -188,6 +198,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+    /// Determines the data type of the chromosome column based on FASTA/FAI.
     fn get_chr_dtype(&self) -> anyhow::Result<Option<DataType>> {
         let chroms = match (self.fasta_path.as_ref(), self.fai_path.as_ref()) {
             (_, Some(fai)) => Some(read_chrom(fai, true)?),
@@ -199,6 +210,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         Ok(dtype)
     }
 
+    /// Creates an iterator over the FASTA records.
     fn get_fasta_iterator(
         &self
     ) -> anyhow::Result<Option<Box<dyn Iterator<Item = FastaRecord>>>> {
@@ -217,6 +229,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         }
     }
 
+    /// Opens the file and returns a `MmapBytesReader`.
     fn get_file_handle(
         &self,
         path: PathBuf,
@@ -233,6 +246,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         Ok(Box::new(File::open(path)?))
     }
 
+    /// Creates a `OwnedBatchedCsvReader` from a `MmapBytesReader`.
     fn get_csv_reader(
         &self,
         handle: Box<dyn MmapBytesReader>,
@@ -252,6 +266,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         Ok(owned_batched)
     }
 
+    /// Builds a `ReportReader` from a `MmapBytesReader`.
     pub fn build_from_handle(
         self,
         handle: Box<dyn MmapBytesReader>,
@@ -299,6 +314,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         Ok(reader)
     }
 
+    /// Builds a `ReportReader` from a file path.
     pub fn build(
         self,
         path: PathBuf,
@@ -308,6 +324,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     }
 }
 
+/// Reads report data and yields batches.
 pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
     _join_handle: JoinHandle<()>,
     data_receiver: Receiver<DataFrame>,
@@ -322,6 +339,7 @@ pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
+    /// Tries to take a cached batch.
     fn take_cached(
         &mut self,
         force: bool,
@@ -350,6 +368,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         Some(first)
     }
 
+    /// Aligns a batch with context data.
     fn align_batch(
         &mut self,
         batch: B,
@@ -406,6 +425,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         }
     }
 
+    /// Fills the cache with more data.
     fn fill_cache(&mut self) -> anyhow::Result<()> {
         // Try receive another batch
         let new_batch = self.data_receiver.recv().map_err(|e| {
@@ -457,6 +477,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         Ok(())
     }
 
+    /// Sets the FASTA reader.
     pub fn set_fasta_reader(
         &mut self,
         fasta_reader: Option<Box<dyn Iterator<Item = FastaRecord>>>,

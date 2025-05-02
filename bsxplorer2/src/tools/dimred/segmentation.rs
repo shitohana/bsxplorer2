@@ -1,7 +1,6 @@
 use core::f64;
-use std::{cmp::Ordering, collections::BTreeSet};
+use std::cmp::Ordering;
 
-use crate::data_structs::batch::BsxBatchMethods;
 
 trait SegmentationData {
     fn cost_function(
@@ -175,12 +174,3 @@ impl PartialEq for SegmentBoundary {
 }
 
 impl Eq for SegmentBoundary {}
-
-impl MethSegmentor {
-    pub fn segment<B: BsxBatchMethods>(
-        &self,
-        batch_iterator: Box<dyn Iterator<Item = B>>,
-    ) -> BTreeSet<SegmentBoundary> {
-        todo!()
-    }
-}

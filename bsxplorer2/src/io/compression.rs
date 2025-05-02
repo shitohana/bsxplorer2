@@ -17,6 +17,7 @@ mod inner {
     }
 
     impl Compression {
+        /// Returns the name of the compression algorithm.
         pub fn name(&self) -> &str {
             match self {
                 Compression::None => "none",
@@ -29,6 +30,7 @@ mod inner {
             }
         }
 
+        /// Returns a `MmapBytesReader` wrapped in a decompressor.
         pub fn get_decoder(
             &self,
             handle: File, // Added mut
@@ -82,6 +84,7 @@ mod inner {
             Ok(Box::new(temp_file)) // Return the temp file handle
         }
 
+        /// Returns a `Write` wrapped in a compressor.
         pub fn get_encoder<W: Write + Seek + 'static>(
             &self,
             handle: W,

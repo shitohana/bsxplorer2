@@ -48,6 +48,7 @@ pub struct ContextData {
 }
 
 impl ContextData {
+    /// Creates a new `ContextData` from vectors of positions, strands, and contexts.
     pub fn new(
         positions: Vec<u32>,
         strands: Vec<Strand>,
@@ -64,6 +65,7 @@ impl ContextData {
         Self { entries }
     }
 
+    /// Creates a `ContextData` from a sequence of bytes.
     pub fn from_sequence(seq: &[u8]) -> Self {
         let mut new_self = Self {
             entries: std::collections::BTreeSet::new(),
@@ -72,12 +74,14 @@ impl ContextData {
         new_self
     }
 
+    /// Creates an empty `ContextData`.
     pub fn empty() -> Self {
         Self {
             entries: std::collections::BTreeSet::new(),
         }
     }
 
+    /// Reads a sequence and populates the `ContextData` with entries.
     pub fn read_sequence(
         &mut self,
         seq: &[u8],
@@ -150,6 +154,7 @@ impl ContextData {
         }
     }
 
+    /// Drains entries until a given position, returning the drained entries.
     pub fn drain_until(
         &mut self,
         pos: u32,
@@ -172,14 +177,17 @@ impl ContextData {
         Self { entries: drained }
     }
 
+    /// Returns the number of entries in the `ContextData`.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
+    /// Checks if the `ContextData` is empty.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
+    /// Takes the data, returning vectors of positions, strands, and contexts.
     pub fn take(self) -> (Vec<u32>, Vec<Strand>, Vec<Context>) {
         let mut positions = Vec::with_capacity(self.entries.len());
         let mut strands = Vec::with_capacity(self.entries.len());
@@ -194,6 +202,7 @@ impl ContextData {
         (positions, strands, contexts)
     }
 
+    /// Converts the `ContextData` to a Polars `DataFrame`.
     pub fn to_df<B: BsxTypeTag>(self) -> DataFrame {
         let (positions, strands, contexts) = self.take();
 
