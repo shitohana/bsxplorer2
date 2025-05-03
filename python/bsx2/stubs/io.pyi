@@ -338,5 +338,3 @@ class BsxIpcWriter:
 
     def __exit__(self, exc_type: Optional[type], exc_value: Optional[BaseException], traceback: Optional[object]) -> None:
         ...
-
-

@@ -72,10 +72,7 @@ impl PyContextData {
     /// DataFrame
     ///     A Polars DataFrame with encoded context information.
     pub fn to_encoded_df(&self) -> PyResult<PyDataFrame> {
-        let df = self
-            .data
-            .clone()
-            .to_df::<RsEncodedBsxBatch>();
+        let df = self.data.clone().to_df::<RsEncodedBsxBatch>();
         Ok(PyDataFrame(df))
     }
 }

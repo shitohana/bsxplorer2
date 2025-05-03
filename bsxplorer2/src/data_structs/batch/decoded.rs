@@ -1,9 +1,12 @@
-use crate::data_structs::batch::builder::BsxBatchBuilder;
-use crate::data_structs::batch::traits::{colnames, BsxTypeTag};
-use crate::data_structs::batch::traits::{BatchType, BsxBatchMethods};
 use anyhow::anyhow;
 use once_cell::sync::OnceCell;
 use polars::prelude::*;
+
+use crate::data_structs::batch::builder::BsxBatchBuilder;
+use crate::data_structs::batch::traits::{colnames,
+                                         BatchType,
+                                         BsxBatchMethods,
+                                         BsxTypeTag};
 
 /// A batch of BSX data stored in a DataFrame with the following guarantees:
 /// 1. Non-null chr and position columns
@@ -12,7 +15,7 @@ use polars::prelude::*;
 #[derive(Clone, Debug)]
 pub struct BsxBatch {
     data: DataFrame,
-    chr: OnceCell<String>,
+    chr:  OnceCell<String>,
 }
 
 impl Eq for BsxBatch {}
@@ -27,11 +30,11 @@ impl PartialEq for BsxBatch {
 
 impl BsxBatchMethods for BsxBatch {
     type ChrType = StringType;
-    type PosType = UInt64Type;
-    type StrandType = StringType;
     type ContextType = StringType;
     type CountType = UInt32Type;
     type DensityType = Float64Type;
+    type PosType = UInt64Type;
+    type StrandType = StringType;
 
     fn chr(&self) -> &ChunkedArray<Self::ChrType> {
         self.data
@@ -40,6 +43,7 @@ impl BsxBatchMethods for BsxBatch {
             .str()
             .unwrap()
     }
+
     fn position(&self) -> &ChunkedArray<Self::PosType> {
         self.data
             .column(colnames::POS_NAME)
@@ -47,6 +51,7 @@ impl BsxBatchMethods for BsxBatch {
             .u64()
             .unwrap()
     }
+
     fn strand(&self) -> &ChunkedArray<Self::StrandType> {
         self.data
             .column(colnames::STRAND_NAME)
@@ -54,6 +59,7 @@ impl BsxBatchMethods for BsxBatch {
             .str()
             .unwrap()
     }
+
     fn context(&self) -> &ChunkedArray<Self::ContextType> {
         self.data
             .column(colnames::CONTEXT_NAME)
@@ -61,6 +67,7 @@ impl BsxBatchMethods for BsxBatch {
             .str()
             .unwrap()
     }
+
     fn count_m(&self) -> &ChunkedArray<Self::CountType> {
         self.data
             .column(colnames::COUNT_M_NAME)
@@ -68,6 +75,7 @@ impl BsxBatchMethods for BsxBatch {
             .u32()
             .unwrap()
     }
+
     fn count_total(&self) -> &ChunkedArray<Self::CountType> {
         self.data
             .column(colnames::COUNT_TOTAL_NAME)
@@ -87,22 +95,17 @@ impl BsxBatchMethods for BsxBatch {
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         BsxBatch {
             data: data_frame,
-            chr: Default::default(),
+            chr:  Default::default(),
         }
     }
 
-    fn data(&self) -> &DataFrame {
-        &self.data
-    }
+    fn data(&self) -> &DataFrame { &self.data }
 
-    fn data_mut(&mut self) -> &mut DataFrame {
-        &mut self.data
-    }
+    fn data_mut(&mut self) -> &mut DataFrame { &mut self.data }
 
     fn take(self) -> DataFrame
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         self.data
     }
 
@@ -139,27 +142,23 @@ impl TryFrom<DataFrame> for BsxBatch {
 
 /// Implementation to convert a BsxBatch back to its inner DataFrame
 impl From<BsxBatch> for DataFrame {
-    fn from(b: BsxBatch) -> Self {
-        b.data
-    }
+    fn from(b: BsxBatch) -> Self { b.data }
 }
 
 impl BsxTypeTag for BsxBatch {
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_name() -> &'static str {
-        "decoded"
-    }
+    fn type_name() -> &'static str { "decoded" }
+
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_enum() -> BatchType {
-        BatchType::Decoded
-    }
+    fn type_enum() -> BatchType { BatchType::Decoded }
 }
 
 #[cfg(test)]
 mod tests {
+    use polars::df;
+
     use super::*;
     use crate::data_structs::batch::traits::colnames;
-    use polars::df;
 
     // Helper function to create a sample DataFrame
     fn create_test_df() -> DataFrame {

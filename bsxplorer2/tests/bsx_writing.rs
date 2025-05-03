@@ -1,11 +1,9 @@
 mod common;
-use std::io::Cursor;
 use std::collections::BTreeMap;
+use std::io::Cursor;
 
-use bsxplorer2::{
-    data_structs::batch::{BsxBatchBuilder, BsxBatchMethods},
-    io::bsx::BsxFileReader,
-};
+use bsxplorer2::data_structs::batch::{BsxBatchBuilder, BsxBatchMethods};
+use bsxplorer2::io::bsx::BsxFileReader;
 use common::DemoReportBuilder;
 use itertools::{izip, Itertools};
 use rand::rngs::StdRng;

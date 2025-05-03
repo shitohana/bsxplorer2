@@ -1,35 +1,34 @@
-use super::colnames::*;
-use super::encoded::EncodedBsxBatch;
-use crate::data_structs::batch::decoded::BsxBatch;
-use crate::data_structs::batch::traits::{
-    BatchType, BsxBatchMethods, BsxTypeTag,
-};
-use crate::data_structs::context_data::ContextData;
-use crate::data_structs::coords::Contig;
-use crate::io::report::ReportTypeSchema;
 use anyhow::{anyhow, bail};
 use itertools::Itertools;
 use log::warn;
 use polars::prelude::*;
 use polars::series::IsSorted;
 
+use super::colnames::*;
+use super::encoded::EncodedBsxBatch;
+use crate::data_structs::batch::decoded::BsxBatch;
+use crate::data_structs::batch::traits::{BatchType,
+                                         BsxBatchMethods,
+                                         BsxTypeTag};
+use crate::data_structs::context_data::ContextData;
+use crate::data_structs::coords::Contig;
+use crate::io::report::ReportTypeSchema;
+
 /// Builder for constructing and validating BSX batch data.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BsxBatchBuilder {
-    report_type: Option<ReportTypeSchema>,
-    check_nulls: bool,
-    check_sorted: bool,
+    report_type:      Option<ReportTypeSchema>,
+    check_nulls:      bool,
+    check_sorted:     bool,
     check_duplicates: bool,
-    rechunk: bool,
+    rechunk:          bool,
     check_single_chr: bool,
-    context_data: Option<ContextData>,
-    chr_dtype: Option<DataType>,
+    context_data:     Option<ContextData>,
+    chr_dtype:        Option<DataType>,
 }
 
 impl Default for BsxBatchBuilder {
-    fn default() -> Self {
-        Self::all_checks()
-    }
+    fn default() -> Self { Self::all_checks() }
 }
 
 // Public methods
@@ -38,14 +37,14 @@ impl BsxBatchBuilder {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn all_checks() -> Self {
         Self {
-            report_type: None,
+            report_type:      None,
             check_duplicates: true,
-            check_sorted: true,
-            rechunk: true,
-            check_nulls: true,
+            check_sorted:     true,
+            rechunk:          true,
+            check_nulls:      true,
             check_single_chr: true,
-            context_data: None,
-            chr_dtype: None,
+            context_data:     None,
+            chr_dtype:        None,
         }
     }
 
@@ -53,14 +52,14 @@ impl BsxBatchBuilder {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn no_checks() -> Self {
         Self {
-            report_type: None,
+            report_type:      None,
             check_duplicates: false,
-            check_sorted: false,
-            rechunk: false,
-            check_nulls: false,
+            check_sorted:     false,
+            rechunk:          false,
+            check_nulls:      false,
             check_single_chr: false,
-            context_data: None,
-            chr_dtype: None,
+            context_data:     None,
+            chr_dtype:        None,
         }
     }
 
@@ -228,7 +227,8 @@ impl BsxBatchBuilder {
             .iter()
             .filter(|b| !b.is_empty())
             .map(|b| b.as_contig())
-            .collect::<anyhow::Result<Option<Vec<_>>>>()?.unwrap();
+            .collect::<anyhow::Result<Option<Vec<_>>>>()?
+            .unwrap();
         if !contigs
             .iter()
             .map(Contig::seqname)
@@ -265,7 +265,8 @@ impl BsxBatchBuilder {
     }
 }
 
-/// Decodes boolean strand information back to string representation (true to "+", false to "-", null to ".").
+/// Decodes boolean strand information back to string representation (true to
+/// "+", false to "-", null to ".").
 pub fn decode_strand(
     lazy_frame: LazyFrame,
     strand_col: &str,
@@ -282,7 +283,8 @@ pub fn decode_strand(
     )
 }
 
-/// Decodes boolean context information back to string representation (true to "CG", false to "CHG", null to "CHH").
+/// Decodes boolean context information back to string representation (true to
+/// "CG", false to "CHG", null to "CHH").
 pub fn decode_context(
     lazy_frame: LazyFrame,
     context_col: &str,
@@ -306,43 +308,42 @@ impl BsxBatchBuilder {
         &self,
         data: DataFrame,
     ) -> anyhow::Result<DataFrame> {
-        use BatchType as BT;
-        use ReportTypeSchema as RS;
+        use {BatchType as BT, ReportTypeSchema as RS};
 
-        let res = match (
-            B::type_enum(),
-            self.report_type,
-            self.chr_dtype.clone(),
-        ) {
-            // BsxBatch
-            (BT::Decoded, Some(RS::Bismark), _) => decoded::from_bismark(data)?,
-            (BT::Decoded, Some(RS::CgMap), _) => decoded::from_cgmap(data)?,
-            (BT::Decoded, Some(RS::BedGraph), _) => {
-                decoded::from_bedgraph(data)?
-            },
-            (BT::Decoded, Some(RS::Coverage), _) => {
-                decoded::from_coverage(data)?
-            },
-            (BT::Decoded, None, _) => decoded::from_df(data)?,
-            // EncodedBsxBatch
-            (BT::Encoded, Some(RS::Bismark), Some(dtype)) => {
-                encoded::from_bismark(data, dtype)?
-            },
-            (BT::Encoded, Some(RS::CgMap), Some(dtype)) => {
-                encoded::from_cgmap(data, dtype)?
-            },
-            (BT::Encoded, Some(RS::BedGraph), Some(dtype)) => {
-                encoded::from_bedgraph(data, dtype)?
-            },
-            (BT::Encoded, Some(RS::Coverage), Some(dtype)) => {
-                encoded::from_coverage(data, dtype)?
-            },
-            (BT::Encoded, None, Some(dtype)) => encoded::from_df(data, dtype)?,
-            (BT::Encoded, _, None) => {
-                bail!("Chr dtype must be specified for encoded conversion")
-            },
-
-        };
+        let res =
+            match (B::type_enum(), self.report_type, self.chr_dtype.clone()) {
+                // BsxBatch
+                (BT::Decoded, Some(RS::Bismark), _) => {
+                    decoded::from_bismark(data)?
+                },
+                (BT::Decoded, Some(RS::CgMap), _) => decoded::from_cgmap(data)?,
+                (BT::Decoded, Some(RS::BedGraph), _) => {
+                    decoded::from_bedgraph(data)?
+                },
+                (BT::Decoded, Some(RS::Coverage), _) => {
+                    decoded::from_coverage(data)?
+                },
+                (BT::Decoded, None, _) => decoded::from_df(data)?,
+                // EncodedBsxBatch
+                (BT::Encoded, Some(RS::Bismark), Some(dtype)) => {
+                    encoded::from_bismark(data, dtype)?
+                },
+                (BT::Encoded, Some(RS::CgMap), Some(dtype)) => {
+                    encoded::from_cgmap(data, dtype)?
+                },
+                (BT::Encoded, Some(RS::BedGraph), Some(dtype)) => {
+                    encoded::from_bedgraph(data, dtype)?
+                },
+                (BT::Encoded, Some(RS::Coverage), Some(dtype)) => {
+                    encoded::from_coverage(data, dtype)?
+                },
+                (BT::Encoded, None, Some(dtype)) => {
+                    encoded::from_df(data, dtype)?
+                },
+                (BT::Encoded, _, None) => {
+                    bail!("Chr dtype must be specified for encoded conversion")
+                },
+            };
         Ok(res)
     }
 
@@ -370,7 +371,8 @@ impl BsxBatchBuilder {
                 ["position"],
                 SortMultipleOptions::default().with_order_descending(false),
             )?;
-        } else {
+        }
+        else {
             let pos_col_idx = data.get_column_index(POS_NAME).unwrap();
             unsafe {
                 let columns = data.get_columns_mut();
@@ -387,7 +389,8 @@ mod decoded {
 
     /// Selects and casts columns to the proper types for BSX batch processing.
     ///
-    /// Transforms input data to a standardized schema with properly typed columns.
+    /// Transforms input data to a standardized schema with properly typed
+    /// columns.
     pub(crate) fn select_cast(lf: LazyFrame) -> LazyFrame {
         lf.select([
             col(CHR_NAME)
@@ -480,7 +483,8 @@ mod encoded {
     use super::*;
     use crate::data_structs::batch::encoded::EncodedBsxBatch;
 
-    /// Encodes context information as boolean values ("CG" to true, "CHG" to false).
+    /// Encodes context information as boolean values ("CG" to true, "CHG" to
+    /// false).
     fn encode_context() -> Expr {
         when(col(CONTEXT_NAME).eq(lit("CG")))
             .then(lit(true))
@@ -513,7 +517,8 @@ mod encoded {
 
     /// Selects and casts columns to the proper types for BSX batch processing.
     ///
-    /// Transforms input data to a standardized schema with properly typed columns.
+    /// Transforms input data to a standardized schema with properly typed
+    /// columns.
     pub(crate) fn select_cast(
         lf: LazyFrame,
         chr_dtype: DataType,
@@ -528,14 +533,16 @@ mod encoded {
                 .alias(POS_NAME),
             if encode {
                 encode_strand()
-            } else {
+            }
+            else {
                 col("strand")
                     .cast(EncodedBsxBatch::strand_type())
                     .alias(STRAND_NAME)
             },
             if encode {
                 encode_context()
-            } else {
+            }
+            else {
                 col("context")
                     .cast(EncodedBsxBatch::context_type())
                     .alias(CONTEXT_NAME)
@@ -653,7 +660,8 @@ fn check_pos_ascending(df: &DataFrame) -> bool {
         .is_sorted()
 }
 
-/// Creates an expression to compute the total count from methylated and unmethylated counts.
+/// Creates an expression to compute the total count from methylated and
+/// unmethylated counts.
 fn count_total_col_expr() -> Expr {
     (col("count_m") + col("count_um")).alias("count_total")
 }
@@ -667,13 +675,13 @@ fn density_col_expr() -> Expr {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::data_structs::batch::{
-        decoded::BsxBatch, traits::BsxBatchMethods,
-    };
     use polars::df;
     use polars::prelude::NamedFrom;
     use rstest::rstest;
+
+    use super::*;
+    use crate::data_structs::batch::decoded::BsxBatch;
+    use crate::data_structs::batch::traits::BsxBatchMethods;
 
     // Helper function to create a basic DataFrame for testing
     fn create_test_df() -> DataFrame {
@@ -856,7 +864,8 @@ mod tests {
                 .column(STRAND_NAME)?
                 .equals(&expected_strand.into_column()));
         }
-        // Check specific transformations (example for Bismark/Coverage count_total)
+        // Check specific transformations (example for Bismark/Coverage
+        // count_total)
         if report_type == ReportTypeSchema::Bismark
             || report_type == ReportTypeSchema::Coverage
         {
@@ -923,7 +932,8 @@ mod tests {
             &EncodedBsxBatch::density_type()
         );
 
-        // Check specific transformations (example for CgMap strand - encoded as bool)
+        // Check specific transformations (example for CgMap strand - encoded as
+        // bool)
         if report_type == ReportTypeSchema::CgMap {
             let expected_strand =
                 Series::new(STRAND_NAME.into(), [Some(true), Some(false)]); // C -> true, G -> false
@@ -931,7 +941,8 @@ mod tests {
                 .column(STRAND_NAME)?
                 .equals(&expected_strand.into_column()));
         }
-        // Check specific transformations (example for BedGraph nulls - strand/context should be null)
+        // Check specific transformations (example for BedGraph nulls -
+        // strand/context should be null)
         if report_type == ReportTypeSchema::BedGraph {
             assert_eq!(df.column(STRAND_NAME)?.null_count(), df.height());
             assert_eq!(df.column(CONTEXT_NAME)?.null_count(), df.height());
@@ -990,10 +1001,11 @@ mod tests {
         ); // Boolean
 
         // Check encoded values: strand ["+", "-", "+"] -> [true, false, true]
-        let expected_strand = Series::new(
-            STRAND_NAME.into(),
-            [Some(true), Some(false), Some(true)],
-        );
+        let expected_strand = Series::new(STRAND_NAME.into(), [
+            Some(true),
+            Some(false),
+            Some(true),
+        ]);
         assert_eq!(
             encoded_df
                 .column(STRAND_NAME)?
@@ -1001,11 +1013,13 @@ mod tests {
             &expected_strand
         );
 
-        // Check encoded values: context ["CG", "CHG", "CHH"] -> [true, false, null] (CHH -> null)
-        let expected_context = Series::new(
-            CONTEXT_NAME.into(),
-            [Some(true), Some(false), None::<bool>],
-        );
+        // Check encoded values: context ["CG", "CHG", "CHH"] -> [true, false,
+        // null] (CHH -> null)
+        let expected_context = Series::new(CONTEXT_NAME.into(), [
+            Some(true),
+            Some(false),
+            None::<bool>,
+        ]);
         assert_eq!(
             encoded_df
                 .column(CONTEXT_NAME)?

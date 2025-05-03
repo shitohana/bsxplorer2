@@ -1,18 +1,14 @@
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::batch::{
-    BsxBatch, BsxBatchMethods, EncodedBsxBatch,
-};
+use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
 use bsxplorer2::exports::polars::prelude::IpcCompression;
-use bsxplorer2::io::bsx::{
-    BsxFileReader as RsBsxFileReader, BsxIpcWriter as RsBsxIpcWriter,
-};
+use bsxplorer2::io::bsx::{BsxFileReader as RsBsxFileReader, BsxIpcWriter as RsBsxIpcWriter};
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3_file::PyFileLikeObject;
-use pyo3_polars::PyDataFrame;
 use pyo3_polars::error::PyPolarsErr;
+use pyo3_polars::PyDataFrame;
 
 /// Reader for BSX files.
 ///
@@ -29,9 +25,7 @@ pub struct PyBsxFileReader {
 impl PyBsxFileReader {
     #[new]
     pub fn new(file: PyObject) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            file, true, true, false, false,
-        )?;
+        let file_like = PyFileLikeObject::with_requirements(file, true, true, false, false)?;
         let reader = RsBsxFileReader::new(BufReader::new(file_like));
         Ok(Self { reader })
     }
@@ -47,10 +41,7 @@ impl PyBsxFileReader {
     /// -------
     /// PyDataFrame or None
     ///     The requested batch as a Polars DataFrame, or None if the index is out of bounds.
-    pub fn get_batch(
-        &mut self,
-        batch_idx: usize,
-    ) -> PyResult<Option<PyDataFrame>> {
+    pub fn get_batch(&mut self, batch_idx: usize) -> PyResult<Option<PyDataFrame>> {
         match self.reader.get_batch(batch_idx) {
             Some(Ok(batch)) => Ok(Some(PyDataFrame(batch.take()))),
             Some(Err(e)) => Err(PyPolarsErr::Polars(e).into()),
@@ -72,9 +63,7 @@ impl PyBsxFileReader {
         slf
     }
 
-    pub fn __next__(
-        mut slf: PyRefMut<'_, Self>
-    ) -> Option<PyResult<PyDataFrame>> {
+    pub fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyResult<PyDataFrame>> {
         slf.reader.next().map(|res| {
             res.map(|batch| PyDataFrame(batch.take()))
                 .map_err(|e| PyPolarsErr::Polars(e).into())
@@ -136,9 +125,7 @@ impl PyBsxFileWriter {
         chr_names: Vec<String>,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            sink, false, false, true, false,
-        )?;
+        let file_like = PyFileLikeObject::with_requirements(sink, false, false, true, false)?;
 
         let writer = RsBsxIpcWriter::try_new(
             BufWriter::new(file_like),
@@ -177,9 +164,7 @@ impl PyBsxFileWriter {
         fai_path: PathBuf,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            sink, false, false, true, false,
-        )?;
+        let file_like = PyFileLikeObject::with_requirements(sink, false, false, true, false)?;
 
         let writer = RsBsxIpcWriter::try_from_sink_and_fai(
             BufWriter::new(file_like),
@@ -218,9 +203,7 @@ impl PyBsxFileWriter {
         fasta_path: PathBuf,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            sink, false, false, true, false,
-        )?;
+        let file_like = PyFileLikeObject::with_requirements(sink, false, false, true, false)?;
 
         let writer = RsBsxIpcWriter::try_from_sink_and_fasta(
             BufWriter::new(file_like),
@@ -241,10 +224,7 @@ impl PyBsxFileWriter {
     /// ----------
     /// batch : PyDataFrame
     ///     The encoded BSX batch (Polars DataFrame) to write.
-    pub fn write_encoded_batch(
-        &mut self,
-        batch: PyDataFrame,
-    ) -> PyResult<()> {
+    pub fn write_encoded_batch(&mut self, batch: PyDataFrame) -> PyResult<()> {
         let encoded_batch = unsafe { EncodedBsxBatch::new_unchecked(batch.0) };
         self.writer
             .as_mut()
@@ -259,10 +239,7 @@ impl PyBsxFileWriter {
     /// ----------
     /// batch : PyDataFrame
     ///     The BSX batch (Polars DataFrame) to encode and write.
-    pub fn write_batch(
-        &mut self,
-        batch: PyDataFrame,
-    ) -> PyResult<()> {
+    pub fn write_batch(&mut self, batch: PyDataFrame) -> PyResult<()> {
         let bsx_batch = unsafe { BsxBatch::new_unchecked(batch.0) };
         self.writer
             .as_mut()
@@ -274,9 +251,7 @@ impl PyBsxFileWriter {
     /// Finalize the IPC file and close the writer.
     pub fn close(&mut self) -> PyResult<()> {
         if let Some(mut writer) = self.writer.take() {
-            writer
-                .close()
-                .map_err(|e| PyPolarsErr::Polars(e))?;
+            writer.close().map_err(|e| PyPolarsErr::Polars(e))?;
         }
         Ok(())
     }

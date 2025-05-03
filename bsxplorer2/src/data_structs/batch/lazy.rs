@@ -1,22 +1,23 @@
-use super::{
-    builder::BsxBatchBuilder,
-    decoded::BsxBatch,
-    encoded::EncodedBsxBatch,
-    traits::{BsxBatchMethods, BsxTypeTag},
-    BatchType,
-};
+use std::collections::HashMap;
+use std::marker::PhantomData;
+
+use itertools::{izip, Itertools};
+use polars::prelude::*;
+
+use super::builder::BsxBatchBuilder;
+use super::decoded::BsxBatch;
+use super::encoded::EncodedBsxBatch;
+use super::traits::{BsxBatchMethods, BsxTypeTag};
+use super::BatchType;
 use crate::data_structs::batch::traits::colnames::*;
 use crate::data_structs::context_data::ContextData;
 use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
 use crate::io::report::ReportTypeSchema;
-
-use itertools::Itertools;
-use polars::prelude::*;
-use std::marker::PhantomData;
+use crate::tools::stats::MethylationStats;
 
 /// A lazy representation of a BSX batch for efficient query operations.
 pub struct LazyBsxBatch<T: BsxTypeTag + BsxBatchMethods> {
-    data: LazyFrame,
+    data:     LazyFrame,
     _phantom: PhantomData<T>,
 }
 
@@ -27,13 +28,14 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         report_type: &ReportTypeSchema,
     ) -> anyhow::Result<DataFrame> {
         let res = match report_type {
-            ReportTypeSchema::Bismark => self
-                .data
-                .with_column(
-                    (col(COUNT_TOTAL_NAME) - col(COUNT_M_NAME))
-                        .alias("count_um"),
-                )
-                .with_column(col(CONTEXT_NAME).alias("trinuc")),
+            ReportTypeSchema::Bismark => {
+                self.data
+                    .with_column(
+                        (col(COUNT_TOTAL_NAME) - col(COUNT_M_NAME))
+                            .alias("count_um"),
+                    )
+                    .with_column(col(CONTEXT_NAME).alias("trinuc"))
+            },
             ReportTypeSchema::CgMap => {
                 self.data
                     // Determine nucleotide based on strand (+ is C, - is G)
@@ -87,13 +89,14 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         )?;
         Ok(unsafe { T::new_unchecked(data) })
     }
+
     /// Applies a filter expression to the batch.
     fn filter(
         self,
         predicate: Expr,
     ) -> Self {
         Self {
-            data: self.data.filter(predicate),
+            data:     self.data.filter(predicate),
             _phantom: PhantomData::<T>,
         }
     }
@@ -101,7 +104,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     /// Creates a LazyBsxBatch from an existing LazyFrame.
     fn from_lazy(lazy: LazyFrame) -> Self {
         Self {
-            data: lazy,
+            data:     lazy,
             _phantom: PhantomData::<T>,
         }
     }
@@ -137,10 +140,12 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     ) -> Self {
         let expr = match T::type_enum() {
             BatchType::Decoded => col(STRAND_NAME).eq(lit(value.to_string())),
-            BatchType::Encoded => col(STRAND_NAME).eq(value
-                .to_bool()
-                .map(lit)
-                .unwrap_or(lit(NULL))),
+            BatchType::Encoded => {
+                col(STRAND_NAME).eq(value
+                    .to_bool()
+                    .map(lit)
+                    .unwrap_or(lit(NULL)))
+            },
         };
         self.filter(expr)
     }
@@ -152,15 +157,18 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     ) -> Self {
         let expr = match T::type_enum() {
             BatchType::Decoded => col(CONTEXT_NAME).eq(lit(value.to_string())),
-            BatchType::Encoded => col(CONTEXT_NAME).eq(value
-                .to_bool()
-                .map(lit)
-                .unwrap_or(lit(NULL))),
+            BatchType::Encoded => {
+                col(CONTEXT_NAME).eq(value
+                    .to_bool()
+                    .map(lit)
+                    .unwrap_or(lit(NULL)))
+            },
         };
         self.filter(expr)
     }
 
-    /// Marks entries with coverage below threshold as zero and adjusts related values.
+    /// Marks entries with coverage below threshold as zero and adjusts related
+    /// values.
     pub fn mark_low_coverage(
         self,
         threshold: u32,
@@ -216,6 +224,157 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
             ]);
         Self::from_lazy(joined)
     }
+
+    pub fn stats(&self) -> anyhow::Result<MethylationStats> {
+        let checkpoint = self.data.clone().cache();
+
+        let coverage_distribution = checkpoint
+            .clone()
+            .group_by([col(COUNT_TOTAL_NAME).cast(DataType::UInt16)])
+            .agg([col(COUNT_M_NAME)
+                .count()
+                .cast(DataType::UInt32)
+                .alias("count")])
+            .collect()?;
+
+        let coverage_hashmap = izip!(
+            coverage_distribution
+                .column(COUNT_TOTAL_NAME)?
+                .u16()?,
+            coverage_distribution
+                .column("count")?
+                .u32()?
+        )
+        .map(|(key, value)| (key.unwrap_or(0), value.unwrap_or(0)))
+        .collect::<HashMap<u16, u32>>();
+
+        let density_grouped = checkpoint
+            .clone()
+            .group_by([col(STRAND_NAME), col(CONTEXT_NAME)])
+            .agg([
+                col(DENSITY_NAME)
+                    .sum()
+                    .cast(DataType::Float64)
+                    .alias("sum"),
+                col(DENSITY_NAME)
+                    .count()
+                    .cast(DataType::UInt32)
+                    .alias("count"),
+            ])
+            .collect()?;
+
+        let mean_methylation = density_grouped
+            .column("sum")?
+            .f64()?
+            .sum()
+            .unwrap_or(0.0)
+            / density_grouped
+                .column("count")?
+                .u32()?
+                .sum()
+                .unwrap_or(0) as f64;
+
+        let variance_methylation = checkpoint
+            .clone()
+            .select([col(DENSITY_NAME).cast(DataType::Float64)])
+            .collect()?
+            .column(DENSITY_NAME)?
+            .f64()?
+            .var(1)
+            .unwrap_or(0.0);
+
+        let context_iter = match T::type_enum() {
+            BatchType::Decoded => {
+                density_grouped
+                    .column(CONTEXT_NAME)?
+                    .str()?
+                    .into_iter()
+                    .map(|context| {
+                        context
+                            .map(|context_val| Context::from_str(context_val))
+                            .unwrap_or(Context::CHH)
+                    })
+                    .collect::<Vec<_>>()
+            },
+            BatchType::Encoded => {
+                density_grouped
+                    .column(CONTEXT_NAME)?
+                    .bool()?
+                    .into_iter()
+                    .map(|context| Context::from_bool(context))
+                    .collect::<Vec<_>>()
+            },
+        };
+
+        let strand_iter = match T::type_enum() {
+            BatchType::Decoded => {
+                density_grouped
+                    .column(STRAND_NAME)?
+                    .str()?
+                    .into_iter()
+                    .map(|strand| {
+                        strand
+                            .map(Strand::from)
+                            .unwrap_or(Strand::Forward)
+                    })
+                    .collect::<Vec<_>>()
+            },
+            BatchType::Encoded => {
+                density_grouped
+                    .column(STRAND_NAME)?
+                    .bool()?
+                    .into_iter()
+                    .map(Strand::from_bool)
+                    .collect::<Vec<_>>()
+            },
+        };
+
+        let context_methylation = izip!(
+            context_iter.into_iter(),
+            density_grouped
+                .column("sum")?
+                .f64()?
+                .into_iter()
+                .map(|v| v.unwrap_or(0.0)),
+            density_grouped
+                .column("count")?
+                .u32()?
+                .into_iter()
+                .map(|v| v.unwrap_or(0)),
+        )
+        .into_grouping_map_by(|(context, _sum, _count)| *context)
+        .aggregate(|acc, _key, val| {
+            let (sum, count) = acc.unwrap_or((0.0, 0));
+            Some((sum + val.1, count + val.2))
+        });
+
+        let strand_methylation = izip!(
+            strand_iter.into_iter(),
+            density_grouped
+                .column("sum")?
+                .f64()?
+                .into_iter()
+                .map(|v| v.unwrap_or(0.0)),
+            density_grouped
+                .column("count")?
+                .u32()?
+                .into_iter()
+                .map(|v| v.unwrap_or(0)),
+        )
+        .into_grouping_map_by(|(strand, _sum, _count)| *strand)
+        .aggregate(|acc, _key, val| {
+            let (sum, count) = acc.unwrap_or((0.0, 0));
+            Some((sum + val.1, count + val.2))
+        });
+
+        Ok(MethylationStats::from_data(
+            mean_methylation,
+            variance_methylation,
+            coverage_hashmap,
+            context_methylation,
+            strand_methylation,
+        ))
+    }
 }
 
 impl<T: BsxTypeTag + BsxBatchMethods> TryFrom<LazyBsxBatch<T>> for BsxBatch {
@@ -241,22 +400,21 @@ impl<T: BsxTypeTag + BsxBatchMethods> TryFrom<LazyBsxBatch<T>>
 }
 
 impl<B: BsxBatchMethods> From<B> for LazyBsxBatch<B> {
-    fn from(batch: B) -> Self {
-        LazyBsxBatch::from_lazy(batch.take().lazy())
-    }
+    fn from(batch: B) -> Self { LazyBsxBatch::from_lazy(batch.take().lazy()) }
 }
 
 #[cfg(test)]
 mod tests {
+    use assert_approx_eq::assert_approx_eq;
+    use polars::df;
+
     use super::*;
-    use crate::data_structs::batch::{
-        builder::BsxBatchBuilder, decoded::BsxBatch, encoded::EncodedBsxBatch,
-        traits::BsxBatchMethods,
-    };
+    use crate::data_structs::batch::builder::BsxBatchBuilder;
+    use crate::data_structs::batch::decoded::BsxBatch;
+    use crate::data_structs::batch::encoded::EncodedBsxBatch;
+    use crate::data_structs::batch::traits::BsxBatchMethods;
     use crate::data_structs::enums::{Context, Strand};
     use crate::utils::get_categorical_dtype;
-
-    use polars::df;
 
     // --- Helper Functions ---
 
@@ -292,8 +450,9 @@ mod tests {
         .expect("Failed to build encoded batch")
     }
 
-    use crate::io::report::ReportTypeSchema;
     use rstest::rstest;
+
+    use crate::io::report::ReportTypeSchema;
 
     #[rstest]
     #[case(ReportTypeSchema::Bismark)]
@@ -339,9 +498,9 @@ mod tests {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
         let collected = lazy_batch.collect().unwrap();
-        // Note: Encoded batch might have different physical representation for chr,
-        // but the data should be logically equivalent. Direct equality works here
-        // because we built it deterministically.
+        // Note: Encoded batch might have different physical representation for
+        // chr, but the data should be logically equivalent. Direct
+        // equality works here because we built it deterministically.
         assert_eq!(collected, batch);
     }
 
@@ -393,6 +552,115 @@ mod tests {
         let expected_batch =
             unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
         assert_eq!(collected.data(), expected_batch.data());
+    }
+
+    #[test]
+    fn test_stats_decoded() {
+        let batch = create_test_decoded_batch();
+        let lazy_batch = LazyBsxBatch::<BsxBatch>::from(batch.clone());
+        let stats = lazy_batch.stats().unwrap();
+
+        // Expected values (calculated manually or with a separate script)
+        let expected_mean_methylation = 0.39;
+        let expected_variance_methylation = 0.023;
+        let expected_coverage_hashmap: HashMap<u16, u32> =
+            [(5, 1), (6, 1), (8, 2), (10, 1)]
+                .into_iter()
+                .collect();
+        let expected_context_methylation: HashMap<Context, (f64, u32)> = [
+            (Context::CG, (0.7, 2)),
+            (Context::CHG, (0.75, 2)),
+            (Context::CHH, (0.5, 1)),
+        ]
+        .into_iter()
+        .collect();
+        let expected_strand_methylation: HashMap<Strand, (f64, u32)> =
+            [(Strand::Forward, (0.95, 3)), (Strand::Reverse, (1.0, 2))]
+                .into_iter()
+                .collect();
+
+        // Assertions with tolerance for floating-point comparisons
+        assert_eq!(stats.mean_methylation(), expected_mean_methylation);
+        assert_approx_eq!(
+            stats.methylation_var(),
+            expected_variance_methylation
+        );
+        assert_eq!(stats.coverage_distribution(), &expected_coverage_hashmap);
+        assert_eq!(stats.context_methylation(), &expected_context_methylation);
+        assert_eq!(stats.strand_methylation(), &expected_strand_methylation);
+    }
+
+    #[test]
+    fn test_stats_encoded() {
+        let batch = create_test_encoded_batch();
+        let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
+        let stats = lazy_batch.stats().unwrap();
+
+        // Expected values (calculated manually or with a separate script)
+        let expected_mean_methylation = 0.39;
+        let expected_variance_methylation = 0.023;
+        let expected_coverage_hashmap: HashMap<u16, u32> =
+            [(5, 1), (6, 1), (8, 2), (10, 1)]
+                .into_iter()
+                .collect();
+        let expected_context_methylation: HashMap<Context, (f64, u32)> = [
+            (Context::CG, (0.7, 2)),
+            (Context::CHG, (0.75, 2)),
+            (Context::CHH, (0.5, 1)),
+        ]
+        .into_iter()
+        .collect();
+        let expected_strand_methylation: HashMap<Strand, (f64, u32)> =
+            [(Strand::Forward, (0.95, 3)), (Strand::Reverse, (1.0, 2))]
+                .into_iter()
+                .collect();
+
+        // Assertions with tolerance for floating-point comparisons
+        assert_approx_eq!(stats.mean_methylation(), expected_mean_methylation);
+        assert_approx_eq!(
+            stats.methylation_var(),
+            expected_variance_methylation
+        );
+        for (key, value) in stats.coverage_distribution() {
+            assert_eq!(
+                value,
+                expected_coverage_hashmap
+                    .get(&key)
+                    .unwrap()
+            );
+        }
+        for (key, value) in stats.strand_methylation() {
+            assert_approx_eq!(
+                value.0,
+                expected_strand_methylation
+                    .get(&key)
+                    .unwrap()
+                    .0
+            );
+            assert_eq!(
+                value.1,
+                expected_strand_methylation
+                    .get(&key)
+                    .unwrap()
+                    .1
+            );
+        }
+        for (key, value) in stats.context_methylation() {
+            assert_approx_eq!(
+                value.0,
+                expected_context_methylation
+                    .get(&key)
+                    .unwrap()
+                    .0
+            );
+            assert_eq!(
+                value.1,
+                expected_context_methylation
+                    .get(&key)
+                    .unwrap()
+                    .1
+            );
+        }
     }
 
     #[test]
@@ -579,10 +847,9 @@ mod tests {
         let marked_lazy = lazy_batch.mark_low_coverage(7); // Mark rows with total_cov 5, 6 (indices 0, 2)
         let collected = marked_lazy.collect().unwrap();
 
-        let chr_series = Series::new(
-            CHR_NAME.into(),
-            &["chr1", "chr1", "chr1", "chr1", "chr1"],
-        )
+        let chr_series = Series::new(CHR_NAME.into(), &[
+            "chr1", "chr1", "chr1", "chr1", "chr1",
+        ])
         .cast(&DataType::Categorical(None, CategoricalOrdering::Physical))
         .unwrap();
         let expected_df = df!(
@@ -598,7 +865,8 @@ mod tests {
         let expected_batch =
             unsafe { EncodedBsxBatch::new_unchecked(expected_df) };
 
-        // Compare DataFrames directly due to NaN and potential categorical diffs
+        // Compare DataFrames directly due to NaN and potential categorical
+        // diffs
         assert!(collected
             .data()
             .equals_missing(expected_batch.data()));
@@ -609,7 +877,8 @@ mod tests {
         let batch = create_test_decoded_batch(); // pos: 10, 20, 30, 40, 50
         let lazy_batch = LazyBsxBatch::<BsxBatch>::from(batch);
 
-        // Context data: include existing pos (20, 40), new pos (15, 55), different context/strand for existing pos
+        // Context data: include existing pos (20, 40), new pos (15, 55),
+        // different context/strand for existing pos
         let context_positions = vec![15u32, 20, 40, 55];
         let context_strands = vec![
             Strand::Forward,
@@ -629,8 +898,10 @@ mod tests {
         let collected = aligned_lazy.collect().unwrap();
 
         // Expected DataFrame:
-        // - Rows for pos 15, 55 added with new context/strand, counts 0, density NaN, chr Null.
-        // - Rows for pos 20, 40 keep original counts/density/chr, but update context/strand.
+        // - Rows for pos 15, 55 added with new context/strand, counts 0,
+        //   density NaN, chr Null.
+        // - Rows for pos 20, 40 keep original counts/density/chr, but update
+        //   context/strand.
         // - Rows for pos 10, 30, 50 are dropped.
         let expected_df = df!(
             // Note: Chr is Null for rows originating only from context_data
@@ -668,10 +939,10 @@ mod tests {
     fn test_align_with_contexts_encoded() {
         let batch = create_test_encoded_batch(); // pos: 10, 20, 30, 40, 50
         let chr_dtype = batch.chr().dtype().clone();
-        let lazy_batch =
-            LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
+        let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
 
-        // Context data: include existing pos (20, 40), new pos (15, 55), different context/strand for existing pos
+        // Context data: include existing pos (20, 40), new pos (15, 55),
+        // different context/strand for existing pos
         let context_positions = vec![15u32, 20, 40, 55];
         let context_strands = vec![
             Strand::Forward,
@@ -692,8 +963,10 @@ mod tests {
         let collected = aligned_lazy.collect().unwrap();
 
         // Expected DataFrame:
-        // - Rows for pos 15, 55 added with new context/strand, counts 0, density NaN, chr Null.
-        // - Rows for pos 20, 40 keep original counts/density/chr, but update context/strand.
+        // - Rows for pos 15, 55 added with new context/strand, counts 0,
+        //   density NaN, chr Null.
+        // - Rows for pos 20, 40 keep original counts/density/chr, but update
+        //   context/strand.
         // - Rows for pos 10, 30, 50 are dropped.
         let expected_df = df!(
             // Note: Chr is Null for rows originating only from context_data
@@ -730,7 +1003,8 @@ mod tests {
             ])
             .unwrap();
 
-        // Need equals_missing because of NaN and potential categorical differences
+        // Need equals_missing because of NaN and potential categorical
+        // differences
         assert_eq!(collected_df, expected_batch.into());
     }
 }

@@ -1,0 +1,41 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+  - id: check-toml
+  - id: check-yaml
+  - id: check-added-large-files
+  - id: detect-private-key
+  - id: end-of-file-fixer
+
+- repo: https://github.com/est31/cargo-udeps
+  rev: v0.1.47
+  hooks:
+  - id: udeps
+    name: bsxplorer2_udeps
+    args: ["--manifest-path", "bsxplorer2/Cargo.toml"]
+  - id: udeps
+    name: console_udeps
+    args: ["--manifest-path", "console/Cargo.toml"]
+  - id: udeps
+    name: python_udeps
+    args: ["--manifest-path", "python/Cargo.toml"]
+
+- repo: https://github.com/crate-ci/typos
+  rev: v1.32.0
+  hooks:
+    - id: typos
+
+-   repo: local
+    hooks:
+    -   id: rust-linting
+        name: rust linting
+        description: Run cargo fmt on files included in the commit. rustfmt should be installed before-hand.
+        entry: cargo +nightly fmt --all --manifest-path ./bsxplorer2/Cargo.toml --
+        pass_filenames: true
+        types: [file, rust]
+        language: system
+
+default_language_version:
+  rust: stable
+  python: python3.12

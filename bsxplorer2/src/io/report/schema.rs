@@ -1,9 +1,11 @@
-use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 use polars::prelude::*;
 use serde::Deserialize;
 
+use crate::utils::{hashmap_from_arrays, schema_from_arrays};
+
 /// Supported methylation report file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum ReportTypeSchema {
     /// Bismark methylation extractor output format
     Bismark,
@@ -19,23 +21,27 @@ impl ReportTypeSchema {
     /// Returns column names for this report format.
     pub const fn col_names(&self) -> &[&'static str] {
         match self {
-            Self::Bismark => &[
-                "chr", "position", "strand", "count_m", "count_um", "context",
-                "trinuc",
-            ],
+            Self::Bismark => {
+                &[
+                    "chr", "position", "strand", "count_m", "count_um",
+                    "context", "trinuc",
+                ]
+            },
             Self::Coverage => {
                 &["chr", "start", "end", "density", "count_m", "count_um"]
             },
-            Self::CgMap => &[
-                "chr",
-                "nuc",
-                "position",
-                "context",
-                "dinuc",
-                "density",
-                "count_m",
-                "count_total",
-            ],
+            Self::CgMap => {
+                &[
+                    "chr",
+                    "nuc",
+                    "position",
+                    "context",
+                    "dinuc",
+                    "density",
+                    "count_m",
+                    "count_total",
+                ]
+            },
             Self::BedGraph => &["chr", "start", "end", "density"],
         }
     }
@@ -181,77 +187,65 @@ pub(crate) trait ReportRow<'a>: Deserialize<'a> {
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct BismarkRow {
-    chr: String,
+    chr:      String,
     position: usize,
-    strand: String,
-    count_m: u32,
+    strand:   String,
+    count_m:  u32,
     count_um: u32,
-    context: String,
-    trinuc: String,
+    context:  String,
+    trinuc:   String,
 }
 
-impl<'a> ReportRow<'a> for BismarkRow {
-    fn get_chr(&self) -> String {
-        self.chr.clone()
-    }
-    fn get_pos(&self) -> usize {
-        self.position
-    }
+impl ReportRow<'_> for BismarkRow {
+    fn get_chr(&self) -> String { self.chr.clone() }
+
+    fn get_pos(&self) -> usize { self.position }
 }
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct CgMapRow {
-    chr: String,
-    nuc: String,
-    position: usize,
-    context: String,
-    dinuc: String,
-    density: f64,
-    count_m: u32,
+    chr:         String,
+    nuc:         String,
+    position:    usize,
+    context:     String,
+    dinuc:       String,
+    density:     f64,
+    count_m:     u32,
     count_total: u32,
 }
 
-impl<'a> ReportRow<'a> for CgMapRow {
-    fn get_chr(&self) -> String {
-        self.chr.clone()
-    }
-    fn get_pos(&self) -> usize {
-        self.position
-    }
+impl ReportRow<'_> for CgMapRow {
+    fn get_chr(&self) -> String { self.chr.clone() }
+
+    fn get_pos(&self) -> usize { self.position }
 }
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct BedGraphRow {
-    chr: String,
-    start: usize,
-    end: usize,
+    chr:     String,
+    start:   usize,
+    end:     usize,
     density: f64,
 }
 
-impl<'a> ReportRow<'a> for BedGraphRow {
-    fn get_chr(&self) -> String {
-        self.chr.clone()
-    }
-    fn get_pos(&self) -> usize {
-        self.start
-    }
+impl ReportRow<'_> for BedGraphRow {
+    fn get_chr(&self) -> String { self.chr.clone() }
+
+    fn get_pos(&self) -> usize { self.start }
 }
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct CoverageRow {
-    chr: String,
-    start: usize,
-    end: usize,
-    density: f64,
-    count_m: u32,
+    chr:      String,
+    start:    usize,
+    end:      usize,
+    density:  f64,
+    count_m:  u32,
     count_um: u32,
 }
 
-impl<'a> ReportRow<'a> for CoverageRow {
-    fn get_chr(&self) -> String {
-        self.chr.clone()
-    }
-    fn get_pos(&self) -> usize {
-        self.start
-    }
+impl ReportRow<'_> for CoverageRow {
+    fn get_chr(&self) -> String { self.chr.clone() }
+
+    fn get_pos(&self) -> usize { self.start }
 }

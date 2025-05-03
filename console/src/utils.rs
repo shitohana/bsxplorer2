@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use bsxplorer2::exports::polars::prelude::IpcCompression;
 use bsxplorer2::exports::{anyhow, rayon};
-use bsxplorer2::utils::types::Context;
 use clap::{Args, ValueEnum};
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -20,24 +20,22 @@ pub fn init_pbar(total: usize) -> anyhow::Result<ProgressBar> {
     Ok(progress_bar)
 }
 
-#[derive(Debug, Clone, ValueEnum)]
-pub(crate) enum DmrContext {
-    CG,
-    CHG,
-    CHH,
+pub fn init_spinner() -> anyhow::Result<ProgressBar> {
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+            .template("{spinner} {msg}")
+            .expect("Failed to set spinner template"),
+    );
+    Ok(spinner)
 }
 
-impl DmrContext {
-    pub fn tobsxplorer2(&self) -> Context {
-        match self {
-            DmrContext::CG => Context::CG,
-            DmrContext::CHG => Context::CHG,
-            DmrContext::CHH => Context::CHH,
-        }
-    }
+pub fn init_hidden() -> anyhow::Result<ProgressBar> {
+    Ok(ProgressBar::hidden())
 }
 
-pub(crate) fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
+pub fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
     let mut expanded_paths = Vec::new();
 
     for path in paths {
@@ -48,13 +46,12 @@ pub(crate) fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
                     for entry in matches.filter_map(Result::ok) {
                         expanded_paths.push(entry);
                     }
-                },
+                }
                 Err(e) => {
                     eprintln!("Error processing wildcard '{}': {}", path, e)
-                },
+                }
             }
-        }
-        else {
+        } else {
             // If not a wildcard, push the path as-is
             expanded_paths.push(PathBuf::from(path));
         }
@@ -64,7 +61,7 @@ pub(crate) fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
 }
 
 #[derive(Args, Debug)]
-pub(crate) struct UtilsArgs {
+pub struct UtilsArgs {
     #[arg(
         long,
         required = false,
@@ -79,29 +76,41 @@ pub(crate) struct UtilsArgs {
         default_value_t = 1,
         help = "Number of threads to use."
     )]
-    pub(crate) threads:  usize,
+    pub(crate) threads: usize,
     #[arg(
         long,
         required = false,
         default_value_t = false,
         help = "Verbose output."
     )]
-    pub(crate) verbose:  bool,
+    pub(crate) verbose: bool,
 }
 
-#[inline]
-pub(crate) fn init_logger(logger: bool) -> anyhow::Result<()> {
-    if logger {
-        Ok(bsxplorer2::exports::pretty_env_logger::try_init()?)
-    }
-    else {
+impl UtilsArgs {
+    pub fn setup(&self) -> anyhow::Result<()> {
+        if self.verbose {
+            bsxplorer2::exports::pretty_env_logger::try_init()?
+        }
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(self.threads)
+            .build_global()?;
         Ok(())
     }
 }
 
-#[inline]
-pub(crate) fn init_rayon_threads(threads: usize) -> anyhow::Result<()> {
-    Ok(rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build_global()?)
+#[derive(Debug, Clone, ValueEnum, Eq, PartialEq, Copy)]
+pub enum CliIpcCompression {
+    LZ4,
+    ZSTD,
+    None,
+}
+
+impl From<CliIpcCompression> for Option<IpcCompression> {
+    fn from(compression: CliIpcCompression) -> Self {
+        match compression {
+            CliIpcCompression::LZ4 => Some(IpcCompression::LZ4),
+            CliIpcCompression::ZSTD => Some(IpcCompression::ZSTD),
+            CliIpcCompression::None => None,
+        }
+    }
 }

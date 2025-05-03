@@ -1,11 +1,14 @@
 #[cfg(feature = "compression")]
 mod inner {
-    use polars::io::mmap::MmapBytesReader;
     use std::fs::File;
-    use std::io::{copy, Seek, SeekFrom, Write}; // Added copy, Seek, SeekFrom
+    use std::io::{copy, Seek, SeekFrom, Write}; /* Added copy, Seek,
+                                                 * SeekFrom */
+
+    use polars::io::mmap::MmapBytesReader;
     use tempfile::tempfile; // Added tempfile
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, Copy, PartialEq, Eq)]
+    #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
     pub enum Compression {
         None,
         Gz,
@@ -64,11 +67,12 @@ mod inner {
                 Compression::Zip => {
                     // zip::ZipArchive::new itself returns a Result
                     let mut archive = zip::ZipArchive::new(handle)?;
-                    if archive.len() > 0 {
+                    if !archive.is_empty() {
                         // Extract the first file
                         let mut file_in_zip = archive.by_index(0)?;
                         copy(&mut file_in_zip, &mut temp_file)?;
-                    } else {
+                    }
+                    else {
                         // Handle empty zip file - return empty temp file
                     }
                 },
@@ -91,28 +95,36 @@ mod inner {
             compression_level: u32,
         ) -> anyhow::Result<Box<dyn Write>> {
             let encoder: Box<dyn Write> = match self {
-                Compression::Gz => Box::new(flate2::write::GzEncoder::new(
-                    handle,
-                    flate2::Compression::new(compression_level),
-                )),
-                Compression::Zstd => Box::new(zstd::Encoder::new(
-                    handle,
-                    compression_level as i32,
-                )?),
+                Compression::Gz => {
+                    Box::new(flate2::write::GzEncoder::new(
+                        handle,
+                        flate2::Compression::new(compression_level),
+                    ))
+                },
+                Compression::Zstd => {
+                    Box::new(zstd::Encoder::new(
+                        handle,
+                        compression_level as i32,
+                    )?)
+                },
                 Compression::Lz4 => {
                     let encoder = lz4::EncoderBuilder::new()
                         .level(compression_level)
                         .build(handle)?;
                     Box::new(encoder)
                 },
-                Compression::Xz2 => Box::new(xz2::write::XzEncoder::new(
-                    handle,
-                    compression_level,
-                )),
-                Compression::Bzip2 => Box::new(bzip2::write::BzEncoder::new(
-                    handle,
-                    bzip2::Compression::new(compression_level),
-                )),
+                Compression::Xz2 => {
+                    Box::new(xz2::write::XzEncoder::new(
+                        handle,
+                        compression_level,
+                    ))
+                },
+                Compression::Bzip2 => {
+                    Box::new(bzip2::write::BzEncoder::new(
+                        handle,
+                        bzip2::Compression::new(compression_level),
+                    ))
+                },
                 Compression::Zip => {
                     Box::new(zip::write::ZipWriter::new(handle))
                 },

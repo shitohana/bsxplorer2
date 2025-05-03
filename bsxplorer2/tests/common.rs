@@ -1,36 +1,37 @@
 #![allow(unused)]
 
-use std::{collections::BTreeMap, io::Write, ops::BitOr};
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::ops::BitOr;
 
 use anyhow::bail;
 use bio::io::fasta::Record;
-use bsxplorer2::{
-    data_structs::{
-        batch::{colnames::{CONTEXT_NAME, COUNT_M_NAME, COUNT_TOTAL_NAME, STRAND_NAME}, BsxBatch, BsxBatchBuilder, BsxBatchMethods},
-        context_data::ContextData,
-    },
-    io::{bsx::BsxIpcWriter, report::ReportTypeSchema},
-};
+use bsxplorer2::data_structs::batch::colnames::{CONTEXT_NAME,
+                                                COUNT_M_NAME,
+                                                COUNT_TOTAL_NAME,
+                                                STRAND_NAME};
+use bsxplorer2::data_structs::batch::{BsxBatch,
+                                      BsxBatchBuilder,
+                                      BsxBatchMethods};
+use bsxplorer2::data_structs::context_data::ContextData;
+use bsxplorer2::io::bsx::BsxIpcWriter;
+use bsxplorer2::io::report::ReportTypeSchema;
 use itertools::Itertools;
-use polars::{
-    prelude::{AnyValue, Column, DataType, Scalar},
-    series::ChunkCompareEq,
-};
+use polars::prelude::{AnyValue, Column, DataType, Scalar};
+use polars::series::ChunkCompareEq;
 use rand::{random, Rng, RngCore, SeedableRng};
 use rand_distr::{Binomial, Distribution, Normal};
 
 pub struct DemoReportBuilder<R: SeedableRng + RngCore> {
-    chr_len: usize,
+    chr_len:       usize,
     mean_coverage: u32,
-    std_coverage: f32,
-    mean_density: f32,
-    rng: R,
+    std_coverage:  f32,
+    mean_density:  f32,
+    rng:           R,
 }
 
 impl<R: SeedableRng + RngCore> Default for DemoReportBuilder<R> {
-    fn default() -> Self {
-        Self::new(100_000, 30, 10.0, 0.4, None)
-    }
+    fn default() -> Self { Self::new(100_000, 30, 10.0, 0.4, None) }
 }
 
 impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
@@ -77,7 +78,8 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
                 partitioned.push(left);
                 if right.is_empty() {
                     break;
-                } else {
+                }
+                else {
                     let _ = std::mem::replace(&mut full_batch, right);
                 }
             }
@@ -130,9 +132,7 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         self.std_coverage = std_coverage;
     }
 
-    pub fn rng_mut(&mut self) -> &mut R {
-        &mut self.rng
-    }
+    pub fn rng_mut(&mut self) -> &mut R { &mut self.rng }
 }
 
 impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
@@ -158,7 +158,8 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         ContextData::from_sequence(record.seq())
     }
 
-    /// Returns a tuple of two vectors: the first vector contains the total coverage, and the second vector contains the methylated coverage.
+    /// Returns a tuple of two vectors: the first vector contains the total
+    /// coverage, and the second vector contains the methylated coverage.
     fn generate_methylation(
         &mut self,
         context_data: &ContextData,
@@ -262,17 +263,17 @@ pub fn compare_batches(
     let (original_df, read_df) =
         if matches!(report_type, ReportTypeSchema::BedGraph) {
             // TODO: Find out, why first row density equal to NaN when testing
-            return Ok(())
+            return Ok(());
 
             // (
             //     original
             //         .data()
-            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME, STRAND_NAME]),
-            //     read.data()
-            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME, STRAND_NAME]),
-            // )
-
-        } else {
+            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME,
+            // STRAND_NAME]),     read.data()
+            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME,
+            // STRAND_NAME]), )
+        }
+        else {
             (original.data().clone(), read.data().clone())
         };
     if !original_df.equals_missing(&read_df) {

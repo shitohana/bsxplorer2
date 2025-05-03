@@ -11,7 +11,7 @@ categories = ["science", "data-structures", "algorithms", "mathematics"]
 readme = "README.md"
 
 [dependencies]
-bsxplorer2 = { version = "=0.1.1-post1", features = [], default-features = false }
+bsxplorer2 = { path = "../bsxplorer2", features = ["compression", "console"], default-features = false }
 
 clap = { version = "4.1", features = ["derive"] }
 console = "0.15"

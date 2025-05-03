@@ -2,11 +2,8 @@ use std::fmt;
 
 use log::*;
 use num::Float;
-use statrs::{
-    distribution::{ContinuousCDF, Normal},
-    statistics::Statistics,
-};
-
+use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::statistics::Statistics;
 
 /// Calculates Pearson correlation coefficient between two variables.
 pub fn pearson_r<X, Y>(
@@ -27,8 +24,7 @@ where
         + Copy
         + Clone
         + num::traits::NumOps
-        + fmt::Debug,
-{
+        + fmt::Debug, {
     if x.len() != y.len() {
         warn!(
             "Cannot calculate Pearson's r: x length ({}) doesn't match y \
@@ -94,7 +90,7 @@ struct Observation<F: Float> {
     /// Which group the observation belongs to (0 for group1, 1 for group2)
     group: usize,
     /// The assigned rank of this observation
-    rank: f64,
+    rank:  f64,
 }
 
 /// Performs Mann-Whitney U test.
@@ -121,15 +117,19 @@ pub fn mann_whitney_u<F: Float>(
     // Combine observations from both groups
     let mut observations: Vec<Observation<F>> = group1
         .iter()
-        .map(|&v| Observation {
-            value: v,
-            group: 0,
-            rank: 0.0,
+        .map(|&v| {
+            Observation {
+                value: v,
+                group: 0,
+                rank:  0.0,
+            }
         })
-        .chain(group2.iter().map(|&v| Observation {
-            value: v,
-            group: 1,
-            rank: 0.0,
+        .chain(group2.iter().map(|&v| {
+            Observation {
+                value: v,
+                group: 1,
+                rank:  0.0,
+            }
         }))
         .collect();
 
@@ -159,8 +159,12 @@ pub fn mann_whitney_u<F: Float>(
         let avg_rank = (start as f64 + 1.0 + end as f64) / 2.0; // ranks are 1-indexed
 
         // Assign average rank to all tied values
-        for j in start..end {
-            observations[j].rank = avg_rank;
+        for val in observations
+            .iter_mut()
+            .take(end)
+            .skip(start)
+        {
+            val.rank = avg_rank;
         }
 
         // Record ties for variance correction
@@ -205,7 +209,8 @@ pub fn mann_whitney_u<F: Float>(
     // Apply continuity correction and compute Z-score
     let z = if variance_u > F::from(0.0).unwrap() {
         (u_stat - mean_u + F::from(0.5).unwrap()) / variance_u.sqrt()
-    } else {
+    }
+    else {
         warn!("Variance is zero in Mann-Whitney U test");
         F::from(0.0).unwrap()
     };

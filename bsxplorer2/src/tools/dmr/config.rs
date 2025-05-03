@@ -1,3 +1,13 @@
+use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::hash::Hash;
+use std::io::{Read, Seek};
+use std::sync::Arc;
+
+use bio::bio_types::annot::refids::RefIDSet;
+use itertools::Itertools;
+use polars::io::mmap::MmapBytesReader;
+
 use crate::data_structs::batch::EncodedBsxBatch;
 use crate::data_structs::enums::Context;
 use crate::io::bsx::BsxFileReader;
@@ -5,36 +15,27 @@ use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
 use crate::tools::dmr::{segment_reading, DmrIterator};
 
-use bio_types::annot::refids::RefIDSet;
-use itertools::Itertools;
-use polars::io::mmap::MmapBytesReader;
-use std::collections::BTreeMap;
-use std::fmt::Display;
-use std::hash::Hash;
-use std::io::{Read, Seek};
-use std::sync::Arc;
-
 #[derive(Debug, Clone)]
 pub struct DmrConfig {
-    pub context: Context,
-    pub n_missing: usize,
-    pub min_coverage: i16,
+    pub context:        Context,
+    pub n_missing:      usize,
+    pub min_coverage:   i16,
     pub diff_threshold: f32,
-    pub min_cpgs: usize,
-    pub max_dist: u64,
-    pub initial_l: f64,
-    pub l_min: f64,
-    pub l_coef: f64,
-    pub seg_tolerance: f32,
-    pub merge_pvalue: f64,
-    pub seg_pvalue: f64,
+    pub min_cpgs:       usize,
+    pub max_dist:       u64,
+    pub initial_l:      f64,
+    pub l_min:          f64,
+    pub l_coef:         f64,
+    pub seg_tolerance:  f32,
+    pub merge_pvalue:   f64,
+    pub seg_pvalue:     f64,
 }
 
 impl DmrConfig {
     pub fn filter_config(&self) -> FilterConfig {
         FilterConfig {
-            context: self.context,
-            n_missing: self.n_missing,
+            context:      self.context,
+            n_missing:    self.n_missing,
             min_coverage: self.min_coverage,
         }
     }
@@ -53,8 +54,7 @@ impl DmrConfig {
             + std::fmt::Debug
             + Send
             + Ord
-            + 'static,
-    {
+            + 'static, {
         // Use BTreeMap to sort labels and get consistent left/right order
         let mut readers_pair = BTreeMap::from_iter(
             readers
@@ -71,8 +71,8 @@ impl DmrConfig {
         }
 
         let (sender, receiver) = crossbeam::channel::bounded(10);
-        // TODO: fix, that the block_count doesn't really calculate anything, as it is passed
-        // to a thread
+        // TODO: fix, that the block_count doesn't really calculate anything, as
+        // it is passed to a thread
         let block_count = 0;
         let join_handle = std::thread::spawn(move || {
             let (right_n, right_readers) = init_bsx_readers(
@@ -110,6 +110,7 @@ impl DmrConfig {
         Ok(out)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         context: Context,
         n_missing: usize,
@@ -144,18 +145,18 @@ impl DmrConfig {
 impl Default for DmrConfig {
     fn default() -> Self {
         Self {
-            context: Context::CG,
-            n_missing: 0,
-            min_coverage: 5,
+            context:        Context::CG,
+            n_missing:      0,
+            min_coverage:   5,
             diff_threshold: 0.1,
-            min_cpgs: 10,
-            max_dist: 100,
-            initial_l: 2.0,
-            l_min: 1e-3,
-            l_coef: 1.5,
-            seg_tolerance: 1e-6,
-            merge_pvalue: 1e-3,
-            seg_pvalue: 1e-2,
+            min_cpgs:       10,
+            max_dist:       100,
+            initial_l:      2.0,
+            l_min:          1e-3,
+            l_coef:         1.5,
+            seg_tolerance:  1e-6,
+            merge_pvalue:   1e-3,
+            seg_pvalue:     1e-2,
         }
     }
 }

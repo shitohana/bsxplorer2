@@ -16,7 +16,8 @@ pub(crate) fn read_chrom<P: AsRef<Path>>(
 ) -> anyhow::Result<Vec<String>> {
     let index = if is_index {
         FaiReader::new(BufReader::new(File::open(path)?)).read_index()?
-    } else {
+    }
+    else {
         index_fasta(path)?
     };
     let records: Vec<Record> = index.into();

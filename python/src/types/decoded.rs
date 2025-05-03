@@ -1,23 +1,23 @@
 use std::sync::Arc;
 
+use bsxplorer2::data_structs::batch::BsxBatchBuilder as RsBsxBatchBuilder;
+use bsxplorer2::data_structs::batch::{BsxBatch as RsBsxBatch, BsxBatchMethods};
 use bsxplorer2::exports::polars::error::PolarsError;
 use bsxplorer2::exports::polars::frame::DataFrame;
 use bsxplorer2::exports::polars::prelude::BooleanChunked;
 use bsxplorer2::exports::polars::series::{IntoSeries, Series};
 use pyo3::prelude::*;
-use pyo3::types::{PyType};
-use pyo3_polars::{PySchema, PySeries};
+use pyo3::types::PyType;
 use pyo3_polars::PyDataFrame;
-use bsxplorer2::data_structs::batch::{BsxBatch as RsBsxBatch, BsxBatchMethods};
-use bsxplorer2::data_structs::batch::BsxBatchBuilder as RsBsxBatchBuilder;
+use pyo3_polars::{PySchema, PySeries};
 
 use super::context_data::PyContextData;
 use super::report_schema::PyReportTypeSchema;
 
-#[pyclass(name="BsxBatch")]
+#[pyclass(name = "BsxBatch")]
 #[derive(Clone)]
 pub struct PyBsxBatch {
-    pub inner: RsBsxBatch
+    pub inner: RsBsxBatch,
 }
 
 impl From<RsBsxBatch> for PyBsxBatch {
@@ -35,11 +35,11 @@ impl From<PyBsxBatch> for RsBsxBatch {
 impl PyBsxBatch {
     #[new]
     #[pyo3(signature = (
-        data, 
+        data,
         check_nulls=true,
-        check_sorted=true, 
-        check_duplicates=true, 
-        rechunk=true, 
+        check_sorted=true,
+        check_duplicates=true,
+        rechunk=true,
         check_single_chr=true,
         context_data=None,
         report_schema=None
@@ -94,14 +94,15 @@ impl PyBsxBatch {
                 RsBsxBatchBuilder::default()
             }
         }
-            .with_check_nulls(check_nulls)
-            .with_check_sorted(check_sorted)
-            .with_check_duplicates(check_duplicates)
-            .with_rechunk(rechunk)
-            .with_check_single_chr(check_single_chr)
-            .with_context_data(context_data.map(|v| v.into()));
+        .with_check_nulls(check_nulls)
+        .with_check_sorted(check_sorted)
+        .with_check_duplicates(check_duplicates)
+        .with_rechunk(rechunk)
+        .with_check_single_chr(check_single_chr)
+        .with_context_data(context_data.map(|v| v.into()));
 
-        let inner = builder.build::<RsBsxBatch>(df)
+        let inner = builder
+            .build::<RsBsxBatch>(df)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(PyBsxBatch { inner })
     }
@@ -147,7 +148,9 @@ impl PyBsxBatch {
     /// BsxBatch
     ///     An empty batch instance.
     pub fn empty() -> PyResult<Self> {
-        Ok(PyBsxBatch { inner: RsBsxBatch::empty() })
+        Ok(PyBsxBatch {
+            inner: RsBsxBatch::empty(),
+        })
     }
 
     /// Access the chromosome column as a Polars Series.
@@ -289,7 +292,8 @@ impl PyBsxBatch {
     /// ValueError
     ///     If the batch is empty or contains multiple chromosomes.
     pub fn chr_val(&self) -> PyResult<String> {
-        self.inner.chr_val()
+        self.inner
+            .chr_val()
             .map(|s| s.to_string())
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     }
@@ -334,7 +338,9 @@ impl PyBsxBatch {
     /// ValueError
     ///     If the stacking operation results in invalid data (e.g., unsorted, duplicates).
     pub fn vstack(&self, other: &PyBsxBatch) -> PyResult<Self> {
-        let new_inner = self.inner.vstack(&other.inner)
+        let new_inner = self
+            .inner
+            .vstack(&other.inner)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(PyBsxBatch { inner: new_inner })
     }
@@ -353,7 +359,8 @@ impl PyBsxBatch {
     /// ValueError
     ///     If the extend operation results in invalid data (e.g., unsorted, duplicates).
     pub fn extend(&mut self, other: &PyBsxBatch) -> PyResult<()> {
-        self.inner.extend(&other.inner)
+        self.inner
+            .extend(&other.inner)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     }
 
@@ -379,11 +386,14 @@ impl PyBsxBatch {
     ///     If the mask length does not match the batch height or other Polars errors occur.
     pub fn filter_mask(&self, mask: PySeries) -> PyResult<Self> {
         let mask_series: Series = mask.into();
-        let bool_mask: &BooleanChunked = mask_series.bool()
+        let bool_mask: &BooleanChunked = mask_series
+            .bool()
             .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Mask must be a boolean Series"))?;
 
-        let new_inner = self.inner.filter_mask(bool_mask)
-             .map_err(|e: PolarsError| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        let new_inner = self
+            .inner
+            .filter_mask(bool_mask)
+            .map_err(|e: PolarsError| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(PyBsxBatch { inner: new_inner })
     }
 
@@ -414,7 +424,11 @@ impl PyBsxBatch {
     /// str
     ///     A string showing shape and chromosome.
     pub fn __repr__(&self) -> String {
-        format!("BsxBatch(shape={}, chr='{}')", self.inner.data().shape().1, self.inner.chr_val().unwrap_or("N/A"))
+        format!(
+            "BsxBatch(shape={}, chr='{}')",
+            self.inner.data().shape().1,
+            self.inner.chr_val().unwrap_or("N/A")
+        )
     }
 
     /// Compare two batches for equality (implements `==` and `!=`).
@@ -439,7 +453,9 @@ impl PyBsxBatch {
         match op {
             pyo3::basic::CompareOp::Eq => Ok(self.inner == other.inner),
             pyo3::basic::CompareOp::Ne => Ok(self.inner != other.inner),
-            _ => Err(pyo3::exceptions::PyNotImplementedError::new_err("Only == and != are supported for BsxBatch")),
+            _ => Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                "Only == and != are supported for BsxBatch",
+            )),
         }
     }
 }

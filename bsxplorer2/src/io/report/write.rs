@@ -1,11 +1,11 @@
 use std::io::{Seek, Write};
 
+use anyhow::anyhow;
 use log::{debug, info, warn};
 use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;
 
-use crate::data_structs::batch::BsxBatch;
-use crate::data_structs::batch::LazyBsxBatch;
+use crate::data_structs::batch::{BsxBatch, LazyBsxBatch};
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::report::schema::ReportTypeSchema;
@@ -82,5 +82,11 @@ impl ReportWriter {
                 warn!("Failed to write DataFrame: {}", e);
                 e
             })
+    }
+
+    pub fn finish(mut self) -> anyhow::Result<()> {
+        self.writer
+            .finish()
+            .map_err(|e| anyhow!(e))
     }
 }

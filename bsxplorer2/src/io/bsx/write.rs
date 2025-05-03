@@ -2,10 +2,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::data_structs::batch::BsxBatch;
-use crate::data_structs::batch::EncodedBsxBatch;
-use crate::data_structs::batch::{colnames, BsxBatchBuilder, BsxBatchMethods};
-use crate::utils::get_categorical_dtype;
 use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
@@ -14,11 +10,17 @@ use polars::error::{PolarsError, PolarsResult};
 use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 
+use crate::data_structs::batch::{colnames,
+                                 BsxBatch,
+                                 BsxBatchBuilder,
+                                 BsxBatchMethods,
+                                 EncodedBsxBatch};
+use crate::utils::get_categorical_dtype;
+
 /// Writer for BSX data in Arrow IPC format with optional compression.
 pub struct BsxIpcWriter<W>
 where
-    W: Write,
-{
+    W: Write, {
     writer: polars::io::ipc::BatchedWriter<W>,
     schema: Schema,
 }

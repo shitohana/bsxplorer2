@@ -2,6 +2,7 @@ use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
 
+use bsxplorer2::data_structs::enums::Context;
 use bsxplorer2::exports::anyhow;
 use bsxplorer2::exports::anyhow::anyhow;
 use bsxplorer2::tools::dmr::DMRegion;
@@ -12,9 +13,7 @@ use indicatif::ProgressBar;
 use serde::Serialize;
 
 use crate::utils::init_pbar;
-use crate::{
-    expand_wildcards, init_logger, init_rayon_threads, DmrContext, UtilsArgs,
-};
+use crate::utils::{expand_wildcards, UtilsArgs};
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct DmrArgs {
@@ -54,11 +53,11 @@ pub(crate) struct DmrArgs {
         short,
         long,
         value_enum,
-        default_value_t = DmrContext::CG,
+        default_value_t = Context::CG,
         help_heading = "FILTER ARGS",
         help = "Select cytosine methylation context. Only cytosines in this context will be used for DMR calling. CG/CHG/CHH."
     )]
-    pub context: DmrContext,
+    pub context: Context,
 
     #[arg(
         short,
@@ -191,238 +190,196 @@ pub(crate) enum PadjMethod {
     None,
 }
 
-pub fn init(
-    group_a: Vec<String>,
-    group_b: Vec<String>,
-    output: PathBuf,
-    force: bool,
-    threads: usize,
-    logger: bool,
-) -> anyhow::Result<(Vec<String>, Vec<String>)> {
-    init_rayon_threads(threads)?;
-    init_logger(logger)?;
+impl DmrArgs {
+    pub fn run(&self, utils: &UtilsArgs) -> anyhow::Result<()> {
+        let a_paths = expand_wildcards(self.group_a.clone());
+        let b_paths = expand_wildcards(self.group_b.clone());
 
-    let a_paths = expand_wildcards(group_a);
-    let b_paths = expand_wildcards(group_b);
+        if !self.force {
+            let prompt = format!(
+                "Do you want to proceed with the following paths?\n\nGroup A: \
+                 {:?}\nGroup B: {:?}\nOutput:{:?}",
+                a_paths, b_paths, self.output
+            );
+            let confirmed = Confirm::new()
+                .with_prompt(prompt)
+                .default(true)
+                .interact()
+                .unwrap_or(false);
 
-    if !force {
-        let prompt = format!(
-            "Do you want to proceed with the following paths?\n\nGroup A: \
-             {:?}\nGroup B: {:?}\nOutput:{:?}",
-            a_paths, b_paths, output
-        );
-        let confirmed = Confirm::new()
-            .with_prompt(prompt)
-            .default(true)
-            .interact()
-            .unwrap_or(false);
-
-        if !confirmed {
-            println!("{}", style("Process aborted by the user.").red());
-            return Err(anyhow!("User aborted the process."));
-        }
-    }
-
-    if a_paths.len() == 0 {
-        return Err(anyhow::anyhow!("Group A files must not be empty"));
-    }
-    if b_paths.len() == 0 {
-        return Err(anyhow::anyhow!("Group B files must not be empty"));
-    }
-
-    for path in a_paths.iter().chain(b_paths.iter()) {
-        if !path.exists() {
-            eprintln!("Path {} does not exist.", style(path.display()).red());
-        }
-        if !path.is_file() {
-            eprintln!("Path {} is not a file.", style(path.display()).red());
-        }
-    }
-
-    if output.is_dir() {
-        eprintln!(
-            "Output path {} is a directory.",
-            style(output.display()).red()
-        );
-    }
-
-    let left_labels = repeat_n("A".to_string(), a_paths.len());
-    let right_labels = repeat_n("B".to_string(), b_paths.len());
-
-    let sample_paths = a_paths
-        .into_iter()
-        .chain(b_paths.into_iter())
-        .map(|p| p.to_string_lossy().to_string())
-        .collect::<Vec<_>>();
-    let sample_labels = left_labels
-        .into_iter()
-        .chain(right_labels.into_iter())
-        .collect::<Vec<_>>();
-    Ok((sample_paths, sample_labels))
-}
-
-pub fn run(
-    args: DmrArgs,
-    utils: UtilsArgs,
-) {
-    let (sample_paths, sample_labels) = if let Ok(result) = init(
-        args.group_a,
-        args.group_b,
-        args.output.clone(),
-        args.force,
-        utils.threads,
-        utils.verbose,
-    ) {
-        result
-    } else {
-        return;
-    };
-    let context = args.context.tobsxplorer2();
-
-    let run_config = bsxplorer2::tools::dmr::config::DmrConfig {
-        context,
-        n_missing: args.n_missing,
-        min_coverage: args.min_coverage,
-        diff_threshold: args.diff_threshold,
-        min_cpgs: args.min_cytosines,
-        max_dist: args.max_dist as u64,
-        initial_l: args.initial_l,
-        l_min: args.l_min,
-        l_coef: args.l_coef,
-        seg_tolerance: args.tolerance,
-        merge_pvalue: args.merge_p,
-        seg_pvalue: args.padj,
-    };
-
-    let files = sample_paths.iter().map(|path| {
-        File::open(path)
-            .expect(format!("Could not open file {}", path).as_str())
-    });
-    let labeled = sample_labels
-        .into_iter()
-        .zip(files)
-        .collect::<Vec<_>>();
-
-    let dmr_iterator = run_config
-        .try_finish(labeled)
-        .expect("Failed to initialize DMR iterator");
-
-    let progress_bar = if utils.progress {
-        let progress_bar = init_pbar(dmr_iterator.blocks_total())
-            .expect("Failed to initialize progress bar");
-        progress_bar
-    } else {
-        ProgressBar::hidden()
-    };
-
-    let mut last_batch_idx = 0;
-
-    let all_segments_path = format!(
-        "{}.segments.tsv",
-        args.output
-            .to_str()
-            .unwrap_or_else(|| panic!("Path is empty!"))
-    );
-
-    let mut csv_writer = csv::WriterBuilder::default()
-        .delimiter(b'\t')
-        .has_headers(true)
-        .from_path(&all_segments_path)
-        .expect("Failed to open output file");
-
-    let mut _dmr_count = 0;
-    for (batch_idx, dmr) in dmr_iterator {
-        if batch_idx != last_batch_idx {
-            progress_bar.inc(batch_idx as u64 - last_batch_idx as u64);
-            last_batch_idx = batch_idx;
+            if !confirmed {
+                println!("{}", style("Process aborted by the user.").red());
+                return Err(anyhow!("User aborted the process."));
+            }
         }
 
-        progress_bar.set_message(format!(
-            "{}{}",
-            style(format!("{}:", dmr.chr.as_str())).blue(),
-            style(format!("{}-{}", dmr.start, dmr.end)).green(),
-        ));
-
-        if dmr.n_cytosines >= args.min_cytosines {
-            _dmr_count += 1;
-            csv_writer
-                .serialize(dmr)
-                .expect("Failed to write DMR to file");
+        if a_paths.len() == 0 {
+            return Err(anyhow::anyhow!("Group A files must not be empty"));
         }
-    }
+        if b_paths.len() == 0 {
+            return Err(anyhow::anyhow!("Group B files must not be empty"));
+        }
 
-    csv_writer
-        .flush()
-        .expect("Failed to write DMRs to file");
+        for path in a_paths.iter().chain(b_paths.iter()) {
+            if !path.exists() {
+                eprintln!("Path {} does not exist.", style(path.display()).red());
+            }
+            if !path.is_file() {
+                eprintln!("Path {} is not a file.", style(path.display()).red());
+            }
+        }
 
-    progress_bar.finish();
+        if self.output.is_dir() {
+            eprintln!(
+                "Output path {} is a directory.",
+                style(self.output.display()).red()
+            );
+        }
 
-    let all_segments = csv::ReaderBuilder::default()
-        .delimiter(b'\t')
-        .has_headers(true)
-        .from_path(all_segments_path)
-        .unwrap()
-        .deserialize::<DMRegion>()
-        .collect::<Result<Vec<_>, _>>()
-        .expect("Failed to deserialize DMR segments file");
+        let left_labels = repeat_n("A".to_string(), a_paths.len());
+        let right_labels = repeat_n("B".to_string(), b_paths.len());
 
-    use bsxplorer2::exports::adjustp;
-    let padj = if !matches!(args.pmethod, PadjMethod::None) {
-        adjustp::adjust(
-            &all_segments
-                .iter()
-                .map(|s| s.p_value)
-                .collect::<Vec<_>>(),
-            match args.pmethod {
-                PadjMethod::BH => adjustp::Procedure::BenjaminiHochberg,
-                PadjMethod::Bonf => adjustp::Procedure::Bonferroni,
-                PadjMethod::BY => adjustp::Procedure::BenjaminiYekutieli,
-                _ => unreachable!(),
-            },
-        )
-    } else {
-        all_segments
+        let sample_paths = a_paths
+            .into_iter()
+            .chain(b_paths.into_iter())
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        let sample_labels = left_labels
+            .into_iter()
+            .chain(right_labels.into_iter())
+            .collect::<Vec<_>>();
+
+        let run_config = bsxplorer2::tools::dmr::config::DmrConfig {
+            context: self.context,
+            n_missing: self.n_missing,
+            min_coverage: self.min_coverage,
+            diff_threshold: self.diff_threshold,
+            min_cpgs: self.min_cytosines,
+            max_dist: self.max_dist as u64,
+            initial_l: self.initial_l,
+            l_min: self.l_min,
+            l_coef: self.l_coef,
+            seg_tolerance: self.tolerance,
+            merge_pvalue: self.merge_p,
+            seg_pvalue: self.padj,
+        };
+
+        let files = sample_paths
             .iter()
-            .map(|s| s.p_value)
-            .collect::<Vec<_>>()
-    };
+            .map(|path| File::open(path).expect(format!("Could not open file {}", path).as_str()));
+        let labeled = sample_labels.into_iter().zip(files).collect::<Vec<_>>();
 
-    let filtered = all_segments
-        .into_iter()
-        .zip(padj)
-        .map(|(dmr, p)| DmrFilteredRow::from_dmr(dmr, p))
-        .filter(|dmr| dmr.padj <= args.padj)
-        .filter(|dmr| dmr.meth_diff.abs() >= args.diff_threshold)
-        .filter(|dmr| dmr.n_cytosines >= args.min_cytosines)
-        .collect::<Vec<_>>();
-    let dmr_count = filtered.len();
+        let dmr_iterator = run_config
+            .try_finish(labeled)
+            .expect("Failed to initialize DMR iterator");
 
-    let filtered_path = format!(
-        "{}.filtered.tsv",
-        args.output
-            .to_str()
-            .unwrap_or_else(|| panic!("Path is empty!"))
-    );
-    let mut csv_writer = csv::WriterBuilder::default()
-        .delimiter(b'\t')
-        .has_headers(true)
-        .from_path(&filtered_path)
-        .expect("Failed to open output file");
+        let progress_bar = if utils.progress {
+            let progress_bar =
+                init_pbar(dmr_iterator.blocks_total()).expect("Failed to initialize progress bar");
+            progress_bar
+        } else {
+            ProgressBar::hidden()
+        };
 
-    filtered
-        .iter()
-        .for_each(|dmr| csv_writer.serialize(dmr).unwrap());
+        let mut last_batch_idx = 0;
 
-    csv_writer
-        .flush()
-        .expect("Failed to write DMRs to file");
+        let all_segments_path = format!(
+            "{}.segments.tsv",
+            self.output
+                .to_str()
+                .unwrap_or_else(|| panic!("Path is empty!"))
+        );
 
-    println!(
-        "{}",
-        style(format!("Found {} DMRs.", dmr_count))
-            .green()
-            .bold()
-    );
+        let mut csv_writer = csv::WriterBuilder::default()
+            .delimiter(b'\t')
+            .has_headers(true)
+            .from_path(&all_segments_path)
+            .expect("Failed to open output file");
+
+        let mut _dmr_count = 0;
+        for (batch_idx, dmr) in dmr_iterator {
+            if batch_idx != last_batch_idx {
+                progress_bar.inc(batch_idx as u64 - last_batch_idx as u64);
+                last_batch_idx = batch_idx;
+            }
+
+            progress_bar.set_message(format!(
+                "{}{}",
+                style(format!("{}:", dmr.chr.as_str())).blue(),
+                style(format!("{}-{}", dmr.start, dmr.end)).green(),
+            ));
+
+            if dmr.n_cytosines >= self.min_cytosines {
+                _dmr_count += 1;
+                csv_writer
+                    .serialize(dmr)
+                    .expect("Failed to write DMR to file");
+            }
+        }
+
+        csv_writer.flush().expect("Failed to write DMRs to file");
+
+        progress_bar.finish();
+
+        let all_segments = csv::ReaderBuilder::default()
+            .delimiter(b'\t')
+            .has_headers(true)
+            .from_path(all_segments_path)
+            .unwrap()
+            .deserialize::<DMRegion>()
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Failed to deserialize DMR segments file");
+
+        use bsxplorer2::exports::adjustp;
+        let padj = if !matches!(self.pmethod, PadjMethod::None) {
+            adjustp::adjust(
+                &all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>(),
+                match self.pmethod {
+                    PadjMethod::BH => adjustp::Procedure::BenjaminiHochberg,
+                    PadjMethod::Bonf => adjustp::Procedure::Bonferroni,
+                    PadjMethod::BY => adjustp::Procedure::BenjaminiYekutieli,
+                    _ => unreachable!(),
+                },
+            )
+        } else {
+            all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>()
+        };
+
+        let filtered = all_segments
+            .into_iter()
+            .zip(padj)
+            .map(|(dmr, p)| DmrFilteredRow::from_dmr(dmr, p))
+            .filter(|dmr| dmr.padj <= self.padj)
+            .filter(|dmr| dmr.meth_diff.abs() >= self.diff_threshold)
+            .filter(|dmr| dmr.n_cytosines >= self.min_cytosines)
+            .collect::<Vec<_>>();
+        let dmr_count = filtered.len();
+
+        let filtered_path = format!(
+            "{}.filtered.tsv",
+            self.output
+                .to_str()
+                .unwrap_or_else(|| panic!("Path is empty!"))
+        );
+        let mut csv_writer = csv::WriterBuilder::default()
+            .delimiter(b'\t')
+            .has_headers(true)
+            .from_path(&filtered_path)
+            .expect("Failed to open output file");
+
+        filtered
+            .iter()
+            .for_each(|dmr| csv_writer.serialize(dmr).unwrap());
+
+        csv_writer.flush().expect("Failed to write DMRs to file");
+
+        println!(
+            "{}",
+            style(format!("Found {} DMRs.", dmr_count)).green().bold()
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -440,10 +397,7 @@ struct DmrFilteredRow {
 }
 
 impl DmrFilteredRow {
-    fn from_dmr(
-        dmr: DMRegion,
-        padj: f64,
-    ) -> Self {
+    fn from_dmr(dmr: DMRegion, padj: f64) -> Self {
         Self {
             padj,
             chr: dmr.chr,

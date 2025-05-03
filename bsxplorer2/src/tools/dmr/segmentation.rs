@@ -63,6 +63,8 @@ pub fn arg_split_segment(
 ///
 /// A `BTreeSet` of `SegmentView`s representing the segmented regions. The
 /// `BTreeSet` ensures the Segments are sorted and non-overlapping.
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::mutable_key_type)]
 pub fn tv_recurse_segment(
     segment: SegmentView,
     mut initial_l: f64,
@@ -101,7 +103,8 @@ pub fn tv_recurse_segment(
             let diff = a - b;
             if diff.abs() > diff_threshold {
                 diff
-            } else {
+            }
+            else {
                 0.0
             }
         })
@@ -117,7 +120,8 @@ pub fn tv_recurse_segment(
             .fold((Vec::new(), Vec::new()), |(mut short, mut better), s| {
                 if s.size() <= min_cpg {
                     short.push(s.clone())
-                } else if s.get_pvalue() < cur_seg.get_pvalue() {
+                }
+                else if s.get_pvalue() < cur_seg.get_pvalue() {
                     better.push(s.clone())
                 }
                 (short, better)
@@ -126,7 +130,8 @@ pub fn tv_recurse_segment(
         result.append(&mut short_segments);
         if better_segments.is_empty() {
             result.push(cur_seg);
-        } else {
+        }
+        else {
             segment_queue.append(&mut better_segments);
         }
 
@@ -238,11 +243,13 @@ fn merge_adjacent_segments(
             // If the difference is not significant, merge the segments.
             if p_value > p_threshold {
                 prev_seg = prev_seg.merge(cur_seg);
-            } else {
+            }
+            else {
                 merged_segments.push(prev_seg);
                 prev_seg = cur_seg.clone();
             }
-        } else {
+        }
+        else {
             merged_segments.push(prev_seg);
             prev_seg = cur_seg.clone();
         }
@@ -286,9 +293,9 @@ pub fn merge_segments(
 /// Configuration for filtering data_structs.
 pub struct FilterConfig {
     /// The context to consider (e.g., CpG, CHG, CHH).
-    pub context: Context,
+    pub context:      Context,
     /// The maximum number of missing values allowed.
-    pub n_missing: usize,
+    pub n_missing:    usize,
     /// The minimum coverage required.
     pub min_coverage: i16,
 }

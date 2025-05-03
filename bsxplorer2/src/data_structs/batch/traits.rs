@@ -1,13 +1,12 @@
-use crate::data_structs::coords::{Contig, GenomicPosition};
-use crate::data_structs::enums::Strand;
-
-
-use super::builder::BsxBatchBuilder;
 use anyhow::anyhow;
 use polars::datatypes::BooleanChunked;
 use polars::error::PolarsResult;
 use polars::frame::DataFrame;
 use polars::prelude::*;
+
+use super::builder::BsxBatchBuilder;
+use crate::data_structs::coords::{Contig, GenomicPosition};
+use crate::data_structs::enums::Strand;
 
 pub mod colnames {
     pub const CHR_NAME: &str = "chr";
@@ -38,6 +37,7 @@ pub mod colnames {
     }
 }
 use colnames::*;
+
 use crate::data_structs::batch::LazyBsxBatch;
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
@@ -74,43 +74,37 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     /// Get chromosome data type
     fn chr_type() -> DataType
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Self::ChrType::get_dtype()
     }
     /// Get position data type
     fn pos_type() -> DataType
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Self::PosType::get_dtype()
     }
     /// Get strand data type
     fn strand_type() -> DataType
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Self::StrandType::get_dtype()
     }
     /// Get context data type
     fn context_type() -> DataType
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Self::ContextType::get_dtype()
     }
     /// Get count data type
     fn count_type() -> DataType
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Self::CountType::get_dtype()
     }
     /// Get density data type
     fn density_type() -> DataType
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Self::DensityType::get_dtype()
     }
 
@@ -118,8 +112,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn schema() -> Schema
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Schema::from_iter([
             (CHR_NAME.into(), Self::ChrType::get_dtype()),
             (POS_NAME.into(), Self::PosType::get_dtype()),
@@ -135,8 +128,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn hashmap() -> PlHashMap<&'static str, DataType>
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         PlHashMap::from_iter([
             (CHR_NAME, Self::ChrType::get_dtype()),
             (POS_NAME, Self::PosType::get_dtype()),
@@ -152,7 +144,8 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     ///
     /// # Safety
     ///
-    /// This function assumes that the DataFrame is valid and that the columns are of the correct type.
+    /// This function assumes that the DataFrame is valid and that the columns
+    /// are of the correct type.
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self
     where
         Self: Sized;
@@ -160,16 +153,13 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     /// Create an empty batch
     fn empty() -> Self
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         unsafe {
             Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema()))
         }
     }
     /// Checks if the batch is empty
-    fn is_empty(&self) -> bool {
-        self.data().is_empty()
-    }
+    fn is_empty(&self) -> bool { self.data().is_empty() }
 
     /// Split batch at specified index
     fn split_at(
@@ -177,15 +167,22 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         index: usize,
     ) -> (Self, Self)
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         let (a, b) = self.data().split_at(index as i64);
         unsafe { (Self::new_unchecked(a), Self::new_unchecked(b)) }
     }
 
     /// Slice the batch
-    fn slice(&self, start: u32, length: u32) -> Self where Self: Sized {
-        let slice = self.data().slice(start as i64, length as usize);
+    fn slice(
+        &self,
+        start: u32,
+        length: u32,
+    ) -> Self
+    where
+        Self: Sized, {
+        let slice = self
+            .data()
+            .slice(start as i64, length as usize);
         unsafe { Self::new_unchecked(slice) }
     }
 
@@ -200,7 +197,9 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         Self: Sized;
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn lazy(self) -> LazyBsxBatch<Self> where Self: Sized {
+    fn lazy(self) -> LazyBsxBatch<Self>
+    where
+        Self: Sized, {
         LazyBsxBatch::from(self)
     }
     /// Get chromosome value as string
@@ -259,8 +258,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         other: &Self,
     ) -> anyhow::Result<Self>
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         let new_data = self.data().vstack(other.data())?;
         let res = BsxBatchBuilder::all_checks().check_modify(new_data)?;
         Ok(unsafe { Self::new_unchecked(res) })
@@ -282,29 +280,28 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         mask: &BooleanChunked,
     ) -> PolarsResult<Self>
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         Ok(unsafe { Self::new_unchecked(self.data().filter(mask)?) })
     }
 
     /// Returns number of rows
-    fn height(&self) -> usize {
-        self.data().height()
-    }
+    fn height(&self) -> usize { self.data().height() }
 
     /// Convert batch to genomic contig
     fn as_contig(&self) -> anyhow::Result<Option<Contig<String, u32>>> {
         if self.is_empty() {
             Ok(None)
-        } else {
-            let start = self
-                .start_pos()
-                .unwrap();
-            let end = self
-                .end_pos()
-                .unwrap();
+        }
+        else {
+            let start = self.start_pos().unwrap();
+            let end = self.end_pos().unwrap();
             let chr = self.chr_val()?;
-            Ok(Some(Contig::new(chr.to_owned(), start, end + 1, Strand::None)))
+            Ok(Some(Contig::new(
+                chr.to_owned(),
+                start,
+                end + 1,
+                Strand::None,
+            )))
         }
     }
 }

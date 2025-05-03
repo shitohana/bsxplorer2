@@ -1,15 +1,13 @@
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 
 use bio::io::fasta::Writer as FastaWriter;
-use bsxplorer2::data_structs::batch::LazyBsxBatch;
-use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchMethods};
-use bsxplorer2::io::report::ReportReaderBuilder;
-use bsxplorer2::io::report::ReportTypeSchema;
+use bsxplorer2::data_structs::batch::{BsxBatch,
+                                      BsxBatchMethods,
+                                      LazyBsxBatch};
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportTypeSchema};
+use polars::prelude::*;
 use rand::rngs::StdRng;
 use rstest::*;
-
-use polars::prelude::*;
-use std::io::Write;
 
 mod common;
 use common::DemoReportBuilder;
@@ -18,15 +16,15 @@ fn report_data() -> DemoReportBuilder<StdRng> {
     DemoReportBuilder::new(123_456, 20, 15.0, 0.5, Some(42))
 }
 
-
-
 const N_CHR: usize = 3;
 const CHUNK_SIZE: usize = 10000;
 
-/// Tests the report reading functionality with different report types and alignment options.
+/// Tests the report reading functionality with different report types and
+/// alignment options.
 ///
-/// This test verifies that the ReportReader correctly processes different report formats
-/// and handles alignment with reference sequences when requested.
+/// This test verifies that the ReportReader correctly processes different
+/// report formats and handles alignment with reference sequences when
+/// requested.
 ///
 /// # Test Cases
 /// - Tests various report types (Bismark, CgMap, BedGraph, Coverage)
@@ -126,7 +124,8 @@ fn test_report_reading_with_alignment(
     assert_eq!(final_batch_num, N_CHR);
 
     // Compare read data with original data
-    // Note: We may need to combine read batches if they were split due to chunk size
+    // Note: We may need to combine read batches if they were split due to chunk
+    // size
     let mut combined_read_batches = Vec::new();
     let mut current_chr = String::new();
     let mut current_batch = None;
@@ -141,11 +140,13 @@ fn test_report_reading_with_alignment(
             }
             current_chr = batch_chr;
             current_batch = Some(batch);
-        } else {
+        }
+        else {
             // Same chromosome, extend the current batch
             if let Some(ref mut cb) = current_batch {
                 cb.extend(&batch)?;
-            } else {
+            }
+            else {
                 current_batch = Some(batch);
             }
         }
@@ -164,7 +165,8 @@ fn test_report_reading_with_alignment(
         .iter()
         .zip(combined_read_batches.iter())
     {
-        // Compare key columns - this may need adjustment based on what's preserved in the report format
+        // Compare key columns - this may need adjustment based on what's
+        // preserved in the report format
         compare_batches(original, read, &report_type)?;
     }
 

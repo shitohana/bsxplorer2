@@ -1,18 +1,3 @@
-use crate::data_structs::batch::{
-    BatchType, BsxBatchBuilder, BsxBatchMethods, BsxTypeTag, LazyBsxBatch,
-};
-use crate::io::read_chrom;
-use crate::io::report::schema::ReportTypeSchema;
-use anyhow::bail;
-use bio::io::fasta::{Reader as FastaReader, Record as FastaRecord};
-
-use crate::data_structs::context_data::ContextData;
-#[cfg(feature = "compression")]
-use crate::io::compression::Compression;
-use crate::utils::get_categorical_dtype;
-use crossbeam::channel::Receiver;
-use polars::io::mmap::MmapBytesReader;
-use polars::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::BufReader;
@@ -20,20 +5,37 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
+use anyhow::bail;
+use bio::io::fasta::{Reader as FastaReader, Record as FastaRecord};
+use crossbeam::channel::Receiver;
+use polars::io::mmap::MmapBytesReader;
+use polars::prelude::*;
+
+use crate::data_structs::batch::{BatchType,
+                                 BsxBatchBuilder,
+                                 BsxBatchMethods,
+                                 BsxTypeTag,
+                                 LazyBsxBatch};
+use crate::data_structs::context_data::ContextData;
+#[cfg(feature = "compression")]
+use crate::io::compression::Compression;
+use crate::io::read_chrom;
+use crate::io::report::schema::ReportTypeSchema;
+use crate::utils::get_categorical_dtype;
+
 /// A wrapper around BatchedCsvReader that manages ownership of the reader
 pub struct OwnedBatchedCsvReader<F>
 where
-    F: MmapBytesReader,
-{
+    F: MmapBytesReader, {
     #[allow(dead_code)]
     // this exists because we need to keep ownership
     /// Schema of the CSV file
-    pub schema: SchemaRef,
+    pub schema:         SchemaRef,
     /// The batched reader for the CSV file
     pub batched_reader: BatchedCsvReader<'static>,
     // keep ownership
     /// Original CSV reader
-    pub _reader: CsvReader<F>,
+    pub _reader:        CsvReader<F>,
 }
 
 impl<F> OwnedBatchedCsvReader<F>
@@ -74,13 +76,13 @@ where
 /// Builder for `ReportReader` to configure its behavior.
 pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
     report_type: ReportTypeSchema,
-    chunk_size: usize,
-    fasta_path: Option<PathBuf>,
-    fai_path: Option<PathBuf>,
-    batch_size: usize,
-    n_threads: Option<usize>,
-    low_memory: bool,
-    queue_len: usize,
+    chunk_size:  usize,
+    fasta_path:  Option<PathBuf>,
+    fai_path:    Option<PathBuf>,
+    batch_size:  usize,
+    n_threads:   Option<usize>,
+    low_memory:  bool,
+    queue_len:   usize,
     #[cfg(feature = "compression")]
     compression: Option<Compression>,
     _batch_type: PhantomData<B>,
@@ -206,7 +208,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             (None, None) => return Ok(None),
         };
 
-        let dtype = chroms.map(|v| get_categorical_dtype(v));
+        let dtype = chroms.map(get_categorical_dtype);
         Ok(dtype)
     }
 
@@ -224,7 +226,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             )
                 as Box<dyn Iterator<Item = FastaRecord>>);
             Ok(iterator)
-        } else {
+        }
+        else {
             Ok(None)
         }
     }
@@ -238,7 +241,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         {
             if let Some(compression) = &self.compression {
                 let file = File::open(path)?;
-                return Ok(compression.get_decoder(file)?);
+                return compression.get_decoder(file);
             }
         }
 
@@ -275,7 +278,10 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
 
         let chr_dtype = self.get_chr_dtype()?;
         if matches!(B::type_enum(), BatchType::Encoded) && chr_dtype.is_none() {
-            bail!("Either Fasta path or Fai path must be specified for Encoded reading")
+            bail!(
+                "Either Fasta path or Fai path must be specified for Encoded \
+                 reading"
+            )
         }
         let fasta_reader = self.get_fasta_iterator()?;
         if matches!(self.report_type, RS::Coverage | RS::BedGraph)
@@ -326,16 +332,16 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
 
 /// Reads report data and yields batches.
 pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
-    _join_handle: JoinHandle<()>,
+    _join_handle:  JoinHandle<()>,
     data_receiver: Receiver<DataFrame>,
-    report_type: ReportTypeSchema,
-    cached_batch: BTreeMap<usize, B>,
-    seen_chr: HashMap<String, usize>,
-    chunk_size: usize,
+    report_type:   ReportTypeSchema,
+    cached_batch:  BTreeMap<usize, B>,
+    seen_chr:      HashMap<String, usize>,
+    chunk_size:    usize,
 
     fasta_reader: Option<Box<dyn Iterator<Item = FastaRecord>>>,
-    cached_chr: Option<(String, ContextData)>,
-    chr_dtype: Option<DataType>,
+    cached_chr:   Option<(String, ContextData)>,
+    chr_dtype:    Option<DataType>,
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
@@ -348,7 +354,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         if self.cached_batch.is_empty() {
             return None;
         }
-        // If there is more than one chromosome cached, force yield to avoid blocking on others
+        // If there is more than one chromosome cached, force yield to avoid
+        // blocking on others
         let should_force = force || self.cached_batch.len() > 1;
         // As we've checked, that cache is not empty, we can take first
         let (idx, batch) = self.cached_batch.pop_first()?;
@@ -356,11 +363,13 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         let (first, second) = batch.split_at(self.chunk_size);
         // If cached length was less than chunk_size
         if second.is_empty() && !should_force {
-            // Return None, if we do not force yield and expect data continuation
+            // Return None, if we do not force yield and expect data
+            // continuation
             self.cached_batch.insert(idx, first);
             return None;
         // If cached length was greater than chunk size
-        } else if !second.is_empty() {
+        }
+        else if !second.is_empty() {
             // Add the remainder back to cache
             self.cached_batch.insert(idx, second);
         }
@@ -381,12 +390,14 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
             if batch.chr_val()? != chr {
                 bail!("Chromosome mismatch")
             // Else align
-            } else {
+            }
+            else {
                 // If it is a final batch - drain cached chr
                 let (context_data, new_cache) = if is_final {
                     (cached_data, None)
                 // If not final, take till end of batch
-                } else {
+                }
+                else {
                     let drained =
                         cached_data.drain_until(batch.end_pos().unwrap());
                     (drained, Some((chr, cached_data)))
@@ -401,7 +412,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
                 Ok(aligned)
             }
         // If cache is empty read next chromosome
-        } else {
+        }
+        else {
             // Try read
             if let Some(new_sequence) = self
                 .fasta_reader
@@ -419,7 +431,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
                     .align_batch(batch, is_final)
                     .map_err(|e| anyhow::anyhow!(e))?)
             // Everything is read, but more sequence requested. Raise
-            } else {
+            }
+            else {
                 bail!("Sequence has already been fully written")
             }
         }
@@ -505,7 +518,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> Iterator for ReportReader<B> {
                 // After filling, try to take again
                 continue;
             }
-            // Reader is done and no more data is expected. Drain remaining cache.
+            // Reader is done and no more data is expected. Drain remaining
+            // cache.
             if let Some(batch) = self.take_cached(true) {
                 return Some(Ok(batch));
             }

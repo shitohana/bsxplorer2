@@ -1,14 +1,12 @@
-mod dmr;
 pub mod convert;
-pub mod stats;
+pub mod dmr;
 pub mod utils;
 
+use bsxplorer2::exports::anyhow;
 use clap::{Parser, Subcommand};
+use convert::{FromBsxConvert, R2RConvert, ToBsxConvert};
+use utils::UtilsArgs;
 use wild::ArgsOs;
-
-pub(crate) use utils::*;
-
-use crate::convert::ReportArgs;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -18,54 +16,68 @@ use crate::convert::ReportArgs;
     long_about = None,)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: MainMenu,
 }
 
-const DMR_ABOUT: &'static str = "BSXplorer DMR identification algorithm.";
-const CONVERT_ABOUT: &'static str = "BSXplorer report type conversion tool";
 #[derive(Subcommand, Debug)]
-enum Commands {
-    #[command(
-        about = DMR_ABOUT,
-        name = "dmr",)]
+enum MainMenu {
+    #[command(subcommand, name = "convert")]
+    Convert(ConvertMenu),
+
     Dmr {
         #[clap(flatten)]
         utils: UtilsArgs,
         #[clap(flatten)]
-        args:  dmr::DmrArgs,
-    },
-
-    #[command(
-        name = "convert",
-        about = CONVERT_ABOUT,
-        after_help = include_str!("strings/convert_ahelp.txt"),)]
-    Convert {
-        #[clap(flatten)]
-        args:  ReportArgs,
-        #[clap(flatten)]
-        utils: UtilsArgs,
-    },
-
-    #[command(name = "stats",
-        about = "Compute methylation statistics.",
-        after_help = include_str!("strings/stats_ahelp.txt"),
-    )]
-    Stats {
-        #[clap(flatten)]
-        stats: stats::StatsArgs,
-        #[clap(flatten)]
-        utils: UtilsArgs,
+        args: dmr::DmrArgs,
     },
 }
 
-fn main() {
+#[derive(Subcommand, Debug)]
+enum ConvertMenu {
+    #[command(name = "to-bsx")]
+    ToBsx {
+        #[clap(flatten)]
+        utils: UtilsArgs,
+        #[clap(flatten)]
+        args: ToBsxConvert,
+    },
+    #[command(name = "from-bsx")]
+    FromBsx {
+        #[clap(flatten)]
+        utils: UtilsArgs,
+        #[clap(flatten)]
+        args: FromBsxConvert,
+    },
+    #[command(name = "r2r")]
+    R2R {
+        #[clap(flatten)]
+        utils: UtilsArgs,
+        #[clap(flatten)]
+        args: R2RConvert,
+    },
+}
+
+fn main() -> anyhow::Result<()> {
     let args: ArgsOs = wild::args_os();
     let cli = Cli::parse_from(args);
+
     match cli.command {
-        Commands::Dmr { args, utils } => dmr::run(args, utils),
-
-        Commands::Convert { args, utils } => convert::run(args, utils),
-
-        Commands::Stats { stats, utils } => stats::run(stats, utils),
+        MainMenu::Convert(ConvertMenu::FromBsx { utils, args }) => {
+            utils.setup()?;
+            args.run(&utils)?;
+        }
+        MainMenu::Convert(ConvertMenu::ToBsx { utils, args }) => {
+            utils.setup()?;
+            args.run(&utils)?;
+        }
+        MainMenu::Convert(ConvertMenu::R2R { utils, args }) => {
+            utils.setup()?;
+            args.run(&utils)?;
+        }
+        MainMenu::Dmr { utils, args } => {
+            utils.setup()?;
+            args.run(&utils)?;
+        }
     }
+    Ok(())
 }

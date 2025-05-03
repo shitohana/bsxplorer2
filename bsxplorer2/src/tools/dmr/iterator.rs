@@ -2,15 +2,14 @@ use std::ops::Div;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bio_types::annot::refids::RefIDSet;
+use bio::bio_types::annot::refids::RefIDSet;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
 use log::error;
 use polars::prelude::{Column, DataType};
 use rayon::prelude::*;
 
-use crate::data_structs::batch::merge_replicates;
-use crate::data_structs::batch::{colnames, BsxBatchMethods};
+use crate::data_structs::batch::{colnames, merge_replicates, BsxBatchMethods};
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::tv_recurse_segment;
@@ -40,8 +39,7 @@ pub(crate) fn segment_reading<I, B>(
     sender: Sender<(String, SegmentOwned)>,
 ) where
     I: Iterator<Item = B>,
-    B: BsxBatchMethods,
-{
+    B: BsxBatchMethods, {
     loop {
         match (
             left_readers
@@ -121,39 +119,35 @@ pub(crate) fn segment_reading<I, B>(
 /// An iterator over differentially methylated regions (DMRs).
 pub struct DmrIterator {
     /// Configuration for DMR analysis.
-    pub(crate) config: DmrConfig,
+    pub(crate) config:        DmrConfig,
     /// Set of reference IDs.
-    pub(crate) ref_idset: RefIDSet<Arc<String>>,
+    pub(crate) ref_idset:     RefIDSet<Arc<String>>,
     /// Leftover segment from the previous batch.
-    pub(crate) leftover: Option<SegmentOwned>,
+    pub(crate) leftover:      Option<SegmentOwned>,
     /// Cache of DMRs.
     pub(crate) regions_cache: Vec<DMRegion>,
     /// Last chromosome processed.
-    pub(crate) last_chr: Arc<String>,
+    pub(crate) last_chr:      Arc<String>,
     /// Receiver for encoded BSx batch groups.
-    pub(crate) receiver: Receiver<(String, SegmentOwned)>,
+    pub(crate) receiver:      Receiver<(String, SegmentOwned)>,
     /// Metadata about the reader.
-    pub(crate) reader_stat: ReaderMetadata,
+    pub(crate) reader_stat:   ReaderMetadata,
     /// Join handle for the reader thread.
-    pub(crate) _join_handle: std::thread::JoinHandle<()>,
+    pub(crate) _join_handle:  std::thread::JoinHandle<()>,
 }
 
 impl DmrIterator {
     /// Returns the total number of blocks processed.
-    pub fn blocks_total(&self) -> usize {
-        self.reader_stat.blocks_total
-    }
+    pub fn blocks_total(&self) -> usize { self.reader_stat.blocks_total }
 
     /// Returns the current block being processed.
-    fn current_block(&self) -> usize {
-        self.reader_stat.current_block
-    }
+    fn current_block(&self) -> usize { self.reader_stat.current_block }
 
     /// Returns the last chromosome processed.
-    fn last_chr(&self) -> Arc<String> {
-        self.last_chr.clone()
-    }
+    fn last_chr(&self) -> Arc<String> { self.last_chr.clone() }
 
+    /// Compares a segment with the last chromosome processed.
+    #[allow(clippy::mutable_key_type)]
     fn comp_segment(
         &self,
         segment: SegmentOwned,
@@ -190,7 +184,8 @@ impl DmrIterator {
         if let Some(leftover) = self.leftover.take() {
             if chr != self.last_chr() {
                 initial_segments.push(leftover);
-            } else {
+            }
+            else {
                 preseg = leftover.concat(preseg);
             }
         }
@@ -221,7 +216,8 @@ impl DmrIterator {
             self.regions_cache
                 .sort_by_key(|d| d.start);
             Ok(true)
-        } else {
+        }
+        else {
             Ok(false)
         }
     }
@@ -236,7 +232,8 @@ impl Iterator for DmrIterator {
             // Try to pop from region cache first
             if let Some(region) = if !self.regions_cache.is_empty() {
                 Some(self.regions_cache.remove(0))
-            } else {
+            }
+            else {
                 None
             } {
                 return Some((self.current_block(), region));
@@ -258,7 +255,8 @@ impl Iterator for DmrIterator {
                         .expect("Error processing last leftover")
                     {
                         self.next()
-                    } else {
+                    }
+                    else {
                         None
                     };
                 },

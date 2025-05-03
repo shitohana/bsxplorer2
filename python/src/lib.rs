@@ -1,13 +1,12 @@
 #![allow(unsafe_op_in_unsafe_fn, unused)]
 #![warn(unused_imports, unused_braces)]
 
-mod types;
 mod io;
+mod types;
 
 use io::register_io_module;
 use pyo3::prelude::*;
 use types::register_data_structs_module;
-
 
 #[pymodule]
 fn bsx2(m: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -26,5 +26,3 @@ group_imports = "StdExternalCrate"
 struct_field_align_threshold = 20
 use_field_init_shorthand = true
 use_try_shorthand = true
-
-

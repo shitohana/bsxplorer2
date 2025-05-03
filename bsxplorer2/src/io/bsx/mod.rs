@@ -1,7 +1,9 @@
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod ipc;
 mod read;
-mod write;
 mod region;
+mod write;
 
-pub use {read::BsxFileReader as BsxFileReader, write::BsxIpcWriter as BsxIpcWriter, region::RegionReader as RegionReader};
+pub use read::{BatchIndex, BsxFileIterator, BsxFileReader};
+pub use region::RegionReader;
+pub use write::BsxIpcWriter;

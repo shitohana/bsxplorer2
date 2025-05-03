@@ -1,12 +1,8 @@
-use std::{
-    fmt::Display,
-    ops::{Add, Range, Sub},
-};
+use std::fmt::Display;
+use std::ops::{Add, Range, Sub};
 
-use bio_types::{
-    annot::loc::Loc,
-    strand::{NoStrand, ReqStrand},
-};
+use bio::bio_types::annot::loc::Loc;
+use bio::bio_types::strand::{NoStrand, ReqStrand};
 use num::{PrimInt, Unsigned};
 
 use crate::data_structs::enums::Strand;
@@ -15,21 +11,20 @@ use crate::data_structs::enums::Strand;
 pub struct GenomicPosition<R, P>
 where
     R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
-{
-    seqname: R,
+    P: Unsigned + PrimInt, {
+    seqname:  R,
     position: P,
 }
 
-impl<P> From<bio_types::annot::pos::SeqPosUnstranded>
+impl<P> From<bio::bio_types::annot::pos::SeqPosUnstranded>
     for GenomicPosition<String, P>
 where
     P: Unsigned + PrimInt,
 {
     /// Converts from `bio_types::annot::pos::SeqPosUnstranded`.
-    fn from(value: bio_types::annot::pos::SeqPosUnstranded) -> Self {
+    fn from(value: bio::bio_types::annot::pos::SeqPosUnstranded) -> Self {
         Self {
-            seqname: value.refid().to_owned(),
+            seqname:  value.refid().to_owned(),
             position: P::from(value.pos())
                 .expect("Failed to convert position to P"),
         }
@@ -37,14 +32,14 @@ where
 }
 
 impl<R, P> From<GenomicPosition<R, P>>
-    for bio_types::annot::pos::SeqPosUnstranded
+    for bio::bio_types::annot::pos::SeqPosUnstranded
 where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
 {
     /// Converts into `bio_types::annot::pos::SeqPosUnstranded`.
     fn from(value: GenomicPosition<R, P>) -> Self {
-        bio_types::annot::pos::SeqPosUnstranded::new(
+        bio::bio_types::annot::pos::SeqPosUnstranded::new(
             value.seqname.as_ref().to_string(),
             value
                 .position
@@ -64,7 +59,8 @@ where
 
     /// Subtracts two `GenomicPosition`s.
     ///
-    /// Returns `None` if the sequence names are different or if the right-hand side position is greater than the left-hand side position.
+    /// Returns `None` if the sequence names are different or if the right-hand
+    /// side position is greater than the left-hand side position.
     fn sub(
         self,
         rhs: Self,
@@ -116,14 +112,10 @@ where
     }
 
     /// Returns the sequence name.
-    pub fn seqname(&self) -> R {
-        self.seqname.clone()
-    }
+    pub fn seqname(&self) -> R { self.seqname.clone() }
 
     /// Returns the position.
-    pub fn position(&self) -> P {
-        self.position
-    }
+    pub fn position(&self) -> P { self.position }
 }
 
 impl<R, P> Ord for GenomicPosition<R, P>
@@ -161,6 +153,7 @@ where
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl<R, P> PartialOrd for GenomicPosition<R, P>
 where
     R: AsRef<str> + Clone,
@@ -180,7 +173,8 @@ where
                         .to_usize()
                         .expect("Failed to convert position to usize"),
                 )
-        } else {
+        }
+        else {
             None
         }
     }
@@ -206,17 +200,17 @@ where
     }
 }
 
-/// Represents a contig with a sequence name, start position, end position, and strand.
+/// Represents a contig with a sequence name, start position, end position, and
+/// strand.
 #[derive(Debug, Clone)]
 pub struct Contig<R, P>
 where
     R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
-{
+    P: Unsigned + PrimInt, {
     seqname: R,
-    start: P,
-    end: P,
-    strand: Strand,
+    start:   P,
+    end:     P,
+    strand:  Strand,
 }
 
 impl<R, P> Contig<R, P>
@@ -244,14 +238,10 @@ where
     }
 
     /// Returns the start position.
-    pub fn start(&self) -> P {
-        self.start
-    }
+    pub fn start(&self) -> P { self.start }
 
     /// Returns the end position.
-    pub fn end(&self) -> P {
-        self.end
-    }
+    pub fn end(&self) -> P { self.end }
 
     /// Returns the start position of the contig.
     pub fn start_gpos(&self) -> GenomicPosition<R, P> {
@@ -264,19 +254,13 @@ where
     }
 
     /// Returns the strand of the contig.
-    pub fn strand(&self) -> Strand {
-        self.strand
-    }
+    pub fn strand(&self) -> Strand { self.strand }
 
     /// Returns the sequence name of the contig.
-    pub fn seqname(&self) -> R {
-        self.seqname.clone()
-    }
+    pub fn seqname(&self) -> R { self.seqname.clone() }
 
     /// Returns the length of the contig.
-    pub fn length(&self) -> P {
-        self.end - self.start
-    }
+    pub fn length(&self) -> P { self.end - self.start }
 
     /// Extends the contig upstream by a given length.
     pub fn extend_upstream(
@@ -295,18 +279,29 @@ where
     }
 
     /// Sets the start position of the contig.
-    pub fn set_start(&mut self, start: P) {
+    pub fn set_start(
+        &mut self,
+        start: P,
+    ) {
         self.start = start;
     }
 
     /// Sets the end position of the contig.
-    pub fn set_end(&mut self, end: P) {
+    pub fn set_end(
+        &mut self,
+        end: P,
+    ) {
         self.end = end;
     }
 
     /// Checks if this contig is fully contained within another contig.
-    pub fn is_in(&self, other: &Self) -> bool {
-        self.seqname.as_ref() == other.seqname.as_ref() && self.start >= other.start && self.end <= other.end
+    pub fn is_in(
+        &self,
+        other: &Self,
+    ) -> bool {
+        self.seqname.as_ref() == other.seqname.as_ref()
+            && self.start >= other.start
+            && self.end <= other.end
     }
 
     /// Casts the contig to a new type.
@@ -317,9 +312,9 @@ where
     ) -> Contig<R2, P2> {
         Contig {
             seqname: seqname_fn(self.seqname),
-            start: pos_fn(self.start),
-            end: pos_fn(self.end),
-            strand: self.strand,
+            start:   pos_fn(self.start),
+            end:     pos_fn(self.end),
+            strand:  self.strand,
         }
     }
 }
@@ -331,12 +326,16 @@ where
 {
     /// Converts from a range of `GenomicPosition`s.
     fn from(value: Range<GenomicPosition<R, P>>) -> Self {
-        assert_eq!(value.start.seqname.as_ref(), value.end.seqname.as_ref(), "Start and end positions must have the same sequence name");
+        assert_eq!(
+            value.start.seqname.as_ref(),
+            value.end.seqname.as_ref(),
+            "Start and end positions must have the same sequence name"
+        );
         Self {
             seqname: value.start.seqname,
-            start: value.start.position,
-            end: value.end.position,
-            strand: Strand::None,
+            start:   value.start.position,
+            end:     value.end.position,
+            strand:  Strand::None,
         }
     }
 }
@@ -360,13 +359,17 @@ where
     fn from(value: bio::io::bed::Record) -> Self {
         Self {
             seqname: value.chrom().to_owned(),
-            start: P::from(value.start())
+            start:   P::from(value.start())
                 .expect("Failed to convert start to P"),
-            end: P::from(value.end()).expect("Failed to convert end to P"),
-            strand: match value.strand() {
-                Some(bio_types::strand::Strand::Forward) => Strand::Forward,
-                Some(bio_types::strand::Strand::Reverse) => Strand::Reverse,
-                Some(bio_types::strand::Strand::Unknown) => Strand::None,
+            end:     P::from(value.end()).expect("Failed to convert end to P"),
+            strand:  match value.strand() {
+                Some(bio::bio_types::strand::Strand::Forward) => {
+                    Strand::Forward
+                },
+                Some(bio::bio_types::strand::Strand::Reverse) => {
+                    Strand::Reverse
+                },
+                Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,
                 None => Strand::None,
             },
         }
@@ -406,28 +409,32 @@ where
     fn from(value: bio::io::gff::Record) -> Self {
         Self {
             seqname: value.seqname().to_owned(),
-            start: P::from(value.start().to_owned())
+            start:   P::from(value.start().to_owned())
                 .expect("Failed to convert start to P"),
-            end: P::from(value.end().to_owned())
+            end:     P::from(value.end().to_owned())
                 .expect("Failed to convert end to P"),
-            strand: match value.strand() {
-                Some(bio_types::strand::Strand::Forward) => Strand::Forward,
-                Some(bio_types::strand::Strand::Reverse) => Strand::Reverse,
-                Some(bio_types::strand::Strand::Unknown) => Strand::None,
+            strand:  match value.strand() {
+                Some(bio::bio_types::strand::Strand::Forward) => {
+                    Strand::Forward
+                },
+                Some(bio::bio_types::strand::Strand::Reverse) => {
+                    Strand::Reverse
+                },
+                Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,
                 None => Strand::None,
             },
         }
     }
 }
 
-impl<R, P, S> From<bio_types::annot::contig::Contig<R, S>> for Contig<R, P>
+impl<R, P, S> From<bio::bio_types::annot::contig::Contig<R, S>> for Contig<R, P>
 where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
     S: Into<Option<ReqStrand>> + Copy,
 {
     /// Converts from a `bio_types::annot::contig::Contig`.
-    fn from(value: bio_types::annot::contig::Contig<R, S>) -> Self {
+    fn from(value: bio::bio_types::annot::contig::Contig<R, S>) -> Self {
         let s: Option<ReqStrand> = value.strand().into();
         let strand = match s {
             Some(ReqStrand::Forward) => Strand::Forward,
@@ -445,7 +452,7 @@ where
 }
 
 impl<R, P> From<Contig<R, P>>
-    for bio_types::annot::contig::Contig<R, Option<ReqStrand>>
+    for bio::bio_types::annot::contig::Contig<R, Option<ReqStrand>>
 where
     R: AsRef<str> + Clone,
     P: Unsigned + PrimInt,
@@ -457,7 +464,7 @@ where
             Strand::Reverse => Some(ReqStrand::Reverse),
             Strand::None => None,
         };
-        bio_types::annot::contig::Contig::new(
+        bio::bio_types::annot::contig::Contig::new(
             value.seqname.to_owned(),
             value
                 .start
@@ -546,20 +553,21 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bio::io::bed::Record as BedRecord;
-    use bio_types::{
-        annot::pos::SeqPosUnstranded,
-        annot::contig::Contig as BioContig,
-        strand::ReqStrand,
-    };
     use std::cmp::Ordering;
+
+    use bio::bio_types::annot::contig::Contig as BioContig;
+    use bio::bio_types::annot::pos::SeqPosUnstranded;
+    use bio::bio_types::strand::ReqStrand;
+    use bio::io::bed::Record as BedRecord;
+
+    use super::*;
 
     // --- GenomicPosition Tests ---
 
     #[test]
     fn test_genomic_position_from_seq_pos_unstranded_u32() {
-        let bio_pos = SeqPosUnstranded::new("chr1".to_string(), 100, NoStrand::Unknown);
+        let bio_pos =
+            SeqPosUnstranded::new("chr1".to_string(), 100, NoStrand::Unknown);
         let gp: GenomicPosition<String, u32> = bio_pos.into();
         assert_eq!(gp.seqname, "chr1");
         assert_eq!(gp.position, 100);
@@ -567,7 +575,11 @@ mod tests {
 
     #[test]
     fn test_genomic_position_from_seq_pos_unstranded_u64() {
-        let bio_pos = SeqPosUnstranded::new("chrX".to_string(), 1_000_000, NoStrand::Unknown);
+        let bio_pos = SeqPosUnstranded::new(
+            "chrX".to_string(),
+            1_000_000,
+            NoStrand::Unknown,
+        );
         let gp: GenomicPosition<String, u64> = bio_pos.into();
         assert_eq!(gp.seqname, "chrX");
         assert_eq!(gp.position, 1_000_000);
@@ -636,15 +648,18 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot compare genomic positions with different seqnames")]
+    #[should_panic(
+        expected = "Cannot compare genomic positions with different seqnames"
+    )]
     fn test_genomic_position_cmp_different_seqnames_panics() {
         let gp1 = GenomicPosition::new("chr1".to_string(), 100u32);
         let gp2 = GenomicPosition::new("chr2".to_string(), 100u32);
-        // This should panic because partial_cmp returns None, and cmp expects Some
+        // This should panic because partial_cmp returns None, and cmp expects
+        // Some
         let _ = gp1.cmp(&gp2);
     }
 
-     #[test]
+    #[test]
     fn test_genomic_position_eq_and_ne() {
         let gp1a = GenomicPosition::new("chr1".to_string(), 100u32);
         let gp1b = GenomicPosition::new("chr1".to_string(), 100u32);
@@ -664,7 +679,6 @@ mod tests {
         assert!(gp1a.ne(&gp3));
     }
 
-
     #[test]
     fn test_genomic_position_display() {
         let gp = GenomicPosition::new("chr1".to_string(), 12345u32);
@@ -674,7 +688,9 @@ mod tests {
     // --- Contig Tests ---
 
     #[test]
-    #[should_panic(expected = "Start position must be less than or equal to end position")]
+    #[should_panic(
+        expected = "Start position must be less than or equal to end position"
+    )]
     fn test_contig_new_invalid_range_panics() {
         Contig::new("chr1".to_string(), 100u32, 50u32, Strand::None);
     }
@@ -693,13 +709,15 @@ mod tests {
 
     #[test]
     fn test_contig_extend_upstream() {
-        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig =
+            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.extend_upstream(50u32);
         assert_eq!(contig.start(), 50);
         assert_eq!(contig.end(), 200);
 
         // Test saturating behavior
-        let mut contig_saturate = Contig::new("chr1".to_string(), 10u32, 20u32, Strand::None);
+        let mut contig_saturate =
+            Contig::new("chr1".to_string(), 10u32, 20u32, Strand::None);
         contig_saturate.extend_upstream(50u32);
         assert_eq!(contig_saturate.start(), 0); // Start is 0 due to saturating_sub
         assert_eq!(contig_saturate.end(), 20);
@@ -707,7 +725,8 @@ mod tests {
 
     #[test]
     fn test_contig_extend_downstream() {
-        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig =
+            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.extend_downstream(50u32);
         assert_eq!(contig.start(), 100);
         assert_eq!(contig.end(), 250);
@@ -715,7 +734,8 @@ mod tests {
 
     #[test]
     fn test_contig_set_start() {
-        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig =
+            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.set_start(150u32);
         assert_eq!(contig.start(), 150);
         assert_eq!(contig.end(), 200);
@@ -723,12 +743,12 @@ mod tests {
 
     #[test]
     fn test_contig_set_end() {
-        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig =
+            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.set_end(250u32);
         assert_eq!(contig.start(), 100);
         assert_eq!(contig.end(), 250);
     }
-
 
     #[test]
     fn test_contig_from_range_genomic_position() {
@@ -743,7 +763,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Start and end positions must have the same sequence name")]
+    #[should_panic(
+        expected = "Start and end positions must have the same sequence name"
+    )]
     fn test_contig_from_range_genomic_position_different_seqnames_panics() {
         let start = GenomicPosition::new("chr1".to_string(), 100u32);
         let end = GenomicPosition::new("chr2".to_string(), 200u32);
@@ -775,27 +797,39 @@ mod tests {
 
     #[test]
     fn test_contig_into_bed_record() {
-        let contig = Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Reverse);
+        let contig =
+            Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Reverse);
         let bed_record: BedRecord = contig.into();
         assert_eq!(bed_record.chrom(), "chr1");
         assert_eq!(bed_record.start(), 100);
         assert_eq!(bed_record.end(), 200);
 
-        let contig_no_strand = Contig::new("chr2".to_string(), 50u64, 150u64, Strand::None);
+        let contig_no_strand =
+            Contig::new("chr2".to_string(), 50u64, 150u64, Strand::None);
         let bed_record_no_strand: BedRecord = contig_no_strand.into();
         assert_eq!(bed_record_no_strand.strand(), None);
     }
 
     #[test]
     fn test_contig_from_bio_contig() {
-        let bio_contig = BioContig::new("chr1".to_string(), 100, 100 as usize, Some(ReqStrand::Reverse)); // start 100, length 100 -> end 200
+        let bio_contig = BioContig::new(
+            "chr1".to_string(),
+            100,
+            100 as usize,
+            Some(ReqStrand::Reverse),
+        ); // start 100, length 100 -> end 200
         let contig: Contig<String, u64> = bio_contig.into();
         assert_eq!(contig.seqname(), "chr1");
         assert_eq!(contig.start(), 100);
         assert_eq!(contig.end(), 200);
         assert_eq!(contig.strand(), Strand::Reverse);
 
-        let bio_contig_no_strand = BioContig::new("chr2".to_string(), 50, 50 as usize, None::<ReqStrand>); // start 50, length 50 -> end 100
+        let bio_contig_no_strand = BioContig::new(
+            "chr2".to_string(),
+            50,
+            50 as usize,
+            None::<ReqStrand>,
+        ); // start 50, length 50 -> end 100
         let contig_no_strand: Contig<String, u64> = bio_contig_no_strand.into();
         assert_eq!(contig_no_strand.seqname(), "chr2");
         assert_eq!(contig_no_strand.start(), 50);
@@ -803,20 +837,22 @@ mod tests {
         assert_eq!(contig_no_strand.strand(), Strand::None);
     }
 
-     #[test]
+    #[test]
     fn test_contig_into_bio_contig() {
-        let contig = Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Forward); // start 100, end 200 -> length 100
+        let contig =
+            Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Forward); // start 100, end 200 -> length 100
         let bio_contig: BioContig<String, Option<ReqStrand>> = contig.into();
         assert_eq!(bio_contig.refid(), "chr1");
         assert_eq!(bio_contig.start(), 100);
         assert_eq!(bio_contig.length(), 100);
         assert_eq!(bio_contig.strand(), Some(ReqStrand::Forward));
 
-        let contig_no_strand = Contig::new("chr2".to_string(), 50u64, 100u64, Strand::None); // start 50, end 100 -> length 50
-        let bio_contig_no_strand: BioContig<String, Option<ReqStrand>> = contig_no_strand.into();
+        let contig_no_strand =
+            Contig::new("chr2".to_string(), 50u64, 100u64, Strand::None); // start 50, end 100 -> length 50
+        let bio_contig_no_strand: BioContig<String, Option<ReqStrand>> =
+            contig_no_strand.into();
         assert_eq!(bio_contig_no_strand.strand(), None);
     }
-
 
     #[test]
     fn test_contig_partial_cmp() {
@@ -826,7 +862,8 @@ mod tests {
         let c4 = Contig::new("chr1".to_string(), 150u32, 250u32, Strand::None); // c4 intersects c1
         let c5 = Contig::new("chr2".to_string(), 100u32, 200u32, Strand::None); // Different chromosome
 
-        assert_eq!(c1.partial_cmp(&c2), Some(Ordering::Less)); // c1.end <= c2.start is false, c1.start >= c2.end is false, but c1.end <= c2.start
+        assert_eq!(c1.partial_cmp(&c2), Some(Ordering::Less)); // c1.end <= c2.start is false, c1.start >= c2.end is false, but c1.end
+                                                               // <= c2.start
         assert_eq!(c2.partial_cmp(&c1), Some(Ordering::Greater)); // c2.start >= c1.end
 
         assert_eq!(c1.partial_cmp(&c3), Some(Ordering::Greater)); // c1.start >= c3.end
@@ -841,7 +878,8 @@ mod tests {
 
     #[test]
     fn test_contig_display() {
-        let contig = Contig::new("chrX".to_string(), 1000u32, 2000u32, Strand::Forward);
+        let contig =
+            Contig::new("chrX".to_string(), 1000u32, 2000u32, Strand::Forward);
         assert_eq!(format!("{}", contig), "chrX:1000-2000 (+)");
     }
 }

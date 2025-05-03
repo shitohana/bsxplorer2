@@ -4,8 +4,7 @@ use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::exports::polars::frame::DataFrame;
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{
-    ReportReader as RustReportReader, ReportReaderBuilder,
-    ReportWriter as RustReportWriter,
+    ReportReader as RustReportReader, ReportReaderBuilder, ReportWriter as RustReportWriter,
 };
 use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -123,20 +122,12 @@ impl PyReportReader {
 
         let reader = builder.build(path).map_err(|e| {
             // Attempt to classify error
-            if e.to_string()
-                .contains("No such file or directory")
-            {
+            if e.to_string().contains("No such file or directory") {
                 PyFileNotFoundError::new_err(e.to_string())
-            } else if e
-                .to_string()
-                .contains("must be specified")
-            {
+            } else if e.to_string().contains("must be specified") {
                 PyValueError::new_err(e.to_string())
             } else {
-                PyRuntimeError::new_err(format!(
-                    "Failed to build ReportReader: {}",
-                    e
-                ))
+                PyRuntimeError::new_err(format!("Failed to build ReportReader: {}", e))
             }
         })?;
 
@@ -173,7 +164,7 @@ impl PyReportReader {
                 None => {
                     slf.reader = None; // Consume the reader
                     Ok(None) // Signals Python StopIteration
-                },
+                }
             },
             None => Ok(None), // Already consumed or failed previously
         }
@@ -243,9 +234,8 @@ impl PyReportWriter {
         })?;
         let sink = BufWriter::new(file);
 
-        let comp_enum = Compression::from(
-            compression.unwrap_or_else(|| PyCompression(Compression::None)),
-        );
+        let comp_enum =
+            Compression::from(compression.unwrap_or_else(|| PyCompression(Compression::None)));
 
         let writer = RustReportWriter::try_new(
             sink,
@@ -254,12 +244,7 @@ impl PyReportWriter {
             comp_enum,
             compression_level,
         )
-        .map_err(|e| {
-            PyRuntimeError::new_err(format!(
-                "Failed to create ReportWriter: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| PyRuntimeError::new_err(format!("Failed to create ReportWriter: {}", e)))?;
 
         Ok(Self {
             writer: Some(writer),
@@ -277,10 +262,7 @@ impl PyReportWriter {
     /// ------
     /// RuntimeError
     ///     If the writer is already closed or if writing fails.
-    pub fn write_batch(
-        &mut self,
-        batch: PyBsxBatch,
-    ) -> PyResult<()> {
+    pub fn write_batch(&mut self, batch: PyBsxBatch) -> PyResult<()> {
         if let Some(writer) = self.writer.as_mut() {
             writer
                 .write_batch(batch.into()) // Clone might be necessary depending on ownership
@@ -306,18 +288,12 @@ impl PyReportWriter {
     /// ------
     /// RuntimeError
     ///     If the writer is already closed or if writing fails.
-    pub fn write_df(
-        &mut self,
-        df: PyDataFrame,
-    ) -> PyResult<()> {
+    pub fn write_df(&mut self, df: PyDataFrame) -> PyResult<()> {
         if let Some(writer) = self.writer.as_mut() {
             let rust_df: DataFrame = df.into();
-            writer.write_df(&rust_df).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "Failed to write DataFrame: {}",
-                    e
-                ))
-            })
+            writer
+                .write_df(&rust_df)
+                .map_err(|e| PyRuntimeError::new_err(format!("Failed to write DataFrame: {}", e)))
         } else {
             Err(PyRuntimeError::new_err(
                 "Writer is closed or uninitialized.",

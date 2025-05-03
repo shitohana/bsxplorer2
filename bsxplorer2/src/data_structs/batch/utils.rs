@@ -1,7 +1,8 @@
-use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
 use itertools::Itertools;
 use polars::frame::DataFrame;
 use polars::prelude::Column;
+
+use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
 
 pub fn merge_replicates<B: BsxBatchMethods>(
     mut batches: Vec<B>,
@@ -10,11 +11,14 @@ pub fn merge_replicates<B: BsxBatchMethods>(
 ) -> anyhow::Result<B> {
     if batches.is_empty() {
         anyhow::bail!("batches cannot be empty");
-    } else if batches.len() == 1 {
+    }
+    else if batches.len() == 1 {
         return Ok(batches.pop().unwrap());
-    } else {
-        // Assume all batches have the same length and identical chr, pos, strand, context
-        // This should be guaranteed by the caller or previous steps (e.g., alignment)
+    }
+    else {
+        // Assume all batches have the same length and identical chr, pos,
+        // strand, context This should be guaranteed by the caller or
+        // previous steps (e.g., alignment)
         let first_batch_data = batches[0].data();
         let chr_col = first_batch_data.column(colnames::CHR_NAME)?;
         let pos_col = first_batch_data.column(colnames::POS_NAME)?;
@@ -72,7 +76,8 @@ pub fn merge_replicates<B: BsxBatchMethods>(
             density_col,
         ]);
 
-        // Create the batch without checks, assuming input batches were valid and aligned
+        // Create the batch without checks, assuming input batches were valid
+        // and aligned
         let batch = unsafe { B::new_unchecked(df) };
         Ok(batch)
     }
@@ -80,26 +85,34 @@ pub fn merge_replicates<B: BsxBatchMethods>(
 
 #[cfg(test)]
 mod tests {
-use super::*;
-    use crate::data_structs::batch::{
-        decoded::BsxBatch, encoded::EncodedBsxBatch,
-        traits::colnames::*, traits::BsxBatchMethods,
-    }
-;
     use polars::df;
     use polars::prelude::*;
+
+    use super::*;
+    use crate::data_structs::batch::decoded::BsxBatch;
+    use crate::data_structs::batch::encoded::EncodedBsxBatch;
+    use crate::data_structs::batch::traits::colnames::*;
+    use crate::data_structs::batch::traits::BsxBatchMethods;
 
     // --- Helper Functions for Aggregation ---
 
     fn sum_agg(cols: Vec<&Column>) -> Column {
         if cols.is_empty() {
             // Handle empty input, perhaps return an empty column or error
-            // For now, let's assume at least one column based on merge_replicates logic
+            // For now, let's assume at least one column based on
+            // merge_replicates logic
             panic!("sum_agg received empty input");
         }
 
         // Convert columns to Series
-        let series_vec: Vec<Series> = cols.into_iter().map(|c| c.to_owned().as_materialized_series().clone()).collect();
+        let series_vec: Vec<Series> = cols
+            .into_iter()
+            .map(|c| {
+                c.to_owned()
+                    .as_materialized_series()
+                    .clone()
+            })
+            .collect();
 
         // Use fold to sum all series together
         // Start with the first series as the initial accumulator
@@ -119,39 +132,43 @@ use super::*;
     }
 
     fn mean_agg(cols: Vec<&Column>) -> Column {
-            if cols.is_empty() {
-                // Handle empty input
-                // Return an empty Float64 column as a reasonable default
-                return Series::new_empty("mean_agg_empty".into(), &DataType::Float64).into();
-            }
+        if cols.is_empty() {
+            // Handle empty input
+            // Return an empty Float64 column as a reasonable default
+            return Series::new_empty(
+                "mean_agg_empty".into(),
+                &DataType::Float64,
+            )
+            .into();
+        }
 
-            // Convert columns to Series and cast to Float64
-            let series_vec: PolarsResult<Vec<Series>> = cols
-                .into_iter()
-                .map(|c| {
-                    c.to_owned()
-                        .as_materialized_series()
-                        .cast(&DataType::Float64)
-                })
-                .collect();
+        // Convert columns to Series and cast to Float64
+        let series_vec: PolarsResult<Vec<Series>> = cols
+            .into_iter()
+            .map(|c| {
+                c.to_owned()
+                    .as_materialized_series()
+                    .cast(&DataType::Float64)
+            })
+            .collect();
 
-            // Check for casting errors
-            let series_vec = match series_vec {
-                Ok(vec) => vec,
-                Err(e) => {
-                    // Handle casting error, perhaps panic or return an error Column
-                    // For now, panic as it indicates unexpected input type
-                    panic!("Failed to cast column to Float64 in mean_agg: {}", e);
-                },
-            };
+        // Check for casting errors
+        let series_vec = match series_vec {
+            Ok(vec) => vec,
+            Err(e) => {
+                // Handle casting error, perhaps panic or return an error Column
+                // For now, panic as it indicates unexpected input type
+                panic!("Failed to cast column to Float64 in mean_agg: {}", e);
+            },
+        };
 
-            let n = series_vec.len() as f64; // Use f64 for division
+        let n = series_vec.len() as f64; // Use f64 for division
 
-            // Use fold to sum all series together
-            // Start with the first series as the initial accumulator
-            let initial_series = series_vec[0].clone();
+        // Use fold to sum all series together
+        // Start with the first series as the initial accumulator
+        let initial_series = series_vec[0].clone();
 
-            let total_sum = series_vec
+        let total_sum = series_vec
                 .into_iter()
                 .skip(1) // Skip the first one as it's the initial value
                 .fold(initial_series, |acc, s| {
@@ -160,10 +177,10 @@ use super::*;
                     (&acc + &s).expect("Failed to sum Series in mean_agg")
                 });
 
-            // Divide the sum by the number of columns
-            let mean_series = &total_sum / n;
-            mean_series.into() // Convert the final Series back to a Column
-        }
+        // Divide the sum by the number of columns
+        let mean_series = &total_sum / n;
+        mean_series.into() // Convert the final Series back to a Column
+    }
 
     // --- Helper Functions to Create Test Batches ---
 
@@ -271,11 +288,9 @@ use super::*;
 
         // Expected results
         let expected_chr_series =
-            Series::new(CHR_NAME.into(), &["chr1", "chr1"])
-                .cast(&DataType::Categorical(
-                    None,
-                    CategoricalOrdering::Physical,
-                ))?;
+            Series::new(CHR_NAME.into(), &["chr1", "chr1"]).cast(
+                &DataType::Categorical(None, CategoricalOrdering::Physical),
+            )?;
         let expected_df = df!(
             CHR_NAME => expected_chr_series,
             POS_NAME => &[10u32, 20],

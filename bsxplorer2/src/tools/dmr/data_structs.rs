@@ -1,20 +1,23 @@
-use once_cell::sync::OnceCell;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use itertools::Itertools;
+use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize, Serializer};
+
 use crate::tools::dmr::segmentation;
 use crate::utils::mann_whitney_u;
-use itertools::Itertools;
-use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Clone, Debug)]
 pub struct SegmentView<'a> {
-    pub(crate) pvalue: OnceCell<f64>,
+    pub(crate) pvalue:    OnceCell<f64>,
     pub(crate) rel_start: usize,
-    pub(crate) rel_end: usize,
-    parent: Arc<&'a SegmentOwned>,
+    pub(crate) rel_end:   usize,
+    #[allow(clippy::redundant_allocation)]
+    parent:               Arc<&'a SegmentOwned>,
 }
 
+#[allow(clippy::redundant_allocation)]
 impl<'a> SegmentView<'a> {
     pub fn new(
         rel_start: usize,
@@ -42,22 +45,16 @@ impl<'a> SegmentView<'a> {
         &self.parent.group_b[self.rel_start..self.rel_end]
     }
 
-    pub fn start_pos(&self) -> u64 {
-        self.parent.positions[self.rel_start]
-    }
+    pub fn start_pos(&self) -> u64 { self.parent.positions[self.rel_start] }
 
-    pub fn end_pos(&self) -> u64 {
-        self.parent.positions[self.rel_end - 1]
-    }
+    pub fn end_pos(&self) -> u64 { self.parent.positions[self.rel_end - 1] }
 
     #[allow(dead_code)]
     pub fn positions(&self) -> &[u64] {
         &self.parent.positions[self.rel_start..self.rel_end]
     }
 
-    pub fn size(&self) -> usize {
-        self.rel_end - self.rel_start
-    }
+    pub fn size(&self) -> usize { self.rel_end - self.rel_start }
 
     pub fn slice(
         &self,
@@ -68,7 +65,8 @@ impl<'a> SegmentView<'a> {
             self.rel_start + start,
             if self.rel_start + end <= self.rel_end {
                 self.rel_start + end
-            } else {
+            }
+            else {
                 self.rel_end
             },
             self.parent.clone(),
@@ -92,9 +90,9 @@ impl<'a> SegmentView<'a> {
     pub fn to_owned(&self) -> SegmentOwned {
         SegmentOwned {
             positions: self.positions().to_vec(),
-            group_a: self.group_a().to_vec(),
-            group_b: self.group_b().to_vec(),
-            mds_orig: self.mds_orig().to_vec(),
+            group_a:   self.group_a().to_vec(),
+            group_b:   self.group_b().to_vec(),
+            mds_orig:  self.mds_orig().to_vec(),
         }
     }
 
@@ -124,12 +122,14 @@ impl PartialEq for SegmentView<'_> {
     ) -> bool {
         if self.parent == other.parent {
             self.rel_start == other.rel_start && self.rel_end == other.rel_end
-        } else {
+        }
+        else {
             false
         }
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for SegmentView<'_> {
     fn partial_cmp(
         &self,
@@ -138,7 +138,8 @@ impl PartialOrd for SegmentView<'_> {
         if self.parent == other.parent {
             self.rel_start
                 .partial_cmp(&other.rel_start)
-        } else {
+        }
+        else {
             None
         }
     }
@@ -158,9 +159,9 @@ impl Ord for SegmentView<'_> {
 
 #[derive(Debug)]
 pub struct SegmentOwned {
-    group_a: Vec<f32>,
-    group_b: Vec<f32>,
-    mds_orig: Vec<f32>,
+    group_a:   Vec<f32>,
+    group_b:   Vec<f32>,
+    mds_orig:  Vec<f32>,
     positions: Vec<u64>,
 }
 
@@ -194,7 +195,8 @@ impl SegmentOwned {
         split_idxs.reverse();
         if split_idxs.is_empty() {
             vec![self]
-        } else {
+        }
+        else {
             let mut res =
                 split_idxs
                     .into_iter()
@@ -237,13 +239,11 @@ impl SegmentOwned {
         SegmentView::new(0, self.mds_orig.len(), Arc::new(self))
     }
 
-    pub fn size(&self) -> usize {
-        self.positions.len()
-    }
+    pub fn size(&self) -> usize { self.positions.len() }
 }
 
 pub struct ReaderMetadata {
-    pub(crate) blocks_total: usize,
+    pub(crate) blocks_total:  usize,
     pub(crate) current_block: usize,
 }
 
@@ -258,16 +258,16 @@ impl ReaderMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMRegion {
-    pub chr: String,
-    pub start: u32,
-    pub end: u32,
+    pub chr:         String,
+    pub start:       u32,
+    pub end:         u32,
     #[serde(serialize_with = "serialize_scientific")]
-    pub p_value: f64,
-    pub meth_left: f32,
-    pub meth_right: f32,
+    pub p_value:     f64,
+    pub meth_left:   f32,
+    pub meth_right:  f32,
     pub n_cytosines: usize,
-    pub meth_diff: f32,
-    pub meth_mean: f32,
+    pub meth_diff:   f32,
+    pub meth_mean:   f32,
 }
 
 impl DMRegion {
@@ -293,18 +293,12 @@ impl DMRegion {
         }
     }
 
-    pub fn meth_diff(&self) -> f32 {
-        self.meth_left - self.meth_right
-    }
+    pub fn meth_diff(&self) -> f32 { self.meth_left - self.meth_right }
 
     #[allow(dead_code)]
-    fn meth_mean(&self) -> f32 {
-        (self.meth_left + self.meth_right) / 2.0
-    }
+    fn meth_mean(&self) -> f32 { (self.meth_left + self.meth_right) / 2.0 }
 
-    pub fn length(&self) -> u32 {
-        self.end - self.start + 1
-    }
+    pub fn length(&self) -> u32 { self.end - self.start + 1 }
 }
 
 fn serialize_scientific<S>(
@@ -312,7 +306,6 @@ fn serialize_scientific<S>(
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
-    S: Serializer,
-{
+    S: Serializer, {
     serializer.serialize_str(&format!("{:e}", x))
 }

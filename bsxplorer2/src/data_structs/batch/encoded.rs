@@ -1,7 +1,8 @@
-use super::traits::{colnames, BatchType, BsxTypeTag};
-use crate::data_structs::batch::traits::BsxBatchMethods;
 use once_cell::sync::OnceCell;
 use polars::prelude::*;
+
+use super::traits::{colnames, BatchType, BsxTypeTag};
+use crate::data_structs::batch::traits::BsxBatchMethods;
 
 /// Encoded version of [BsxBatch]
 ///
@@ -13,7 +14,7 @@ use polars::prelude::*;
 #[derive(Debug, Clone)]
 pub struct EncodedBsxBatch {
     data: DataFrame,
-    chr: OnceCell<String>,
+    chr:  OnceCell<String>,
 }
 
 impl Eq for EncodedBsxBatch {}
@@ -47,18 +48,16 @@ impl EncodedBsxBatch {
 }
 
 impl From<EncodedBsxBatch> for DataFrame {
-    fn from(batch: EncodedBsxBatch) -> Self {
-        batch.data
-    }
+    fn from(batch: EncodedBsxBatch) -> Self { batch.data }
 }
 
 impl BsxBatchMethods for EncodedBsxBatch {
     type ChrType = UInt32Type;
-    type PosType = UInt32Type;
-    type StrandType = BooleanType;
     type ContextType = BooleanType;
     type CountType = Int16Type;
     type DensityType = Float32Type;
+    type PosType = UInt32Type;
+    type StrandType = BooleanType;
 
     fn chr(&self) -> &ChunkedArray<Self::ChrType> {
         self.data
@@ -68,6 +67,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
             .unwrap()
             .physical()
     }
+
     fn position(&self) -> &ChunkedArray<Self::PosType> {
         self.data
             .column(colnames::POS_NAME)
@@ -75,6 +75,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
             .u32()
             .unwrap()
     }
+
     fn strand(&self) -> &ChunkedArray<Self::StrandType> {
         self.data
             .column(colnames::STRAND_NAME)
@@ -118,22 +119,17 @@ impl BsxBatchMethods for EncodedBsxBatch {
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         EncodedBsxBatch {
             data: data_frame,
-            chr: OnceCell::new(),
+            chr:  OnceCell::new(),
         }
     }
 
-    fn data(&self) -> &DataFrame {
-        &self.data
-    }
+    fn data(&self) -> &DataFrame { &self.data }
 
-    fn data_mut(&mut self) -> &mut DataFrame {
-        &mut self.data
-    }
+    fn data_mut(&mut self) -> &mut DataFrame { &mut self.data }
 
     fn take(self) -> DataFrame
     where
-        Self: Sized,
-    {
+        Self: Sized, {
         self.data
     }
 
@@ -157,20 +153,18 @@ impl BsxBatchMethods for EncodedBsxBatch {
 
 impl BsxTypeTag for EncodedBsxBatch {
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_name() -> &'static str {
-        "encoded"
-    }
+    fn type_name() -> &'static str { "encoded" }
+
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_enum() -> BatchType {
-        BatchType::Encoded
-    }
+    fn type_enum() -> BatchType { BatchType::Encoded }
 }
 
 #[cfg(test)]
 mod tests {
+    use polars::df;
+
     use super::*;
     use crate::data_structs::batch::traits::colnames::*;
-    use polars::df;
 
     // Helper function to create a sample DataFrame suitable for EncodedBsxBatch
     fn create_test_df() -> DataFrame {
@@ -207,7 +201,8 @@ mod tests {
         .unwrap()
     }
 
-    // Helper function to create an EncodedBsxBatch (unchecked for simplicity in tests)
+    // Helper function to create an EncodedBsxBatch (unchecked for simplicity in
+    // tests)
     fn create_test_batch() -> EncodedBsxBatch {
         unsafe { EncodedBsxBatch::new_unchecked(create_test_df()) }
     }
@@ -226,7 +221,8 @@ mod tests {
     #[test]
     fn test_bsx_chr() {
         let batch = create_test_batch();
-        // Assuming "chr1" is the first category, its physical representation is 0
+        // Assuming "chr1" is the first category, its physical representation is
+        // 0
         let expected = Series::new(CHR_NAME.into(), &[0u32, 0, 0]);
         assert_eq!(
             <EncodedBsxBatch as BsxBatchMethods>::chr(&batch)
@@ -289,7 +285,8 @@ mod tests {
         let df = create_test_df();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(df.clone()) };
         assert_eq!(batch.data(), &df);
-        assert!(batch.chr.get().is_none()); // Chr cache should not be initialized
+        assert!(batch.chr.get().is_none()); // Chr cache should not be
+                                            // initialized
     }
 
     #[test]
