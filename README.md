@@ -1,9 +1,9 @@
-[![codecov](https://codecov.io/gh/shitohana/bsxplorer2/graph/badge.svg?token=8FSM5NCOBN)](https://codecov.io/gh/shitohana/bsxplorer2)
 
 # BSXplorer
 
 A high-performance, Rust-based library for bisulfite sequencing data analysis and DNA methylation research.
 
+[![codecov](https://codecov.io/gh/shitohana/bsxplorer2/graph/badge.svg?token=8FSM5NCOBN)](https://codecov.io/gh/shitohana/bsxplorer2)
 ![License](https://img.shields.io/badge/license-Prosperity-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-green)
 
