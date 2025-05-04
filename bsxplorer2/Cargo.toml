@@ -9,6 +9,7 @@ repository = "https://github.com/shitohana/bsxplorer2"
 keywords = ["bioinformatics", "methylation", "bisulfite", "epigenetics", "genomics"]
 categories = ["science", "data-structures", "algorithms", "mathematics"]
 readme = "../README.md"
+exclude = ["tests"]
 
 [features]
 compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip"]
