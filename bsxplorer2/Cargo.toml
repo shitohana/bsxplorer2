@@ -1,6 +1,6 @@
 [package]
 name = "bsxplorer2"
-version = "0.2.0-rc"
+version = "0.2.0-rc.1"
 edition = "2021"
 authors = ["shitohana (kyudytskiy@gmail.com)"]
 license-file = "../LICENSE.md"
