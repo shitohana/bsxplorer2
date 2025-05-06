@@ -12,8 +12,7 @@ use dialoguer::Confirm;
 use indicatif::ProgressBar;
 use serde::Serialize;
 
-use crate::utils::init_pbar;
-use crate::utils::{expand_wildcards, UtilsArgs};
+use crate::utils::{expand_wildcards, init_pbar, UtilsArgs};
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct DmrArgs {
@@ -39,7 +38,7 @@ pub(crate) struct DmrArgs {
         required = true,
         help = "Prefix for the generated output files."
     )]
-    output: PathBuf,
+    output:  PathBuf,
     #[arg(
         short,
         long,
@@ -47,7 +46,7 @@ pub(crate) struct DmrArgs {
         default_value_t = false,
         help = "Automatically confirm selected paths."
     )]
-    force: bool,
+    force:   bool,
 
     #[clap(
         short,
@@ -191,7 +190,10 @@ pub(crate) enum PadjMethod {
 }
 
 impl DmrArgs {
-    pub fn run(&self, utils: &UtilsArgs) -> anyhow::Result<()> {
+    pub fn run(
+        &self,
+        utils: &UtilsArgs,
+    ) -> anyhow::Result<()> {
         let a_paths = expand_wildcards(self.group_a.clone());
         let b_paths = expand_wildcards(self.group_b.clone());
 
@@ -222,10 +224,16 @@ impl DmrArgs {
 
         for path in a_paths.iter().chain(b_paths.iter()) {
             if !path.exists() {
-                eprintln!("Path {} does not exist.", style(path.display()).red());
+                eprintln!(
+                    "Path {} does not exist.",
+                    style(path.display()).red()
+                );
             }
             if !path.is_file() {
-                eprintln!("Path {} is not a file.", style(path.display()).red());
+                eprintln!(
+                    "Path {} is not a file.",
+                    style(path.display()).red()
+                );
             }
         }
 
@@ -250,34 +258,39 @@ impl DmrArgs {
             .collect::<Vec<_>>();
 
         let run_config = bsxplorer2::tools::dmr::config::DmrConfig {
-            context: self.context,
-            n_missing: self.n_missing,
-            min_coverage: self.min_coverage,
+            context:        self.context,
+            n_missing:      self.n_missing,
+            min_coverage:   self.min_coverage,
             diff_threshold: self.diff_threshold,
-            min_cpgs: self.min_cytosines,
-            max_dist: self.max_dist as u64,
-            initial_l: self.initial_l,
-            l_min: self.l_min,
-            l_coef: self.l_coef,
-            seg_tolerance: self.tolerance,
-            merge_pvalue: self.merge_p,
-            seg_pvalue: self.padj,
+            min_cpgs:       self.min_cytosines,
+            max_dist:       self.max_dist as u64,
+            initial_l:      self.initial_l,
+            l_min:          self.l_min,
+            l_coef:         self.l_coef,
+            seg_tolerance:  self.tolerance,
+            merge_pvalue:   self.merge_p,
+            seg_pvalue:     self.padj,
         };
 
-        let files = sample_paths
-            .iter()
-            .map(|path| File::open(path).expect(format!("Could not open file {}", path).as_str()));
-        let labeled = sample_labels.into_iter().zip(files).collect::<Vec<_>>();
+        let files = sample_paths.iter().map(|path| {
+            File::open(path)
+                .expect(format!("Could not open file {}", path).as_str())
+        });
+        let labeled = sample_labels
+            .into_iter()
+            .zip(files)
+            .collect::<Vec<_>>();
 
         let dmr_iterator = run_config
             .try_finish(labeled)
             .expect("Failed to initialize DMR iterator");
 
         let progress_bar = if utils.progress {
-            let progress_bar =
-                init_pbar(dmr_iterator.blocks_total()).expect("Failed to initialize progress bar");
+            let progress_bar = init_pbar(dmr_iterator.blocks_total())
+                .expect("Failed to initialize progress bar");
             progress_bar
-        } else {
+        }
+        else {
             ProgressBar::hidden()
         };
 
@@ -317,7 +330,9 @@ impl DmrArgs {
             }
         }
 
-        csv_writer.flush().expect("Failed to write DMRs to file");
+        csv_writer
+            .flush()
+            .expect("Failed to write DMRs to file");
 
         progress_bar.finish();
 
@@ -333,7 +348,10 @@ impl DmrArgs {
         use bsxplorer2::exports::adjustp;
         let padj = if !matches!(self.pmethod, PadjMethod::None) {
             adjustp::adjust(
-                &all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>(),
+                &all_segments
+                    .iter()
+                    .map(|s| s.p_value)
+                    .collect::<Vec<_>>(),
                 match self.pmethod {
                     PadjMethod::BH => adjustp::Procedure::BenjaminiHochberg,
                     PadjMethod::Bonf => adjustp::Procedure::Bonferroni,
@@ -341,8 +359,12 @@ impl DmrArgs {
                     _ => unreachable!(),
                 },
             )
-        } else {
-            all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>()
+        }
+        else {
+            all_segments
+                .iter()
+                .map(|s| s.p_value)
+                .collect::<Vec<_>>()
         };
 
         let filtered = all_segments
@@ -371,11 +393,15 @@ impl DmrArgs {
             .iter()
             .for_each(|dmr| csv_writer.serialize(dmr).unwrap());
 
-        csv_writer.flush().expect("Failed to write DMRs to file");
+        csv_writer
+            .flush()
+            .expect("Failed to write DMRs to file");
 
         println!(
             "{}",
-            style(format!("Found {} DMRs.", dmr_count)).green().bold()
+            style(format!("Found {} DMRs.", dmr_count))
+                .green()
+                .bold()
         );
 
         Ok(())
@@ -384,20 +410,23 @@ impl DmrArgs {
 
 #[derive(Debug, Serialize)]
 struct DmrFilteredRow {
-    chr: String,
-    start: u32,
-    end: u32,
+    chr:         String,
+    start:       u32,
+    end:         u32,
     n_cytosines: usize,
-    padj: f64,
-    p_utest: f64,
-    group_a: f32,
-    group_b: f32,
-    meth_diff: f32,
-    meth_mean: f32,
+    padj:        f64,
+    p_utest:     f64,
+    group_a:     f32,
+    group_b:     f32,
+    meth_diff:   f32,
+    meth_mean:   f32,
 }
 
 impl DmrFilteredRow {
-    fn from_dmr(dmr: DMRegion, padj: f64) -> Self {
+    fn from_dmr(
+        dmr: DMRegion,
+        padj: f64,
+    ) -> Self {
         Self {
             padj,
             chr: dmr.chr,

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use bsxplorer2::data_structs::batch::BsxBatchBuilder as RsBsxBatchBuilder;
-use bsxplorer2::data_structs::batch::{BsxBatchMethods, EncodedBsxBatch as RsEncodedBsxBatch};
+use bsxplorer2::data_structs::batch::{BsxBatchBuilder as RsBsxBatchBuilder,
+                                      BsxBatchMethods,
+                                      EncodedBsxBatch as RsEncodedBsxBatch};
 use bsxplorer2::exports::polars::datatypes::CategoricalChunked;
 use bsxplorer2::exports::polars::error::PolarsError;
 use bsxplorer2::exports::polars::frame::DataFrame;
@@ -27,9 +28,7 @@ impl From<RsEncodedBsxBatch> for PyEncodedBsxBatch {
 }
 
 impl From<PyEncodedBsxBatch> for RsEncodedBsxBatch {
-    fn from(batch: PyEncodedBsxBatch) -> Self {
-        batch.inner
-    }
+    fn from(batch: PyEncodedBsxBatch) -> Self { batch.inner }
 }
 
 #[pymethods]
@@ -62,8 +61,8 @@ impl PyEncodedBsxBatch {
     /// rechunk : bool, optional
     ///     If True (default), rechunk the DataFrame for optimal performance.
     /// check_single_chr : bool, optional
-    ///     If True (default), ensure the batch contains data for only one chromosome.
-    /// context_data : ContextData, optional
+    ///     If True (default), ensure the batch contains data for only one
+    /// chromosome. context_data : ContextData, optional
     ///     Context data associated with the batch.
     /// report_schema : ReportTypeSchema, optional
     ///     Schema defining the report type.
@@ -90,8 +89,10 @@ impl PyEncodedBsxBatch {
         let df: DataFrame = data.into();
         let builder = {
             if let Some(report_schema) = report_schema {
-                RsBsxBatchBuilder::default().with_report_type(report_schema.to_rust())
-            } else {
+                RsBsxBatchBuilder::default()
+                    .with_report_type(report_schema.to_rust())
+            }
+            else {
                 RsBsxBatchBuilder::default()
             }
         }
@@ -104,14 +105,18 @@ impl PyEncodedBsxBatch {
 
         let inner = builder
             .build::<RsEncodedBsxBatch>(df)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+            .map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(e.to_string())
+            })?;
         Ok(PyEncodedBsxBatch { inner })
     }
 
     #[classmethod]
-    /// Create a new EncodedBsxBatch from a DataFrame without performing any checks.
+    /// Create a new EncodedBsxBatch from a DataFrame without performing any
+    /// checks.
     ///
-    /// Warning: Use with caution, assumes the input DataFrame is valid and correctly formatted.
+    /// Warning: Use with caution, assumes the input DataFrame is valid and
+    /// correctly formatted.
     ///
     /// Parameters
     /// ----------
@@ -124,7 +129,10 @@ impl PyEncodedBsxBatch {
     /// -------
     /// EncodedBsxBatch
     ///     A new instance of EncodedBsxBatch.
-    pub fn from_dataframe_unchecked(_cls: &Bound<'_, PyType>, data: PyDataFrame) -> PyResult<Self> {
+    pub fn from_dataframe_unchecked(
+        _cls: &Bound<'_, PyType>,
+        data: PyDataFrame,
+    ) -> PyResult<Self> {
         let df: DataFrame = data.into();
         let inner = unsafe { RsEncodedBsxBatch::new_unchecked(df) };
         Ok(PyEncodedBsxBatch { inner })
@@ -182,10 +190,18 @@ impl PyEncodedBsxBatch {
             .inner
             .data()
             .column(bsxplorer2::data_structs::batch::colnames::CHR_NAME)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?
+            .map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(e.to_string())
+            })?
             .categorical()
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        Ok(PySeries(categorical_chunked.clone().into_series()))
+            .map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(e.to_string())
+            })?;
+        Ok(PySeries(
+            categorical_chunked
+                .clone()
+                .into_series(),
+        ))
     }
 
     /// Access the position column as a Polars Series.
@@ -196,7 +212,12 @@ impl PyEncodedBsxBatch {
     ///     The position data (UInt32).
     #[getter]
     pub fn position(&self) -> PyResult<PySeries> {
-        Ok(PySeries(self.inner.position().clone().into_series()))
+        Ok(PySeries(
+            self.inner
+                .position()
+                .clone()
+                .into_series(),
+        ))
     }
 
     /// Access the strand column as a Polars Series.
@@ -207,7 +228,12 @@ impl PyEncodedBsxBatch {
     ///     The strand data (Categorical).
     #[getter]
     pub fn strand(&self) -> PyResult<PySeries> {
-        Ok(PySeries(self.inner.strand().clone().into_series()))
+        Ok(PySeries(
+            self.inner
+                .strand()
+                .clone()
+                .into_series(),
+        ))
     }
 
     /// Access the context column as a Polars Series.
@@ -218,7 +244,12 @@ impl PyEncodedBsxBatch {
     ///     The context data (Categorical).
     #[getter]
     pub fn context(&self) -> PyResult<PySeries> {
-        Ok(PySeries(self.inner.context().clone().into_series()))
+        Ok(PySeries(
+            self.inner
+                .context()
+                .clone()
+                .into_series(),
+        ))
     }
 
     /// Access the methylated counts column as a Polars Series.
@@ -229,7 +260,12 @@ impl PyEncodedBsxBatch {
     ///     The methylated count data (UInt32).
     #[getter]
     pub fn count_m(&self) -> PyResult<PySeries> {
-        Ok(PySeries(self.inner.count_m().clone().into_series()))
+        Ok(PySeries(
+            self.inner
+                .count_m()
+                .clone()
+                .into_series(),
+        ))
     }
 
     /// Access the total counts column as a Polars Series.
@@ -240,7 +276,12 @@ impl PyEncodedBsxBatch {
     ///     The total count data (UInt32).
     #[getter]
     pub fn count_total(&self) -> PyResult<PySeries> {
-        Ok(PySeries(self.inner.count_total().clone().into_series()))
+        Ok(PySeries(
+            self.inner
+                .count_total()
+                .clone()
+                .into_series(),
+        ))
     }
 
     /// Access the density column as a Polars Series.
@@ -251,7 +292,12 @@ impl PyEncodedBsxBatch {
     ///     The density data (Float32).
     #[getter]
     pub fn density(&self) -> PyResult<PySeries> {
-        Ok(PySeries(self.inner.density().clone().into_series()))
+        Ok(PySeries(
+            self.inner
+                .density()
+                .clone()
+                .into_series(),
+        ))
     }
 
     /// Check if the batch is empty.
@@ -260,9 +306,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// bool
     ///     True if the batch contains no rows, False otherwise.
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
+    pub fn is_empty(&self) -> bool { self.inner.is_empty() }
 
     /// Split the batch into two at the given index.
     ///
@@ -274,14 +318,16 @@ impl PyEncodedBsxBatch {
     /// Returns
     /// -------
     /// tuple[EncodedBsxBatch, EncodedBsxBatch]
-    ///     A tuple containing two new batches, the first with rows up to `index`,
-    ///     the second with rows from `index` onwards.
-    pub fn split_at(&self, index: usize) -> PyResult<(Self, Self)> {
+    ///     A tuple containing two new batches, the first with rows up to
+    /// `index`,     the second with rows from `index` onwards.
+    pub fn split_at(
+        &self,
+        index: usize,
+    ) -> PyResult<(Self, Self)> {
         let (batch1, batch2) = self.inner.clone().split_at(index);
-        Ok((
-            PyEncodedBsxBatch { inner: batch1 },
-            PyEncodedBsxBatch { inner: batch2 },
-        ))
+        Ok((PyEncodedBsxBatch { inner: batch1 }, PyEncodedBsxBatch {
+            inner: batch2,
+        }))
     }
 
     /// Get a reference to the underlying Polars DataFrame.
@@ -320,10 +366,7 @@ impl PyEncodedBsxBatch {
     /// ValueError
     ///     If the batch is empty or contains multiple chromosomes.
     pub fn chr_val(&self) -> PyResult<String> {
-        self.inner
-            .chr_val()
-            .map(|s| s.to_string())
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+        Ok(self.inner.chr_val().to_string())
     }
 
     /// Get the starting genomic position in the batch.
@@ -332,9 +375,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// int or None
     ///     The minimum position value, or None if the batch is empty.
-    pub fn start_pos(&self) -> Option<u32> {
-        self.inner.start_pos()
-    }
+    pub fn start_pos(&self) -> u32 { self.inner.start_pos() }
 
     /// Get the ending genomic position in the batch.
     ///
@@ -342,9 +383,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// int or None
     ///     The maximum position value, or None if the batch is empty.
-    pub fn end_pos(&self) -> Option<u32> {
-        self.inner.end_pos()
-    }
+    pub fn end_pos(&self) -> u32 { self.inner.end_pos() }
 
     /// Vertically stack this batch with another batch.
     ///
@@ -364,12 +403,18 @@ impl PyEncodedBsxBatch {
     /// Raises
     /// ------
     /// ValueError
-    ///     If the stacking operation results in invalid data (e.g., unsorted, duplicates).
-    pub fn vstack(&self, other: &PyEncodedBsxBatch) -> PyResult<Self> {
+    ///     If the stacking operation results in invalid data (e.g., unsorted,
+    /// duplicates).
+    pub fn vstack(
+        &self,
+        other: &PyEncodedBsxBatch,
+    ) -> PyResult<Self> {
         let new_inner = self
             .inner
             .vstack(&other.inner)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+            .map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(e.to_string())
+            })?;
         Ok(PyEncodedBsxBatch { inner: new_inner })
     }
 
@@ -385,8 +430,12 @@ impl PyEncodedBsxBatch {
     /// Raises
     /// ------
     /// ValueError
-    ///     If the extend operation results in invalid data (e.g., unsorted, duplicates).
-    pub fn extend(&mut self, other: &PyEncodedBsxBatch) -> PyResult<()> {
+    ///     If the extend operation results in invalid data (e.g., unsorted,
+    /// duplicates).
+    pub fn extend(
+        &mut self,
+        other: &PyEncodedBsxBatch,
+    ) -> PyResult<()> {
         self.inner
             .extend(&other.inner)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
@@ -411,17 +460,25 @@ impl PyEncodedBsxBatch {
     /// TypeError
     ///     If the mask is not a boolean Series.
     /// ValueError
-    ///     If the mask length does not match the batch height or other Polars errors occur.
-    pub fn filter_mask(&self, mask: PySeries) -> PyResult<Self> {
+    ///     If the mask length does not match the batch height or other Polars
+    /// errors occur.
+    pub fn filter_mask(
+        &self,
+        mask: PySeries,
+    ) -> PyResult<Self> {
         let mask_series: Series = mask.into();
-        let bool_mask: &BooleanChunked = mask_series
-            .bool()
-            .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Mask must be a boolean Series"))?;
+        let bool_mask: &BooleanChunked = mask_series.bool().map_err(|_| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "Mask must be a boolean Series",
+            )
+        })?;
 
         let new_inner = self
             .inner
             .filter_mask(bool_mask)
-            .map_err(|e: PolarsError| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+            .map_err(|e: PolarsError| {
+                pyo3::exceptions::PyValueError::new_err(e.to_string())
+            })?;
         Ok(PyEncodedBsxBatch { inner: new_inner })
     }
 
@@ -431,9 +488,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// int
     ///     The height (number of rows) of the batch.
-    pub fn height(&self) -> usize {
-        self.inner.height()
-    }
+    pub fn height(&self) -> usize { self.inner.height() }
 
     /// Get the number of rows in the batch (implements Python's `len()`).
     ///
@@ -441,9 +496,7 @@ impl PyEncodedBsxBatch {
     /// -------
     /// int
     ///     The height (number of rows) of the batch.
-    pub fn __len__(&self) -> usize {
-        self.inner.height()
-    }
+    pub fn __len__(&self) -> usize { self.inner.height() }
 
     /// Get a string representation of the batch.
     ///
@@ -455,7 +508,7 @@ impl PyEncodedBsxBatch {
         format!(
             "EncodedBsxBatch(shape={}, chr='{}')",
             self.inner.data().shape().1,
-            self.inner.chr_val().unwrap_or("N/A")
+            self.inner.chr_val()
         )
     }
 
@@ -471,19 +524,26 @@ impl PyEncodedBsxBatch {
     /// Returns
     /// -------
     /// bool
-    ///     True if the batches are equal/unequal based on `op`, False otherwise.
+    ///     True if the batches are equal/unequal based on `op`, False
+    /// otherwise.
     ///
     /// Raises
     /// ------
     /// NotImplementedError
     ///     If the comparison operation is not `==` or `!=`.
-    pub fn __richcmp__(&self, other: &Self, op: pyo3::basic::CompareOp) -> PyResult<bool> {
+    pub fn __richcmp__(
+        &self,
+        other: &Self,
+        op: pyo3::basic::CompareOp,
+    ) -> PyResult<bool> {
         match op {
             pyo3::basic::CompareOp::Eq => Ok(self.inner == other.inner),
             pyo3::basic::CompareOp::Ne => Ok(self.inner != other.inner),
-            _ => Err(pyo3::exceptions::PyNotImplementedError::new_err(
-                "Only == and != are supported for EncodedBsxBatch",
-            )),
+            _ => {
+                Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                    "Only == and != are supported for EncodedBsxBatch",
+                ))
+            },
         }
     }
 }

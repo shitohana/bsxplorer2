@@ -1,0 +1,68 @@
+[workspace]
+members = ["bsxplorer2", "console", "python"]
+resolver = "2"
+default-members = ["bsxplorer2"]
+
+[workspace.package]
+authors = ["shitohana (kyudytskiy@gmail.com)"]
+description = "A high-performance library for bisulfite sequencing data analysis and DNA methylation research"
+license-file = "LICENSE.md"
+repository = "https://github.com/shitohana/bsxplorer2"
+keywords = ["bioinformatics", "methylation", "bisulfite", "epigenetics", "genomics"]
+categories = ["science", "data-structures", "algorithms", "mathematics"]
+version = "0.2.0-rc.1"
+edition = "2021"
+readme = "README.md"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[workspace.dependencies]
+adjustp = "0.1.6"
+anyhow = "1.0.91"
+bio = "2.0.3"
+itertools = "0.14.0"
+log = "0.4.22"
+pretty_env_logger = "0.5.0"
+rayon = "1.10"
+serde = "1.0.217"
+serde_json = "1"
+statrs = "0.18.0"
+tempfile = "3.15.0"
+
+[workspace.dependencies.polars]
+version = "=0.45.0"
+default-features = false
+features = [
+    # Data types
+    "dtype-i16",
+    "dtype-u16",
+    "dtype-categorical",
+    "dtype-struct",
+    # Lazy
+    "lazy",
+    # IO
+    "csv",
+    "ipc",
+    # DataFrame operations
+    "partition_by",
+    "polars-ops",
+    # Expressions
+    "strings",
+    "is_in",
+    "round_series",
+    "concat_str",
+    "rank",
+    "fmt"
+]
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
+
+[workspace.metadata.release]
+allow-branch = ["main"]
+shared-version = true

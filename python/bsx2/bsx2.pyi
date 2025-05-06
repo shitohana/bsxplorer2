@@ -1,2 +1,2 @@
-from .stubs import types
-from .stubs import io
+from .typings import types
+from .typings import io

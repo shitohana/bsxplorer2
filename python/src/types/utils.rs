@@ -1,4 +1,5 @@
-use bsxplorer2::data_structs::enums::{Context as RsContext, Strand as RsStrand};
+use bsxplorer2::data_structs::enums::{Context as RsContext,
+                                      Strand as RsStrand};
 use pyo3::prelude::*;
 
 /// Represents DNA strand information.
@@ -12,7 +13,7 @@ use pyo3::prelude::*;
 /// None
 ///     Represents unknown or N/A strand (.).
 #[pyclass(eq, eq_int)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Strand {
     /// Forward strand (+).
     Forward,

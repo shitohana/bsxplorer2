@@ -71,7 +71,7 @@ impl DmrConfig {
         }
 
         let (sender, receiver) = crossbeam::channel::bounded(10);
-        // TODO: fix, that the block_count doesn't really calculate anything, as
+        // FIXME the block_count doesn't really calculate anything, as
         // it is passed to a thread
         let block_count = 0;
         let join_handle = std::thread::spawn(move || {

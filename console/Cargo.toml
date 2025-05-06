@@ -1,26 +1,38 @@
 [package]
 name = "bsxplorer-ci"
-version = "0.2.0-rc"
-edition = "2021"
-authors = ["shitohana (kyudytskiy@gmail.com)"]
 license = "MIT"
-description = "A high-performance tool for bisulfite sequencing data analysis and DNA methylation research"
-repository = "https://github.com/shitohana/bsxplorer2"
-keywords = ["bioinformatics", "methylation", "bisulfite", "epigenetics", "genomics"]
-categories = ["science", "data-structures", "algorithms", "mathematics"]
 readme = "README.md"
+description = "A high-performance tool for bisulfite sequencing data analysis and DNA methylation research"
+authors.workspace = true
+repository.workspace = true
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-bsxplorer2 = { path = "../bsxplorer2", features = ["compression", "console"], default-features = false }
-
 clap = { version = "4.1", features = ["derive"] }
 console = "0.15"
 csv = { version = "1.3.1" }
 dialoguer = "0.11.0"
 glob = "0.3"
 indicatif = "0.17.11"
-serde = "1.0.218"
 wild = "2.0"
+
+adjustp.workspace = true
+anyhow.workspace = true
+bio.workspace = true
+itertools.workspace = true
+log.workspace = true
+pretty_env_logger.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+statrs.workspace = true
+polars.workspace = true
+
+[dependencies.bsxplorer2]
+version = "0.2.0-rc.1"
+default-features = false
+features = ["console", "performant", "compression"]
 
 [[bin]]
 name = "bsxplorer"

@@ -88,11 +88,12 @@ impl ContextData {
         seq: &[u8],
         start: u32,
     ) {
-        let uppercase = seq.to_ascii_uppercase();
-
-        for (shift, trinuc) in uppercase.windows(3).enumerate() {
+        for (shift, trinuc) in seq.windows(3).enumerate() {
             match trinuc {
-                &[b'C', b'G', _] => {
+                [c1, c2, _]
+                    if (c1.eq_ignore_ascii_case(&b'C')
+                        && c2.eq_ignore_ascii_case(&b'G')) =>
+                {
                     self.entries.insert(Entry(
                         start + shift as u32,
                         Strand::Forward,
@@ -104,22 +105,32 @@ impl ContextData {
                         Context::CG,
                     ));
                 },
-                trinuc @ &[b'C', _, b'G'] if trinuc[1] != b'C' => {
+                [c1, c2, c3]
+                    if (c1.eq_ignore_ascii_case(&b'C')
+                        && c3.eq_ignore_ascii_case(&b'G')
+                        && !c2.eq_ignore_ascii_case(&b'C')) =>
+                {
                     self.entries.insert(Entry(
                         start + shift as u32 + 2,
                         Strand::Reverse,
                         Context::CHG,
                     ));
                 },
-                trinuc @ &[b'C', _, b'G'] if trinuc[1] != b'G' => {
+                [c1, c2, c3]
+                    if (c1.eq_ignore_ascii_case(&b'C')
+                        && c3.eq_ignore_ascii_case(&b'G')
+                        && !c2.eq_ignore_ascii_case(&b'G')) =>
+                {
                     self.entries.insert(Entry(
                         start + shift as u32,
                         Strand::Forward,
                         Context::CHG,
                     ));
                 },
-                trinuc @ &[b'C', _, _]
-                    if trinuc[1] != b'G' && trinuc[2] != b'G' =>
+                [c1, c2, c3]
+                    if (c1.eq_ignore_ascii_case(&b'C')
+                        && !c2.eq_ignore_ascii_case(&b'G')
+                        && !c3.eq_ignore_ascii_case(&b'G')) =>
                 {
                     self.entries.insert(Entry(
                         start + shift as u32,
@@ -127,8 +138,10 @@ impl ContextData {
                         Context::CHH,
                     ));
                 },
-                trinuc @ &[_, _, b'G']
-                    if trinuc[0] != b'C' && trinuc[1] != b'C' =>
+                [c1, c2, c3]
+                    if (c3.eq_ignore_ascii_case(&b'G')
+                        && !c1.eq_ignore_ascii_case(&b'C')
+                        && !c2.eq_ignore_ascii_case(&b'C')) =>
                 {
                     self.entries.insert(Entry(
                         start + shift as u32 + 2,
@@ -139,16 +152,23 @@ impl ContextData {
                 _ => continue,
             }
         }
-        if let Some(&[b'C', b'G']) =
-            uppercase.get(uppercase.len().saturating_sub(2)..)
+        if seq.len() >= 2
+            && seq
+                .get(seq.len().saturating_sub(2))
+                .map(|v| v.eq_ignore_ascii_case(&b'C'))
+                .unwrap_or(false)
+            && seq
+                .get(seq.len().saturating_sub(1))
+                .map(|v| v.eq_ignore_ascii_case(&b'G'))
+                .unwrap_or(false)
         {
             self.entries.insert(Entry(
-                start + uppercase.len() as u32 - 2,
+                start + seq.len() as u32 - 2,
                 Strand::Forward,
                 Context::CG,
             ));
             self.entries.insert(Entry(
-                start + uppercase.len() as u32 - 1,
+                start + seq.len() as u32 - 1,
                 Strand::Reverse,
                 Context::CG,
             ));

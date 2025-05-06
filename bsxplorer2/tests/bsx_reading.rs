@@ -129,7 +129,8 @@ fn sorted_reading(
 
     let sorted = test_regionreader
         .index()
-        .sort(test_contigs);
+        .sort(test_contigs)
+        .collect::<Vec<_>>();
 
     let expected_order = [
         Contig::new("NC_003070.9".to_string(), 50_000, 51_000, Strand::None),
@@ -182,7 +183,8 @@ fn different_chr_reading(
 
     let sorted = test_regionreader
         .index()
-        .sort(test_contigs);
+        .sort(test_contigs)
+        .collect::<Vec<_>>();
 
     let expected_order = [
         Contig::new("NC_003070.9".to_string(), 101_000, 150_000, Strand::None),

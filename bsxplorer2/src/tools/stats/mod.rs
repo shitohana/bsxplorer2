@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use anyhow::{Context as AnyhowContext, Result};
+use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize, Serializer};
@@ -580,8 +581,7 @@ impl Default for MethylationStats {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
+    use hashbrown::HashMap;
     use num::pow::Pow;
 
     use super::*;

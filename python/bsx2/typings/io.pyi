@@ -1,8 +1,172 @@
 from typing import Optional, Union, List
 from pathlib import Path
 
-from bsx2.types import ReportTypeSchema, BsxBatch
+from .types import ReportTypeSchema, BsxBatch, Contig
 import polars as pl
+
+class BatchIndex:
+    """
+    Index for batches in a BSX file.
+
+    Stores the genomic coordinates for each batch, allowing quick lookup
+    of batch indices that overlap with a given genomic region.
+    """
+    def __init__(self) -> None:
+        """
+        Create a new empty BatchIndex.
+        """
+        ...
+
+    def insert(
+        self,
+        contig: Contig,
+        batch_idx: int,
+    ) -> None:
+        """
+        Insert a contig and its corresponding batch index into the index.
+
+        Parameters
+        ----------
+        contig : Contig
+            The genomic region covered by the batch.
+        batch_idx : int
+            The index of the batch in the BSX file.
+        """
+        ...
+
+    def sort(
+        self,
+        contigs: List[Contig],
+    ) -> List[Contig]:
+        """
+        Sort a list of contigs according to the chromosome order and start position defined in the index.
+
+        Parameters
+        ----------
+        contigs : list[Contig]
+            A list of Contig objects to sort.
+
+        Returns
+        -------
+        list[Contig]
+            A new list containing the input contigs sorted according to the index's order.
+        """
+        ...
+
+    def find(
+        self,
+        contig: Contig,
+    ) -> Optional[List[int]]:
+        """
+        Find the batch indices that overlap with a given contig.
+
+        Parameters
+        ----------
+        contig : Contig
+            The genomic region to query.
+
+        Returns
+        -------
+        list[int] or None
+            A list of batch indices that overlap the query region, or None if
+            the chromosome is not found in the index.
+        """
+        ...
+
+    def chr_order(self) -> List[str]:
+        """
+        Returns the chromosome order as a list of strings.
+
+        Returns
+        -------
+        list[str]
+            A list of chromosome names in the order they appear in the index.
+        """
+        ...
+
+
+class RegionReader:
+    """
+    Reads BSX files efficiently by caching relevant batches for a genomic region.
+
+    This reader is designed for quickly retrieving data within specific
+    genomic coordinates, suitable for interactive exploration or querying.
+    It maintains an internal cache of decoded batches that overlap the
+    most recently queried regions.
+    """
+    def __init__(self, path: Union[str, Path]) -> None:
+        """
+        Creates a new RegionReader instance.
+
+        Initializes the reader and builds an index for the BSX file.
+        The index is built upon creation, which might take time for large files.
+
+        Parameters
+        ----------
+        path : str or Path
+            Path to the BSX file.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the input BSX file cannot be found.
+        RuntimeError
+            If there's an error reading the file or building the index.
+        """
+        ...
+
+    def query(self, seqname: str, start: int, end: int) -> Optional[pl.DataFrame]:
+        """
+        Queries the BSX file for data within a specific genomic region.
+
+        This method uses the internal index and cache to efficiently retrieve
+        data for the specified chromosome and coordinate range. It will read
+        and cache batches as needed to fulfill the query.
+
+        Parameters
+        ----------
+        seqname : str
+            The name of the chromosome.
+        start : int
+            The start position of the region (inclusive, 0-based).
+        end : int
+            The end position of the region (exclusive, 0-based).
+
+        Returns
+        -------
+        DataFrame or None
+            A Polars DataFrame containing the data within the specified region,
+            or None if no data is found for the chromosome or within the range.
+
+        Raises
+        ------
+        ValueError
+            If the contig seqname is not found in the index.
+        RuntimeError
+            If an internal error occurs during batch retrieval, caching, or assembly.
+        """
+        ...
+
+    def reset(self) -> None:
+        """
+        Resets the internal cache.
+
+        Clears all cached batches, forcing subsequent queries to re-read data
+        from the file. Use this if memory usage becomes high or if you need
+        to ensure data freshness across different query patterns.
+        """
+        ...
+
+    def chr_order(self) -> List[str]:
+        """
+        Returns the chromosome order defined in the BSX file's index.
+
+        Returns
+        -------
+        list[str]
+            A list of chromosome names in the order they appear in the BSX file's index.
+        """
+        ...
 
 class Compression:
     """Compression algorithms."""

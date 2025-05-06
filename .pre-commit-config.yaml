@@ -11,15 +11,7 @@ repos:
 - repo: https://github.com/est31/cargo-udeps
   rev: v0.1.47
   hooks:
-  - id: udeps
-    name: bsxplorer2_udeps
-    args: ["--manifest-path", "bsxplorer2/Cargo.toml"]
-  - id: udeps
-    name: console_udeps
-    args: ["--manifest-path", "console/Cargo.toml"]
-  - id: udeps
-    name: python_udeps
-    args: ["--manifest-path", "python/Cargo.toml"]
+    - id: udeps
 
 - repo: https://github.com/crate-ci/typos
   rev: v1.32.0

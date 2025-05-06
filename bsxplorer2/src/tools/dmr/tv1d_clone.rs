@@ -334,10 +334,10 @@ where
             if umin < num::zero() {
                 // Negative jump is necessary as `segment_lower_bound`
                 // is too high.
-                output.extend(
-                    iter::repeat(segment_lower_bound)
-                        .take(kminus - segment_start + 1),
-                );
+                output.extend(iter::repeat_n(
+                    segment_lower_bound,
+                    kminus - segment_start + 1,
+                ));
                 segment_start = kminus + 1;
                 utils::sync_values(segment_start, &mut [
                     &mut current_input_index,
@@ -349,10 +349,10 @@ where
             }
             else if umax > num::zero() {
                 // If `segment_upper_bound` is too low, jump up.
-                output.extend(
-                    iter::repeat(segment_upper_bound)
-                        .take(kplus - segment_start + 1),
-                );
+                output.extend(iter::repeat_n(
+                    segment_upper_bound,
+                    kplus - segment_start + 1,
+                ));
                 segment_start = kplus + 1;
                 utils::sync_values(segment_start, &mut [
                     &mut current_input_index,
@@ -373,10 +373,10 @@ where
                         current_input_index - segment_start + 1,
                     )
                     .expect("Unable to convert usize to num::FromPrimitive.");
-                output.extend(
-                    iter::repeat(segment_lower_bound)
-                        .take(current_input_index - segment_start + 1),
-                );
+                output.extend(iter::repeat_n(
+                    segment_lower_bound,
+                    current_input_index - segment_start + 1,
+                ));
                 assert_eq!(
                     input.len(),
                     output.len(),
@@ -394,10 +394,10 @@ where
                 // negative jump. Next value becomes the
                 // `segment_lower_bound`, and `segment_upper_bound` is
                 // adjusted accordingly.
-                output.extend(
-                    iter::repeat(segment_lower_bound)
-                        .take(kminus - segment_start + 1),
-                );
+                output.extend(iter::repeat_n(
+                    segment_lower_bound,
+                    kminus - segment_start + 1,
+                ));
                 segment_start = kminus + 1;
                 utils::sync_values(segment_start, &mut [
                     &mut current_input_index,
@@ -415,10 +415,10 @@ where
                 // negative jump. Next value becomes the
                 // `segment_upper_bound`, and `segment_lower_bound` is
                 // adjusted accordingly.
-                output.extend(
-                    iter::repeat(segment_upper_bound)
-                        .take(kplus - segment_start + 1),
-                );
+                output.extend(iter::repeat_n(
+                    segment_upper_bound,
+                    kplus - segment_start + 1,
+                ));
                 segment_start = kplus + 1;
                 utils::sync_values(segment_start, &mut [
                     &mut current_input_index,

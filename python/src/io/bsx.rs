@@ -1,14 +1,86 @@
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchMethods, EncodedBsxBatch};
+use bsxplorer2::data_structs::batch::{BsxBatch,
+                                      BsxBatchMethods,
+                                      EncodedBsxBatch};
+use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::exports::polars::prelude::IpcCompression;
-use bsxplorer2::io::bsx::{BsxFileReader as RsBsxFileReader, BsxIpcWriter as RsBsxIpcWriter};
+use bsxplorer2::io::bsx::{BatchIndex,
+                          BsxFileReader as RsBsxFileReader,
+                          BsxIpcWriter as RsBsxIpcWriter};
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3_file::PyFileLikeObject;
 use pyo3_polars::error::PyPolarsErr;
 use pyo3_polars::PyDataFrame;
+
+use crate::types::coords::PyContig;
+
+
+#[pyclass]
+pub struct PyBatchIndex {
+    inner: BatchIndex<String, u32>,
+}
+
+#[pymethods]
+impl PyBatchIndex {
+    /// Create a new empty BatchIndex.
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: BatchIndex::new(),
+        }
+    }
+
+    pub fn insert(
+        &mut self,
+        contig: PyContig, // Using &PyAny to allow extraction
+        batch_idx: usize,
+    ) -> PyResult<()> {
+        self.inner
+            .insert((&contig).into(), batch_idx);
+        Ok(())
+    }
+
+    pub fn sort(
+        &self,
+        contigs: Vec<PyContig>,
+    ) -> Vec<PyContig> {
+        // Assumes PyContig has a public `inner` field of type Contig<String,
+        // u32>
+        let contigs_inner: Vec<Contig<String, u32>> = contigs
+            .iter()
+            .map(Contig::from)
+            .collect();
+        let sorted_inner = self
+            .inner
+            .sort(contigs_inner.into_iter());
+        // Assumes PyContig can be constructed from Contig, e.g., via a public
+        // `inner` field
+        sorted_inner
+            .into_iter()
+            .map(PyContig::from)
+            .collect()
+    }
+
+    pub fn find(
+        &self,
+        contig: PyContig,
+    ) -> Option<Vec<usize>> {
+        // Assumes PyContig has a public `inner` field of type Contig<String,
+        // u32>
+        self.inner.find(&Contig::from(&contig))
+    }
+
+    pub fn chr_order(&self) -> Vec<String> {
+        self.inner
+            .chr_order()
+            .iter()
+            .cloned()
+            .collect()
+    }
+}
 
 /// Reader for BSX files.
 ///
@@ -21,11 +93,21 @@ pub struct PyBsxFileReader {
     reader: RsBsxFileReader<BufReader<PyFileLikeObject>>,
 }
 
+impl PyBsxFileReader {
+    pub(crate) fn into_inner(
+        self
+    ) -> RsBsxFileReader<BufReader<PyFileLikeObject>> {
+        self.reader
+    }
+}
+
 #[pymethods]
 impl PyBsxFileReader {
     #[new]
     pub fn new(file: PyObject) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(file, true, true, false, false)?;
+        let file_like = PyFileLikeObject::with_requirements(
+            file, true, true, false, false,
+        )?;
         let reader = RsBsxFileReader::new(BufReader::new(file_like));
         Ok(Self { reader })
     }
@@ -40,8 +122,12 @@ impl PyBsxFileReader {
     /// Returns
     /// -------
     /// PyDataFrame or None
-    ///     The requested batch as a Polars DataFrame, or None if the index is out of bounds.
-    pub fn get_batch(&mut self, batch_idx: usize) -> PyResult<Option<PyDataFrame>> {
+    ///     The requested batch as a Polars DataFrame, or None if the index is
+    /// out of bounds.
+    pub fn get_batch(
+        &mut self,
+        batch_idx: usize,
+    ) -> PyResult<Option<PyDataFrame>> {
         match self.reader.get_batch(batch_idx) {
             Some(Ok(batch)) => Ok(Some(PyDataFrame(batch.take()))),
             Some(Err(e)) => Err(PyPolarsErr::Polars(e).into()),
@@ -55,15 +141,13 @@ impl PyBsxFileReader {
     /// -------
     /// int
     ///     The total number of batches.
-    pub fn blocks_total(&self) -> usize {
-        self.reader.blocks_total()
-    }
+    pub fn blocks_total(&self) -> usize { self.reader.blocks_total() }
 
-    pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
+    pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> { slf }
 
-    pub fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyResult<PyDataFrame>> {
+    pub fn __next__(
+        mut slf: PyRefMut<'_, Self>
+    ) -> Option<PyResult<PyDataFrame>> {
         slf.reader.next().map(|res| {
             res.map(|batch| PyDataFrame(batch.take()))
                 .map_err(|e| PyPolarsErr::Polars(e).into())
@@ -108,8 +192,8 @@ impl From<IpcCompression> for PyIpcCompression {
 /// chr_names : list[str]
 ///     List of chromosome names.
 /// compression : str, optional
-///     Compression algorithm to use ('uncompressed', 'lz4', 'zstd'). Defaults to None (uncompressed).
-/// custom_metadata : bytes, optional
+///     Compression algorithm to use ('uncompressed', 'lz4', 'zstd'). Defaults
+/// to None (uncompressed). custom_metadata : bytes, optional
 ///     Custom metadata to embed in the IPC file.
 #[pyclass(name = "BsxIpcWriter")]
 pub struct PyBsxFileWriter {
@@ -125,7 +209,9 @@ impl PyBsxFileWriter {
         chr_names: Vec<String>,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(sink, false, false, true, false)?;
+        let file_like = PyFileLikeObject::with_requirements(
+            sink, false, false, true, false,
+        )?;
 
         let writer = RsBsxIpcWriter::try_new(
             BufWriter::new(file_like),
@@ -149,8 +235,8 @@ impl PyBsxFileWriter {
     /// fai_path : str
     ///     Path to the FASTA index file.
     /// compression : str, optional
-    ///     Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to None.
-    /// custom_metadata : bytes, optional
+    ///     Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to
+    /// None. custom_metadata : bytes, optional
     ///     Custom metadata.
     ///
     /// Returns
@@ -164,7 +250,9 @@ impl PyBsxFileWriter {
         fai_path: PathBuf,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(sink, false, false, true, false)?;
+        let file_like = PyFileLikeObject::with_requirements(
+            sink, false, false, true, false,
+        )?;
 
         let writer = RsBsxIpcWriter::try_from_sink_and_fai(
             BufWriter::new(file_like),
@@ -179,7 +267,8 @@ impl PyBsxFileWriter {
         })
     }
 
-    /// Create a writer using a FASTA file to get chromosome names (will index if needed).
+    /// Create a writer using a FASTA file to get chromosome names (will index
+    /// if needed).
     ///
     /// Parameters
     /// ----------
@@ -188,8 +277,8 @@ impl PyBsxFileWriter {
     /// fasta_path : str
     ///     Path to the FASTA file.
     /// compression : str, optional
-    ///     Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to None.
-    /// custom_metadata : bytes, optional
+    ///     Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to
+    /// None. custom_metadata : bytes, optional
     ///     Custom metadata.
     ///
     /// Returns
@@ -203,7 +292,9 @@ impl PyBsxFileWriter {
         fasta_path: PathBuf,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(sink, false, false, true, false)?;
+        let file_like = PyFileLikeObject::with_requirements(
+            sink, false, false, true, false,
+        )?;
 
         let writer = RsBsxIpcWriter::try_from_sink_and_fasta(
             BufWriter::new(file_like),
@@ -224,7 +315,10 @@ impl PyBsxFileWriter {
     /// ----------
     /// batch : PyDataFrame
     ///     The encoded BSX batch (Polars DataFrame) to write.
-    pub fn write_encoded_batch(&mut self, batch: PyDataFrame) -> PyResult<()> {
+    pub fn write_encoded_batch(
+        &mut self,
+        batch: PyDataFrame,
+    ) -> PyResult<()> {
         let encoded_batch = unsafe { EncodedBsxBatch::new_unchecked(batch.0) };
         self.writer
             .as_mut()
@@ -239,7 +333,10 @@ impl PyBsxFileWriter {
     /// ----------
     /// batch : PyDataFrame
     ///     The BSX batch (Polars DataFrame) to encode and write.
-    pub fn write_batch(&mut self, batch: PyDataFrame) -> PyResult<()> {
+    pub fn write_batch(
+        &mut self,
+        batch: PyDataFrame,
+    ) -> PyResult<()> {
         let bsx_batch = unsafe { BsxBatch::new_unchecked(batch.0) };
         self.writer
             .as_mut()
@@ -251,14 +348,14 @@ impl PyBsxFileWriter {
     /// Finalize the IPC file and close the writer.
     pub fn close(&mut self) -> PyResult<()> {
         if let Some(mut writer) = self.writer.take() {
-            writer.close().map_err(|e| PyPolarsErr::Polars(e))?;
+            writer
+                .close()
+                .map_err(|e| PyPolarsErr::Polars(e))?;
         }
         Ok(())
     }
 
-    pub fn __enter__(slf: Py<Self>) -> Py<Self> {
-        slf
-    }
+    pub fn __enter__(slf: Py<Self>) -> Py<Self> { slf }
 
     pub fn __exit__(
         &mut self,

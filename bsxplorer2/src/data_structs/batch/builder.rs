@@ -200,7 +200,7 @@ impl BsxBatchBuilder {
         batch: BsxBatch,
         chr_dtype: DataType,
     ) -> anyhow::Result<EncodedBsxBatch> {
-        let chr = batch.chr_val()?.to_string();
+        let chr = batch.chr_val().to_owned();
         let batch_data = DataFrame::from(batch);
         let batch_lazy = batch_data.lazy();
 
@@ -226,7 +226,7 @@ impl BsxBatchBuilder {
         let contigs = batches
             .iter()
             .filter(|b| !b.is_empty())
-            .map(|b| b.as_contig())
+            .map(|b| b.as_contig::<String, u32>())
             .collect::<anyhow::Result<Option<Vec<_>>>>()?
             .unwrap();
         if !contigs
@@ -238,8 +238,7 @@ impl BsxBatchBuilder {
         }
         if !contigs
             .windows(2)
-            .map(|w| w[1].start() >= w[0].end())
-            .all(|a| a)
+            .all(|w| w[1].start() >= w[0].end())
         {
             bail!("Batch positions are not sorted")
         }
@@ -989,7 +988,7 @@ mod tests {
         let encoded_df = DataFrame::from(encoded_batch.clone());
 
         // 3. Check encoded batch properties
-        assert_eq!(encoded_batch.chr_val()?, "chrTest");
+        assert_eq!(encoded_batch.chr_val(), "chrTest");
         assert_eq!(encoded_df.column(CHR_NAME)?.dtype(), &chr_dtype);
         assert_eq!(
             encoded_df.column(STRAND_NAME)?.dtype(),

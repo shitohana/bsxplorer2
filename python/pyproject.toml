@@ -10,3 +10,10 @@ dependencies = [
     "polars",
     "pyarrow"
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["bsx2"]
+exclude = ["src"]
+stubPath = "./typings"

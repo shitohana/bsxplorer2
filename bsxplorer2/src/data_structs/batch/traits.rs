@@ -1,12 +1,16 @@
-use anyhow::anyhow;
+use std::str::FromStr;
+
+use num::{PrimInt, Unsigned};
 use polars::datatypes::BooleanChunked;
 use polars::error::PolarsResult;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
 use super::builder::BsxBatchBuilder;
+use crate::data_structs::batch::LazyBsxBatch;
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::enums::Strand;
+use crate::data_structs::typedef::BsxSmallStr;
 
 pub mod colnames {
     pub const CHR_NAME: &str = "chr";
@@ -37,8 +41,6 @@ pub mod colnames {
     }
 }
 use colnames::*;
-
-use crate::data_structs::batch::LazyBsxBatch;
 
 /// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
 pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
@@ -203,10 +205,10 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         LazyBsxBatch::from(self)
     }
     /// Get chromosome value as string
-    fn chr_val(&self) -> anyhow::Result<&str>;
+    fn chr_val(&self) -> &BsxSmallStr;
 
     /// Get start position
-    fn start_pos(&self) -> Option<u32> {
+    fn start_pos(&self) -> u32 {
         self.data()
             .column(POS_NAME)
             .unwrap()
@@ -216,10 +218,10 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
                     .try_extract()
                     .unwrap()
             })
-            .ok()
+            .unwrap_or_default()
     }
     /// Get end position
-    fn end_pos(&self) -> Option<u32> {
+    fn end_pos(&self) -> u32 {
         self.data()
             .column(POS_NAME)
             .unwrap()
@@ -229,27 +231,29 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
                     .try_extract()
                     .unwrap()
             })
-            .ok()
+            .unwrap_or_default()
     }
 
     /// Returns the genomic position at the start of the batch
-    fn start_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
-        let pos = self
-            .start_pos()
-            .ok_or(anyhow!("no data"))?;
-        let chr = self.chr_val()?;
-        let gpos = GenomicPosition::new(chr, pos);
-        Ok(gpos)
+    fn start_gpos<S, P>(&self) -> GenomicPosition<S, P>
+    where
+        S: AsRef<str> + Clone + FromStr,
+        P: PrimInt + Unsigned,
+        <S as FromStr>::Err: std::fmt::Debug, {
+        let pos = P::from(self.start_pos()).unwrap();
+        let chr = S::from_str(self.chr_val()).unwrap();
+        GenomicPosition::new(chr, pos)
     }
 
     /// Returns the genomic position at the end of the batch
-    fn end_gpos(&self) -> anyhow::Result<GenomicPosition<&str, u32>> {
-        let pos = self
-            .end_pos()
-            .ok_or(anyhow!("no data"))?;
-        let chr = self.chr_val()?;
-        let gpos = GenomicPosition::new(chr, pos);
-        Ok(gpos)
+    fn end_gpos<S, P>(&self) -> GenomicPosition<S, P>
+    where
+        S: AsRef<str> + Clone + FromStr,
+        P: PrimInt + Unsigned,
+        <S as FromStr>::Err: std::fmt::Debug, {
+        let pos = P::from(self.end_pos()).unwrap();
+        let chr = S::from_str(self.chr_val()).unwrap();
+        GenomicPosition::new(chr, pos)
     }
 
     /// Vertically stack with another batch
@@ -288,18 +292,22 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     fn height(&self) -> usize { self.data().height() }
 
     /// Convert batch to genomic contig
-    fn as_contig(&self) -> anyhow::Result<Option<Contig<String, u32>>> {
+    fn as_contig<S, P>(&self) -> anyhow::Result<Option<Contig<S, P>>>
+    where
+        S: AsRef<str> + Clone + FromStr,
+        P: PrimInt + Unsigned,
+        <S as FromStr>::Err: std::fmt::Debug, {
         if self.is_empty() {
             Ok(None)
         }
         else {
-            let start = self.start_pos().unwrap();
-            let end = self.end_pos().unwrap();
-            let chr = self.chr_val()?;
+            let start = P::from(self.start_pos()).unwrap();
+            let end = P::from(self.end_pos()).unwrap();
+            let chr = S::from_str(self.chr_val()).unwrap();
             Ok(Some(Contig::new(
-                chr.to_owned(),
+                chr,
                 start,
-                end + 1,
+                end + P::from(1).unwrap(),
                 Strand::None,
             )))
         }

@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use hashbrown::HashMap;
 use itertools::{izip, Itertools};
 use polars::prelude::*;
 
@@ -274,14 +274,18 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
                 .sum()
                 .unwrap_or(0) as f64;
 
+        const VARIANCE_NAME: &str = "variance";
         let variance_methylation = checkpoint
-            .clone()
-            .select([col(DENSITY_NAME).cast(DataType::Float64)])
+            .select([col(DENSITY_NAME)
+                .cast(DataType::Float64)
+                .var(1)
+                .alias(VARIANCE_NAME)])
             .collect()?
-            .column(DENSITY_NAME)?
+            .column(VARIANCE_NAME)?
             .f64()?
-            .var(1)
+            .get(0)
             .unwrap_or(0.0);
+
 
         let context_iter = match T::type_enum() {
             BatchType::Decoded => {
@@ -291,7 +295,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
                     .into_iter()
                     .map(|context| {
                         context
-                            .map(|context_val| Context::from_str(context_val))
+                            .map(Context::from_str)
                             .unwrap_or(Context::CHH)
                     })
                     .collect::<Vec<_>>()
@@ -301,7 +305,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
                     .column(CONTEXT_NAME)?
                     .bool()?
                     .into_iter()
-                    .map(|context| Context::from_bool(context))
+                    .map(Context::from_bool)
                     .collect::<Vec<_>>()
             },
         };
@@ -346,7 +350,9 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         .aggregate(|acc, _key, val| {
             let (sum, count) = acc.unwrap_or((0.0, 0));
             Some((sum + val.1, count + val.2))
-        });
+        })
+        .into_iter()
+        .collect();
 
         let strand_methylation = izip!(
             strand_iter.into_iter(),
@@ -365,7 +371,9 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         .aggregate(|acc, _key, val| {
             let (sum, count) = acc.unwrap_or((0.0, 0));
             Some((sum + val.1, count + val.2))
-        });
+        })
+        .into_iter()
+        .collect();
 
         Ok(MethylationStats::from_data(
             mean_methylation,
@@ -625,7 +633,7 @@ mod tests {
             assert_eq!(
                 value,
                 expected_coverage_hashmap
-                    .get(&key)
+                    .get(key)
                     .unwrap()
             );
         }
@@ -633,14 +641,14 @@ mod tests {
             assert_approx_eq!(
                 value.0,
                 expected_strand_methylation
-                    .get(&key)
+                    .get(key)
                     .unwrap()
                     .0
             );
             assert_eq!(
                 value.1,
                 expected_strand_methylation
-                    .get(&key)
+                    .get(key)
                     .unwrap()
                     .1
             );
@@ -649,14 +657,14 @@ mod tests {
             assert_approx_eq!(
                 value.0,
                 expected_context_methylation
-                    .get(&key)
+                    .get(key)
                     .unwrap()
                     .0
             );
             assert_eq!(
                 value.1,
                 expected_context_methylation
-                    .get(&key)
+                    .get(key)
                     .unwrap()
                     .1
             );

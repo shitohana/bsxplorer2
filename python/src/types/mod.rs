@@ -1,12 +1,15 @@
 use pyo3::prelude::*;
 
 pub mod context_data;
+pub mod coords;
 pub mod decoded;
 pub mod encoded;
 pub mod report_schema;
 pub mod utils;
 
-pub fn register_data_structs_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
+pub fn register_data_structs_module(
+    parent_module: &Bound<'_, PyModule>
+) -> PyResult<()> {
     let module = PyModule::new_bound(parent_module.py(), "types")?;
     module.add_class::<utils::Strand>()?;
     module.add_class::<utils::Context>()?;

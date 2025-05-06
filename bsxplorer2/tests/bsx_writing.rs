@@ -29,7 +29,7 @@ fn read_write(
     let orig_batches = report_builder
         .write_bsx(Cursor::new(&mut sink_buffer), num_chrs, batch_size)?
         .into_iter()
-        .map(|batch| (batch.chr_val().unwrap().to_owned(), batch))
+        .map(|batch| (batch.chr_val().to_owned(), batch))
         .collect::<BTreeMap<_, _>>();
 
     // Reading
@@ -39,7 +39,7 @@ fn read_write(
         .flatten()
         .map(|batch| BsxBatchBuilder::decode_batch(batch))
         .flatten()
-        .into_group_map_by(|batch| batch.chr_val().unwrap().to_string());
+        .into_group_map_by(|batch| batch.chr_val().to_string());
     let read_batches: BTreeMap<_, _> = read_batches
         .into_iter()
         .map(|(k, v)| (k, BsxBatchBuilder::concat(v).unwrap()))

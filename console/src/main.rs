@@ -28,7 +28,7 @@ enum MainMenu {
         #[clap(flatten)]
         utils: UtilsArgs,
         #[clap(flatten)]
-        args: dmr::DmrArgs,
+        args:  dmr::DmrArgs,
     },
 }
 
@@ -39,21 +39,21 @@ enum ConvertMenu {
         #[clap(flatten)]
         utils: UtilsArgs,
         #[clap(flatten)]
-        args: ToBsxConvert,
+        args:  ToBsxConvert,
     },
     #[command(name = "from-bsx")]
     FromBsx {
         #[clap(flatten)]
         utils: UtilsArgs,
         #[clap(flatten)]
-        args: FromBsxConvert,
+        args:  FromBsxConvert,
     },
     #[command(name = "r2r")]
     R2R {
         #[clap(flatten)]
         utils: UtilsArgs,
         #[clap(flatten)]
-        args: R2RConvert,
+        args:  R2RConvert,
     },
 }
 
@@ -65,19 +65,19 @@ fn main() -> anyhow::Result<()> {
         MainMenu::Convert(ConvertMenu::FromBsx { utils, args }) => {
             utils.setup()?;
             args.run(&utils)?;
-        }
+        },
         MainMenu::Convert(ConvertMenu::ToBsx { utils, args }) => {
             utils.setup()?;
             args.run(&utils)?;
-        }
+        },
         MainMenu::Convert(ConvertMenu::R2R { utils, args }) => {
             utils.setup()?;
             args.run(&utils)?;
-        }
+        },
         MainMenu::Dmr { utils, args } => {
             utils.setup()?;
             args.run(&utils)?;
-        }
+        },
     }
     Ok(())
 }

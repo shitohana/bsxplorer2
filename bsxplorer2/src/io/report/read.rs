@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::marker::PhantomData;
@@ -8,6 +8,7 @@ use std::thread::JoinHandle;
 use anyhow::bail;
 use bio::io::fasta::{Reader as FastaReader, Record as FastaRecord};
 use crossbeam::channel::Receiver;
+use hashbrown::HashMap;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 
@@ -17,6 +18,7 @@ use crate::data_structs::batch::{BatchType,
                                  BsxTypeTag,
                                  LazyBsxBatch};
 use crate::data_structs::context_data::ContextData;
+use crate::data_structs::typedef::BsxSmallStr;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::read_chrom;
@@ -336,11 +338,11 @@ pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
     data_receiver: Receiver<DataFrame>,
     report_type:   ReportTypeSchema,
     cached_batch:  BTreeMap<usize, B>,
-    seen_chr:      HashMap<String, usize>,
+    seen_chr:      HashMap<BsxSmallStr, usize>,
     chunk_size:    usize,
 
     fasta_reader: Option<Box<dyn Iterator<Item = FastaRecord>>>,
-    cached_chr:   Option<(String, ContextData)>,
+    cached_chr:   Option<(BsxSmallStr, ContextData)>,
     chr_dtype:    Option<DataType>,
 }
 
@@ -387,7 +389,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         if let Some((chr, mut cached_data)) = Option::take(&mut self.cached_chr)
         {
             // If cached different chromosome raise
-            if batch.chr_val()? != chr {
+            if batch.chr_val() != chr.as_str() {
                 bail!("Chromosome mismatch")
             // Else align
             }
@@ -398,13 +400,12 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
                 // If not final, take till end of batch
                 }
                 else {
-                    let drained =
-                        cached_data.drain_until(batch.end_pos().unwrap());
+                    let drained = cached_data.drain_until(batch.end_pos());
                     (drained, Some((chr, cached_data)))
                 };
                 // Update cache (leftover if not final else None)
                 self.cached_chr = new_cache;
-                let chr_val = batch.chr_val()?.to_string();
+                let chr_val = batch.chr_val().to_string();
                 // Align batch
                 let aligned = LazyBsxBatch::from(batch)
                     .align_with_contexts(context_data, &chr_val)
@@ -425,7 +426,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
                 let mut new_context_data = ContextData::empty();
                 new_context_data.read_sequence(new_sequence.seq(), 1);
                 self.cached_chr =
-                    Some((new_sequence.id().to_string(), new_context_data));
+                    Some((new_sequence.id().into(), new_context_data));
                 // Try aligning again
                 Ok(self
                     .align_batch(batch, is_final)
@@ -471,7 +472,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
             }
 
             // Add chromosome to seen and retrieve chr index
-            let batch_chr = bsx_batch.chr_val()?.to_owned();
+            let batch_chr = bsx_batch.chr_val().to_owned();
             let seen_chr_len = self.seen_chr.len();
             let chr_idx = self
                 .seen_chr

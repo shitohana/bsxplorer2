@@ -69,7 +69,7 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         let mut chr_batches = BTreeMap::new();
 
         for (_record, mut full_batch) in self.into_iter().take(n_chr) {
-            let chr = full_batch.chr_val()?.to_owned();
+            let chr = full_batch.chr_val().to_owned();
             orig_batches.push(full_batch.clone());
             let mut partitioned = Vec::new();
 
@@ -91,8 +91,15 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
             .keys()
             .cloned()
             .collect::<Vec<_>>();
-        let mut writer =
-            BsxIpcWriter::try_new(sink, chr_list.clone(), None, None)?;
+        let mut writer = BsxIpcWriter::try_new(
+            sink,
+            chr_list
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            None,
+            None,
+        )?;
 
         for chr in chr_list {
             let batches = chr_batches.remove(&chr).unwrap();
@@ -246,7 +253,7 @@ pub fn compare_batches(
     read: &BsxBatch,
     report_type: &ReportTypeSchema,
 ) -> anyhow::Result<()> {
-    if original.chr_val()? != read.chr_val()? {
+    if original.chr_val() != read.chr_val() {
         bail!(
             "Chromosomes differ for original: {}\nread: {}",
             original.data(),

@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use once_cell::sync::OnceCell;
 use polars::prelude::*;
 
@@ -7,6 +6,7 @@ use crate::data_structs::batch::traits::{colnames,
                                          BatchType,
                                          BsxBatchMethods,
                                          BsxTypeTag};
+use crate::data_structs::typedef::BsxSmallStr;
 
 /// A batch of BSX data stored in a DataFrame with the following guarantees:
 /// 1. Non-null chr and position columns
@@ -15,7 +15,7 @@ use crate::data_structs::batch::traits::{colnames,
 #[derive(Clone, Debug)]
 pub struct BsxBatch {
     data: DataFrame,
-    chr:  OnceCell<String>,
+    chr:  OnceCell<BsxSmallStr>,
 }
 
 impl Eq for BsxBatch {}
@@ -109,19 +109,16 @@ impl BsxBatchMethods for BsxBatch {
         self.data
     }
 
-    fn chr_val(&self) -> anyhow::Result<&str> {
-        self.chr
-            .get_or_try_init(|| {
-                if self.data.is_empty() {
-                    return Err(anyhow!("no data"));
-                }
-                let first = self
-                    .chr()
-                    .first()
-                    .ok_or_else(|| anyhow!("no data"))?;
-                Ok(first.to_string())
-            })
-            .map(String::as_str)
+    fn chr_val(&self) -> &BsxSmallStr {
+        self.chr.get_or_init(|| {
+            if self.data.is_empty() {
+                return Default::default();
+            }
+            self.chr()
+                .first()
+                .unwrap_or_default()
+                .into()
+        })
     }
 }
 
@@ -252,9 +249,9 @@ mod tests {
     fn test_chr_val_ok() {
         let batch = create_test_batch();
         // First call
-        assert_eq!(batch.chr_val().unwrap(), "chr1");
+        assert_eq!(batch.chr_val(), "chr1");
         // Second call (should use cached value)
-        assert_eq!(batch.chr_val().unwrap(), "chr1");
+        assert_eq!(batch.chr_val(), "chr1");
     }
 
     #[test]
@@ -269,13 +266,7 @@ mod tests {
             colnames::DENSITY_NAME => Series::new_empty(colnames::DENSITY_NAME.into(), &DataType::Float64),
         ).unwrap();
         let batch = unsafe { BsxBatch::new_unchecked(empty_df) };
-        assert!(batch.chr_val().is_err());
-        // Check error kind if possible/needed, e.g., contains("no data")
-        assert!(batch
-            .chr_val()
-            .unwrap_err()
-            .to_string()
-            .contains("no data"));
+        assert!(batch.chr_val().is_empty());
     }
 
     #[test]
@@ -283,7 +274,7 @@ mod tests {
         let df = create_test_df();
         let batch = BsxBatch::try_from(df);
         assert!(batch.is_ok());
-        assert_eq!(batch.unwrap().chr_val().unwrap(), "chr1");
+        assert_eq!(batch.unwrap().chr_val(), "chr1");
     }
 
     #[test]

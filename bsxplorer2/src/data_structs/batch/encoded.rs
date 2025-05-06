@@ -3,6 +3,7 @@ use polars::prelude::*;
 
 use super::traits::{colnames, BatchType, BsxTypeTag};
 use crate::data_structs::batch::traits::BsxBatchMethods;
+use crate::data_structs::typedef::BsxSmallStr;
 
 /// Encoded version of [BsxBatch]
 ///
@@ -14,7 +15,7 @@ use crate::data_structs::batch::traits::BsxBatchMethods;
 #[derive(Debug, Clone)]
 pub struct EncodedBsxBatch {
     data: DataFrame,
-    chr:  OnceCell<String>,
+    chr:  OnceCell<BsxSmallStr>,
 }
 
 impl Eq for EncodedBsxBatch {}
@@ -40,7 +41,7 @@ impl EncodedBsxBatch {
     /// Creates a new EncodedBsxBatch with pre-initialized fields
     pub(crate) fn new_with_fields(
         data: DataFrame,
-        chr: String,
+        chr: BsxSmallStr,
     ) -> EncodedBsxBatch {
         let chr = OnceCell::with_value(chr);
         Self { data, chr }
@@ -133,21 +134,17 @@ impl BsxBatchMethods for EncodedBsxBatch {
         self.data
     }
 
-    fn chr_val(&self) -> anyhow::Result<&str> {
-        let val = self
-            .chr
-            .get_or_try_init(|| {
-                if self.data.is_empty() {
-                    return Err(anyhow::anyhow!("no data"));
-                }
-                let rev_map = self.chr().get_rev_map();
-                let first_value = self.chr().physical().first();
-                first_value
-                    .map(|v| rev_map.get(v).to_string())
-                    .ok_or(anyhow::anyhow!("No data!"))
-            })?
-            .as_str();
-        Ok(val)
+    fn chr_val(&self) -> &BsxSmallStr {
+        self.chr.get_or_init(|| {
+            if self.data.is_empty() {
+                return Default::default();
+            }
+            let rev_map = self.chr().get_rev_map();
+            let first_value = self.chr().physical().first();
+            first_value
+                .map(|v| rev_map.get(v).into())
+                .unwrap_or_default()
+        })
     }
 }
 
@@ -293,8 +290,10 @@ mod tests {
     fn test_new_with_fields() {
         let df = create_test_df();
         let chr_str = "chr1".to_string();
-        let batch =
-            EncodedBsxBatch::new_with_fields(df.clone(), chr_str.clone());
+        let batch = EncodedBsxBatch::new_with_fields(
+            df.clone(),
+            chr_str.clone().into(),
+        );
         assert_eq!(batch.data(), &df);
         assert!(batch.chr.get().is_some());
         assert_eq!(batch.chr.get().unwrap(), &chr_str);
@@ -333,21 +332,20 @@ mod tests {
         let batch = create_test_batch(); // Created with new_unchecked, so cache is empty
         assert!(batch.chr.get().is_none());
         // First call - calculates from rev_map
-        assert_eq!(batch.chr_val().unwrap(), "chr1");
+        assert_eq!(batch.chr_val(), "chr1");
         // Second call - should now use cached value
         assert!(batch.chr.get().is_some());
-        assert_eq!(batch.chr_val().unwrap(), "chr1");
+        assert_eq!(batch.chr_val(), "chr1");
     }
 
     #[test]
     fn test_chr_val_ok_cached() {
         let df = create_test_df();
         let chr_str = "chr1".to_string();
-        let batch = EncodedBsxBatch::new_with_fields(df, chr_str.clone());
+        let batch =
+            EncodedBsxBatch::new_with_fields(df, chr_str.clone().into());
         assert!(batch.chr.get().is_some());
-        assert_eq!(batch.chr_val().unwrap(), "chr1");
-        // Ensure it's still the same cached value
-        assert_eq!(batch.chr.get().unwrap(), &chr_str);
+        assert_eq!(batch.chr_val(), "chr1");
     }
 
     #[test]
@@ -363,12 +361,7 @@ mod tests {
         )
         .unwrap();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(empty_df) };
-        assert!(batch.chr_val().is_err());
-        assert!(batch
-            .chr_val()
-            .unwrap_err()
-            .to_string()
-            .contains("no data"));
+        assert!(batch.chr_val().is_empty());
     }
 
     #[test]

@@ -131,7 +131,7 @@ fn test_report_reading_with_alignment(
     let mut current_batch = None;
 
     for batch in read_batches {
-        let batch_chr = batch.chr_val()?.to_string();
+        let batch_chr = batch.chr_val().to_string();
 
         if batch_chr != current_chr {
             // New chromosome encountered

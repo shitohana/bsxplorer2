@@ -59,10 +59,7 @@ pub(crate) fn segment_reading<I, B>(
                     merge_replicates(right, merge_counts, merge_density)
                         .expect("Failed to merge replicates");
 
-                let chr = left_merged
-                    .chr_val()
-                    .unwrap()
-                    .to_string();
+                let chr = left_merged.chr_val().to_string();
                 // TODO add filtering
                 // TODO change segment position datatype to u32
                 let positions = left_merged

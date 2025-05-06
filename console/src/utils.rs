@@ -46,12 +46,13 @@ pub fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
                     for entry in matches.filter_map(Result::ok) {
                         expanded_paths.push(entry);
                     }
-                }
+                },
                 Err(e) => {
                     eprintln!("Error processing wildcard '{}': {}", path, e)
-                }
+                },
             }
-        } else {
+        }
+        else {
             // If not a wildcard, push the path as-is
             expanded_paths.push(PathBuf::from(path));
         }
@@ -76,14 +77,14 @@ pub struct UtilsArgs {
         default_value_t = 1,
         help = "Number of threads to use."
     )]
-    pub(crate) threads: usize,
+    pub(crate) threads:  usize,
     #[arg(
         long,
         required = false,
         default_value_t = false,
         help = "Verbose output."
     )]
-    pub(crate) verbose: bool,
+    pub(crate) verbose:  bool,
 }
 
 impl UtilsArgs {

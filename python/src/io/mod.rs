@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 
 mod bsx;
 mod compression;
+mod region;
 mod report;
 
 pub fn register_io_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {

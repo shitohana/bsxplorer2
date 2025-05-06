@@ -8,12 +8,12 @@ use num::{PrimInt, Unsigned};
 use polars::prelude::search_sorted::binary_search_ca;
 use polars::prelude::SearchSortedSide;
 
-use super::read::BatchIndex;
 use super::BsxFileReader;
 use crate::data_structs::batch::{BsxBatchBuilder,
                                  BsxBatchMethods,
                                  EncodedBsxBatch};
 use crate::data_structs::coords::Contig;
+use crate::io::bsx::BatchIndex;
 
 /// RegionReader is a reader for BSX files that operates on a specific region of
 /// the genome.
@@ -188,13 +188,11 @@ where
         let min_cached_pos = self
             .cache
             .first_key_value()
-            .map(|(_k, v)| v.start_gpos())
-            .transpose()?;
+            .map(|(_k, v)| v.start_gpos::<String, u32>());
         let max_cached_pos = self
             .cache
             .last_key_value()
-            .map(|(_k, v)| v.end_gpos())
-            .transpose()?;
+            .map(|(_k, v)| v.end_gpos::<String, u32>());
 
         let intersection_kind = if let Some((min_pos, max_pos)) =
             min_cached_pos.zip(max_cached_pos)

@@ -1,18 +1,24 @@
-use std::{fs::File, path::PathBuf, process::exit};
+use std::fs::File;
+use std::path::PathBuf;
+use std::process::exit;
 
-use bsxplorer2::{
-    data_structs::batch::{BsxBatch, BsxBatchBuilder, BsxBatchMethods},
-    exports::anyhow,
-    io::{
-        bsx::{BsxFileReader, BsxIpcWriter},
-        compression::Compression,
-        report::{ReportReaderBuilder, ReportTypeSchema, ReportWriter},
-    },
-};
+use bsxplorer2::data_structs::batch::{BsxBatch,
+                                      BsxBatchBuilder,
+                                      BsxBatchMethods};
+use bsxplorer2::exports::anyhow;
+use bsxplorer2::io::bsx::{BsxFileReader, BsxIpcWriter};
+use bsxplorer2::io::compression::Compression;
+use bsxplorer2::io::report::{ReportReaderBuilder,
+                             ReportTypeSchema,
+                             ReportWriter};
 use clap::{Args, ValueEnum};
 use console::style;
 
-use crate::utils::{init_hidden, init_pbar, init_spinner, CliIpcCompression, UtilsArgs};
+use crate::utils::{init_hidden,
+                   init_pbar,
+                   init_spinner,
+                   CliIpcCompression,
+                   UtilsArgs};
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum ConvertReportType {
@@ -81,7 +87,10 @@ pub struct ToBsxConvert {
 }
 
 impl ToBsxConvert {
-    pub fn run(&self, utils_args: &UtilsArgs) -> anyhow::Result<()> {
+    pub fn run(
+        &self,
+        utils_args: &UtilsArgs,
+    ) -> anyhow::Result<()> {
         if matches!(
             self.from_type,
             ReportTypeSchema::BedGraph | ReportTypeSchema::Coverage
@@ -96,23 +105,27 @@ impl ToBsxConvert {
 
         let pbar = if utils_args.progress {
             init_spinner()?
-        } else {
+        }
+        else {
             init_hidden()?
         };
 
-        let mut report_reader_builder = ReportReaderBuilder::<BsxBatch>::default()
-            .with_n_threads(utils_args.threads)
-            .with_batch_size(self.batch_size)
-            .with_chunk_size(self.chunk_size)
-            .with_low_memory(self.low_memory)
-            .with_report_type(self.from_type)
-            .with_compression(self.from_compression);
+        let mut report_reader_builder =
+            ReportReaderBuilder::<BsxBatch>::default()
+                .with_n_threads(utils_args.threads)
+                .with_batch_size(self.batch_size)
+                .with_chunk_size(self.chunk_size)
+                .with_low_memory(self.low_memory)
+                .with_report_type(self.from_type)
+                .with_compression(self.from_compression);
 
         if let Some(fasta_path) = &self.fasta_path {
-            report_reader_builder = report_reader_builder.with_fasta_path(fasta_path.clone());
+            report_reader_builder =
+                report_reader_builder.with_fasta_path(fasta_path.clone());
         }
         if let Some(fai_path) = &self.fai_path {
-            report_reader_builder = report_reader_builder.with_fai_path(fai_path.clone());
+            report_reader_builder =
+                report_reader_builder.with_fai_path(fai_path.clone());
         }
 
         let report_reader = report_reader_builder.build(self.input.clone())?;
@@ -125,14 +138,16 @@ impl ToBsxConvert {
                 self.to_compression.into(),
                 None,
             )?
-        } else if let Some(fasta_path) = &self.fasta_path {
+        }
+        else if let Some(fasta_path) = &self.fasta_path {
             BsxIpcWriter::try_from_sink_and_fasta(
                 sink,
                 fasta_path.clone(),
                 self.to_compression.into(),
                 None,
             )?
-        } else {
+        }
+        else {
             eprintln!(
                 "{}",
                 style("Either fasta_path or fai_path must be set").red()
@@ -177,7 +192,10 @@ pub struct FromBsxConvert {
 }
 
 impl FromBsxConvert {
-    pub fn run(&self, utils_args: &UtilsArgs) -> anyhow::Result<()> {
+    pub fn run(
+        &self,
+        utils_args: &UtilsArgs,
+    ) -> anyhow::Result<()> {
         let input_handle = File::open(self.input.clone())?;
         let mut bsx_reader = BsxFileReader::new(input_handle);
 
@@ -192,7 +210,8 @@ impl FromBsxConvert {
 
         let pbar = if utils_args.progress {
             init_pbar(bsx_reader.blocks_total())?
-        } else {
+        }
+        else {
             init_hidden()?
         };
 
@@ -254,22 +273,28 @@ pub struct R2RConvert {
 }
 
 impl R2RConvert {
-    pub fn run(&self, utils_args: &UtilsArgs) -> anyhow::Result<()> {
+    pub fn run(
+        &self,
+        utils_args: &UtilsArgs,
+    ) -> anyhow::Result<()> {
         let pbar = if utils_args.progress {
             init_spinner()?
-        } else {
+        }
+        else {
             init_hidden()?
         };
 
-        let mut report_reader_builder = ReportReaderBuilder::<BsxBatch>::default()
-            .with_n_threads(utils_args.threads)
-            .with_batch_size(self.batch_size)
-            .with_low_memory(self.low_memory)
-            .with_report_type(self.from_type)
-            .with_compression(self.from_compression);
+        let mut report_reader_builder =
+            ReportReaderBuilder::<BsxBatch>::default()
+                .with_n_threads(utils_args.threads)
+                .with_batch_size(self.batch_size)
+                .with_low_memory(self.low_memory)
+                .with_report_type(self.from_type)
+                .with_compression(self.from_compression);
 
         if let Some(fasta_path) = &self.fasta_path {
-            report_reader_builder = report_reader_builder.with_fasta_path(fasta_path.clone());
+            report_reader_builder =
+                report_reader_builder.with_fasta_path(fasta_path.clone());
         }
         let report_reader = report_reader_builder.build(self.input.clone())?;
 

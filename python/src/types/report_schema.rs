@@ -32,9 +32,7 @@ impl From<RustReportTypeSchema> for PyReportTypeSchema {
 }
 
 impl From<PyReportTypeSchema> for RustReportTypeSchema {
-    fn from(py: PyReportTypeSchema) -> Self {
-        PyReportTypeSchema::to_rust(&py)
-    }
+    fn from(py: PyReportTypeSchema) -> Self { PyReportTypeSchema::to_rust(&py) }
 }
 
 #[pymethods]
@@ -65,9 +63,7 @@ impl PyReportTypeSchema {
     /// -------
     /// str
     ///     The chromosome column name.
-    pub fn chr_col(&self) -> &'static str {
-        self.to_rust().chr_col()
-    }
+    pub fn chr_col(&self) -> &'static str { self.to_rust().chr_col() }
 
     /// Get the name of the position column for this format.
     ///
@@ -79,9 +75,7 @@ impl PyReportTypeSchema {
     /// -------
     /// str
     ///     The position column name.
-    pub fn position_col(&self) -> &'static str {
-        self.to_rust().position_col()
-    }
+    pub fn position_col(&self) -> &'static str { self.to_rust().position_col() }
 
     /// Get the name of the context column, if available for this format.
     ///
@@ -103,7 +97,8 @@ impl PyReportTypeSchema {
         self.to_rust().strand_col()
     }
 
-    /// Check if this report format typically requires alignment with context data.
+    /// Check if this report format typically requires alignment with context
+    /// data.
     ///
     /// Notes
     /// -----
@@ -114,9 +109,7 @@ impl PyReportTypeSchema {
     /// -------
     /// bool
     ///     True if alignment is generally needed, False otherwise.
-    pub fn need_align(&self) -> bool {
-        self.to_rust().need_align()
-    }
+    pub fn need_align(&self) -> bool { self.to_rust().need_align() }
 }
 
 impl PyReportTypeSchema {

@@ -961,3 +961,290 @@ class ContextData:
             A Polars DataFrame with encoded context information.
         """
         ...
+
+class GenomicPosition:
+    """
+    Represents a genomic position on a chromosome.
+
+    Attributes
+    ----------
+    seqname : str
+        The name of the chromosome or sequence.
+    position : int
+        The 0-based or 1-based genomic position. The interpretation depends
+        on the convention used elsewhere (often 0-based in bioinformatics).
+    """
+
+    def __init__(self, seqname: str, position: int) -> None:
+        """
+        Create a new GenomicPosition.
+
+        Parameters
+        ----------
+        seqname : str
+            The name of the chromosome or sequence.
+        position : int
+            The genomic position.
+        """
+        ...
+
+    @property
+    def seqname(self) -> str:
+        """
+        Get the sequence name.
+        """
+        ...
+
+    @property
+    def position(self) -> int:
+        """
+        Get the position.
+        """
+        ...
+
+    def __str__(self) -> str:
+        """
+        Get the string representation (seqname:position).
+        """
+        ...
+
+    def __repr__(self) -> str:
+        """
+        Get the developer representation.
+        """
+        ...
+
+    def __richcmp__(self, other: "GenomicPosition", op: int) -> bool:
+        """
+        Compare two GenomicPositions.
+
+        Equality (==) and inequality (!=) compare both seqname and position.
+        Ordering comparisons (<, <=, >, >=) compare positions but require
+        identical seqnames.
+
+        Parameters
+        ----------
+        other : GenomicPosition
+            The position to compare against.
+        op : int
+            The comparison operation.
+
+        Returns
+        -------
+        bool
+            The result of the comparison.
+
+        Raises
+        ------
+        ValueError
+            If ordering comparison is attempted between positions on different
+            chromosomes.
+        """
+        ...
+
+    def __add__(self, other: "GenomicPosition") -> Optional["GenomicPosition"]:
+        """
+        Add positions. Only possible if seqnames are identical.
+
+        Parameters
+        ----------
+        other : GenomicPosition
+            The position to add.
+
+        Returns
+        -------
+        GenomicPosition or None
+            A new GenomicPosition representing the sum, or None if seqnames differ.
+        """
+        ...
+
+    def __sub__(self, other: "GenomicPosition") -> Optional["GenomicPosition"]:
+        """
+        Subtract positions. Only possible if seqnames are identical and self >= other.
+
+        Parameters
+        ----------
+        other : GenomicPosition
+            The position to subtract.
+
+        Returns
+        -------
+        GenomicPosition or None
+            A new GenomicPosition representing the difference, or None if seqnames
+            differ or the other position is greater.
+        """
+        ...
+
+
+class Contig:
+    """
+    Represents a contiguous genomic region with an optional strand.
+
+    Attributes
+    ----------
+    seqname : str
+        The name of the chromosome or sequence.
+    start : int
+        The start position of the region (inclusive).
+    end : int
+        The end position of the region (exclusive).
+    """
+
+    def __init__(self, seqname: str, start: int, end: int, strand: str = ".") -> None:
+        """
+        Create a new Contig.
+
+        Parameters
+        ----------
+        seqname : str
+            The name of the chromosome or sequence.
+        start : int
+            The start position (inclusive).
+        end : int
+            The end position (exclusive).
+        strand : str, optional
+            The strand ('+', '-', or '.', case-insensitive). Defaults to '.'.
+
+        Raises
+        ------
+        ValueError
+            If start > end or the strand value is invalid.
+        """
+        ...
+
+    @property
+    def seqname(self) -> str:
+        """
+        Get the sequence name.
+        """
+        ...
+
+    @property
+    def start(self) -> int:
+        """
+        Get the start position (inclusive).
+        """
+        ...
+
+    @property
+    def end(self) -> int:
+        """
+        Get the end position (exclusive).
+        """
+        ...
+
+    @property
+    def strand(self) -> Strand:
+        """
+        Get the strand as a Strand enum value.
+        """
+        ...
+
+    @property
+    def strand_str(self) -> str:
+        """
+        Get the strand as a string ('+', '-', or '.').
+        """
+        ...
+
+    def length(self) -> int:
+        """
+        Calculate the length of the contig (end - start).
+        """
+        ...
+
+    def start_gpos(self) -> GenomicPosition:
+        """
+        Get the start position as a GenomicPosition.
+        """
+        ...
+
+    def end_gpos(self) -> GenomicPosition:
+        """
+        Get the end position as a GenomicPosition.
+        """
+        ...
+
+    def extend_upstream(self, length: int) -> None:
+        """
+        Extend the contig upstream by `length` bases in-place.
+
+        The start position will not go below 0.
+
+        Parameters
+        ----------
+        length : int
+            The number of bases to extend upstream.
+        """
+        ...
+
+    def extend_downstream(self, length: int) -> None:
+        """
+        Extend the contig downstream by `length` bases in-place.
+
+        The end position will be increased by `length`.
+
+        Parameters
+        ----------
+        length : int
+            The number of bases to extend downstream.
+        """
+        ...
+
+    def is_in(self, other: "Contig") -> bool:
+        """
+        Check if this contig is completely contained within another contig.
+
+        Requires both contigs to be on the same chromosome. Strand is not considered.
+
+        Parameters
+        ----------
+        other : Contig
+            The contig to check for containment within.
+
+        Returns
+        -------
+        bool
+            True if this contig is within the other, False otherwise.
+        """
+        ...
+
+    def __str__(self) -> str:
+        """
+        Get the string representation (seqname:start-end(strand)).
+        """
+        ...
+
+    def __repr__(self) -> str:
+        """
+        Get the developer representation.
+        """
+        ...
+
+    def __richcmp__(self, other: "Contig", op: int) -> bool:
+        """
+        Compare two Contigs.
+
+        Equality (==) and inequality (!=) compare seqname, start, end, and strand.
+        Ordering comparisons (<, <=, >, >=) are defined only if contigs are
+        on the same chromosome and do not overlap.
+
+        Parameters
+        ----------
+        other : Contig
+            The contig to compare against.
+        op : int
+            The comparison operation.
+
+        Returns
+        -------
+        bool
+            The result of the comparison.
+
+        Raises
+        ------
+        NotImplementedError
+            If ordering comparison is attempted between contigs on different
+            chromosomes or with intersecting regions.
+        """
+        ...

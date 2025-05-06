@@ -1,7 +1,10 @@
+#![allow(unused)]
 use std::io::Write;
 
 use bio::io::fasta::Writer as FastaWriter;
 use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchMethods};
+#[cfg(feature = "compression")]
+use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{ReportReaderBuilder,
                              ReportTypeSchema,
                              ReportWriter};
@@ -68,7 +71,17 @@ fn test_report_writing_reading_roundtrip(
         writeln!(buffer.reopen()?, "track type=bedGraph")?;
     }
 
+    #[cfg(not(feature = "compression"))]
     let mut writer = ReportWriter::try_new(buffer.reopen()?, report_type, 8)?;
+    #[cfg(feature = "compression")]
+    let mut writer = ReportWriter::try_new(
+        buffer.reopen()?,
+        report_type,
+        8,
+        Compression::None,
+        None,
+    )?;
+
 
     if !write_batch {
         for df in &original_dfs_in_report_format {
@@ -116,7 +129,7 @@ fn test_report_writing_reading_roundtrip(
 
     // Original batches are ordered by generation, which is per chromosome
     for batch in original_batches {
-        let batch_chr = batch.chr_val()?.to_string();
+        let batch_chr = batch.chr_val().to_string();
         if batch_chr != current_original_chr {
             if let Some(completed_batch) = current_original_batch.take() {
                 combined_original_batches.push(completed_batch);
@@ -147,7 +160,7 @@ fn test_report_writing_reading_roundtrip(
     let mut current_read_batch = None;
 
     for batch in read_batches {
-        let batch_chr = batch.chr_val()?.to_string();
+        let batch_chr = batch.chr_val().to_string();
 
         if batch_chr != current_read_chr {
             // New chromosome encountered
