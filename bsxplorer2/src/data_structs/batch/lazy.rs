@@ -21,6 +21,15 @@ pub struct LazyBsxBatch<T: BsxTypeTag + BsxBatchMethods> {
     _phantom: PhantomData<T>,
 }
 
+impl<T: BsxTypeTag + BsxBatchMethods> Clone for LazyBsxBatch<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data:     self.data.clone().cache(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     /// Converts the batch to a specified report type.
     pub fn into_report(
@@ -285,7 +294,6 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
             .f64()?
             .get(0)
             .unwrap_or(0.0);
-
 
         let context_iter = match T::type_enum() {
             BatchType::Decoded => {

@@ -17,7 +17,6 @@ use pyo3_polars::PyDataFrame;
 
 use crate::types::coords::PyContig;
 
-
 #[pyclass]
 pub struct PyBatchIndex {
     inner: BatchIndex<String, u32>,
@@ -25,7 +24,6 @@ pub struct PyBatchIndex {
 
 #[pymethods]
 impl PyBatchIndex {
-    /// Create a new empty BatchIndex.
     #[new]
     pub fn new() -> Self {
         Self {
@@ -47,8 +45,6 @@ impl PyBatchIndex {
         &self,
         contigs: Vec<PyContig>,
     ) -> Vec<PyContig> {
-        // Assumes PyContig has a public `inner` field of type Contig<String,
-        // u32>
         let contigs_inner: Vec<Contig<String, u32>> = contigs
             .iter()
             .map(Contig::from)
@@ -56,8 +52,6 @@ impl PyBatchIndex {
         let sorted_inner = self
             .inner
             .sort(contigs_inner.into_iter());
-        // Assumes PyContig can be constructed from Contig, e.g., via a public
-        // `inner` field
         sorted_inner
             .into_iter()
             .map(PyContig::from)
@@ -68,26 +62,18 @@ impl PyBatchIndex {
         &self,
         contig: PyContig,
     ) -> Option<Vec<usize>> {
-        // Assumes PyContig has a public `inner` field of type Contig<String,
-        // u32>
         self.inner.find(&Contig::from(&contig))
     }
 
     pub fn chr_order(&self) -> Vec<String> {
         self.inner
-            .chr_order()
+            .get_chr_order()
             .iter()
             .cloned()
             .collect()
     }
 }
 
-/// Reader for BSX files.
-///
-/// Parameters
-/// ----------
-/// file : str or file-like object
-///     Path to the BSX file or a file-like object.
 #[pyclass(name = "BsxFileReader")]
 pub struct PyBsxFileReader {
     reader: RsBsxFileReader<BufReader<PyFileLikeObject>>,
@@ -112,18 +98,6 @@ impl PyBsxFileReader {
         Ok(Self { reader })
     }
 
-    /// Get a specific batch by index.
-    ///
-    /// Parameters
-    /// ----------
-    /// batch_idx : int
-    ///     The index of the batch to retrieve.
-    ///
-    /// Returns
-    /// -------
-    /// PyDataFrame or None
-    ///     The requested batch as a Polars DataFrame, or None if the index is
-    /// out of bounds.
     pub fn get_batch(
         &mut self,
         batch_idx: usize,
@@ -135,12 +109,6 @@ impl PyBsxFileReader {
         }
     }
 
-    /// Get the total number of batches in the file.
-    ///
-    /// Returns
-    /// -------
-    /// int
-    ///     The total number of batches.
     pub fn blocks_total(&self) -> usize { self.reader.blocks_total() }
 
     pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> { slf }
@@ -158,9 +126,7 @@ impl PyBsxFileReader {
 #[pyclass(name = "IpcCompression", eq, eq_int)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PyIpcCompression {
-    /// LZ4 (framed)
     LZ4,
-    /// ZSTD
     #[default]
     ZSTD,
 }
@@ -183,18 +149,6 @@ impl From<IpcCompression> for PyIpcCompression {
     }
 }
 
-/// Writer for BSX data in Arrow IPC format.
-///
-/// Parameters
-/// ----------
-/// sink : str or file-like object
-///     Path or file-like object to write to.
-/// chr_names : list[str]
-///     List of chromosome names.
-/// compression : str, optional
-///     Compression algorithm to use ('uncompressed', 'lz4', 'zstd'). Defaults
-/// to None (uncompressed). custom_metadata : bytes, optional
-///     Custom metadata to embed in the IPC file.
 #[pyclass(name = "BsxIpcWriter")]
 pub struct PyBsxFileWriter {
     writer: Option<RsBsxIpcWriter<BufWriter<PyFileLikeObject>>>,
@@ -226,23 +180,6 @@ impl PyBsxFileWriter {
         })
     }
 
-    /// Create a writer using a FASTA index file (.fai) to get chromosome names.
-    ///
-    /// Parameters
-    /// ----------
-    /// sink : str or file-like object
-    ///     Path or file-like object to write to.
-    /// fai_path : str
-    ///     Path to the FASTA index file.
-    /// compression : str, optional
-    ///     Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to
-    /// None. custom_metadata : bytes, optional
-    ///     Custom metadata.
-    ///
-    /// Returns
-    /// -------
-    /// BsxIpcWriter
-    ///     A new writer instance.
     #[staticmethod]
     #[pyo3(signature = (sink, fai_path, compression=None))]
     pub fn from_sink_and_fai(
@@ -267,24 +204,6 @@ impl PyBsxFileWriter {
         })
     }
 
-    /// Create a writer using a FASTA file to get chromosome names (will index
-    /// if needed).
-    ///
-    /// Parameters
-    /// ----------
-    /// sink : str or file-like object
-    ///     Path or file-like object to write to.
-    /// fasta_path : str
-    ///     Path to the FASTA file.
-    /// compression : str, optional
-    ///     Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to
-    /// None. custom_metadata : bytes, optional
-    ///     Custom metadata.
-    ///
-    /// Returns
-    /// -------
-    /// BsxIpcWriter
-    ///     A new writer instance.
     #[staticmethod]
     #[pyo3(signature = (sink, fasta_path, compression=None))]
     pub fn from_sink_and_fasta(
@@ -309,12 +228,6 @@ impl PyBsxFileWriter {
         })
     }
 
-    /// Write an already encoded BSX batch (DataFrame).
-    ///
-    /// Parameters
-    /// ----------
-    /// batch : PyDataFrame
-    ///     The encoded BSX batch (Polars DataFrame) to write.
     pub fn write_encoded_batch(
         &mut self,
         batch: PyDataFrame,
@@ -327,12 +240,6 @@ impl PyBsxFileWriter {
             .map_err(|e| PyPolarsErr::Polars(e).into())
     }
 
-    /// Encode and write a BSX batch (DataFrame).
-    ///
-    /// Parameters
-    /// ----------
-    /// batch : PyDataFrame
-    ///     The BSX batch (Polars DataFrame) to encode and write.
     pub fn write_batch(
         &mut self,
         batch: PyDataFrame,
@@ -345,7 +252,6 @@ impl PyBsxFileWriter {
             .map_err(|e| PyPolarsErr::Polars(e).into())
     }
 
-    /// Finalize the IPC file and close the writer.
     pub fn close(&mut self) -> PyResult<()> {
         if let Some(mut writer) = self.writer.take() {
             writer

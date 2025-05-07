@@ -5,10 +5,9 @@ use bsxplorer2::data_structs::enums::Strand as RsStrand;
 use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use pyo3::prelude::*;
 
-use super::utils::Strand as PyStrand;
+use super::utils::PyStrand;
 
-
-#[pyclass(get_all, set_all)]
+#[pyclass(name = "GenomicPosition", get_all, set_all)]
 #[derive(Debug, Clone)]
 pub struct PyGenomicPosition {
     seqname:  String,
@@ -54,7 +53,6 @@ impl PyGenomicPosition {
         // Convert to Rust type for comparison
         let self_rust: GenomicPosition<String, u32> = self.into();
         let other_rust: GenomicPosition<String, u32> = other.into();
-
 
         match op {
             pyo3::basic::CompareOp::Eq => Ok(self_rust == other_rust),
@@ -124,8 +122,7 @@ impl From<&PyGenomicPosition> for GenomicPosition<String, u32> {
     }
 }
 
-
-#[pyclass(get_all, set_all)] // Allows access to seqname, start, end directly
+#[pyclass(name = "Contig", get_all, set_all)] // Allows access to seqname, start, end directly
 #[derive(Debug, Clone)] // Need these for conversion
 pub struct PyContig {
     seqname: String,
@@ -143,7 +140,7 @@ impl PyContig {
         end,
         strand = "."
     ))] // Default strand to "None" if not provided
-    fn new(
+    pub fn new(
         seqname: String,
         start: u32,
         end: u32,
@@ -303,12 +300,4 @@ impl From<&PyContig> for Contig<String, u32> {
             RsStrand::from(py_c.strand),
         )
     }
-}
-
-
-// Function to add these classes to the module
-pub fn add_coords_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyGenomicPosition>()?;
-    m.add_class::<PyContig>()?;
-    Ok(())
 }

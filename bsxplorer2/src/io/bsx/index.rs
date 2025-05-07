@@ -1,37 +1,66 @@
-use std::hash::Hash;
+use std::io::{Read, Write};
 use std::ops::Range;
 
 use bio::data_structures::interval_tree::IntervalTree;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
-use num::{PrimInt, Unsigned};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::data_structs::coords::{Contig, GenomicPosition};
+use crate::data_structs::typedef::{SeqNameStr, SeqPosNum};
 
 /// Index for batches in a BSX file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchIndex<S, P>
 where
-    S: AsRef<str> + Clone + Hash + Eq,
-    P: Unsigned + PrimInt, {
+    S: SeqNameStr,
+    P: SeqPosNum, {
     map:       HashMap<S, IntervalTree<GenomicPosition<S, P>, usize>>,
     chr_order: IndexSet<S>,
 }
 
+impl<S, P> BatchIndex<S, P>
+where
+    S: SeqNameStr + Serialize,
+    P: SeqPosNum + Serialize,
+{
+    pub fn to_file<W: Write>(
+        self,
+        writer: &mut W,
+    ) -> Result<(), bincode::error::EncodeError> {
+        let config = bincode::config::standard();
+        bincode::serde::encode_into_std_write(self, writer, config)?;
+        Ok(())
+    }
+}
+
+impl<S, P> BatchIndex<S, P>
+where
+    S: SeqNameStr + for<'de> Deserialize<'de> + DeserializeOwned,
+    P: SeqPosNum + for<'de> Deserialize<'de> + DeserializeOwned,
+{
+    pub fn from_file<R: Read>(
+        reader: &mut R
+    ) -> Result<Self, bincode::error::DecodeError> {
+        let config = bincode::config::standard();
+        bincode::serde::decode_from_std_read(reader, config)
+    }
+}
+
 impl<S, P> Default for BatchIndex<S, P>
 where
-    S: AsRef<str> + Clone + Hash + Eq,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr,
+    P: SeqPosNum,
 {
     fn default() -> Self { Self::new() }
 }
 
 impl<S, P> BatchIndex<S, P>
 where
-    S: AsRef<str> + Clone + Eq + Hash,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr,
+    P: SeqPosNum,
 {
     pub fn new() -> Self {
         Self {
@@ -107,7 +136,14 @@ where
     }
 
     /// Returns the chromosome order.
-    pub fn chr_order(&self) -> &IndexSet<S> { &self.chr_order }
+    pub fn get_chr_order(&self) -> &IndexSet<S> { &self.chr_order }
+
+    pub fn get_chr_index(
+        &self,
+        chr: &S,
+    ) -> Option<usize> {
+        self.chr_order.get_index_of(chr)
+    }
 
     /// Returns the underlying map.
     pub fn map(

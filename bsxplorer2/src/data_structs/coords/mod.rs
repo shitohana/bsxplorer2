@@ -10,11 +10,10 @@ mod tests {
     use std::ops::{Add, Sub};
 
     use bio::bio_types::annot::contig::Contig as BioContig;
+    use bio::bio_types::annot::loc::Loc;
     use bio::bio_types::annot::pos::SeqPosUnstranded;
-    use bio::bio_types::strand::ReqStrand;
+    use bio::bio_types::strand::{NoStrand, ReqStrand};
     use bio::io::bed::Record as BedRecord;
-    use bio_types::annot::loc::Loc;
-    use bio_types::strand::NoStrand;
 
     use super::*;
     use crate::data_structs::enums::Strand;

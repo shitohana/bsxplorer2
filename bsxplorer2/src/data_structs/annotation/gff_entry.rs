@@ -313,7 +313,6 @@ impl Serialize for GffEntryAttributes {
         write_attr!(self.name, "Name");
         write_attr!(self.alias, "Alias");
         write_attr!(self.parent, "Parent");
-        // FIXME Implement proper custom formatter for Target
         write_attr!(self.target, "Target", |c: &Contig<Arc<str>, u32>| {
             format!("{} {} {}", c.seqname(), c.start(), c.end())
         });

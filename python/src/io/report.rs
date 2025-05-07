@@ -13,15 +13,9 @@ use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
 use super::compression::PyCompression;
-use crate::types::decoded::PyBsxBatch;
+use crate::types::batch::PyBsxBatch;
 use crate::types::report_schema::PyReportTypeSchema;
 
-/// Reads methylation report files batch by batch.
-///
-/// This class provides an iterator interface to read various methylation report
-/// formats (like Bismark, CGmap, BedGraph, Coverage) efficiently.
-/// It handles file parsing, optional alignment with FASTA context, and
-/// yields data in standardized BsxBatch objects.
 #[pyclass(name = "ReportReader", unsendable)]
 pub struct PyReportReader {
     reader: Option<RustReportReader<BsxBatch>>,
@@ -29,50 +23,6 @@ pub struct PyReportReader {
 
 #[pymethods]
 impl PyReportReader {
-    /// Creates a new ReportReader instance.
-    ///
-    /// Parameters
-    /// ----------
-    /// path : str
-    ///     Path to the input report file.
-    /// report_type : ReportTypeSchema
-    ///     The format of the report file (e.g., ReportTypeSchema.Bismark).
-    /// chunk_size : int, optional
-    ///     The target number of records per yielded batch. Defaults to 10000.
-    /// fasta_path : str, optional
-    ///     Path to the reference FASTA file. Required for BedGraph/Coverage
-    /// formats     or when alignment is needed.
-    /// fai_path : str, optional
-    ///     Path to the FASTA index file (.fai). Can be used instead of
-    /// `fasta_path`     for determining chromosome order/names if FASTA
-    /// content is not needed     for alignment.
-    /// batch_size : int, optional
-    ///     The number of lines read from the file at once internally. Defaults
-    /// to 100000. n_threads : int, optional
-    ///     Number of threads to use for parsing. Defaults to using available
-    /// cores. low_memory : bool, optional
-    ///     Whether to use a low-memory parsing mode. Defaults to False.
-    /// queue_len : int, optional
-    ///     Internal buffer size for parsed batches. Defaults to 1000.
-    /// compression : str, optional
-    ///     Compression type ('gzip', 'zstd', 'bgzip', 'xz'). Defaults to None
-    /// (autodetect). compression_level : int, optional
-    ///     Compression level if applicable. Defaults depend on the compression
-    /// type.
-    ///
-    /// Returns
-    /// -------
-    /// ReportReader
-    ///     A new instance of the ReportReader.
-    ///
-    /// Raises
-    /// ------
-    /// FileNotFoundError
-    ///     If the input report file or FASTA/FAI file cannot be found.
-    /// ValueError
-    ///     If required parameters (like FASTA for certain types) are missing.
-    /// RuntimeError
-    ///     If there's an error during reader initialization or parsing.
     #[new]
     #[pyo3(signature = (
         path,
@@ -150,19 +100,6 @@ impl PyReportReader {
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> { slf }
 
-    /// Retrieves the next batch of methylation data.
-    ///
-    /// Returns
-    /// -------
-    /// BsxBatch
-    ///     The next batch of data.
-    ///
-    /// Raises
-    /// ------
-    /// StopIteration
-    ///     When there are no more batches to read.
-    /// RuntimeError
-    ///     If an error occurs during reading or processing a batch.
     fn __next__(mut slf: PyRefMut<'_, Self>) -> PyResult<Option<PyBsxBatch>> {
         match slf.reader.as_mut() {
             Some(reader) => {
@@ -185,11 +122,6 @@ impl PyReportReader {
     }
 }
 
-/// Writes methylation report data to a file.
-///
-/// This class handles writing BsxBatch objects or Polars DataFrames
-/// to a specified file path in a chosen report format (Bismark, CGmap, etc.).
-/// It manages file handling, formatting, and optional compression.
 #[pyclass(name = "ReportWriter", unsendable)]
 pub struct PyReportWriter {
     writer: Option<RustReportWriter>,
@@ -197,33 +129,6 @@ pub struct PyReportWriter {
 
 #[pymethods]
 impl PyReportWriter {
-    /// Creates a new ReportWriter instance.
-    ///
-    /// Parameters
-    /// ----------
-    /// path : str
-    ///     Path to the output file.
-    /// schema : ReportTypeSchema
-    ///     The desired output format schema (e.g., ReportTypeSchema.Bismark).
-    /// n_threads : int, optional
-    ///     Number of threads to use for writing. Defaults to 1.
-    /// compression : str, optional
-    ///     Compression type ('gzip', 'zstd', 'bgzip', 'xz'). Defaults to None.
-    /// compression_level : int, optional
-    ///     Compression level (1-21 for zstd, 1-9 for gzip/bgzip, 0-9 for xz).
-    ///     Defaults vary by type (e.g., 3 for zstd, 6 for gzip).
-    ///
-    /// Returns
-    /// -------
-    /// ReportWriter
-    ///     A new instance of the ReportWriter.
-    ///
-    /// Raises
-    /// ------
-    /// ValueError
-    ///     If the compression type is invalid.
-    /// RuntimeError
-    ///     If the file cannot be created or the writer fails to initialize.
     #[new]
     #[pyo3(signature = (
         path,
@@ -271,17 +176,6 @@ impl PyReportWriter {
         })
     }
 
-    /// Writes a BsxBatch to the output file.
-    ///
-    /// Parameters
-    /// ----------
-    /// batch : BsxBatch
-    ///     The batch of data to write.
-    ///
-    /// Raises
-    /// ------
-    /// RuntimeError
-    ///     If the writer is already closed or if writing fails.
     pub fn write_batch(
         &mut self,
         batch: PyBsxBatch,
@@ -298,20 +192,6 @@ impl PyReportWriter {
         }
     }
 
-    /// Writes a Polars DataFrame to the output file.
-    ///
-    /// Note: The DataFrame schema should ideally match the writer's schema,
-    /// though the underlying writer might perform some conversions.
-    ///
-    /// Parameters
-    /// ----------
-    /// df : polars.DataFrame
-    ///     The DataFrame to write.
-    ///
-    /// Raises
-    /// ------
-    /// RuntimeError
-    ///     If the writer is already closed or if writing fails.
     pub fn write_df(
         &mut self,
         df: PyDataFrame,
@@ -332,12 +212,6 @@ impl PyReportWriter {
         }
     }
 
-    /// Closes the writer and finalizes the output file.
-    ///
-    /// This method should be called explicitly when done writing,
-    /// especially if not using a `with` statement context manager
-    /// (which is not directly implemented here but recommended in Python
-    /// usage). It ensures all buffered data is flushed to the file.
     pub fn close(&mut self) -> PyResult<()> {
         if let Some(writer) = self.writer.take() {
             // The underlying BatchedCsvWriter flushes on drop, which happens

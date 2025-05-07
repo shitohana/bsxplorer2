@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::io::{Read, Seek};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use bio::bio_types::annot::refids::RefIDSet;
@@ -71,9 +72,9 @@ impl DmrConfig {
         }
 
         let (sender, receiver) = crossbeam::channel::bounded(10);
-        // FIXME the block_count doesn't really calculate anything, as
-        // it is passed to a thread
-        let block_count = 0;
+        let block_count = Arc::new(AtomicUsize::new(0));
+        let local_block_count = block_count.clone();
+
         let join_handle = std::thread::spawn(move || {
             let (right_n, right_readers) = init_bsx_readers(
                 readers_pair
@@ -92,7 +93,8 @@ impl DmrConfig {
                     .collect_vec(),
             );
             assert_eq!(left_n, right_n, "Number of batches does not match");
-            // block_count += left_n;
+            local_block_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             segment_reading(left_readers, right_readers, sender)
         });
 
@@ -103,7 +105,9 @@ impl DmrConfig {
             regions_cache: Vec::new(),
             last_chr: Arc::new(String::new()),
             receiver,
-            reader_stat: ReaderMetadata::new(block_count),
+            reader_stat: ReaderMetadata::new(
+                block_count.load(std::sync::atomic::Ordering::Relaxed),
+            ),
             _join_handle: join_handle,
         };
 

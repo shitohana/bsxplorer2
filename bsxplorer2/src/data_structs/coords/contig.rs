@@ -4,19 +4,19 @@ use std::str::FromStr;
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::ReqStrand;
-use num::{PrimInt, Unsigned};
 use serde::{Deserialize, Serialize};
 
 use super::GenomicPosition;
 use crate::data_structs::enums::Strand;
+use crate::data_structs::typedef::{SeqNameStr, SeqPosNum};
 
 /// Represents a contig with a sequence name, start position, end position, and
 /// strand.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt, {
+    R: SeqNameStr,
+    P: SeqPosNum, {
     seqname: R,
     start:   P,
     end:     P,
@@ -25,8 +25,8 @@ where
 
 impl<R, P> Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Creates a new `Contig`.
     pub fn new(
@@ -115,7 +115,7 @@ where
     }
 
     /// Casts the contig to a new type.
-    pub fn cast<R2: AsRef<str> + Clone, P2: Unsigned + PrimInt>(
+    pub fn cast<R2: SeqNameStr, P2: SeqPosNum>(
         self,
         seqname_fn: fn(R) -> R2,
         pos_fn: fn(P) -> P2,
@@ -137,8 +137,8 @@ where
 
 impl<R, P> From<Range<GenomicPosition<R, P>>> for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts from a range of `GenomicPosition`s.
     fn from(value: Range<GenomicPosition<R, P>>) -> Self {
@@ -158,8 +158,8 @@ where
 
 impl<R, P> From<Contig<R, P>> for Range<GenomicPosition<R, P>>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts into a range of `GenomicPosition`s.
     fn from(value: Contig<R, P>) -> Self {
@@ -169,8 +169,8 @@ where
 
 impl<S, P> From<bio::io::bed::Record> for Contig<S, P>
 where
-    S: AsRef<str> + Clone + FromStr,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr + FromStr,
+    P: SeqPosNum,
     <S as FromStr>::Err: std::fmt::Debug,
 {
     /// Converts from a `bio::io::bed::Record`.
@@ -196,8 +196,8 @@ where
 
 impl<R, P> From<Contig<R, P>> for bio::io::bed::Record
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts into a `bio::io::bed::Record`.
     fn from(value: Contig<R, P>) -> Self {
@@ -221,8 +221,8 @@ where
 
 impl<S, P> From<bio::io::gff::Record> for Contig<S, P>
 where
-    S: AsRef<str> + Clone + FromStr,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr + FromStr,
+    P: SeqPosNum,
     <S as FromStr>::Err: std::fmt::Debug,
 {
     /// Converts from a `bio::io::gff::Record`.
@@ -249,8 +249,8 @@ where
 
 impl<R, P, S> From<bio::bio_types::annot::contig::Contig<R, S>> for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
     S: Into<Option<ReqStrand>> + Copy,
 {
     /// Converts from a `bio_types::annot::contig::Contig`.
@@ -274,8 +274,8 @@ where
 impl<R, P> From<Contig<R, P>>
     for bio::bio_types::annot::contig::Contig<R, Option<ReqStrand>>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts into a `bio_types::annot::contig::Contig`.
     fn from(value: Contig<R, P>) -> Self {
@@ -301,8 +301,8 @@ where
 
 impl<R, P> PartialOrd for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Compares two `Contig`s.
     ///
@@ -326,15 +326,15 @@ where
 
 impl<R, P> Eq for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
 }
 
 impl<R, P> PartialEq for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn eq(
         &self,
@@ -349,8 +349,8 @@ where
 
 impl<R, P> Display for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn fmt(
         &self,

@@ -1,6 +1,3 @@
-use std::str::FromStr;
-
-use num::{PrimInt, Unsigned};
 use polars::datatypes::BooleanChunked;
 use polars::error::PolarsResult;
 use polars::frame::DataFrame;
@@ -10,7 +7,7 @@ use super::builder::BsxBatchBuilder;
 use crate::data_structs::batch::LazyBsxBatch;
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::enums::Strand;
-use crate::data_structs::typedef::BsxSmallStr;
+use crate::data_structs::typedef::{BsxSmallStr, SeqNameStr, SeqPosNum};
 
 pub mod colnames {
     pub const CHR_NAME: &str = "chr";
@@ -237,22 +234,20 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     /// Returns the genomic position at the start of the batch
     fn start_gpos<S, P>(&self) -> GenomicPosition<S, P>
     where
-        S: AsRef<str> + Clone + FromStr,
-        P: PrimInt + Unsigned,
-        <S as FromStr>::Err: std::fmt::Debug, {
+        S: SeqNameStr,
+        P: SeqPosNum, {
         let pos = P::from(self.start_pos()).unwrap();
-        let chr = S::from_str(self.chr_val()).unwrap();
+        let chr = S::from(self.chr_val());
         GenomicPosition::new(chr, pos)
     }
 
     /// Returns the genomic position at the end of the batch
     fn end_gpos<S, P>(&self) -> GenomicPosition<S, P>
     where
-        S: AsRef<str> + Clone + FromStr,
-        P: PrimInt + Unsigned,
-        <S as FromStr>::Err: std::fmt::Debug, {
+        S: SeqNameStr,
+        P: SeqPosNum, {
         let pos = P::from(self.end_pos()).unwrap();
-        let chr = S::from_str(self.chr_val()).unwrap();
+        let chr = S::from(self.chr_val());
         GenomicPosition::new(chr, pos)
     }
 
@@ -294,16 +289,15 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     /// Convert batch to genomic contig
     fn as_contig<S, P>(&self) -> anyhow::Result<Option<Contig<S, P>>>
     where
-        S: AsRef<str> + Clone + FromStr,
-        P: PrimInt + Unsigned,
-        <S as FromStr>::Err: std::fmt::Debug, {
+        S: SeqNameStr,
+        P: SeqPosNum, {
         if self.is_empty() {
             Ok(None)
         }
         else {
             let start = P::from(self.start_pos()).unwrap();
             let end = P::from(self.end_pos()).unwrap();
-            let chr = S::from_str(self.chr_val()).unwrap();
+            let chr = S::from(self.chr_val());
             Ok(Some(Contig::new(
                 chr,
                 start,

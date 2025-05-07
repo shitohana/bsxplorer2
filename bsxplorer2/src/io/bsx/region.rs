@@ -1,10 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::hash::Hash;
 use std::io::{Read, Seek};
 
 use anyhow::{anyhow, bail};
 use itertools::Itertools;
-use num::{PrimInt, Unsigned};
 use polars::prelude::search_sorted::binary_search_ca;
 use polars::prelude::SearchSortedSide;
 
@@ -13,6 +11,7 @@ use crate::data_structs::batch::{BsxBatchBuilder,
                                  BsxBatchMethods,
                                  EncodedBsxBatch};
 use crate::data_structs::coords::Contig;
+use crate::data_structs::typedef::{SeqNameStr, SeqPosNum};
 use crate::io::bsx::BatchIndex;
 
 /// RegionReader is a reader for BSX files that operates on a specific region of
@@ -20,8 +19,8 @@ use crate::io::bsx::BatchIndex;
 pub struct RegionReader<R, S, P>
 where
     R: Read + Seek,
-    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
-    P: Unsigned + PrimInt, {
+    S: SeqNameStr,
+    P: SeqPosNum, {
     /// Cache of encoded BSX batches.
     cache:         BTreeMap<usize, EncodedBsxBatch>,
     /// Inner reader for the BSX file.
@@ -37,8 +36,8 @@ where
 impl<R, S, P> RegionReader<R, S, P>
 where
     R: Read + Seek,
-    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Finds the batches that overlap the given contig.
     fn find(
@@ -243,8 +242,8 @@ where
 impl<R, S, P> RegionReader<R, S, P>
 where
     R: Read + Seek,
-    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
-    P: PrimInt + Unsigned,
+    S: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Sets the preprocessing function.
     pub fn set_preprocess_fn(
@@ -291,7 +290,7 @@ where
 
         if !self
             .index()
-            .chr_order()
+            .get_chr_order()
             .contains(&contig.seqname())
         {
             bail!("Contig seqname not found in index")

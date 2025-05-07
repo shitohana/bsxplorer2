@@ -82,7 +82,6 @@ fn test_report_writing_reading_roundtrip(
         None,
     )?;
 
-
     if !write_batch {
         for df in &original_dfs_in_report_format {
             writer.write_df(df)?;

@@ -1,3 +1,5 @@
+.env
+.ropeproject
 .DS_Store
 .git
 .idea
@@ -7,6 +9,7 @@
 *.ipc
 *.lock
 *.pyc
+*.so
 dist
 target
 __pycache__

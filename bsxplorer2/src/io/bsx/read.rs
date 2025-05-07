@@ -13,7 +13,6 @@ use crate::data_structs::batch::{BsxBatchBuilder,
                                  EncodedBsxBatch};
 use crate::data_structs::coords::Contig;
 
-
 /// Reader for BSX files
 pub struct BsxFileReader<R: Read + Seek> {
     ipc_reader: IpcFileReader<R>,
@@ -27,6 +26,16 @@ impl<R: Read + Seek> BsxFileReader<R> {
             ipc_reader: IpcFileReader::new(handle, None, None),
             index:      None,
         }
+    }
+
+    pub fn from_file_and_index(
+        report: R,
+        index: &mut R,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            ipc_reader: IpcFileReader::new(report, None, None),
+            index:      Some(BatchIndex::from_file(index)?),
+        })
     }
 
     /// Indexes the BSX file and returns the index.
@@ -135,6 +144,13 @@ impl<R: Read + Seek> BsxFileReader<R> {
     /// Creates an iterator for the BSX file.
     pub fn iter(&mut self) -> BsxFileIterator<R> {
         BsxFileIterator { reader: self }
+    }
+
+    pub fn set_index(
+        &mut self,
+        index: Option<BatchIndex<String, u32>>,
+    ) {
+        self.index = index;
     }
 }
 

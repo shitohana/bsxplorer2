@@ -1,89 +1,18 @@
 from typing import Optional, Union, List
 from pathlib import Path
 
-from .types import ReportTypeSchema, BsxBatch, Contig
+from .types import ReportTypeSchema, BsxBatch
 import polars as pl
 
-class BatchIndex:
-    """
-    Index for batches in a BSX file.
-
-    Stores the genomic coordinates for each batch, allowing quick lookup
-    of batch indices that overlap with a given genomic region.
-    """
-    def __init__(self) -> None:
-        """
-        Create a new empty BatchIndex.
-        """
-        ...
-
-    def insert(
-        self,
-        contig: Contig,
-        batch_idx: int,
-    ) -> None:
-        """
-        Insert a contig and its corresponding batch index into the index.
-
-        Parameters
-        ----------
-        contig : Contig
-            The genomic region covered by the batch.
-        batch_idx : int
-            The index of the batch in the BSX file.
-        """
-        ...
-
-    def sort(
-        self,
-        contigs: List[Contig],
-    ) -> List[Contig]:
-        """
-        Sort a list of contigs according to the chromosome order and start position defined in the index.
-
-        Parameters
-        ----------
-        contigs : list[Contig]
-            A list of Contig objects to sort.
-
-        Returns
-        -------
-        list[Contig]
-            A new list containing the input contigs sorted according to the index's order.
-        """
-        ...
-
-    def find(
-        self,
-        contig: Contig,
-    ) -> Optional[List[int]]:
-        """
-        Find the batch indices that overlap with a given contig.
-
-        Parameters
-        ----------
-        contig : Contig
-            The genomic region to query.
-
-        Returns
-        -------
-        list[int] or None
-            A list of batch indices that overlap the query region, or None if
-            the chromosome is not found in the index.
-        """
-        ...
-
-    def chr_order(self) -> List[str]:
-        """
-        Returns the chromosome order as a list of strings.
-
-        Returns
-        -------
-        list[str]
-            A list of chromosome names in the order they appear in the index.
-        """
-        ...
-
+__all__ = [
+    "RegionReader",
+    "Compression",
+    "ReportReader",
+    "ReportWriter",
+    "BsxFileReader",
+    "IpcCompression",
+    "BsxIpcWriter"
+]
 
 class RegionReader:
     """

@@ -1,9 +1,11 @@
 use hashbrown::HashMap;
+use itertools::Itertools;
 use multimap::MultiMap;
 
 use crate::data_structs::annotation::{GffEntry, GffEntryAttributes};
 use crate::data_structs::coords::Contig;
-use crate::data_structs::typedef::BsxSmallStr;
+use crate::data_structs::typedef::{BsxSmallStr, SeqNameStr, SeqPosNum};
+use crate::io::bsx::BatchIndex;
 
 const UPSTREAM_TYPE_NAME: &str = "upstream";
 const DOWNSTREAM_TYPE_NAME: &str = "downstream";
@@ -66,7 +68,36 @@ impl AnnotStore {
     pub fn iter(&self) -> AnnotIterator {
         AnnotIterator {
             store: self,
-            iter:  self.id_map.iter(),
+            iter:  Box::from(self.id_map.clone().into_iter()),
+        }
+    }
+
+    pub fn iter_sorted<S: SeqNameStr, P: SeqPosNum>(
+        &self,
+        index: &BatchIndex<S, P>,
+    ) -> AnnotIterator {
+        let iterator: Box<dyn Iterator<Item = _>> =
+            Box::from(
+                self.iter()
+                    .into_group_map_by(|(_id, entry)| {
+                        index.get_chr_index(&S::from(
+                            entry.contig.seqname().as_str(),
+                        ))
+                    })
+                    .into_iter()
+                    .sorted_by_cached_key(|(key, _value)| *key)
+                    .map(|(_key, value)| {
+                        value.into_iter().sorted_by_cached_key(
+                            |(_id, entry)| entry.contig.start(),
+                        )
+                    })
+                    .flatten()
+                    .map(|(id, value)| (id.clone(), value.clone())),
+            );
+
+        AnnotIterator {
+            store: self,
+            iter:  iterator,
         }
     }
 
@@ -198,17 +229,29 @@ impl AnnotStore {
     pub fn children_map(&self) -> &MultiMap<BsxSmallStr, BsxSmallStr> {
         &self.children_map
     }
+
+    pub fn len(&self) -> usize { self.id_map.len() }
 }
 
 pub struct AnnotIterator<'a> {
     store: &'a AnnotStore,
-    iter:  hashbrown::hash_map::Iter<'a, BsxSmallStr, GffEntry>,
+    iter:  Box<dyn Iterator<Item = (BsxSmallStr, GffEntry)>>,
 }
 
 impl<'a> Iterator for AnnotIterator<'a> {
-    type Item = (&'a BsxSmallStr, &'a GffEntry);
+    type Item = (BsxSmallStr, GffEntry);
 
     fn next(&mut self) -> Option<Self::Item> { self.iter.next() }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.store.len(), Some(self.store.len()))
+    }
+
+    fn count(self) -> usize
+    where
+        Self: Sized, {
+        self.store.len()
+    }
 }
 
 impl FromIterator<GffEntry> for AnnotStore {

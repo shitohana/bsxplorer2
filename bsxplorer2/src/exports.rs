@@ -1,6 +1,7 @@
 pub use {adjustp,
          anyhow,
          bio,
+         hashbrown,
          itertools,
          log,
          polars,
