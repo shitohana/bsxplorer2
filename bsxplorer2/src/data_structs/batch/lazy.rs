@@ -12,8 +12,8 @@ use super::BatchType;
 use crate::data_structs::batch::traits::colnames::*;
 use crate::data_structs::context_data::ContextData;
 use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
+use crate::data_structs::methstats::MethylationStats;
 use crate::io::report::ReportTypeSchema;
-use crate::tools::stats::MethylationStats;
 
 /// A lazy representation of a BSX batch for efficient query operations.
 pub struct LazyBsxBatch<T: BsxTypeTag + BsxBatchMethods> {

@@ -1,16 +1,18 @@
 import pytest
 import inspect
-import bsxplorer2
+import bsx2
 import polars as pl
-from pathlib import Path
-from bsxplorer2 import (
+from bsx2.types import (
     ReportTypeSchema, Contig, Strand, Context, ContextData,
     GenomicPosition, BatchIndex, MethylationStats, EncodedBsxBatch, BsxBatch,
     LazyBsxBatch, LazyEncodedBsxBatch, AnnotStore
 )
-from bsxplorer2.io import (
+from bsx2.io import (
     RegionReader, ReportReader, ReportWriter, BsxFileReader, BsxIpcWriter
 )
+
+import bsx2.types
+import bsx2.io
 
 # Dummy arguments for testing
 DUMMY_PATH = "dummy.bsx"

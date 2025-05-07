@@ -43,7 +43,7 @@ impl PyAnnotStore {
             ))
         })?;
 
-        use bsxplorer2::exports::bio::io::bed;
+        use bio::io::bed;
         let mut reader = bed::Reader::new(file);
         let mut annot_store = AnnotStore::new();
 

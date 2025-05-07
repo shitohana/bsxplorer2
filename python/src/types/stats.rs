@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use bsxplorer2::data_structs::enums::{Context, Strand};
-use bsxplorer2::exports::itertools::Itertools;
-use bsxplorer2::tools::stats::MethylationStats;
+use bsxplorer2::data_structs::methstats::MethylationStats;
+use itertools::Itertools;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
@@ -38,7 +38,7 @@ impl PyMethylationStats {
         context_methylation: HashMap<String, (f64, u32)>,
         strand_methylation: HashMap<String, (f64, u32)>,
     ) -> Self {
-        use bsxplorer2::exports::hashbrown::HashMap as HashbrownMap;
+        use hashbrown::HashMap as HashbrownMap;
         let coverage_distribution: HashbrownMap<u16, u32> =
             HashbrownMap::from_iter(coverage_distribution.into_iter());
         let context_distribution: HashbrownMap<Context, (f64, u32)> =

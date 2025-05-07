@@ -3,11 +3,11 @@ use std::io::BufWriter;
 use std::path::PathBuf;
 
 use bsxplorer2::data_structs::batch::BsxBatch;
-use bsxplorer2::exports::polars::frame::DataFrame;
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{ReportReader as RustReportReader,
                              ReportReaderBuilder,
                              ReportWriter as RustReportWriter};
+use polars::frame::DataFrame;
 use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;

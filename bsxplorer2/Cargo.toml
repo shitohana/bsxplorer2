@@ -36,7 +36,6 @@ csv = "1.3.1"
 nanoid = "0.4.0"
 bincode = { version = "2.0.1", features = ["serde"] }
 smallstr = { version = "0.3.0", features = ["serde"] }
-hashbrown = { version = "0.15.3", features = ["serde"] }
 
 # Stats
 rand = { version = "=0.8.5", features = ["std", "std_rng"] }
@@ -68,6 +67,8 @@ serde.workspace = true
 serde_json.workspace = true
 statrs.workspace = true
 polars.workspace = true
+hashbrown.workspace = true
+
 
 [lints]
 workspace = true

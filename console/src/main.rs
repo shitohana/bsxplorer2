@@ -2,7 +2,6 @@ pub mod convert;
 pub mod dmr;
 pub mod utils;
 
-use bsxplorer2::exports::anyhow;
 use clap::{Parser, Subcommand};
 use convert::{FromBsxConvert, R2RConvert, ToBsxConvert};
 use utils::UtilsArgs;

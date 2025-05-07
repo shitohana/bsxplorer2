@@ -1,4 +1,4 @@
-from bsx2 import _native
+from bsx2 import _native #type: ignore
 
 ReportTypeSchema = _native.types.ReportTypeSchema
 Strand = _native.types.Strand

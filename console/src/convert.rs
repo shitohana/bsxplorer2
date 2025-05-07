@@ -5,7 +5,7 @@ use std::process::exit;
 use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchBuilder,
                                       BsxBatchMethods};
-use bsxplorer2::exports::anyhow;
+use bsxplorer2::data_structs::coords::GenomicPosition;
 use bsxplorer2::io::bsx::{BsxFileReader, BsxIpcWriter};
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{ReportReaderBuilder,
@@ -157,7 +157,7 @@ impl ToBsxConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos = batch.end_gpos()?;
+            let cur_pos: GenomicPosition<String, u32> = batch.end_gpos();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 
@@ -309,7 +309,7 @@ impl R2RConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos = batch.end_gpos()?;
+            let cur_pos: GenomicPosition<String, u32> = batch.end_gpos();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 

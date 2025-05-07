@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use anyhow::{Context as AnyhowContext, Result};
+use anyhow::Context as AnyhowContext;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, info, trace};
@@ -14,7 +14,7 @@ use crate::data_structs::enums::{Context, Strand};
 fn serialize_sorted_map<S, K: Ord + Serialize, V: Serialize>(
     map: &HashMap<K, V>,
     serializer: S,
-) -> Result<S::Ok, S::Error>
+) -> anyhow::Result<S::Ok, S::Error>
 where
     S: Serializer, {
     let sorted_map: BTreeMap<_, _> = map.iter().collect();
@@ -370,20 +370,21 @@ impl MethylationStats {
     pub fn finalize_methylation(&mut self) {
         debug!("Finalizing methylation statistics");
 
-        for (context, (sum_methylation, count)) in &mut self.context_methylation
+        for (context, (mut sum_methylation, count)) in
+            &mut self.context_methylation
         {
             if *count > 0 {
-                *sum_methylation /= *count as f64;
+                sum_methylation /= *count as f64;
                 trace!(
                     "Finalized {:?} context methylation to {}",
                     context,
-                    *sum_methylation
+                    sum_methylation
                 );
             }
             else {
                 debug!(
                     "No data_structs for context {:?}, keeping sum at {}",
-                    context, *sum_methylation
+                    context, sum_methylation
                 );
             }
         }
@@ -489,7 +490,7 @@ impl MethylationStats {
     /// # Returns
     ///
     /// A formatted string containing detailed methylation statistics.
-    pub fn display_long(&mut self) -> Result<String> {
+    pub fn display_long(&mut self) -> anyhow::Result<String> {
         debug!(
             "Generating detailed text representation of methylation statistics"
         );
@@ -584,8 +585,8 @@ mod tests {
     use hashbrown::HashMap;
     use num::pow::Pow;
 
-    use super::*;
-
+    use crate::data_structs::enums::Context;
+    use crate::data_structs::methstats::MethylationStats;
     /// Helper function to create a dummy `MethylationStats`
     fn sample_stats(
         mean: f64,

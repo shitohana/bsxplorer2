@@ -2,9 +2,8 @@ use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
 
+use anyhow::anyhow;
 use bsxplorer2::data_structs::enums::Context;
-use bsxplorer2::exports::anyhow;
-use bsxplorer2::exports::anyhow::anyhow;
 use bsxplorer2::tools::dmr::DMRegion;
 use clap::{Args, ValueEnum};
 use console::style;
@@ -345,7 +344,6 @@ impl DmrArgs {
             .collect::<Result<Vec<_>, _>>()
             .expect("Failed to deserialize DMR segments file");
 
-        use bsxplorer2::exports::adjustp;
         let padj = if !matches!(self.pmethod, PadjMethod::None) {
             adjustp::adjust(
                 &all_segments

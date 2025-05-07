@@ -4,12 +4,12 @@ use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchBuilder,
                                       BsxBatchMethods,
                                       EncodedBsxBatch};
-use bsxplorer2::exports::polars::prelude::{BooleanChunked,
-                                           DataFrame,
-                                           IntoSeries,
-                                           PolarsError,
-                                           Series};
 use paste::paste;
+use polars::prelude::{BooleanChunked,
+                      DataFrame,
+                      IntoSeries,
+                      PolarsError,
+                      Series};
 use pyo3::prelude::*;
 use pyo3_polars::{PyDataFrame, PySchema, PySeries};
 

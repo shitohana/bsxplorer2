@@ -653,10 +653,9 @@ fn check_pos_ascending(df: &DataFrame) -> bool {
     let pos = df
         .column(POS_NAME)
         .expect("position column not found");
-    pos.as_series()
-        .unwrap()
-        .iter()
-        .is_sorted()
+    pos.as_materialized_series()
+        .is_sorted(SortOptions::new().with_order_descending(false))
+        .unwrap_or(false)
 }
 
 /// Creates an expression to compute the total count from methylated and

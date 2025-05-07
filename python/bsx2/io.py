@@ -1,4 +1,4 @@
-from bsx2 import _native
+from bsx2 import _native # type: ignore
 
 RegionReader = _native.io.RegionReader
 Compression = _native.io.Compression

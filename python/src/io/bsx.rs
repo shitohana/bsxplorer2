@@ -5,10 +5,10 @@ use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchMethods,
                                       EncodedBsxBatch};
 use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::exports::polars::prelude::IpcCompression;
 use bsxplorer2::io::bsx::{BatchIndex,
                           BsxFileReader as RsBsxFileReader,
                           BsxIpcWriter as RsBsxIpcWriter};
+use polars::prelude::IpcCompression;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3_file::PyFileLikeObject;

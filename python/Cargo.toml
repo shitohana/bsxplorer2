@@ -21,7 +21,10 @@ pyo3 = { version = "=0.22.4", features = ["extension-module", "anyhow", "either"
 pyo3-polars = "=0.19.0"
 pyo3-file = "0.9.0"
 paste = "1.0.15"
-once_cell.workspace = true
+polars.workspace = true
+bio.workspace = true
+hashbrown.workspace = true
+itertools.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["bincode", "bincode_derive"]
