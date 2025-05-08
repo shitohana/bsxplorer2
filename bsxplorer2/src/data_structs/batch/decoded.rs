@@ -92,6 +92,7 @@ impl BsxBatchMethods for BsxBatch {
             .unwrap()
     }
 
+    #[inline(always)]
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         BsxBatch {
             data: data_frame,

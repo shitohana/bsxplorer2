@@ -228,6 +228,7 @@ impl PyBsxFileWriter {
         })
     }
 
+    #[allow(unsafe_code)]
     pub fn write_encoded_batch(
         &mut self,
         batch: PyDataFrame,
@@ -240,6 +241,7 @@ impl PyBsxFileWriter {
             .map_err(|e| PyPolarsErr::Polars(e).into())
     }
 
+    #[allow(unsafe_code)]
     pub fn write_batch(
         &mut self,
         batch: PyDataFrame,

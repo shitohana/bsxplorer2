@@ -117,6 +117,7 @@ impl BsxBatchMethods for EncodedBsxBatch {
             .unwrap()
     }
 
+    #[inline(always)]
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         EncodedBsxBatch {
             data: data_frame,
@@ -278,6 +279,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_new_unchecked() {
         let df = create_test_df();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(df.clone()) };
@@ -300,6 +302,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_data() {
         let df = create_test_df();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(df.clone()) };
@@ -307,6 +310,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_data_mut() {
         let df = create_test_df();
         let mut batch = unsafe { EncodedBsxBatch::new_unchecked(df.clone()) };
@@ -320,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_take() {
         let df = create_test_df();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(df.clone()) };
@@ -349,6 +354,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_chr_val_empty() {
         let empty_df = df!(
             CHR_NAME => Series::new_empty(CHR_NAME.into(), &DataType::Categorical(None, CategoricalOrdering::Physical)),
@@ -365,6 +371,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_from_encoded_bsxbatch() {
         let df = create_test_df();
         let batch = unsafe { EncodedBsxBatch::new_unchecked(df.clone()) };

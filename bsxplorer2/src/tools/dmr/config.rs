@@ -180,7 +180,12 @@ fn init_bsx_readers<F: Read + Seek + 'static>(
             .all_equal(),
         "Number of blocks not equal in files"
     );
-    let n_batches = bsx_readers[0].blocks_total();
+    #[allow(unsafe_code)]
+    let n_batches = unsafe {
+        bsx_readers
+            .get_unchecked(0)
+            .blocks_total()
+    };
     let iterators = bsx_readers
         .into_iter()
         .map(|reader| {

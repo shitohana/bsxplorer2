@@ -4,6 +4,7 @@ use polars::prelude::Column;
 
 use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
 
+#[allow(unsafe_code)]
 pub fn merge_replicates<B: BsxBatchMethods>(
     mut batches: Vec<B>,
     count_agg: fn(Vec<&Column>) -> Column,
@@ -19,7 +20,7 @@ pub fn merge_replicates<B: BsxBatchMethods>(
         // Assume all batches have the same length and identical chr, pos,
         // strand, context This should be guaranteed by the caller or
         // previous steps (e.g., alignment)
-        let first_batch_data = batches[0].data();
+        let first_batch_data = unsafe { batches.get_unchecked(0).data() };
         let chr_col = first_batch_data.column(colnames::CHR_NAME)?;
         let pos_col = first_batch_data.column(colnames::POS_NAME)?;
         let strand_col = first_batch_data.column(colnames::STRAND_NAME)?;
@@ -184,6 +185,7 @@ mod tests {
 
     // --- Helper Functions to Create Test Batches ---
 
+    #[allow(unsafe_code)]
     fn create_decoded_batch_1() -> BsxBatch {
         let df = df!(
             CHR_NAME => &["chr1", "chr1"],
@@ -198,6 +200,7 @@ mod tests {
         unsafe { BsxBatch::new_unchecked(df) }
     }
 
+    #[allow(unsafe_code)]
     fn create_decoded_batch_2() -> BsxBatch {
         let df = df!(
             CHR_NAME => &["chr1", "chr1"], // Identical metadata
@@ -212,6 +215,7 @@ mod tests {
         unsafe { BsxBatch::new_unchecked(df) }
     }
 
+    #[allow(unsafe_code)]
     fn create_encoded_batch_1() -> EncodedBsxBatch {
         let chr_series = Series::new(CHR_NAME.into(), &["chr1", "chr1"])
             .cast(&DataType::Categorical(None, CategoricalOrdering::Physical))
@@ -229,6 +233,7 @@ mod tests {
         unsafe { EncodedBsxBatch::new_unchecked(df) }
     }
 
+    #[allow(unsafe_code)]
     fn create_encoded_batch_2() -> EncodedBsxBatch {
         let chr_series = Series::new(CHR_NAME.into(), &["chr1", "chr1"])
             .cast(&DataType::Categorical(None, CategoricalOrdering::Physical))

@@ -161,6 +161,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     fn is_empty(&self) -> bool { self.data().is_empty() }
 
     /// Split batch at specified index
+    #[allow(unsafe_code)]
     fn split_at(
         &self,
         index: usize,
@@ -172,6 +173,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Slice the batch
+    #[allow(unsafe_code)]
     fn slice(
         &self,
         start: u32,
@@ -252,6 +254,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Vertically stack with another batch
+    #[allow(unsafe_code)]
     fn vstack(
         &self,
         other: &Self,
@@ -274,6 +277,7 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Filter batch based on boolean mask
+    #[allow(unsafe_code)]
     fn filter_mask(
         &self,
         mask: &BooleanChunked,

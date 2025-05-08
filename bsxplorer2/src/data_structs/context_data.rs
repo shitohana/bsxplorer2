@@ -59,9 +59,17 @@ impl ContextData {
         assert_eq!(positions.len(), contexts.len());
 
         let mut entries = std::collections::BTreeSet::new();
-        for i in 0..positions.len() {
-            entries.insert(Entry(positions[i], strands[i], contexts[i]));
+        #[allow(unsafe_code)]
+        unsafe {
+            for i in 0..positions.len() {
+                entries.insert(Entry(
+                    *positions.get_unchecked(i),
+                    *strands.get_unchecked(i),
+                    *contexts.get_unchecked(i),
+                ));
+            }
         }
+
 
         Self { entries }
     }

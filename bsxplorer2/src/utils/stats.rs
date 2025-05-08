@@ -148,13 +148,17 @@ pub fn mann_whitney_u<F: Float>(
         let mut end = i + 1;
 
         // Find all tied values
-        while end < observations.len()
-            && (observations[end].value - observations[start].value).abs()
-                < F::from(1e-6).unwrap()
-        {
-            end += 1;
+        #[allow(unsafe_code)]
+        unsafe {
+            while end < observations.len()
+                && (observations.get_unchecked(end).value
+                    - observations.get_unchecked(start).value)
+                    .abs()
+                    < F::from(1e-6).unwrap()
+            {
+                end += 1;
+            }
         }
-
         let count = end - start;
         let avg_rank = (start as f64 + 1.0 + end as f64) / 2.0; // ranks are 1-indexed
 

@@ -21,6 +21,11 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [workspace.dependencies]
 adjustp = "0.1.6"
 anyhow = "1.0.91"

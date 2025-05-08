@@ -88,6 +88,7 @@ macro_rules! lazy_bsx_batch_wrapper {
                 }
 
                 #[staticmethod]
+                #[allow(unsafe_code)]
                 pub fn from_dataframe_unchecked(
                     data: PyDataFrame,
                 ) -> PyResult<Self> {

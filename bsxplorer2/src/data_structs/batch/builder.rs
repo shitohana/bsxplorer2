@@ -144,6 +144,7 @@ impl BsxBatchBuilder {
     }
 
     /// Builds a BSX batch from the provided DataFrame.
+    #[allow(unsafe_code)]
     pub fn build<B: BsxBatchMethods + BsxTypeTag>(
         &self,
         data: DataFrame,
@@ -211,6 +212,7 @@ impl BsxBatchBuilder {
     }
 
     /// Converts an encoded batch to a decoded batch format.
+    #[allow(unsafe_code)]
     pub fn decode_batch(batch: EncodedBsxBatch) -> anyhow::Result<BsxBatch> {
         let batch_data = DataFrame::from(batch);
         let mut batch_lazy = batch_data.lazy();
@@ -359,6 +361,7 @@ impl BsxBatchBuilder {
     }
 
     /// Sorts data by position if needed and updates sorting flags.
+    #[allow(unsafe_code)]
     fn sort(
         &self,
         data: DataFrame,

@@ -88,6 +88,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     }
 }
 
+#[allow(unsafe_code)]
 impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
     /// Collects the lazy batch into a concrete BSX batch type.
     pub fn collect(self) -> anyhow::Result<T> {
@@ -409,6 +410,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> TryFrom<LazyBsxBatch<T>>
     type Error = anyhow::Error;
 
     /// Attempts to convert a lazy BSX batch to an encoded BSX batch.
+    #[allow(unsafe_code)]
     fn try_from(lazy_batch: LazyBsxBatch<T>) -> Result<Self, Self::Error> {
         let df = lazy_batch.data.collect()?;
         unsafe { Ok(EncodedBsxBatch::new_unchecked(df)) }
@@ -533,6 +535,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_filter_pos_lt_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
@@ -558,6 +561,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_filter_pos_gt_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
@@ -702,6 +706,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_filter_coverage_lt_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
@@ -749,6 +754,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_filter_strand_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
@@ -801,6 +807,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_filter_context_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch.clone());
@@ -857,6 +864,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_mark_low_coverage_encoded() {
         let batch = create_test_encoded_batch();
         let lazy_batch = LazyBsxBatch::<EncodedBsxBatch>::from(batch);
@@ -952,6 +960,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_align_with_contexts_encoded() {
         let batch = create_test_encoded_batch(); // pos: 10, 20, 30, 40, 50
         let chr_dtype = batch.chr().dtype().clone();
