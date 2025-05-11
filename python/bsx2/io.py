@@ -9,7 +9,7 @@ IpcCompression = _native.io.IpcCompression
 BsxIpcWriter = _native.io.BsxIpcWriter
 
 __all__ = [
-    # "RegionReader",
+    "RegionReader",
     "Compression",
     "ReportReader",
     "ReportWriter",

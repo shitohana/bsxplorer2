@@ -13,6 +13,8 @@ EncodedBsxBatch = _native.types.EncodedBsxBatch
 BsxBatch = _native.types.BsxBatch
 LazyBsxBatch = _native.types.LazyBsxBatch
 LazyEncodedBsxBatch = _native.types.LazyEncodedBsxBatch
+encode = _native.types.encode
+decode = _native.types.decode
 
 
 __all__ = [
@@ -28,5 +30,7 @@ __all__ = [
     "EncodedBsxBatch",
     "BsxBatch",
     "LazyBsxBatch",
-    "LazyEncodedBsxBatch"
+    "LazyEncodedBsxBatch",
+    "encode",
+    "decode"
 ]

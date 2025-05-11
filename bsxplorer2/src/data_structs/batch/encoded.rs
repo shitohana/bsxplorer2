@@ -49,7 +49,9 @@ impl EncodedBsxBatch {
 }
 
 impl From<EncodedBsxBatch> for DataFrame {
-    fn from(batch: EncodedBsxBatch) -> Self { batch.data }
+    fn from(batch: EncodedBsxBatch) -> Self {
+        batch.data
+    }
 }
 
 impl BsxBatchMethods for EncodedBsxBatch {
@@ -125,9 +127,13 @@ impl BsxBatchMethods for EncodedBsxBatch {
         }
     }
 
-    fn data(&self) -> &DataFrame { &self.data }
+    fn data(&self) -> &DataFrame {
+        &self.data
+    }
 
-    fn data_mut(&mut self) -> &mut DataFrame { &mut self.data }
+    fn data_mut(&mut self) -> &mut DataFrame {
+        &mut self.data
+    }
 
     fn take(self) -> DataFrame
     where
@@ -151,10 +157,14 @@ impl BsxBatchMethods for EncodedBsxBatch {
 
 impl BsxTypeTag for EncodedBsxBatch {
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_name() -> &'static str { "encoded" }
+    fn type_name() -> &'static str {
+        "encoded"
+    }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_enum() -> BatchType { BatchType::Encoded }
+    fn type_enum() -> BatchType {
+        BatchType::Encoded
+    }
 }
 
 #[cfg(test)]

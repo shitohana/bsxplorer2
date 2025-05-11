@@ -1,6 +1,7 @@
 from enum import Enum
-import polars as pl
 from typing import Callable, Dict, Optional, List, Tuple
+
+import polars as pl
 
 __all__ = [
     "ReportTypeSchema",
@@ -10,6 +11,7 @@ __all__ = [
     "GenomicPosition",
     "Contig",
     "BatchIndex",
+    "GffEntry",
     "AnnotStore",
     "MethylationStats",
     "EncodedBsxBatch",
@@ -121,7 +123,7 @@ class Strand:
 
     Forward: "Strand"
     Reverse: "Strand"
-    None_: "Strand"  # Renamed to avoid conflict with Python's None
+    Null: "Strand"  # Renamed to avoid conflict with Python's None
 
 class Context:
     """
@@ -157,6 +159,25 @@ class ContextData:
         """
         ...
 
+    @staticmethod
+    def empty() -> "ContextData":
+        """
+        Creates an empty `ContextData`.
+        """
+        ...
+
+    def is_empty(self) -> bool:
+        """
+        Checks if the `ContextData` is empty.
+        """
+        ...
+
+    def take(self) -> Tuple[List[int], List[Strand], List[Context]]:
+        """
+        Takes the data, returning vectors of positions, strands, and contexts.
+        """
+        ...
+
     def to_decoded_df(self) -> pl.DataFrame:
         """
         Converts the context information into a Polars DataFrame compatible with BsxBatch (decoded format).
@@ -184,6 +205,13 @@ class ContextData:
             A Polars DataFrame with encoded context information.
         """
         ...
+
+    def __len__(self) -> int:
+        """
+        Returns the number of entries in the `ContextData`.
+        """
+        ...
+
 
 class GenomicPosition:
     """
@@ -237,31 +265,24 @@ class GenomicPosition:
         """
         ...
 
+    def __lt__(self, other: "GenomicPosition") -> bool:
+        ...
+
+    def __le__(self, other: "GenomicPosition") -> bool:
+        ...
+
     def __richcmp__(self, other: "GenomicPosition", op: int) -> bool:
+        ...
+
+    def __gt__(self, other: "GenomicPosition") -> bool:
+        ...
+
+    def __ge__(self, other: "GenomicPosition") -> bool:
+        ...
+
+    def is_zero(self) -> bool:
         """
-        Compare two GenomicPositions.
-
-        Equality (==) and inequality (!=) compare both seqname and position.
-        Ordering comparisons (<, <=, >, >=) compare positions but require
-        identical seqnames.
-
-        Parameters
-        ----------
-        other : GenomicPosition
-            The position to compare against.
-        op : int
-            The comparison operation.
-
-        Returns
-        -------
-        bool
-            The result of the comparison.
-
-        Raises
-        ------
-        ValueError
-            If ordering comparison is attempted between positions on different
-            chromosomes.
+        Checks if the `GenomicPosition` is zero (empty seqname and zero position).
         """
         ...
 
@@ -357,7 +378,7 @@ class Contig:
         ...
 
     @property
-    def strand(self) -> Strand:
+    def strand(self) -> Strand: # In Rust PyO3, it's PyStrand which is an enum.
         """
         Get the strand as a Strand enum value.
         """
@@ -432,6 +453,12 @@ class Contig:
         """
         ...
 
+    def is_empty(self) -> bool:
+        """
+        Checks if the contig is empty (zero start, zero end, and empty seqname).
+        """
+        ...
+
     def __str__(self) -> str:
         """
         Get the string representation (seqname:start-end(strand)).
@@ -445,31 +472,18 @@ class Contig:
         ...
 
     def __richcmp__(self, other: "Contig", op: int) -> bool:
-        """
-        Compare two Contigs.
+        ...
 
-        Equality (==) and inequality (!=) compare seqname, start, end, and strand.
-        Ordering comparisons (<, <=, >, >=) are defined only if contigs are
-        on the same chromosome and do not overlap.
+    def __lt__(self, other: "Contig") -> bool:
+        ...
 
-        Parameters
-        ----------
-        other : Contig
-            The contig to compare against.
-        op : int
-            The comparison operation.
+    def __le__(self, other: "Contig") -> bool:
+        ...
 
-        Returns
-        -------
-        bool
-            The result of the comparison.
+    def __gt__(self, other: "Contig") -> bool:
+        ...
 
-        Raises
-        ------
-        NotImplementedError
-            If ordering comparison is attempted between contigs on different
-            chromosomes or with intersecting regions.
-        """
+    def __ge__(self, other: "Contig") -> bool:
         ...
 
 class BatchIndex:
@@ -591,6 +605,95 @@ class BatchIndex:
         """
         ...
 
+    def sort(self, contigs: List[Contig]) -> List[Contig]:
+        """
+        Sorts a list of contigs based on the BatchIndex's chromosome order
+        and then by start position within each chromosome.
+        """
+        ...
+
+class GffEntry:
+    """
+    Represents a GFF (General Feature Format) entry.
+    """
+
+    def __init__(self,
+                 contig: Contig,
+                 source: Optional[str] = None,
+                 feature_type: Optional[str] = None,
+                 score: Optional[float] = None,
+                 phase: Optional[int] = None, # u8 in Rust
+                 id: Optional[str] = None
+                 ) -> None:
+        """
+        Create a new GffEntry.
+
+        Parameters
+        ----------
+        contig : Contig
+            The genomic coordinates of the feature.
+        source : str, optional
+            The source of the feature (e.g., "HAVANA", "Ensembl").
+        feature_type : str, optional
+            The type of the feature (e.g., "gene", "exon", "CDS").
+        score : float, optional
+            The score of the feature, if applicable.
+        phase : int, optional
+            For CDS features, the phase (0, 1, or 2).
+        id : str, optional
+            A unique identifier for this GFF entry. If not provided, one may be generated.
+        """
+        ...
+
+    @property
+    def id(self) -> str:
+        """
+        Get the ID of the GFF entry.
+        """
+        ...
+
+    @property
+    def contig(self) -> Contig:
+        """
+        Get the Contig object representing the coordinates of this GFF entry.
+        """
+        ...
+
+    @property
+    def source(self) -> str:
+        """
+        Get the source of the GFF entry.
+        """
+        ...
+
+    @property
+    def feature_type(self) -> str:
+        """
+        Get the feature type of the GFF entry.
+        """
+        ...
+
+    @property
+    def score(self) -> Optional[float]:
+        """
+        Get the score of the GFF entry, if available.
+        """
+        ...
+
+    @property
+    def phase(self) -> Optional[int]:
+        """
+        Get the phase of the GFF entry (typically for CDS features), if available.
+        """
+        ...
+
+    def __repr__(self) -> str:
+        """
+        Return a developer-friendly string representation of the GffEntry.
+        """
+        ...
+
+
 class AnnotStore:
     """
     A store for GFF/BED annotation entries.
@@ -663,7 +766,92 @@ class AnnotStore:
         """
         ...
 
-    def add_upstream(self, length: int, selector: Optional[Callable] = None) -> None:
+    def insert(self, entry: GffEntry) -> None:
+        """
+        Inserts a GFF entry into the store.
+
+        If an entry with the same ID already exists, the behavior might depend
+        on the underlying Rust implementation (e.g., it might be ignored or overwrite).
+        The Python wrapper typically returns None on success or raises an error.
+
+        Parameters
+        ----------
+        entry : GffEntry
+            The GFF entry to insert.
+        """
+        ...
+
+    def remove(self, id: str) -> Optional[GffEntry]:
+        """
+        Removes a GFF entry from the store by ID.
+
+        Parameters
+        ----------
+        id : str
+            The ID of the GFF entry to remove.
+
+        Returns
+        -------
+        Optional[GffEntry]
+            The removed entry if found, or None if no entry with the given ID exists.
+        """
+        ...
+
+    def get_children(self, id: str) -> Optional[List[str]]:
+        """
+        Gets the children of an entry by its ID.
+
+        Parameters
+        ----------
+        id : str
+            The ID of the parent entry.
+
+        Returns
+        -------
+        Optional[List[str]]
+            A list of IDs of child entries, or None if the parent ID is not found
+            or has no children.
+        """
+        ...
+
+    def get_parents(self, id: str) -> Optional[List[str]]:
+        """
+        Gets the parents of an entry by its ID.
+
+        Parameters
+        ----------
+        id : str
+            The ID of the child entry.
+
+        Returns
+        -------
+        Optional[List[str]]
+            A list of IDs of parent entries, or None if the child ID is not found
+            or has no parents.
+        """
+        ...
+
+    def id_map(self) -> Dict[str, GffEntry]:
+        """
+        Returns a copy of the internal ID map, mapping entry IDs to GffEntry objects.
+        """
+        ...
+
+    def parent_map(self) -> Dict[str, List[str]]:
+        """
+        Returns a copy of the internal parent map.
+        Maps child entry IDs to a list of their parent entry IDs.
+        """
+        ...
+
+    def children_map(self) -> Dict[str, List[str]]:
+        """
+        Returns a copy of the internal children map.
+        Maps parent entry IDs to a list of their child entry IDs.
+        """
+        ...
+
+    def add_upstream(self, length: int, selector: Optional[Callable[[GffEntry], bool]] = None) -> None:
         """
         Add upstream regions to selected entries.
 
@@ -679,10 +867,11 @@ class AnnotStore:
         selector : callable, optional
             A function that takes a GffEntry and returns True if an upstream
             region should be added for it. If None, applies to all entries.
+            (Note: current Rust wrapper applies to all).
         """
         ...
 
-    def add_downstream(self, length: int, selector: Optional[Callable] = None) -> None:
+    def add_downstream(self, length: int, selector: Optional[Callable[[GffEntry], bool]] = None) -> None:
         """
         Add downstream regions to selected entries.
 
@@ -698,10 +887,11 @@ class AnnotStore:
         selector : callable, optional
             A function that takes a GffEntry and returns True if a downstream
             region should be added for it. If None, applies to all entries.
+            (Note: current Rust wrapper applies to all).
         """
         ...
 
-    def add_flanks(self, length: int, selector: Optional[Callable] = None) -> None:
+    def add_flanks(self, length: int, selector: Optional[Callable[[GffEntry], bool]] = None) -> None:
         """
         Add both upstream and downstream regions (flanks) to selected entries.
 
@@ -714,6 +904,7 @@ class AnnotStore:
         selector : callable, optional
             A function that takes a GffEntry and returns True if flanks
             should be added for it. If None, applies to all entries.
+            (Note: current Rust wrapper applies to all).
         """
         ...
 
@@ -732,8 +923,8 @@ class AnnotStore:
         Returns
         -------
         List[Contig]
-            An iterator yielding annotation entries (Contig objects) in sorted order.
-            (Note: The Python stub specifies List[Contig], while Rust implies an iterator of GffEntry related items.)
+            A list of Contig objects representing the annotation entries in sorted order.
+            (Note: The Python stub specifies List[Contig], derived from PyContig from Rust which might represent a GffEntry's coordinates.)
         """
         ...
 
@@ -791,7 +982,7 @@ class MethylationStats:
     def from_data(
         mean_methylation: float,
         variance_methylation: float,
-        coverage_distribution: Dict[int, int],
+        coverage_distribution: Dict[int, int], # Rust is u16, u32
         context_methylation: Dict[str, Tuple[float, int]], # Python uses str for Context/Strand keys
         strand_methylation: Dict[str, Tuple[float, int]]
     ) -> "MethylationStats":
@@ -821,6 +1012,450 @@ class MethylationStats:
         """
         ...
 
+    def merge(self, other: "MethylationStats") -> None:
+        """
+        Merges another MethylationStats instance into this one.
+
+        This performs a weighted merge of statistics, with weights based on
+        coverage. The method updates mean methylation, variance, coverage
+        distribution, and context/strand-specific statistics.
+        """
+        ...
+
+    def finalize_methylation(self) -> None:
+        """
+        Finalizes methylation statistics by converting accumulated sums to mean
+        values.
+
+        This should be called after all merging operations are complete and
+        before retrieving final statistics.
+        """
+        ...
+
+    def total_coverage(self) -> int: # Rust is u32
+        """
+        Computes the total sequencing coverage across all positions.
+        """
+        ...
+
+    def mean_methylation(self) -> float:
+        """
+        Computes the genome-wide mean methylation level.
+        """
+        ...
+
+    @staticmethod
+    def merge_multiple(stats_list: List["MethylationStats"]) -> "MethylationStats":
+        """
+        Merges multiple MethylationStats instances to create a genome-wide
+        summary.
+        """
+        ...
+
+    def coverage_distribution(self) -> Dict[int, int]: # Rust is u16, u32
+        """
+        Returns the coverage distribution map.
+        Key: coverage depth (int), Value: number of positions with that coverage (int).
+        """
+        ...
+
+    def methylation_var(self) -> float:
+        """
+        Returns the variance of methylation levels.
+        """
+        ...
+
+    def context_methylation(self) -> Dict[str, Tuple[float, int]]:
+        """
+        Returns methylation statistics per sequence context.
+        Key: context (str), Value: (mean methylation level, count of positions).
+        Note: Rust version might store sum before finalization. Python stub implies mean.
+        """
+        ...
+
+    def strand_methylation(self) -> Dict[str, Tuple[float, int]]:
+        """
+        Returns methylation statistics per DNA strand.
+        Key: strand (str), Value: (mean methylation level, count of positions).
+        Note: Rust version might store sum before finalization. Python stub implies mean.
+        """
+        ...
+
+
+class LazyBsxBatch:
+    """
+    A lazy representation of a BSX batch for efficient query operations on decoded data.
+
+    Allows for chaining of filter and transformation operations that are only
+    executed when the `collect` method is called or when statistics are computed.
+    """
+    def __init__(self, batch: "BsxBatch"):
+        """
+        Initialize a LazyBsxBatch from a BsxBatch.
+
+        Parameters
+        ----------
+        batch : BsxBatch
+            The BsxBatch to operate on lazily.
+        """
+        ...
+
+    def into_report(self, report_type: ReportTypeSchema) -> pl.DataFrame:
+        """
+        Convert the batch to a specified report type format.
+
+        Transforms the internal DataFrame to match the column names and structure
+        of the target report type (e.g., Bismark, CgMap).
+
+        Parameters
+        ----------
+        report_type : ReportTypeSchema
+            The target report format.
+
+        Returns
+        -------
+        pl.DataFrame
+            A Polars DataFrame formatted according to the specified report type.
+        """
+        ...
+
+    def collect(self) -> "BsxBatch":
+        """
+        Execute all queued lazy operations and return a concrete BsxBatch.
+
+        Returns
+        -------
+        BsxBatch
+            A new BsxBatch containing the results of the lazy computations.
+        """
+        ...
+
+    def filter_pos_lt(self, pos: int) -> "LazyBsxBatch": # Rust is u32
+        """
+        Filter positions less than the specified value.
+
+        Parameters
+        ----------
+        pos : int
+            The position value. Rows with 'position' < `pos` will be kept.
+
+        Returns
+        -------
+        LazyBsxBatch
+            A new LazyBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_pos_gt(self, pos: int) -> "LazyBsxBatch": # Rust is u32
+        """
+        Filter positions greater than the specified value.
+
+        Parameters
+        ----------
+        pos : int
+            The position value. Rows with 'position' > `pos` will be kept.
+
+        Returns
+        -------
+        LazyBsxBatch
+            A new LazyBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_coverage_lt(self, coverage: int) -> "LazyBsxBatch": # Rust is u32
+        """
+        Filter entries with total coverage less than the specified value.
+
+        Parameters
+        ----------
+        coverage : int
+            The coverage threshold. Rows with 'count_total' < `coverage` will be kept.
+
+    Returns
+        -------
+        LazyBsxBatch
+            A new LazyBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_strand(self, strand: Strand) -> "LazyBsxBatch":
+        """
+        Filter entries by strand value.
+
+        Parameters
+        ----------
+        strand : Strand
+            The strand value to filter by (e.g., Strand.Forward, Strand.Reverse).
+
+        Returns
+        -------
+        LazyBsxBatch
+            A new LazyBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_context(self, context: Context) -> "LazyBsxBatch":
+        """
+        Filter entries by context value.
+
+        Parameters
+        ----------
+        context : Context
+            The context value to filter by (e.g., Context.CG, Context.CHG).
+
+        Returns
+        -------
+        LazyBsxBatch
+            A new LazyBsxBatch with the filter applied.
+        """
+        ...
+
+    def mark_low_coverage(self, threshold: int) -> "LazyBsxBatch": # Rust is u32
+        """
+        Mark entries with coverage below a threshold.
+
+        Rows where 'count_total' is less than `threshold` will have their
+        'count_total' and 'count_m' set to 0, and 'density' set to NaN.
+
+        Parameters
+        ----------
+        threshold : int
+            The coverage threshold.
+
+        Returns
+        -------
+        LazyBsxBatch
+            A new LazyBsxBatch with low coverage entries marked.
+        """
+        ...
+
+    def align_with_contexts(self, context_data: ContextData, chr_val: str) -> "LazyBsxBatch":
+        """
+        Align the batch with provided context data for a specified chromosome.
+
+        Performs a left join of the context data DataFrame with the batch's data,
+        using 'position' as the join key. Drops existing 'context' and 'strand'
+        columns from the batch before joining. Fills nulls introduced by the join:
+        'chr' with `chr_val`, 'count_m' and 'count_total' with 0, 'density' with NaN.
+
+        Parameters
+        ----------
+        context_data : ContextData
+            The context data to align with.
+        chr_val : str
+            The chromosome value to fill in for new rows from `context_data`.
+
+        Returns
+        -------
+        LazyBsxBatch
+            A new LazyBsxBatch with aligned context information.
+        """
+        ...
+
+    def stats(self) -> MethylationStats:
+        """
+        Calculate methylation statistics for the batch.
+
+        Computes overall mean methylation, variance, coverage distribution,
+        and context-specific and strand-specific methylation means.
+
+        Returns
+        -------
+        MethylationStats
+            An object containing the calculated statistics.
+        """
+        ...
+
+class LazyEncodedBsxBatch:
+    """
+    A lazy representation of an EncodedBsxBatch for efficient query operations.
+
+    Allows for chaining of filter and transformation operations that are only
+    executed when the `collect` method is called or when statistics are computed.
+    Operates on data where 'strand' and 'context' may be boolean encoded.
+    """
+    def __init__(self, batch: "EncodedBsxBatch"):
+        """
+        Initialize a LazyEncodedBsxBatch from an EncodedBsxBatch.
+
+        Parameters
+        ----------
+        batch : EncodedBsxBatch
+            The EncodedBsxBatch to operate on lazily.
+        """
+        ...
+
+    def into_report(self, report_type: ReportTypeSchema) -> pl.DataFrame:
+        """
+        Convert the batch to a specified report type format.
+
+        Transforms the internal DataFrame to match the column names and structure
+        of the target report type. Handles decoding of boolean 'strand' and 'context'
+        columns if necessary for the report type.
+
+        Parameters
+        ----------
+        report_type : ReportTypeSchema
+            The target report format.
+
+        Returns
+        -------
+        pl.DataFrame
+            A Polars DataFrame formatted according to the specified report type.
+        """
+        ...
+
+    def collect(self) -> "EncodedBsxBatch":
+        """
+        Execute all queued lazy operations and return a concrete EncodedBsxBatch.
+
+        Returns
+        -------
+        EncodedBsxBatch
+            A new EncodedBsxBatch containing the results of the lazy computations.
+        """
+        ...
+
+    def filter_pos_lt(self, pos: int) -> "LazyEncodedBsxBatch": # Rust is u32
+        """
+        Filter positions less than the specified value.
+
+        Parameters
+        ----------
+        pos : int
+            The position value. Rows with 'position' < `pos` will be kept.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A new LazyEncodedBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_pos_gt(self, pos: int) -> "LazyEncodedBsxBatch": # Rust is u32
+        """
+        Filter positions greater than the specified value.
+
+        Parameters
+        ----------
+        pos : int
+            The position value. Rows with 'position' > `pos` will be kept.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A new LazyEncodedBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_coverage_lt(self, coverage: int) -> "LazyEncodedBsxBatch": # Rust is u32
+        """
+        Filter entries with total coverage less than the specified value.
+
+        Parameters
+        ----------
+        coverage : int
+            The coverage threshold. Rows with 'count_total' < `coverage` will be kept.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A new LazyEncodedBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_strand(self, strand: Strand) -> "LazyEncodedBsxBatch":
+        """
+        Filter entries by strand value.
+
+        Compares with the 'strand' column, which may be boolean encoded
+        (True for '+', False for '-', None for '.').
+
+        Parameters
+        ----------
+        strand : Strand
+            The strand value to filter by.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A new LazyEncodedBsxBatch with the filter applied.
+        """
+        ...
+
+    def filter_context(self, context: Context) -> "LazyEncodedBsxBatch":
+        """
+        Filter entries by context value.
+
+        Compares with the 'context' column, which may be boolean encoded
+        (True for 'CG', False for 'CHG', None for 'CHH').
+
+        Parameters
+        ----------
+        context : Context
+            The context value to filter by.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A new LazyEncodedBsxBatch with the filter applied.
+        """
+        ...
+
+    def mark_low_coverage(self, threshold: int) -> "LazyEncodedBsxBatch": # Rust is u32
+        """
+        Mark entries with coverage below a threshold.
+
+        Rows where 'count_total' is less than `threshold` will have their
+        'count_total' and 'count_m' set to 0, and 'density' set to NaN.
+
+        Parameters
+        ----------
+        threshold : int
+            The coverage threshold.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A new LazyEncodedBsxBatch with low coverage entries marked.
+        """
+        ...
+
+    def align_with_contexts(self, context_data: ContextData, chr_val: str) -> "LazyEncodedBsxBatch":
+        """
+        Align the batch with provided encoded context data for a specified chromosome.
+
+        Performs a left join of the context data DataFrame (in encoded form)
+        with the batch's data. See `LazyBsxBatch.align_with_contexts` for more details.
+
+        Parameters
+        ----------
+        context_data : ContextData
+            The context data to align with.
+        chr_val : str
+            The chromosome value to fill in for new rows.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A new LazyEncodedBsxBatch with aligned context information.
+        """
+        ...
+
+    def stats(self) -> MethylationStats:
+        """
+        Calculate methylation statistics for the encoded batch.
+
+        Computes statistics similar to `LazyBsxBatch.stats`, accounting for
+        potentially encoded 'strand' and 'context' values.
+
+        Returns
+        -------
+        MethylationStats
+            An object containing the calculated statistics.
+        """
+        ...
+
 
 class EncodedBsxBatch:
     """
@@ -837,6 +1472,7 @@ class EncodedBsxBatch:
         check_single_chr: bool = True,
         context_data: Optional[ContextData] = None,
         report_schema: Optional[ReportTypeSchema] = None,
+        chr_values: Optional[List[str]] = None
     ) -> None:
         """
         Create a new EncodedBsxBatch from a DataFrame.
@@ -861,6 +1497,9 @@ class EncodedBsxBatch:
             Context data associated with the batch.
         report_schema : ReportTypeSchema, optional
             Schema defining the report type.
+        chr_values : List[str], optional
+            A list of unique chromosome string values to establish a categorical type.
+            Required if converting from formats that don't inherently define categorical order.
 
         Raises
         ------
@@ -869,8 +1508,18 @@ class EncodedBsxBatch:
         """
         ...
 
+    def lazy(self) -> LazyEncodedBsxBatch:
+        """
+        Create a lazy EncodedBsxBatch from the current batch.
+
+        Returns
+        -------
+        LazyEncodedBsxBatch
+            A lazy EncodedBsxBatch.
+        """
+
     @staticmethod
-    def from_dataframe_unchecked(data: pl.DataFrame) -> EncodedBsxBatch:
+    def from_dataframe_unchecked(data: pl.DataFrame) -> "EncodedBsxBatch":
         """
         Create a new EncodedBsxBatch from a DataFrame without performing any checks.
 
@@ -941,7 +1590,7 @@ class EncodedBsxBatch:
         Returns
         -------
         pl.Series
-            The strand data (Categorical).
+            The strand data (Boolean, where True is '+', False is '-', Null is '.').
         """
         ...
 
@@ -952,7 +1601,7 @@ class EncodedBsxBatch:
         Returns
         -------
         pl.Series
-            The context data (Categorical).
+            The context data (Boolean, where True is 'CG', False is 'CHG', Null is 'CHH').
         """
         ...
 
@@ -963,7 +1612,7 @@ class EncodedBsxBatch:
         Returns
         -------
         pl.Series
-            The methylated count data (UInt32).
+            The methylated count data (Int16).
         """
         ...
 
@@ -974,7 +1623,7 @@ class EncodedBsxBatch:
         Returns
         -------
         pl.Series
-            The total count data (UInt32).
+            The total count data (Int16).
         """
         ...
 
@@ -1057,57 +1706,37 @@ class EncodedBsxBatch:
         """
         ...
 
-    def start_pos(self) -> Optional[int]:
+    def start_pos(self) -> int: # Rust is u32
         """
         Get the starting genomic position in the batch.
 
         Returns
         -------
-        int or None
-            The minimum position value, or None if the batch is empty.
+        int
+            The minimum position value. Returns 0 if the batch is empty.
         """
         ...
 
-    def end_pos(self) -> Optional[int]:
+    def end_pos(self) -> int: # Rust is u32
         """
         Get the ending genomic position in the batch.
 
         Returns
         -------
-        int or None
-            The maximum position value, or None if the batch is empty.
+        int
+            The maximum position value. Returns 0 if the batch is empty.
         """
         ...
 
     def start_gpos(self) -> GenomicPosition:
         """
-        Get the start position of the batch as a GenomicPosition object.
-
-        Returns
-        -------
-        GenomicPosition
-            A GenomicPosition object representing the start of the batch.
-
-        Raises
-        ------
-        ValueError
-            If the batch is empty or the chromosome value cannot be determined.
+        Returns the genomic position at the start of the batch.
         """
         ...
 
     def end_gpos(self) -> GenomicPosition:
         """
-        Get the end position of the batch as a GenomicPosition object.
-
-        Returns
-        -------
-        GenomicPosition
-            A GenomicPosition object representing the end of the batch.
-
-        Raises
-        ------
-        ValueError
-            If the batch is empty or the chromosome value cannot be determined.
+        Returns the genomic position at the end of the batch.
         """
         ...
 
@@ -1125,25 +1754,20 @@ class EncodedBsxBatch:
         Contig or None
             A Contig object representing the genomic span of the batch,
             or None if the batch is empty.
-
-        Raises
-        ------
-        ValueError
-            If the chromosome value cannot be determined for a non-empty batch.
         """
         ...
 
-    def vstack(self, other: "EncodedBsxBatch") -> "EncodedBsxBatch":
+    def vstack(self, other: "EncodedBsxBatch") -> "EncodedBsxBatch": # Rust takes &[<Py $wrap_type>]
         """
-        Vertically stack this batch with another batch.
+        Vertically stack this batch with other batches.
 
-        Creates a new batch containing rows from both batches. Performs checks
-        on the combined data.
+        Creates a new batch containing rows from this batch and all other batches.
+        Performs checks on the combined data.
 
         Parameters
         ----------
-        other : EncodedBsxBatch
-            The batch to stack underneath this one.
+        other : List[EncodedBsxBatch]
+            A list of batches to stack underneath this one.
 
         Returns
         -------
@@ -1157,16 +1781,16 @@ class EncodedBsxBatch:
         """
         ...
 
-    def extend(self, other: "EncodedBsxBatch") -> None:
+    def extend(self, other: "EncodedBsxBatch") -> None: # Rust takes &[<Py $wrap_type>]
         """
-        Extend this batch by appending rows from another batch in-place.
+        Extend this batch by appending rows from other batches in-place.
 
         Modifies the current batch. Performs checks after extending.
 
         Parameters
         ----------
-        other : EncodedBsxBatch
-            The batch whose rows will be appended.
+        other : List[EncodedBsxBatch]
+            A list of batches whose rows will be appended.
 
         Raises
         ------
@@ -1210,6 +1834,7 @@ class EncodedBsxBatch:
             The height (number of rows) of the batch.
         """
         ...
+
 
     def __len__(self) -> int:
         """
@@ -1295,6 +1920,9 @@ class BsxBatch:
             Context data associated with the batch.
         report_schema : ReportTypeSchema, optional
             Schema defining the report type.
+        chr_values : List[str], optional
+            A list of unique chromosome string values. Used if `report_schema` implies
+            conversion to categorical chromosome types, like in `EncodedBsxBatch`.
 
         Raises
         ------
@@ -1302,6 +1930,16 @@ class BsxBatch:
             If any of the enabled checks fail.
         """
         ...
+
+    def lazy(self) -> LazyBsxBatch:
+        """
+        Create a lazy EncodedBsxBatch from the current batch.
+
+        Returns
+        -------
+        LazyBsxBatch
+            A lazy BsxBatch.
+        """
 
     @staticmethod
     def from_dataframe_unchecked(data: pl.DataFrame) -> "BsxBatch":
@@ -1364,7 +2002,7 @@ class BsxBatch:
         Returns
         -------
         pl.Series
-            The position data (UInt32).
+            The position data (UInt64).
         """
         ...
 
@@ -1419,7 +2057,7 @@ class BsxBatch:
         Returns
         -------
         pl.Series
-            The density data (Float32).
+            The density data (Float64).
         """
         ...
 
@@ -1491,48 +2129,68 @@ class BsxBatch:
         """
         ...
 
-    def start_pos(self) -> Optional[int]:
+    def start_pos(self) -> int: # Rust is u32
         """
         Get the starting genomic position in the batch.
 
         Returns
         -------
-        int or None
-            The minimum position value, or None if the batch is empty.
+        int
+            The minimum position value. Returns 0 if the batch is empty.
         """
         ...
 
-    def end_pos(self) -> Optional[int]:
+    def end_pos(self) -> int: # Rust is u32
         """
         Get the ending genomic position in the batch.
 
         Returns
         -------
-        int or None
-            The maximum position value, or None if the batch is empty.
+        int
+            The maximum position value. Returns 0 if the batch is empty.
         """
         ...
 
     def start_gpos(self) -> GenomicPosition:
+        """
+        Returns the genomic position at the start of the batch.
+        """
         ...
 
     def end_gpos(self) -> GenomicPosition:
+        """
+        Returns the genomic position at the end of the batch.
+        """
         ...
 
-    def as_contig(self) -> Contig:
+    def as_contig(self) -> Optional[Contig]: # Rust is PyResult<Option<PyContig>>
+        """
+        Represents the batch as a Contig object.
+
+        The contig spans from the first position to the last position in the batch,
+        inclusive. The end of the contig will be `self.end_pos() + 1` to
+        adhere to the common exclusive-end convention for contigs.
+        The strand will be set to '.' (None).
+
+        Returns
+        -------
+        Contig or None
+            A Contig object representing the genomic span of the batch,
+            or None if the batch is empty.
+        """
         ...
 
     def vstack(self, other: "BsxBatch") -> "BsxBatch":
         """
-        Vertically stack this batch with another batch.
+        Vertically stack this batch with other batches.
 
-        Creates a new batch containing rows from both batches. Performs checks
-        on the combined data.
+        Creates a new batch containing rows from this batch and all other batches.
+        Performs checks on the combined data.
 
         Parameters
         ----------
-        other : BsxBatch
-            The batch to stack underneath this one.
+        other : List[BsxBatch]
+            A list of batches to stack underneath this one.
 
         Returns
         -------
@@ -1548,14 +2206,14 @@ class BsxBatch:
 
     def extend(self, other: "BsxBatch") -> None:
         """
-        Extend this batch by appending rows from another batch in-place.
+        Extend this batch by appending rows from other batches in-place.
 
         Modifies the current batch. Performs checks after extending.
 
         Parameters
         ----------
-        other : BsxBatch
-            The batch whose rows will be appended.
+        other : List[BsxBatch]
+            A list of batches whose rows will be appended.
 
         Raises
         ------
@@ -1645,384 +2303,14 @@ class BsxBatch:
         """
         ...
 
-class LazyBsxBatch:
+def encode(decoded: BsxBatch, chr_values: List[str]) -> EncodedBsxBatch:
     """
-    A lazy representation of a BSX batch for efficient query operations on decoded data.
-
-    Allows for chaining of filter and transformation operations that are only
-    executed when the `collect` method is called or when statistics are computed.
+    Converts a decoded batch to an encoded batch format.
     """
-    def __init__(self, batch: BsxBatch):
-        """
-        Initialize a LazyBsxBatch from a BsxBatch.
+    ...
 
-        Parameters
-        ----------
-        batch : BsxBatch
-            The BsxBatch to operate on lazily.
-        """
-        ...
-
-    def into_report(self, report_type: ReportTypeSchema) -> pl.DataFrame:
-        """
-        Convert the batch to a specified report type format.
-
-        Transforms the internal DataFrame to match the column names and structure
-        of the target report type (e.g., Bismark, CgMap).
-
-        Parameters
-        ----------
-        report_type : ReportTypeSchema
-            The target report format.
-
-        Returns
-        -------
-        pl.DataFrame
-            A Polars DataFrame formatted according to the specified report type.
-        """
-        ...
-
-    def collect(self) -> BsxBatch:
-        """
-        Execute all queued lazy operations and return a concrete BsxBatch.
-
-        Returns
-        -------
-        BsxBatch
-            A new BsxBatch containing the results of the lazy computations.
-        """
-        ...
-
-    def filter_pos_lt(self, pos: int) -> "LazyBsxBatch":
-        """
-        Filter positions less than the specified value.
-
-        Parameters
-        ----------
-        pos : int
-            The position value. Rows with 'position' < `pos` will be kept.
-
-        Returns
-        -------
-        LazyBsxBatch
-            A new LazyBsxBatch with the filter applied.
-        """
-        ...
-
-    def filter_pos_gt(self, pos: int) -> "LazyBsxBatch":
-        """
-        Filter positions greater than the specified value.
-
-        Parameters
-        ----------
-        pos : int
-            The position value. Rows with 'position' > `pos` will be kept.
-
-        Returns
-        -------
-        LazyBsxBatch
-            A new LazyBsxBatch with the filter applied.
-        """
-        ...
-
-    def filter_coverage_lt(self, coverage: int) -> "LazyBsxBatch":
-        """
-        Filter entries with total coverage less than the specified value.
-
-        Parameters
-        ----------
-        coverage : int
-            The coverage threshold. Rows with 'count_total' < `coverage` will be kept.
-
-    Returns
-        -------
-        LazyBsxBatch
-            A new LazyBsxBatch with the filter applied.
-        """
-        ...
-
-    def filter_strand(self, strand: Strand) -> "LazyBsxBatch":
-        """
-        Filter entries by strand value.
-
-        Parameters
-        ----------
-        strand : Strand
-            The strand value to filter by (e.g., Strand.Forward, Strand.Reverse).
-
-        Returns
-        -------
-        LazyBsxBatch
-            A new LazyBsxBatch with the filter applied.
-        """
-        ...
-
-    def filter_context(self, context: Context) -> "LazyBsxBatch":
-        """
-        Filter entries by context value.
-
-        Parameters
-        ----------
-        context : Context
-            The context value to filter by (e.g., Context.CG, Context.CHG).
-
-        Returns
-        -------
-        LazyBsxBatch
-            A new LazyBsxBatch with the filter applied.
-        """
-        ...
-
-    def mark_low_coverage(self, threshold: int) -> "LazyBsxBatch":
-        """
-        Mark entries with coverage below a threshold.
-
-        Rows where 'count_total' is less than `threshold` will have their
-        'count_total' and 'count_m' set to 0, and 'density' set to NaN.
-
-        Parameters
-        ----------
-        threshold : int
-            The coverage threshold.
-
-        Returns
-        -------
-        LazyBsxBatch
-            A new LazyBsxBatch with low coverage entries marked.
-        """
-        ...
-
-    def align_with_contexts(self, context_data: ContextData, chr_val: str) -> "LazyBsxBatch":
-        """
-        Align the batch with provided context data for a specified chromosome.
-
-        Performs a left join of the context data DataFrame with the batch's data,
-        using 'position' as the join key. Drops existing 'context' and 'strand'
-        columns from the batch before joining. Fills nulls introduced by the join:
-        'chr' with `chr_val`, 'count_m' and 'count_total' with 0, 'density' with NaN.
-
-        Parameters
-        ----------
-        context_data : ContextData
-            The context data to align with.
-        chr_val : str
-            The chromosome value to fill in for new rows from `context_data`.
-
-        Returns
-        -------
-        LazyBsxBatch
-            A new LazyBsxBatch with aligned context information.
-        """
-        ...
-
-    def stats(self) -> MethylationStats:
-        """
-        Calculate methylation statistics for the batch.
-
-        Computes overall mean methylation, variance, coverage distribution,
-        and context-specific and strand-specific methylation means.
-
-        Returns
-        -------
-        MethylationStats
-            An object containing the calculated statistics.
-        """
-        ...
-
-class LazyEncodedBsxBatch:
+def decode(encoded: EncodedBsxBatch) -> BsxBatch:
     """
-    A lazy representation of an EncodedBsxBatch for efficient query operations.
-
-    Allows for chaining of filter and transformation operations that are only
-    executed when the `collect` method is called or when statistics are computed.
-    Operates on data where 'strand' and 'context' may be boolean encoded.
+    Converts an encoded batch to a decoded batch format.
     """
-    def __init__(self, batch: EncodedBsxBatch): # Python stub takes EncodedBsxBatch here
-        """
-        Initialize a LazyEncodedBsxBatch from an EncodedBsxBatch.
-
-        Parameters
-        ----------
-        batch : EncodedBsxBatch
-            The EncodedBsxBatch to operate on lazily.
-        """
-        ...
-
-    def into_report(self, report_type: ReportTypeSchema) -> pl.DataFrame:
-        """
-        Convert the batch to a specified report type format.
-
-        Transforms the internal DataFrame to match the column names and structure
-        of the target report type. Handles decoding of boolean 'strand' and 'context'
-        columns if necessary for the report type.
-
-        Parameters
-        ----------
-        report_type : ReportTypeSchema
-            The target report format.
-
-        Returns
-        -------
-        pl.DataFrame
-            A Polars DataFrame formatted according to the specified report type.
-        """
-        ...
-
-    def collect(self) -> EncodedBsxBatch: # Python stub returns BsxBatch here, but should be EncodedBsxBatch
-        """
-        Execute all queued lazy operations and return a concrete EncodedBsxBatch.
-
-        Returns
-        -------
-        EncodedBsxBatch
-            A new EncodedBsxBatch containing the results of the lazy computations.
-            (Note: Python stub return type is BsxBatch, but logically should be EncodedBsxBatch)
-        """
-        ...
-
-    def filter_pos_lt(self, pos: int) -> "LazyEncodedBsxBatch": # Python stub returns LazyBsxBatch
-        """
-        Filter positions less than the specified value.
-
-        Parameters
-        ----------
-        pos : int
-            The position value. Rows with 'position' < `pos` will be kept.
-
-        Returns
-        -------
-        LazyEncodedBsxBatch
-            A new LazyEncodedBsxBatch with the filter applied.
-                (Note: Python stub return type is LazyBsxBatch)
-        """
-        ...
-
-    def filter_pos_gt(self, pos: int) -> "LazyEncodedBsxBatch": # Python stub returns LazyBsxBatch
-        """
-        Filter positions greater than the specified value.
-
-        Parameters
-        ----------
-        pos : int
-            The position value. Rows with 'position' > `pos` will be kept.
-
-        Returns
-        -------
-        LazyEncodedBsxBatch
-            A new LazyEncodedBsxBatch with the filter applied.
-            (Note: Python stub return type is LazyBsxBatch)
-        """
-        ...
-
-    def filter_coverage_lt(self, coverage: int) -> "LazyEncodedBsxBatch": # Python stub returns LazyBsxBatch
-        """
-        Filter entries with total coverage less than the specified value.
-
-        Parameters
-        ----------
-        coverage : int
-            The coverage threshold. Rows with 'count_total' < `coverage` will be kept.
-
-        Returns
-        -------
-        LazyEncodedBsxBatch
-            A new LazyEncodedBsxBatch with the filter applied.
-            (Note: Python stub return type is LazyBsxBatch)
-        """
-        ...
-
-    def filter_strand(self, strand: Strand) -> "LazyEncodedBsxBatch": # Python stub returns LazyBsxBatch
-        """
-        Filter entries by strand value.
-
-        Compares with the 'strand' column, which may be boolean encoded
-        (True for '+', False for '-', None for '.').
-
-        Parameters
-        ----------
-        strand : Strand
-            The strand value to filter by.
-
-        Returns
-        -------
-        LazyEncodedBsxBatch
-            A new LazyEncodedBsxBatch with the filter applied.
-            (Note: Python stub return type is LazyBsxBatch)
-        """
-        ...
-
-    def filter_context(self, context: Context) -> "LazyEncodedBsxBatch": # Python stub returns LazyBsxBatch
-        """
-        Filter entries by context value.
-
-        Compares with the 'context' column, which may be boolean encoded
-        (True for 'CG', False for 'CHG', None for 'CHH').
-
-        Parameters
-        ----------
-        context : Context
-            The context value to filter by.
-
-        Returns
-        -------
-        LazyEncodedBsxBatch
-            A new LazyEncodedBsxBatch with the filter applied.
-            (Note: Python stub return type is LazyBsxBatch)
-        """
-        ...
-
-    def mark_low_coverage(self, threshold: int) -> "LazyEncodedBsxBatch": # Python stub returns LazyBsxBatch
-        """
-        Mark entries with coverage below a threshold.
-
-        Rows where 'count_total' is less than `threshold` will have their
-        'count_total' and 'count_m' set to 0, and 'density' set to NaN.
-
-        Parameters
-        ----------
-        threshold : int
-            The coverage threshold.
-
-        Returns
-        -------
-        LazyEncodedBsxBatch
-            A new LazyEncodedBsxBatch with low coverage entries marked.
-            (Note: Python stub return type is LazyBsxBatch)
-        """
-        ...
-
-    def align_with_contexts(self, context_data: ContextData, chr_val: str) -> "LazyEncodedBsxBatch": # Python stub returns LazyBsxBatch
-        """
-        Align the batch with provided encoded context data for a specified chromosome.
-
-        Performs a left join of the context data DataFrame (in encoded form)
-        with the batch's data. See `LazyBsxBatch.align_with_contexts` for more details.
-
-        Parameters
-        ----------
-        context_data : ContextData
-            The context data to align with.
-        chr_val : str
-            The chromosome value to fill in for new rows.
-
-        Returns
-        -------
-        LazyEncodedBsxBatch
-            A new LazyEncodedBsxBatch with aligned context information.
-            (Note: Python stub return type is LazyBsxBatch)
-        """
-        ...
-
-    def stats(self) -> MethylationStats:
-        """
-        Calculate methylation statistics for the encoded batch.
-
-        Computes statistics similar to `LazyBsxBatch.stats`, accounting for
-        potentially encoded 'strand' and 'context' values.
-
-        Returns
-        -------
-        MethylationStats
-            An object containing the calculated statistics.
-        """
-        ...
+    ...

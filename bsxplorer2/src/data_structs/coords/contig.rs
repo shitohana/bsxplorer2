@@ -48,10 +48,14 @@ where
     }
 
     /// Returns the start position.
-    pub fn start(&self) -> P { self.start }
+    pub fn start(&self) -> P {
+        self.start
+    }
 
     /// Returns the end position.
-    pub fn end(&self) -> P { self.end }
+    pub fn end(&self) -> P {
+        self.end
+    }
 
     /// Returns the start position of the contig.
     pub fn start_gpos(&self) -> GenomicPosition<R, P> {
@@ -64,13 +68,19 @@ where
     }
 
     /// Returns the strand of the contig.
-    pub fn strand(&self) -> Strand { self.strand }
+    pub fn strand(&self) -> Strand {
+        self.strand
+    }
 
     /// Returns the sequence name of the contig.
-    pub fn seqname(&self) -> R { self.seqname.clone() }
+    pub fn seqname(&self) -> &R {
+        &self.seqname
+    }
 
     /// Returns the length of the contig.
-    pub fn length(&self) -> P { self.end - self.start }
+    pub fn length(&self) -> P {
+        self.end - self.start
+    }
 
     /// Extends the contig upstream by a given length.
     pub fn extend_upstream(

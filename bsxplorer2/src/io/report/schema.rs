@@ -48,7 +48,7 @@ impl ReportTypeSchema {
 
     /// Returns data types for each column.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    const fn col_types(&self) -> &[DataType] {
+    pub const fn col_types(&self) -> &[DataType] {
         match self {
             Self::Bismark => {
                 &[
@@ -197,9 +197,13 @@ pub(crate) struct BismarkRow {
 }
 
 impl ReportRow<'_> for BismarkRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.position }
+    fn get_pos(&self) -> usize {
+        self.position
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -215,9 +219,13 @@ pub(crate) struct CgMapRow {
 }
 
 impl ReportRow<'_> for CgMapRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.position }
+    fn get_pos(&self) -> usize {
+        self.position
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -229,9 +237,13 @@ pub(crate) struct BedGraphRow {
 }
 
 impl ReportRow<'_> for BedGraphRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.start }
+    fn get_pos(&self) -> usize {
+        self.start
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -245,7 +257,11 @@ pub(crate) struct CoverageRow {
 }
 
 impl ReportRow<'_> for CoverageRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.start }
+    fn get_pos(&self) -> usize {
+        self.start
+    }
 }

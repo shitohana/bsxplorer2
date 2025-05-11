@@ -21,7 +21,6 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
-
 [profile.profiling]
 inherits = "release"
 debug = true
@@ -49,7 +48,6 @@ features = [
     "dtype-i16",
     "dtype-u16",
     "dtype-categorical",
-    "dtype-struct",
     # Lazy
     "lazy",
     # IO
@@ -57,13 +55,9 @@ features = [
     "ipc",
     # DataFrame operations
     "partition_by",
-    "polars-ops",
     # Expressions
-    "strings",
     "is_in",
     "round_series",
-    "concat_str",
-    "rank",
     "fmt"
 ]
 

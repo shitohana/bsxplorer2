@@ -1,88 +1,30 @@
-use std::io::{BufReader, BufWriter};
+use std::io::BufWriter;
 use std::path::PathBuf;
 
 use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchMethods,
                                       EncodedBsxBatch};
-use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::io::bsx::{BatchIndex,
-                          BsxFileReader as RsBsxFileReader,
+use bsxplorer2::io::bsx::{BsxFileReader as RsBsxFileReader,
                           BsxIpcWriter as RsBsxIpcWriter};
 use polars::prelude::IpcCompression;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
-use pyo3_file::PyFileLikeObject;
 use pyo3_polars::error::PyPolarsErr;
 use pyo3_polars::PyDataFrame;
 
+use crate::types::batch::PyEncodedBsxBatch;
 use crate::types::coords::PyContig;
+use crate::types::index::PyBatchIndex;
+use crate::utils::{FileOrFileLike, ReadHandle, SinkHandle};
 
-#[pyclass]
-pub struct PyBatchIndex {
-    inner: BatchIndex<String, u32>,
-}
 
-#[pymethods]
-impl PyBatchIndex {
-    #[new]
-    pub fn new() -> Self {
-        Self {
-            inner: BatchIndex::new(),
-        }
-    }
-
-    pub fn insert(
-        &mut self,
-        contig: PyContig, // Using &PyAny to allow extraction
-        batch_idx: usize,
-    ) -> PyResult<()> {
-        self.inner
-            .insert((&contig).into(), batch_idx);
-        Ok(())
-    }
-
-    pub fn sort(
-        &self,
-        contigs: Vec<PyContig>,
-    ) -> Vec<PyContig> {
-        let contigs_inner: Vec<Contig<String, u32>> = contigs
-            .iter()
-            .map(Contig::from)
-            .collect();
-        let sorted_inner = self
-            .inner
-            .sort(contigs_inner.into_iter());
-        sorted_inner
-            .into_iter()
-            .map(PyContig::from)
-            .collect()
-    }
-
-    pub fn find(
-        &self,
-        contig: PyContig,
-    ) -> Option<Vec<usize>> {
-        self.inner.find(&Contig::from(&contig))
-    }
-
-    pub fn chr_order(&self) -> Vec<String> {
-        self.inner
-            .get_chr_order()
-            .iter()
-            .cloned()
-            .collect()
-    }
-}
-
-#[pyclass(name = "BsxFileReader")]
+#[pyclass(name = "BsxFileReader", unsendable)]
 pub struct PyBsxFileReader {
-    reader: RsBsxFileReader<BufReader<PyFileLikeObject>>,
+    reader: RsBsxFileReader<Box<dyn ReadHandle>>,
 }
 
 impl PyBsxFileReader {
-    pub(crate) fn into_inner(
-        self
-    ) -> RsBsxFileReader<BufReader<PyFileLikeObject>> {
+    pub(crate) fn into_inner(self) -> RsBsxFileReader<Box<dyn ReadHandle>> {
         self.reader
     }
 }
@@ -90,12 +32,21 @@ impl PyBsxFileReader {
 #[pymethods]
 impl PyBsxFileReader {
     #[new]
-    pub fn new(file: PyObject) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            file, true, true, false, false,
-        )?;
-        let reader = RsBsxFileReader::new(BufReader::new(file_like));
+    pub fn new(file: FileOrFileLike) -> PyResult<Self> {
+        let file = file.get_reader()?;
+        let reader = RsBsxFileReader::new(file);
         Ok(Self { reader })
+    }
+
+    #[staticmethod]
+    pub fn from_file_and_index(
+        file: FileOrFileLike,
+        index: FileOrFileLike,
+    ) -> PyResult<Self> {
+        let file = file.get_reader()?;
+        let mut index = index.get_reader()?;
+        let inner = RsBsxFileReader::from_file_and_index(file, &mut index)?;
+        Ok(Self { reader: inner })
     }
 
     pub fn get_batch(
@@ -109,9 +60,39 @@ impl PyBsxFileReader {
         }
     }
 
-    pub fn blocks_total(&self) -> usize { self.reader.blocks_total() }
+    pub fn index(&mut self) -> PyResult<PyBatchIndex> {
+        self.reader
+            .index()
+            .cloned()
+            .map(PyBatchIndex::from)
+            .map_err(|e| e.into())
+    }
 
-    pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> { slf }
+    pub fn set_index(
+        &mut self,
+        index: PyBatchIndex,
+    ) -> () {
+        self.reader
+            .set_index(Some(index.into()))
+    }
+
+    pub fn query(
+        &mut self,
+        query: PyContig,
+    ) -> PyResult<Option<PyEncodedBsxBatch>> {
+        Ok(self
+            .reader
+            .query(&query.into())?
+            .map(PyEncodedBsxBatch::from))
+    }
+
+    pub fn blocks_total(&self) -> usize {
+        self.reader.blocks_total()
+    }
+
+    pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
 
     pub fn __next__(
         mut slf: PyRefMut<'_, Self>
@@ -149,9 +130,9 @@ impl From<IpcCompression> for PyIpcCompression {
     }
 }
 
-#[pyclass(name = "BsxIpcWriter")]
+#[pyclass(name = "BsxIpcWriter", unsendable)]
 pub struct PyBsxFileWriter {
-    writer: Option<RsBsxIpcWriter<BufWriter<PyFileLikeObject>>>,
+    writer: Option<RsBsxIpcWriter<BufWriter<Box<dyn SinkHandle>>>>,
 }
 
 #[pymethods]
@@ -159,16 +140,13 @@ impl PyBsxFileWriter {
     #[new]
     #[pyo3(signature = (sink, chr_names, compression=None))]
     pub fn new(
-        sink: PyObject,
+        sink: FileOrFileLike,
         chr_names: Vec<String>,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            sink, false, false, true, false,
-        )?;
-
+        let file: Box<dyn SinkHandle> = sink.get_writer()?;
         let writer = RsBsxIpcWriter::try_new(
-            BufWriter::new(file_like),
+            BufWriter::new(file),
             chr_names,
             compression.map(|x| x.into()),
             None,
@@ -183,16 +161,13 @@ impl PyBsxFileWriter {
     #[staticmethod]
     #[pyo3(signature = (sink, fai_path, compression=None))]
     pub fn from_sink_and_fai(
-        sink: PyObject,
+        sink: FileOrFileLike,
         fai_path: PathBuf,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            sink, false, false, true, false,
-        )?;
-
+        let file: Box<dyn SinkHandle> = sink.get_writer()?;
         let writer = RsBsxIpcWriter::try_from_sink_and_fai(
-            BufWriter::new(file_like),
+            BufWriter::new(file),
             fai_path,
             compression.map(|x| x.into()),
             None,
@@ -207,16 +182,13 @@ impl PyBsxFileWriter {
     #[staticmethod]
     #[pyo3(signature = (sink, fasta_path, compression=None))]
     pub fn from_sink_and_fasta(
-        sink: PyObject,
+        sink: FileOrFileLike,
         fasta_path: PathBuf,
         compression: Option<PyIpcCompression>,
     ) -> PyResult<Self> {
-        let file_like = PyFileLikeObject::with_requirements(
-            sink, false, false, true, false,
-        )?;
-
+        let file: Box<dyn SinkHandle> = sink.get_writer()?;
         let writer = RsBsxIpcWriter::try_from_sink_and_fasta(
-            BufWriter::new(file_like),
+            BufWriter::new(file),
             fasta_path,
             compression.map(|x| x.into()),
             None,
@@ -263,7 +235,9 @@ impl PyBsxFileWriter {
         Ok(())
     }
 
-    pub fn __enter__(slf: Py<Self>) -> Py<Self> { slf }
+    pub fn __enter__(slf: Py<Self>) -> Py<Self> {
+        slf
+    }
 
     pub fn __exit__(
         &mut self,

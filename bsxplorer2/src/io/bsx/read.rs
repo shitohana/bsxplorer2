@@ -125,7 +125,9 @@ impl<R: Read + Seek> BsxFileReader<R> {
     }
 
     /// Returns the total number of blocks in the file
-    pub fn blocks_total(&self) -> usize { self.ipc_reader.blocks_total() }
+    pub fn blocks_total(&self) -> usize {
+        self.ipc_reader.blocks_total()
+    }
 
     /// Retrieves the next batch
     fn _next(&mut self) -> Option<PolarsResult<EncodedBsxBatch>> {
@@ -158,7 +160,9 @@ impl<R: Read + Seek> Iterator for BsxFileReader<R> {
     type Item = PolarsResult<EncodedBsxBatch>;
 
     /// Returns the next batch or None when finished
-    fn next(&mut self) -> Option<Self::Item> { self._next() }
+    fn next(&mut self) -> Option<Self::Item> {
+        self._next()
+    }
 }
 
 /// Iterator for BSX files.
@@ -170,7 +174,9 @@ impl<R: Read + Seek> Iterator for BsxFileIterator<'_, R> {
     type Item = PolarsResult<EncodedBsxBatch>;
 
     /// Returns the next batch or None when finished
-    fn next(&mut self) -> Option<Self::Item> { self.reader._next() }
+    fn next(&mut self) -> Option<Self::Item> {
+        self.reader._next()
+    }
 
     fn nth(
         &mut self,

@@ -1,41 +1,74 @@
-use std::fs::File;
-
-use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::data_structs::enums::Strand;
+use bsxplorer2::data_structs::batch::EncodedBsxBatch;
 use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 use pyo3_polars::PyDataFrame;
+
+use crate::types::batch::PyEncodedBsxBatch;
+use crate::types::coords::PyContig;
+use crate::types::index::PyBatchIndex;
+use crate::utils::{FileOrFileLike, ReadHandle};
 
 #[pyclass(unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
-    reader: RegionReader<File, String, u32>,
+    inner: RegionReader<Box<dyn ReadHandle>, String, u32>,
 }
 
 #[pymethods]
 impl PyRegionReader {
     #[new]
-    fn new(path: String) -> PyResult<Self> {
-        let file = File::open(path).map_err(PyErr::from)?;
-        let mut bsx_reader: BsxFileReader<File> = BsxFileReader::new(file);
+    fn new(file: FileOrFileLike) -> PyResult<Self> {
+        let file = file.get_reader()?;
+        let mut bsx_reader: BsxFileReader<Box<_>> = BsxFileReader::new(file);
         let index: BatchIndex<String, u32> = bsx_reader
             .index()
             .map_err(PyErr::from)?
             .clone();
 
         Ok(Self {
-            reader: RegionReader::new(bsx_reader, index, None),
+            inner: RegionReader::new(bsx_reader, index, None),
         })
     }
 
     fn query(
         &mut self,
-        seqname: String,
-        start: u32,
-        end: u32,
+        contig: PyContig,
+        postprocess_fn: Py<PyAny>,
     ) -> PyResult<Option<PyDataFrame>> {
-        let contig = Contig::new(seqname, start, end, Strand::None);
+        Python::with_gil(|py| {
+            if !postprocess_fn
+                .clone_ref(py)
+                .into_bound(py)
+                .is_callable()
+            {
+                return Err(PyValueError::new_err(
+                    "Preprocess function must be callable",
+                ));
+            }
+            Ok(())
+        })?;
 
-        let result = self.reader.query(contig, None);
+        // Create a Box<dyn Fn> to match the expected function type
+        let rust_postprocess = Box::new(
+            move |entry: EncodedBsxBatch| -> anyhow::Result<EncodedBsxBatch> {
+                let py_batch_res =
+                    Python::with_gil(|py| -> PyResult<PyEncodedBsxBatch> {
+                        let py_batch = PyEncodedBsxBatch::from(entry);
+                        let args =
+                            PyTuple::new_bound(py, &[py_batch.into_py(py)]);
+                        let result = postprocess_fn.call1(py, args)?;
+                        let py_batch =
+                            result.extract::<PyEncodedBsxBatch>(py)?;
+                        Ok(py_batch)
+                    });
+                py_batch_res
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+                    .map(|batch| batch.into())
+            },
+        );
+
+        let result = self.inner.query(contig.into(), None);
 
         match result {
             Ok(Some(batch)) => Ok(Some(PyDataFrame(batch.into()))),
@@ -44,14 +77,61 @@ impl PyRegionReader {
         }
     }
 
-    fn reset(&mut self) { self.reader.reset(); }
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
 
     fn chr_order(&self) -> Vec<String> {
-        self.reader
+        self.inner
             .index()
             .get_chr_order()
             .iter()
             .cloned()
             .collect()
+    }
+
+    fn set_preprocess_fn(
+        &mut self,
+        preprocess_fn: Py<PyAny>,
+    ) -> PyResult<()> {
+        Python::with_gil(|py| {
+            if !preprocess_fn
+                .clone_ref(py)
+                .into_bound(py)
+                .is_callable()
+            {
+                return Err(PyValueError::new_err(
+                    "Preprocess function must be callable",
+                ));
+            }
+            Ok(())
+        })?;
+
+        // Create a Box<dyn Fn> to match the expected function type
+        let rust_preprocess_fn = Box::new(
+            move |entry: EncodedBsxBatch| -> anyhow::Result<EncodedBsxBatch> {
+                let py_batch_res =
+                    Python::with_gil(|py| -> PyResult<PyEncodedBsxBatch> {
+                        let py_batch = PyEncodedBsxBatch::from(entry);
+                        let args =
+                            PyTuple::new_bound(py, &[py_batch.into_py(py)]);
+                        let result = preprocess_fn.call1(py, args)?;
+                        let py_batch =
+                            result.extract::<PyEncodedBsxBatch>(py)?;
+                        Ok(py_batch)
+                    });
+                py_batch_res
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+                    .map(|batch| batch.into())
+            },
+        );
+
+        self.inner
+            .set_preprocess_fn(Some(rust_preprocess_fn));
+        Ok(())
+    }
+
+    fn index(&self) -> PyBatchIndex {
+        self.inner.index().clone().into()
     }
 }

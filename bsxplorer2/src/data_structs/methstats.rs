@@ -554,7 +554,9 @@ impl MethylationStats {
         &self.coverage_distribution
     }
 
-    pub fn methylation_var(&self) -> f64 { self.methylation_var }
+    pub fn methylation_var(&self) -> f64 {
+        self.methylation_var
+    }
 
     pub fn context_methylation(&self) -> &HashMap<Context, (f64, u32)> {
         &self.context_methylation
@@ -566,18 +568,18 @@ impl MethylationStats {
 }
 
 impl Default for MethylationStats {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use hashbrown::HashMap;
-    use num::pow::Pow;
 
     use crate::data_structs::enums::{Context, Strand};
-    use crate::data_structs::methstats::{MethylationStatFlat,
-                                         MethylationStats};
+    use crate::data_structs::methstats::MethylationStats;
 
     /// Helper function to create a dummy `MethylationStats`
     fn sample_stats(
@@ -729,9 +731,6 @@ mod tests {
         let mean1 = 0.2;
         let mean2 = 0.4;
         let mean3 = 0.6;
-        let var1 = 0.01;
-        let var2 = 0.02;
-        let var3 = 0.03;
 
         let expected_mean =
             (weight1 * mean1 + weight2 * mean2 + weight3 * mean3)

@@ -74,6 +74,10 @@ impl PyGenomicPosition {
         }
     }
 
+    fn is_zero(&self) -> bool {
+        self.position == 0
+    }
+
     // Add arithmetic methods (__add__, __sub__)
     fn __add__(
         &self,
@@ -131,6 +135,17 @@ pub struct PyContig {
     strand:  PyStrand, // Store the Rust enum internally
 }
 
+impl From<PyContig> for Contig<String, u32> {
+    fn from(py_contig: PyContig) -> Self {
+        Self::new(
+            py_contig.seqname.clone(),
+            py_contig.start,
+            py_contig.end,
+            py_contig.strand.into(),
+        )
+    }
+}
+
 #[pymethods]
 impl PyContig {
     #[new]
@@ -154,7 +169,7 @@ impl PyContig {
         let strand = match strand.to_lowercase().as_str() {
             "+" | "forward" => PyStrand::Forward,
             "-" | "reverse" => PyStrand::Reverse,
-            "." | "none" => PyStrand::None,
+            "." | "none" => PyStrand::Null,
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "Invalid strand value: '{}'. Must be '+', '-', '.', \
@@ -177,12 +192,14 @@ impl PyContig {
         match self.strand {
             PyStrand::Forward => "+".to_string(),
             PyStrand::Reverse => "-".to_string(),
-            PyStrand::None => ".".to_string(),
+            PyStrand::Null => ".".to_string(),
         }
     }
 
     // Length method
-    fn length(&self) -> u32 { self.end - self.start }
+    fn length(&self) -> u32 {
+        self.end - self.start
+    }
 
     // GenomicPosition methods
     fn start_gpos(&self) -> PyGenomicPosition {
@@ -217,6 +234,10 @@ impl PyContig {
         let self_rust: Contig<String, u32> = self.into();
         let other_rust: Contig<String, u32> = other.into();
         self_rust.is_in(&other_rust)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.start == 0 && self.end == 0
     }
 
     // Add method for display
@@ -283,7 +304,7 @@ impl PyContig {
 impl From<Contig<String, u32>> for PyContig {
     fn from(c: Contig<String, u32>) -> Self {
         Self {
-            seqname: c.seqname(),
+            seqname: c.seqname().clone(),
             start:   c.start(),
             end:     c.end(),
             strand:  PyStrand::from(c.strand()),

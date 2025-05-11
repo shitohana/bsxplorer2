@@ -100,9 +100,13 @@ impl BsxBatchMethods for BsxBatch {
         }
     }
 
-    fn data(&self) -> &DataFrame { &self.data }
+    fn data(&self) -> &DataFrame {
+        &self.data
+    }
 
-    fn data_mut(&mut self) -> &mut DataFrame { &mut self.data }
+    fn data_mut(&mut self) -> &mut DataFrame {
+        &mut self.data
+    }
 
     fn take(self) -> DataFrame
     where
@@ -140,15 +144,21 @@ impl TryFrom<DataFrame> for BsxBatch {
 
 /// Implementation to convert a BsxBatch back to its inner DataFrame
 impl From<BsxBatch> for DataFrame {
-    fn from(b: BsxBatch) -> Self { b.data }
+    fn from(b: BsxBatch) -> Self {
+        b.data
+    }
 }
 
 impl BsxTypeTag for BsxBatch {
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_name() -> &'static str { "decoded" }
+    fn type_name() -> &'static str {
+        "decoded"
+    }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn type_enum() -> BatchType { BatchType::Decoded }
+    fn type_enum() -> BatchType {
+        BatchType::Decoded
+    }
 }
 
 #[cfg(test)]

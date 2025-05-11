@@ -1,5 +1,5 @@
-mod annot_store;
-mod gff_entry;
+pub mod annot_store;
+pub mod gff_entry;
 
 pub use annot_store::AnnotStore;
 pub use gff_entry::{GffEntry, GffEntryAttributes};
@@ -62,7 +62,7 @@ mod tests {
 
         let gff_entry = GffEntry::try_from(raw_gff_entry).unwrap();
 
-        assert_eq!(gff_entry.contig.seqname(), ArcStr::from("chr1"));
+        assert_eq!(gff_entry.contig.seqname().to_owned(), ArcStr::from("chr1"));
         assert_eq!(gff_entry.contig.start(), 100);
         assert_eq!(gff_entry.contig.end(), 200);
         assert_eq!(gff_entry.source, ArcStr::from("test"));

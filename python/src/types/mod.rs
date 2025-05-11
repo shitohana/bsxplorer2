@@ -36,6 +36,9 @@ pub fn register_data_structs_module(
     module.add_class::<annot::PyAnnotStore>()?;
     module.add_class::<index::PyBatchIndex>()?;
 
+    module.add_function(wrap_pyfunction!(batch::encode, &module)?);
+    module.add_function(wrap_pyfunction!(batch::decode, &module)?);
+
     parent_module.add_submodule(&module)?;
     Ok(())
 }

@@ -3,8 +3,8 @@ use std::hash::Hash;
 use num::{PrimInt, Unsigned};
 use smallstr::SmallString;
 
-pub(crate) const SMALLSTR_SIZE: usize = 20;
-pub(crate) type BsxSmallStr = SmallString<[u8; SMALLSTR_SIZE]>;
+pub const SMALLSTR_SIZE: usize = 20;
+pub type BsxSmallStr = SmallString<[u8; SMALLSTR_SIZE]>;
 
 pub trait SeqNameStr:
     for<'a> From<&'a str> + AsRef<str> + Clone + Eq + PartialEq + Hash {

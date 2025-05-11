@@ -135,13 +135,19 @@ pub struct DmrIterator {
 
 impl DmrIterator {
     /// Returns the total number of blocks processed.
-    pub fn blocks_total(&self) -> usize { self.reader_stat.blocks_total }
+    pub fn blocks_total(&self) -> usize {
+        self.reader_stat.blocks_total
+    }
 
     /// Returns the current block being processed.
-    fn current_block(&self) -> usize { self.reader_stat.current_block }
+    fn current_block(&self) -> usize {
+        self.reader_stat.current_block
+    }
 
     /// Returns the last chromosome processed.
-    fn last_chr(&self) -> Arc<String> { self.last_chr.clone() }
+    fn last_chr(&self) -> Arc<String> {
+        self.last_chr.clone()
+    }
 
     /// Compares a segment with the last chromosome processed.
     #[allow(clippy::mutable_key_type)]

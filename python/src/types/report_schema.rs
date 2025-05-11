@@ -20,7 +20,9 @@ impl From<RustReportTypeSchema> for PyReportTypeSchema {
 }
 
 impl From<PyReportTypeSchema> for RustReportTypeSchema {
-    fn from(py: PyReportTypeSchema) -> Self { PyReportTypeSchema::to_rust(&py) }
+    fn from(py: PyReportTypeSchema) -> Self {
+        PyReportTypeSchema::to_rust(&py)
+    }
 }
 
 #[pymethods]
@@ -33,9 +35,13 @@ impl PyReportTypeSchema {
         Ok(PySchema(Arc::new(self.to_rust().schema())))
     }
 
-    pub fn chr_col(&self) -> &'static str { self.to_rust().chr_col() }
+    pub fn chr_col(&self) -> &'static str {
+        self.to_rust().chr_col()
+    }
 
-    pub fn position_col(&self) -> &'static str { self.to_rust().position_col() }
+    pub fn position_col(&self) -> &'static str {
+        self.to_rust().position_col()
+    }
 
     pub fn context_col(&self) -> Option<&'static str> {
         self.to_rust().context_col()
@@ -45,7 +51,9 @@ impl PyReportTypeSchema {
         self.to_rust().strand_col()
     }
 
-    pub fn need_align(&self) -> bool { self.to_rust().need_align() }
+    pub fn need_align(&self) -> bool {
+        self.to_rust().need_align()
+    }
 }
 
 impl PyReportTypeSchema {

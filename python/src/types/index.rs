@@ -7,14 +7,31 @@ use bsxplorer2::io::bsx::BatchIndex;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use super::coords::PyContig;
+
 /// Python wrapper for BatchIndex
 #[pyclass(name = "BatchIndex")]
+#[derive(Debug, Clone)]
 pub struct PyBatchIndex {
     inner: BatchIndex<String, u32>,
 }
 
+impl From<BatchIndex<String, u32>> for PyBatchIndex {
+    fn from(index: BatchIndex<String, u32>) -> Self {
+        PyBatchIndex { inner: index }
+    }
+}
+
+impl From<PyBatchIndex> for BatchIndex<String, u32> {
+    fn from(py_index: PyBatchIndex) -> Self {
+        py_index.inner
+    }
+}
+
 impl PyBatchIndex {
-    pub fn inner(&self) -> &BatchIndex<String, u32> { &self.inner }
+    pub fn inner(&self) -> &BatchIndex<String, u32> {
+        &self.inner
+    }
 }
 
 #[pymethods]
@@ -97,5 +114,19 @@ impl PyBatchIndex {
         let inner = BatchIndex::<String, u32>::from_file(&mut reader)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyBatchIndex { inner })
+    }
+
+    pub fn sort(
+        &self,
+        contigs: Vec<PyContig>,
+    ) -> Vec<PyContig> {
+        self.inner
+            .sort(
+                contigs
+                    .into_iter()
+                    .map(|contig| contig.into()),
+            )
+            .map(|contig| contig.into())
+            .collect()
     }
 }

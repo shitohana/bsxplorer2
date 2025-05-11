@@ -68,7 +68,9 @@ impl SegmentationData for MethDataBinom {
         -2.0 * (m as f64 * p.ln() + (n - m) as f64 * (1.0 - p).ln())
     }
 
-    fn len(&self) -> usize { self.count_m_cumsum.len() - 1 }
+    fn len(&self) -> usize {
+        self.count_m_cumsum.len() - 1
+    }
 }
 
 /// PELT algorithm for segmentation based on doi:10.1080/01621459.2012.737745

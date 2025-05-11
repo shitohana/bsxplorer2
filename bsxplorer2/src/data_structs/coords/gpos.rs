@@ -32,10 +32,14 @@ where
     }
 
     /// Returns the sequence name.
-    pub fn seqname(&self) -> R { self.seqname.clone() }
+    pub fn seqname(&self) -> R {
+        self.seqname.clone()
+    }
 
     /// Returns the position.
-    pub fn position(&self) -> P { self.position }
+    pub fn position(&self) -> P {
+        self.position
+    }
 
     pub fn is_zero(&self) -> bool {
         self.position == P::zero() && self.seqname.as_ref() == ""

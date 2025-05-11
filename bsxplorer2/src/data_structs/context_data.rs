@@ -208,10 +208,14 @@ impl ContextData {
     }
 
     /// Returns the number of entries in the `ContextData`.
-    pub fn len(&self) -> usize { self.entries.len() }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
 
     /// Checks if the `ContextData` is empty.
-    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 
     /// Takes the data, returning vectors of positions, strands, and contexts.
     pub fn take(self) -> (Vec<u32>, Vec<Strand>, Vec<Context>) {
@@ -260,16 +264,24 @@ mod tests {
     // Mock structs implementing BsxTypeTag for testing to_df
     struct MockDecodedBsxBatch;
     impl BsxTypeTag for MockDecodedBsxBatch {
-        fn type_name() -> &'static str { "mock_decoded" }
+        fn type_name() -> &'static str {
+            "mock_decoded"
+        }
 
-        fn type_enum() -> BatchType { BatchType::Decoded }
+        fn type_enum() -> BatchType {
+            BatchType::Decoded
+        }
     }
 
     struct MockEncodedBsxBatch;
     impl BsxTypeTag for MockEncodedBsxBatch {
-        fn type_name() -> &'static str { "mock_encoded" }
+        fn type_name() -> &'static str {
+            "mock_encoded"
+        }
 
-        fn type_enum() -> BatchType { BatchType::Encoded }
+        fn type_enum() -> BatchType {
+            BatchType::Encoded
+        }
     }
 
     #[test]

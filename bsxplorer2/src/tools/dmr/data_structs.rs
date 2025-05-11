@@ -45,16 +45,22 @@ impl<'a> SegmentView<'a> {
         &self.parent.group_b[self.rel_start..self.rel_end]
     }
 
-    pub fn start_pos(&self) -> u64 { self.parent.positions[self.rel_start] }
+    pub fn start_pos(&self) -> u64 {
+        self.parent.positions[self.rel_start]
+    }
 
-    pub fn end_pos(&self) -> u64 { self.parent.positions[self.rel_end - 1] }
+    pub fn end_pos(&self) -> u64 {
+        self.parent.positions[self.rel_end - 1]
+    }
 
     #[allow(dead_code)]
     pub fn positions(&self) -> &[u64] {
         &self.parent.positions[self.rel_start..self.rel_end]
     }
 
-    pub fn size(&self) -> usize { self.rel_end - self.rel_start }
+    pub fn size(&self) -> usize {
+        self.rel_end - self.rel_start
+    }
 
     pub fn slice(
         &self,
@@ -239,7 +245,9 @@ impl SegmentOwned {
         SegmentView::new(0, self.mds_orig.len(), Arc::new(self))
     }
 
-    pub fn size(&self) -> usize { self.positions.len() }
+    pub fn size(&self) -> usize {
+        self.positions.len()
+    }
 }
 
 pub struct ReaderMetadata {
@@ -293,12 +301,18 @@ impl DMRegion {
         }
     }
 
-    pub fn meth_diff(&self) -> f32 { self.meth_left - self.meth_right }
+    pub fn meth_diff(&self) -> f32 {
+        self.meth_left - self.meth_right
+    }
 
     #[allow(dead_code)]
-    fn meth_mean(&self) -> f32 { (self.meth_left + self.meth_right) / 2.0 }
+    fn meth_mean(&self) -> f32 {
+        (self.meth_left + self.meth_right) / 2.0
+    }
 
-    pub fn length(&self) -> u32 { self.end - self.start + 1 }
+    pub fn length(&self) -> u32 {
+        self.end - self.start + 1
+    }
 }
 
 fn serialize_scientific<S>(

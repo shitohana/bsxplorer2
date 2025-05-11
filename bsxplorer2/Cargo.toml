@@ -12,8 +12,9 @@ edition.workspace = true
 readme.workspace = true
 
 [features]
-compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip"]
-performant = ["polars/performant"]
+compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip", "tempfile"]
+performant = ["polars/performant", "polars/cse"]
+performant_nightly = ["polars/nightly"]
 console = ["clap"]
 tools = []
 
@@ -23,44 +24,36 @@ path = "src/lib.rs"
 [dev-dependencies]
 rstest = "0.25.0"
 assert_approx_eq = "1.1.0"
+rand_distr = "=0.4.3"
+rand = { version = "=0.8.5", features = ["std", "std_rng"] }
+tempfile = "3.15.0"
 
 [dependencies]
-# Utility
 crossbeam = "0.8.4"
 num = "0.4.3"
-tempfile = "3.15.0"
+tempfile = { version = "3.15.0", optional = true }
 indexmap = "2.9.0"
 multimap = "0.10.0"
 arcstr = "1.2.0"
 csv = "1.3.1"
 nanoid = "0.4.0"
-bincode = { version = "2.0.1", features = ["serde"] }
+bincode = { version = "=2.0.0-rc.3", features = ["serde"] } # We're using *-rc, because release version needs rust 1.85
+bincode_derive = { version = "=2.0.0-rc.3" }
 smallstr = { version = "0.3.0", features = ["serde"] }
-
-# Stats
-rand = { version = "=0.8.5", features = ["std", "std_rng"] }
-rand_distr = "=0.4.3"
-
-# Bio
+histogram = "0.11.3"
 noodles = { version = "0.90.0", features = ["fasta"] }
-
-# Compression
 zstd = { version = "0.13.3", optional = true }
 lz4 = { version = "1.28.1", optional = true }
 xz2 = { version = "0.1.7", optional = true }
 bzip2 = { version = "0.5.2", optional = true }
 zip = { version = "2.6.1", optional = true }
 flate2 = { version = "1.1.1", optional = true }
-
-# Console
 clap = { version = "4.1", features = ["derive"], optional = true }
 
-adjustp.workspace = true
 anyhow.workspace = true
 bio.workspace = true
 itertools.workspace = true
 log.workspace = true
-pretty_env_logger.workspace = true
 once_cell.workspace = true
 rayon.workspace = true
 serde.workspace = true
@@ -68,6 +61,7 @@ serde_json.workspace = true
 statrs.workspace = true
 polars.workspace = true
 hashbrown.workspace = true
+typed_floats = "1.0.5"
 
 
 [lints]

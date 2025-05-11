@@ -4,6 +4,7 @@ use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchBuilder,
                                       BsxBatchMethods,
                                       EncodedBsxBatch};
+use bsxplorer2::utils::get_categorical_dtype;
 use paste::paste;
 use polars::prelude::{BooleanChunked,
                       DataFrame,
@@ -15,6 +16,7 @@ use pyo3_polars::{PyDataFrame, PySchema, PySeries};
 
 use super::context_data::PyContextData;
 use super::coords::{PyContig, PyGenomicPosition};
+use super::lazy::{PyLazyBsxBatch, PyLazyEncodedBsxBatch};
 use super::report_schema::PyReportTypeSchema;
 
 macro_rules! create_pyseries {
@@ -23,7 +25,7 @@ macro_rules! create_pyseries {
     };
 }
 
-macro_rules! lazy_bsx_batch_wrapper {
+macro_rules! bsx_batch_wrapper {
     ($wrap_type: ident, $py_name: expr) => {
         paste! {
             #[pyclass(name = $py_name)]
@@ -50,7 +52,8 @@ macro_rules! lazy_bsx_batch_wrapper {
                     rechunk=true,
                     check_single_chr=true,
                     context_data=None,
-                    report_schema=None
+                    report_schema=None,
+                    chr_values=None
                 ))]
                 pub fn new(
                     data: PyDataFrame,
@@ -61,6 +64,7 @@ macro_rules! lazy_bsx_batch_wrapper {
                     check_single_chr: bool,
                     context_data: Option<PyContextData>,
                     report_schema: Option<PyReportTypeSchema>,
+                    chr_values: Option<Vec<String>>
                 ) -> PyResult<Self> {
                     let df: DataFrame = data.into();
                     let builder = {
@@ -77,7 +81,8 @@ macro_rules! lazy_bsx_batch_wrapper {
                     .with_check_duplicates(check_duplicates)
                     .with_rechunk(rechunk)
                     .with_check_single_chr(check_single_chr)
-                    .with_context_data(context_data.map(|v| v.into()));
+                    .with_context_data(context_data.map(|v| v.into()))
+                    .with_chr_dtype(chr_values.map(bsxplorer2::utils::get_categorical_dtype));
 
                     let inner = builder
                         .build::<$wrap_type>(df)
@@ -111,6 +116,10 @@ macro_rules! lazy_bsx_batch_wrapper {
 
                 pub fn chr(&self) -> PyResult<PySeries> {
                     create_pyseries!(self.inner.chr())
+                }
+
+                pub fn position(&self) -> PyResult<PySeries> {
+                    create_pyseries!(self.inner.position())
                 }
 
                 pub fn strand(&self) -> PyResult<PySeries> {
@@ -156,6 +165,7 @@ macro_rules! lazy_bsx_batch_wrapper {
                 }
 
                 pub fn start_pos(&self) -> u32 { self.inner.start_pos() }
+
                 pub fn end_pos(&self) -> u32 { self.inner.end_pos() }
 
                 pub fn as_contig(&self) -> PyResult<Option<PyContig>> {
@@ -167,6 +177,10 @@ macro_rules! lazy_bsx_batch_wrapper {
                 }
                 pub fn end_gpos(&self) -> PyGenomicPosition {
                     self.inner.end_gpos().into()
+                }
+
+                pub fn lazy(&self) -> PyResult<[<PyLazy $wrap_type>]> {
+                    Ok(self.inner.clone().lazy().into())
                 }
 
                 pub fn vstack(
@@ -242,5 +256,23 @@ macro_rules! lazy_bsx_batch_wrapper {
     };
 }
 
-lazy_bsx_batch_wrapper!(BsxBatch, "BsxBatch");
-lazy_bsx_batch_wrapper!(EncodedBsxBatch, "EncodedBsxBatch");
+bsx_batch_wrapper!(BsxBatch, "BsxBatch");
+bsx_batch_wrapper!(EncodedBsxBatch, "EncodedBsxBatch");
+
+
+#[pyfunction]
+pub fn encode(
+    decoded: PyBsxBatch,
+    chr_values: Vec<String>,
+) -> PyResult<PyEncodedBsxBatch> {
+    Ok(BsxBatchBuilder::encode_batch(
+        decoded.inner,
+        get_categorical_dtype(chr_values),
+    )?
+    .into())
+}
+
+#[pyfunction]
+pub fn decode(batch: PyEncodedBsxBatch) -> PyResult<PyBsxBatch> {
+    Ok(BsxBatchBuilder::decode_batch(batch.inner)?.into())
+}

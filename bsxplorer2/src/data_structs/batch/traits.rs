@@ -158,7 +158,9 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         }
     }
     /// Checks if the batch is empty
-    fn is_empty(&self) -> bool { self.data().is_empty() }
+    fn is_empty(&self) -> bool {
+        self.data().is_empty()
+    }
 
     /// Split batch at specified index
     #[allow(unsafe_code)]
@@ -288,7 +290,9 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     }
 
     /// Returns number of rows
-    fn height(&self) -> usize { self.data().height() }
+    fn height(&self) -> usize {
+        self.data().height()
+    }
 
     /// Convert batch to genomic contig
     fn as_contig<S, P>(&self) -> anyhow::Result<Option<Contig<S, P>>>

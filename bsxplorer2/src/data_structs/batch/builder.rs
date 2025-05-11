@@ -28,7 +28,9 @@ pub struct BsxBatchBuilder {
 }
 
 impl Default for BsxBatchBuilder {
-    fn default() -> Self { Self::all_checks() }
+    fn default() -> Self {
+        Self::all_checks()
+    }
 }
 
 // Public methods

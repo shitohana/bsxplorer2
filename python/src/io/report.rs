@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
@@ -15,6 +14,7 @@ use pyo3_polars::PyDataFrame;
 use super::compression::PyCompression;
 use crate::types::batch::PyBsxBatch;
 use crate::types::report_schema::PyReportTypeSchema;
+use crate::utils::FileOrFileLike;
 
 #[pyclass(name = "ReportReader", unsendable)]
 pub struct PyReportReader {
@@ -98,7 +98,9 @@ impl PyReportReader {
         })
     }
 
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> { slf }
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
 
     fn __next__(mut slf: PyRefMut<'_, Self>) -> PyResult<Option<PyBsxBatch>> {
         match slf.reader.as_mut() {
@@ -131,26 +133,20 @@ pub struct PyReportWriter {
 impl PyReportWriter {
     #[new]
     #[pyo3(signature = (
-        path,
+        file,
         schema,
         n_threads = 1,
         compression = None,
         compression_level = None
     ))]
     fn new(
-        path: PathBuf,
+        file: FileOrFileLike,
         schema: PyReportTypeSchema,
         n_threads: usize,
         compression: Option<PyCompression>,
         compression_level: Option<u32>,
     ) -> PyResult<Self> {
-        let file = File::create(&path).map_err(|e| {
-            PyRuntimeError::new_err(format!(
-                "Failed to create output file '{}': {}",
-                path.display(),
-                e
-            ))
-        })?;
+        let file = file.get_writer()?;
         let sink = BufWriter::new(file);
 
         let comp_enum = Compression::from(

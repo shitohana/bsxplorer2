@@ -32,7 +32,9 @@ pub struct DemoReportBuilder<R: SeedableRng + RngCore> {
 }
 
 impl<R: SeedableRng + RngCore> Default for DemoReportBuilder<R> {
-    fn default() -> Self { Self::new(100_000, 30, 10.0, 0.4, None) }
+    fn default() -> Self {
+        Self::new(100_000, 30, 10.0, 0.4, None)
+    }
 }
 
 impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
@@ -140,7 +142,9 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         self.std_coverage = std_coverage;
     }
 
-    pub fn rng_mut(&mut self) -> &mut R { &mut self.rng }
+    pub fn rng_mut(&mut self) -> &mut R {
+        &mut self.rng
+    }
 }
 
 impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {

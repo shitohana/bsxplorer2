@@ -392,6 +392,26 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
             strand_methylation,
         ))
     }
+
+    pub fn to_binom(
+        self,
+        mean_methylation: f64,
+        pvalue: f64,
+    ) -> anyhow::Result<()> {
+        let result_df = self.collect()?;
+        let count_m = result_df
+            .count_m()
+            .to_vec_null_aware()
+            .left()
+            .ok_or(anyhow::anyhow!("Count column contains nulls"))?;
+        let count_total = result_df
+            .count_total()
+            .to_vec_null_aware()
+            .left()
+            .ok_or(anyhow::anyhow!("Count column contains nulls"))?;
+
+        todo!()
+    }
 }
 
 impl<T: BsxTypeTag + BsxBatchMethods> TryFrom<LazyBsxBatch<T>> for BsxBatch {
@@ -418,7 +438,9 @@ impl<T: BsxTypeTag + BsxBatchMethods> TryFrom<LazyBsxBatch<T>>
 }
 
 impl<B: BsxBatchMethods> From<B> for LazyBsxBatch<B> {
-    fn from(batch: B) -> Self { LazyBsxBatch::from_lazy(batch.take().lazy()) }
+    fn from(batch: B) -> Self {
+        LazyBsxBatch::from_lazy(batch.take().lazy())
+    }
 }
 
 #[cfg(test)]

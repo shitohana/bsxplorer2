@@ -7,7 +7,7 @@ use pyo3::prelude::*;
 pub enum PyStrand {
     Forward,
     Reverse,
-    None,
+    Null,
 }
 
 impl PyStrand {
@@ -15,7 +15,7 @@ impl PyStrand {
         match s.to_lowercase().as_str() {
             "forward" => Some(PyStrand::Forward),
             "reverse" => Some(PyStrand::Reverse),
-            "none" => Some(PyStrand::None),
+            "null" => Some(PyStrand::Null),
             _ => None,
         }
     }
@@ -26,7 +26,7 @@ impl From<RsStrand> for PyStrand {
         match s {
             RsStrand::Forward => PyStrand::Forward,
             RsStrand::Reverse => PyStrand::Reverse,
-            RsStrand::None => PyStrand::None,
+            RsStrand::None => PyStrand::Null,
         }
     }
 }
@@ -36,7 +36,7 @@ impl From<PyStrand> for RsStrand {
         match s {
             PyStrand::Forward => RsStrand::Forward,
             PyStrand::Reverse => RsStrand::Reverse,
-            PyStrand::None => RsStrand::None,
+            PyStrand::Null => RsStrand::None,
         }
     }
 }

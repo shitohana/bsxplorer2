@@ -3,6 +3,7 @@
 
 mod io;
 mod types;
+mod utils;
 
 use io::register_io_module;
 use pyo3::prelude::*;

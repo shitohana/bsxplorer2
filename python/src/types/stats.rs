@@ -14,11 +14,15 @@ pub struct PyMethylationStats {
 }
 
 impl From<MethylationStats> for PyMethylationStats {
-    fn from(value: MethylationStats) -> Self { Self { inner: value } }
+    fn from(value: MethylationStats) -> Self {
+        Self { inner: value }
+    }
 }
 
 impl From<PyMethylationStats> for MethylationStats {
-    fn from(value: PyMethylationStats) -> Self { value.inner }
+    fn from(value: PyMethylationStats) -> Self {
+        value.inner
+    }
 }
 
 #[pymethods]
@@ -79,9 +83,13 @@ impl PyMethylationStats {
         self.inner.finalize_methylation();
     }
 
-    pub fn total_coverage(&self) -> u32 { self.inner.total_coverage() }
+    pub fn total_coverage(&self) -> u32 {
+        self.inner.total_coverage()
+    }
 
-    pub fn mean_methylation(&self) -> f64 { self.inner.mean_methylation() }
+    pub fn mean_methylation(&self) -> f64 {
+        self.inner.mean_methylation()
+    }
 
     #[staticmethod]
     pub fn merge_multiple(
@@ -107,7 +115,9 @@ impl PyMethylationStats {
             .collect()
     }
 
-    pub fn methylation_var(&self) -> f64 { self.inner.methylation_var() }
+    pub fn methylation_var(&self) -> f64 {
+        self.inner.methylation_var()
+    }
 
     pub fn context_methylation(&self) -> HashMap<String, (f64, u32)> {
         self.inner

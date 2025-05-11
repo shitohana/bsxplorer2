@@ -160,13 +160,19 @@ impl<R: Read + Seek> IpcFileReader<R> {
             .unwrap_or(&self.metadata.schema)
     }
 
-    pub fn blocks_total(&self) -> usize { self.blocks_total }
+    pub fn blocks_total(&self) -> usize {
+        self.blocks_total
+    }
 
     /// Returns the [`FileMetadata`]
-    pub fn metadata(&self) -> &FileMetadata { &self.metadata }
+    pub fn metadata(&self) -> &FileMetadata {
+        &self.metadata
+    }
 
     /// Consumes this FileReader, returning the underlying reader
-    pub fn into_inner(self) -> R { self.reader }
+    pub fn into_inner(self) -> R {
+        self.reader
+    }
 
     /// Get the inner memory scratches so they can be reused in a new writer.
     /// This can be utilized to save memory allocations for performance reasons.
@@ -253,7 +259,9 @@ impl<R: Read + Seek> IpcFileReader<R> {
         self.current_block = current_block;
     }
 
-    pub fn current_block(&self) -> usize { self.current_block }
+    pub fn current_block(&self) -> usize {
+        self.current_block
+    }
 }
 
 impl<R: Read + Seek> Iterator for IpcFileReader<R> {
