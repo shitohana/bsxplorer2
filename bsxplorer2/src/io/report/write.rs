@@ -8,12 +8,12 @@ use polars::prelude::*;
 use crate::data_structs::batch::{BsxBatch, LazyBsxBatch};
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
-use crate::io::report::schema::ReportTypeSchema;
+use crate::io::report::schema::ReportType;
 
 /// Writes report data to a sink in CSV format based on a specified schema.
 pub struct ReportWriter {
     /// The schema defining the structure of the report
-    schema: ReportTypeSchema,
+    schema: ReportType,
     /// Batched CSV writer that handles the actual writing
     writer: BatchedCsvWriter<Box<dyn Write>>,
 }
@@ -22,7 +22,7 @@ impl ReportWriter {
     /// Creates a new ReportWriter
     pub fn try_new<W: Write + Seek + 'static>(
         sink: W,
-        schema: ReportTypeSchema,
+        schema: ReportType,
         n_threads: usize,
         #[cfg(feature = "compression")] compression: Compression,
         #[cfg(feature = "compression")] compression_level: Option<u32>,

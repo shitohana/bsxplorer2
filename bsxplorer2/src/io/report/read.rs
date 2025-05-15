@@ -12,18 +12,15 @@ use hashbrown::HashMap;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 
-use crate::data_structs::batch::{BatchType,
-                                 BsxBatchBuilder,
-                                 BsxBatchMethods,
-                                 BsxTypeTag,
-                                 LazyBsxBatch};
+use crate::data_structs::batch::{BatchType, BsxBatchBuilder, BsxBatchMethods, BsxSchema, BsxTypeTag, LazyBsxBatch};
 use crate::data_structs::context_data::ContextData;
 use crate::data_structs::typedef::BsxSmallStr;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::read_chrom;
-use crate::io::report::schema::ReportTypeSchema;
+use crate::io::report::schema::ReportType;
 use crate::utils::get_categorical_dtype;
+use crate::with_field_fn;
 
 /// A wrapper around BatchedCsvReader that manages ownership of the reader
 pub struct OwnedBatchedCsvReader<F>
@@ -77,7 +74,7 @@ where
 
 /// Builder for `ReportReader` to configure its behavior.
 pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
-    report_type: ReportTypeSchema,
+    report_type: ReportType,
     chunk_size:  usize,
     fasta_path:  Option<PathBuf>,
     fai_path:    Option<PathBuf>,
@@ -93,7 +90,7 @@ pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
 impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
     fn default() -> Self {
         Self {
-            report_type: ReportTypeSchema::Bismark,
+            report_type: ReportType::Bismark,
             chunk_size: 10000,
             fasta_path: None,
             fai_path: None,
@@ -109,96 +106,24 @@ impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
-    /// Sets the report type schema.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_report_type(
-        mut self,
-        report_type: ReportTypeSchema,
-    ) -> Self {
-        self.report_type = report_type;
-        self
-    }
+    with_field_fn!(report_type, ReportType);
 
-    /// Sets the chunk size.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_chunk_size(
-        mut self,
-        chunk_size: usize,
-    ) -> Self {
-        self.chunk_size = chunk_size;
-        self
-    }
+    with_field_fn!(chunk_size, usize);
 
-    /// Sets the path to the FASTA file.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_fasta_path(
-        mut self,
-        fasta_path: PathBuf,
-    ) -> Self {
-        self.fasta_path = Some(fasta_path);
-        self
-    }
+    with_field_fn!(fasta_path, Option<PathBuf>);
 
-    /// Sets the path to the FASTA index file.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_fai_path(
-        mut self,
-        fai_path: PathBuf,
-    ) -> Self {
-        self.fai_path = Some(fai_path);
-        self
-    }
+    with_field_fn!(fai_path, Option<PathBuf>);
 
-    /// Sets the batch size.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_batch_size(
-        mut self,
-        batch_size: usize,
-    ) -> Self {
-        self.batch_size = batch_size;
-        self
-    }
+    with_field_fn!(batch_size, usize);
 
-    /// Sets the number of threads to use.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_n_threads(
-        mut self,
-        n_threads: usize,
-    ) -> Self {
-        self.n_threads = Some(n_threads);
-        self
-    }
+    with_field_fn!(n_threads, Option<usize>);
 
-    /// Sets the low memory flag.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_low_memory(
-        mut self,
-        low_memory: bool,
-    ) -> Self {
-        self.low_memory = low_memory;
-        self
-    }
+    with_field_fn!(low_memory, bool);
 
-    /// Sets the queue length.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_queue_len(
-        mut self,
-        queue_len: usize,
-    ) -> Self {
-        self.queue_len = queue_len;
-        self
-    }
+    with_field_fn!(queue_len, usize);
 
-    /// Sets the compression type.
     #[cfg(feature = "compression")]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_compression(
-        mut self,
-        compression: Compression,
-    ) -> Self {
-        self.compression = Some(compression);
-        self
-    }
+    with_field_fn!(compression, Option<Compression>);
 }
 
 impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
@@ -276,7 +201,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         self,
         handle: Box<dyn MmapBytesReader>,
     ) -> anyhow::Result<ReportReader<B>> {
-        use ReportTypeSchema as RS;
+        use ReportType as RS;
 
         let chr_dtype = self.get_chr_dtype()?;
         if matches!(B::type_enum(), BatchType::Encoded) && chr_dtype.is_none() {
@@ -336,7 +261,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
 pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
     _join_handle:  JoinHandle<()>,
     data_receiver: Receiver<DataFrame>,
-    report_type:   ReportTypeSchema,
+    report_type:   ReportType,
     cached_batch:  BTreeMap<usize, B>,
     seen_chr:      HashMap<BsxSmallStr, usize>,
     chunk_size:    usize,
@@ -346,7 +271,7 @@ pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
     chr_dtype:    Option<DataType>,
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
+impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> ReportReader<B> {
     /// Tries to take a cached batch.
     fn take_cached(
         &mut self,
@@ -460,7 +385,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
         for (index, data) in partitioned.into_iter().enumerate() {
             // Convert to BSX batch format
             let mut bsx_batch = BsxBatchBuilder::all_checks()
-                .with_report_type(self.report_type)
+                .with_report_type(Some(self.report_type))
                 .with_check_single_chr(false)
                 .with_chr_dtype(self.chr_dtype.clone()) // Will raise if not specified
                 .build::<B>(data)?;
@@ -500,7 +425,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
     }
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> Iterator for ReportReader<B> {
+impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> Iterator for ReportReader<B> {
     type Item = anyhow::Result<B>;
 
     fn next(&mut self) -> Option<Self::Item> {

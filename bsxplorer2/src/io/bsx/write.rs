@@ -10,11 +10,7 @@ use polars::error::{PolarsError, PolarsResult};
 use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 
-use crate::data_structs::batch::{colnames,
-                                 BsxBatch,
-                                 BsxBatchBuilder,
-                                 BsxBatchMethods,
-                                 EncodedBsxBatch};
+use crate::data_structs::batch::{colnames, BsxBatch, BsxBatchBuilder, BsxBatchMethods, BsxSchema, EncodedBsxBatch};
 use crate::utils::get_categorical_dtype;
 
 /// Writer for BSX data in Arrow IPC format with optional compression.

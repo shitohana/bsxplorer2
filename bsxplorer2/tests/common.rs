@@ -15,7 +15,7 @@ use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchMethods};
 use bsxplorer2::data_structs::context_data::ContextData;
 use bsxplorer2::io::bsx::BsxIpcWriter;
-use bsxplorer2::io::report::ReportTypeSchema;
+use bsxplorer2::io::report::ReportType;
 use itertools::Itertools;
 use polars::prelude::{AnyValue, Column, DataType, Scalar};
 use polars::series::ChunkCompareEq;
@@ -256,7 +256,7 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
 pub fn compare_batches(
     original: &BsxBatch,
     read: &BsxBatch,
-    report_type: &ReportTypeSchema,
+    report_type: &ReportType,
 ) -> anyhow::Result<()> {
     if original.chr_val() != read.chr_val() {
         bail!(
@@ -273,7 +273,7 @@ pub fn compare_batches(
         );
     }
     let (original_df, read_df) =
-        if matches!(report_type, ReportTypeSchema::BedGraph) {
+        if matches!(report_type, ReportType::BedGraph) {
             // TODO: Find out, why first row density equal to NaN when testing
             return Ok(());
 

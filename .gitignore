@@ -6,6 +6,7 @@
 .zed
 .vscode
 .venv
+.pytest_cache
 *.ipc
 *.lock
 *.pyc

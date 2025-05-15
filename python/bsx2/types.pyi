@@ -125,6 +125,9 @@ class Strand:
     Reverse: "Strand"
     Null: "Strand"  # Renamed to avoid conflict with Python's None
 
+    def name(self) -> str:
+        ...
+
 class Context:
     """
     Represents methylation context (sequence context).
@@ -133,6 +136,9 @@ class Context:
     CG: "Context"
     CHG: "Context"
     CHH: "Context"
+
+    def name(self) -> str:
+        ...
 
 class ContextData:
     """

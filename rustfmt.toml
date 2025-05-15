@@ -1,7 +1,7 @@
 blank_lines_lower_bound = 0
 blank_lines_upper_bound = 2
 brace_style = "PreferSameLine"
-chain_width = 40
+chain_width = 60
 combine_control_expr = false
 wrap_comments = true
 condense_wildcard_suffixes = true
@@ -15,7 +15,7 @@ imports_indent = "Visual"
 imports_layout = "HorizontalVertical"
 indent_style = "Block"
 match_block_trailing_comma = true
-max_width = 80
+max_width = 88
 merge_derives = true
 imports_granularity = "Module"
 normalize_comments = true

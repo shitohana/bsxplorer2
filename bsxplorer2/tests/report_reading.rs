@@ -4,7 +4,7 @@ use bio::io::fasta::Writer as FastaWriter;
 use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchMethods,
                                       LazyBsxBatch};
-use bsxplorer2::io::report::{ReportReaderBuilder, ReportTypeSchema};
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportType};
 use polars::prelude::*;
 use rand::rngs::StdRng;
 use rstest::*;
@@ -35,14 +35,14 @@ const CHUNK_SIZE: usize = 10000;
 /// - `do_alignment`: Whether to perform alignment with reference sequences
 /// - `report_data`: Fixture providing demo methylation data
 #[rstest]
-#[case::bismark_align(ReportTypeSchema::Bismark, true)]
-#[case::cgmap_align(ReportTypeSchema::CgMap, true)]
-#[case::bedgraph_align(ReportTypeSchema::BedGraph, true)]
-#[case::coverage_align(ReportTypeSchema::Coverage, true)]
-#[case::bismark_no_align(ReportTypeSchema::Bismark, false)]
-#[case::cgmap_no_align(ReportTypeSchema::CgMap, false)]
+#[case::bismark_align(ReportType::Bismark, true)]
+#[case::cgmap_align(ReportType::CgMap, true)]
+#[case::bedgraph_align(ReportType::BedGraph, true)]
+#[case::coverage_align(ReportType::Coverage, true)]
+#[case::bismark_no_align(ReportType::Bismark, false)]
+#[case::cgmap_no_align(ReportType::CgMap, false)]
 fn test_report_reading_with_alignment(
-    #[case] report_type: ReportTypeSchema,
+    #[case] report_type: ReportType,
     #[case] do_alignment: bool,
     report_data: DemoReportBuilder<StdRng>,
 ) -> anyhow::Result<()> {
@@ -53,7 +53,7 @@ fn test_report_reading_with_alignment(
     let sequence_file = tempfile::NamedTempFile::new()?;
 
     // Add header for BedGraph format if needed
-    if report_type == ReportTypeSchema::BedGraph {
+    if report_type == ReportType::BedGraph {
         writeln!(&mut report_buffer, "track type=bedGraph")?;
     }
 
@@ -99,7 +99,7 @@ fn test_report_reading_with_alignment(
     // Configure alignment if requested
     if do_alignment {
         report_reader_builder = report_reader_builder
-            .with_fasta_path(sequence_file.path().to_path_buf());
+            .with_fasta_path(Some(sequence_file.path().to_path_buf()));
     }
 
     // Build the report reader and create an iterator

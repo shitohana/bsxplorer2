@@ -3,25 +3,49 @@ use std::marker::PhantomData;
 use hashbrown::HashMap;
 use itertools::{izip, Itertools};
 use polars::prelude::*;
+use statrs::distribution::DiscreteCDF;
 
 use super::builder::BsxBatchBuilder;
 use super::decoded::BsxBatch;
 use super::encoded::EncodedBsxBatch;
 use super::traits::{BsxBatchMethods, BsxTypeTag};
-use super::BatchType;
+use super::{BatchType, BsxSchema};
 use crate::data_structs::batch::traits::colnames::*;
 use crate::data_structs::context_data::ContextData;
 use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
 use crate::data_structs::methstats::MethylationStats;
-use crate::io::report::ReportTypeSchema;
+use crate::io::report::ReportType;
 
 /// A lazy representation of a BSX batch for efficient query operations.
-pub struct LazyBsxBatch<T: BsxTypeTag + BsxBatchMethods> {
+pub struct LazyBsxBatch<T: BsxBatchMethods> {
     data:     LazyFrame,
     _phantom: PhantomData<T>,
 }
 
-impl<T: BsxTypeTag + BsxBatchMethods> Clone for LazyBsxBatch<T> {
+impl<T: BsxBatchMethods> LazyBsxBatch<T> {
+    /// Applies a filter expression to the batch.
+    fn filter(
+        self,
+        predicate: Expr,
+    ) -> Self {
+        Self {
+            data:     self.data.filter(predicate),
+            _phantom: PhantomData::<T>,
+        }
+    }
+
+    /// Creates a LazyBsxBatch from an existing LazyFrame.
+    fn from_lazy(lazy: LazyFrame) -> Self {
+        Self {
+            data:     lazy,
+            _phantom: PhantomData::<T>,
+        }
+    }
+
+
+}
+
+impl<T: BsxBatchMethods> Clone for LazyBsxBatch<T> {
     fn clone(&self) -> Self {
         Self {
             data:     self.data.clone().cache(),
@@ -30,14 +54,14 @@ impl<T: BsxTypeTag + BsxBatchMethods> Clone for LazyBsxBatch<T> {
     }
 }
 
-impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
+impl<T: BsxTypeTag + BsxBatchMethods + BsxSchema> LazyBsxBatch<T> {
     /// Converts the batch to a specified report type.
     pub fn into_report(
         self,
-        report_type: &ReportTypeSchema,
+        report_type: &ReportType,
     ) -> anyhow::Result<DataFrame> {
         let res = match report_type {
-            ReportTypeSchema::Bismark => {
+            ReportType::Bismark => {
                 self.data
                     .with_column(
                         (col(COUNT_TOTAL_NAME) - col(COUNT_M_NAME))
@@ -45,7 +69,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
                     )
                     .with_column(col(CONTEXT_NAME).alias("trinuc"))
             },
-            ReportTypeSchema::CgMap => {
+            ReportType::CgMap => {
                 self.data
                     // Determine nucleotide based on strand (+ is C, - is G)
                     .with_columns([when(col(STRAND_NAME).eq(lit("+")))
@@ -57,14 +81,14 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
                     // Copy context column to dinuc (they're the same in CgMap)
                     .with_column(col(CONTEXT_NAME).alias("dinuc"))
             },
-            ReportTypeSchema::BedGraph => {
+            ReportType::BedGraph => {
                 self.data
                     // Convert position to start/end columns
                     .with_columns([col(POS_NAME).alias("start"), col(POS_NAME).alias("end")])
                     // Remove any rows with NaN density values
                     .drop_nans(Some(vec![col(DENSITY_NAME)]))
             },
-            ReportTypeSchema::Coverage => {
+            ReportType::Coverage => {
                 self.data
                     // Convert position to start/end columns
                     .with_columns([col(POS_NAME).alias("start"), col(POS_NAME).alias("end")])
@@ -85,38 +109,6 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         .cast(report_type.hashmap(), true)
         .collect()
         .map_err(|e| anyhow::anyhow!("Error converting to report: {}", e))
-    }
-}
-
-#[allow(unsafe_code)]
-impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
-    /// Collects the lazy batch into a concrete BSX batch type.
-    pub fn collect(self) -> anyhow::Result<T> {
-        let data = self.data.collect()?.select(
-            T::schema()
-                .iter_names_cloned()
-                .collect_vec(),
-        )?;
-        Ok(unsafe { T::new_unchecked(data) })
-    }
-
-    /// Applies a filter expression to the batch.
-    fn filter(
-        self,
-        predicate: Expr,
-    ) -> Self {
-        Self {
-            data:     self.data.filter(predicate),
-            _phantom: PhantomData::<T>,
-        }
-    }
-
-    /// Creates a LazyBsxBatch from an existing LazyFrame.
-    fn from_lazy(lazy: LazyFrame) -> Self {
-        Self {
-            data:     lazy,
-            _phantom: PhantomData::<T>,
-        }
     }
 
     /// Filters positions less than the specified value.
@@ -327,7 +319,7 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
                     .into_iter()
                     .map(|strand| {
                         strand
-                            .map(Strand::from)
+                            .map(<Strand as IPCEncodedEnum>::from_str)
                             .unwrap_or(Strand::Forward)
                     })
                     .collect::<Vec<_>>()
@@ -397,20 +389,54 @@ impl<T: BsxTypeTag + BsxBatchMethods> LazyBsxBatch<T> {
         self,
         mean_methylation: f64,
         pvalue: f64,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<T> {
         let result_df = self.collect()?;
         let count_m = result_df
-            .count_m()
+            .data()
+            .column(COUNT_M_NAME)?
+            .cast(&DataType::UInt64)?
+            .u64()?
             .to_vec_null_aware()
             .left()
             .ok_or(anyhow::anyhow!("Count column contains nulls"))?;
         let count_total = result_df
-            .count_total()
+            .data()
+            .column(COUNT_TOTAL_NAME)?
+            .cast(&DataType::UInt64)?
+            .u64()?
             .to_vec_null_aware()
             .left()
             .ok_or(anyhow::anyhow!("Count column contains nulls"))?;
 
-        todo!()
+        let pvalued_count_m = izip!(count_m, count_total)
+            .map(|(m, n)| {
+                let binom = statrs::distribution::Binomial::new(mean_methylation, n).unwrap();
+                if 1.0 - binom.cdf(m) <= pvalue { 1i16 } else { 0i16 }
+            })
+            .collect_vec();
+
+        let new_lf = result_df.take()
+            .lazy()
+            .drop([COUNT_M_NAME, COUNT_TOTAL_NAME, DENSITY_NAME])
+            .with_columns_seq([
+                lit(Series::new(COUNT_M_NAME.into(), pvalued_count_m)).alias(COUNT_M_NAME),
+                lit(1).alias(COUNT_TOTAL_NAME),
+                (col(COUNT_M_NAME) / col(COUNT_TOTAL_NAME)).alias(DENSITY_NAME)
+            ]);
+        Self::from_lazy(new_lf).collect()
+    }
+}
+
+#[allow(unsafe_code)]
+impl<T: BsxTypeTag + BsxBatchMethods + BsxSchema> LazyBsxBatch<T> {
+    /// Collects the lazy batch into a concrete BSX batch type.
+    pub fn collect(self) -> anyhow::Result<T> {
+        let data = self.data.collect()?.select(
+            T::schema()
+                .iter_names_cloned()
+                .collect_vec(),
+        )?;
+        Ok(unsafe { T::new_unchecked(data) })
     }
 }
 
@@ -492,14 +518,14 @@ mod tests {
 
     use rstest::rstest;
 
-    use crate::io::report::ReportTypeSchema;
+    use crate::io::report::ReportType;
 
     #[rstest]
-    #[case(ReportTypeSchema::Bismark)]
-    #[case(ReportTypeSchema::CgMap)]
-    #[case(ReportTypeSchema::BedGraph)]
-    #[case(ReportTypeSchema::Coverage)]
-    fn test_report_type_conversion(#[case] report_type: ReportTypeSchema) {
+    #[case(ReportType::Bismark)]
+    #[case(ReportType::CgMap)]
+    #[case(ReportType::BedGraph)]
+    #[case(ReportType::Coverage)]
+    fn test_report_type_conversion(#[case] report_type: ReportType) {
         // Create a test batch
         let batch = create_test_decoded_batch();
 
@@ -510,7 +536,7 @@ mod tests {
 
         // Convert back to BsxBatch
         let bsx_batch = BsxBatchBuilder::default()
-            .with_report_type(report_type)
+            .with_report_type(Some(report_type))
             .build::<BsxBatch>(report_df.clone())
             .unwrap();
 

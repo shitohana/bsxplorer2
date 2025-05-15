@@ -3,7 +3,8 @@ use std::sync::Arc;
 use bsxplorer2::data_structs::batch::{BsxBatch,
                                       BsxBatchBuilder,
                                       BsxBatchMethods,
-                                      EncodedBsxBatch};
+                                      EncodedBsxBatch,
+                                      BsxSchema};
 use bsxplorer2::utils::get_categorical_dtype;
 use paste::paste;
 use polars::prelude::{BooleanChunked,
@@ -70,7 +71,7 @@ macro_rules! bsx_batch_wrapper {
                     let builder = {
                         if let Some(report_schema) = report_schema {
                             BsxBatchBuilder::default()
-                                .with_report_type(report_schema.to_rust())
+                                .with_report_type(Some(report_schema.to_rust()))
                         }
                         else {
                             BsxBatchBuilder::default()

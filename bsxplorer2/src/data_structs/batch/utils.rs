@@ -4,8 +4,10 @@ use polars::prelude::Column;
 
 use crate::data_structs::batch::traits::{colnames, BsxBatchMethods};
 
+use super::BsxSchema;
+
 #[allow(unsafe_code)]
-pub fn merge_replicates<B: BsxBatchMethods>(
+pub fn merge_replicates<B: BsxBatchMethods + BsxSchema>(
     mut batches: Vec<B>,
     count_agg: fn(Vec<&Column>) -> Column,
     density_agg: fn(Vec<&Column>) -> Column,

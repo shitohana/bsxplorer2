@@ -1,9 +1,11 @@
-use std::sync::Arc;
+use std::{io::{BufReader, Read}, sync::Arc};
 
 use itertools::Itertools;
 use log::warn;
+use noodles::fasta::io::Indexer;
 use num::{Float, PrimInt, Unsigned};
 use polars::prelude::*;
+use paste::paste;
 
 mod stats;
 pub use stats::*;
@@ -61,6 +63,54 @@ pub(crate) fn hashmap_from_arrays<'a>(
             .map_into()
             .zip(dtypes.iter().cloned()),
     )
+}
+
+#[macro_export]
+macro_rules! plsmallstr {
+    ($string: expr) => {
+        PlSmallStr::from($string)
+    };
+    () => {
+        PlSmallStr::from("")
+    };
+    () => {
+        PlSmallStr::from("")
+    };
+}
+
+#[macro_export]
+macro_rules! with_field_fn {
+    ($field_name: ident, $field_type: ty) => {
+        paste::paste! {
+            pub fn [<with_$field_name>](mut self, value: $field_type) -> Self {
+            self.$field_name = value;
+            self
+            }
+        }
+    };
+}
+
+pub fn read_chrs_from_fai<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
+    let records: Vec<noodles::fasta::fai::Record> =
+        noodles::fasta::fai::io::Reader::new(BufReader::new(reader)).read_index()?.into();
+    Ok(records
+        .into_iter()
+        .map(|r| String::from_utf8_lossy(r.name()).to_string())
+        .collect())
+}
+
+pub fn read_chrs_from_fa<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
+    let mut indexer = Indexer::new(BufReader::new(reader));
+    let mut records = Vec::new();
+
+    while let Some(record) = indexer.index_record()? {
+        records.push(record);
+    }
+
+    Ok(records
+        .into_iter()
+        .map(|r| String::from_utf8_lossy(r.name()).to_string())
+        .collect())
 }
 
 pub(crate) fn float2int<F: Float, U: Unsigned + PrimInt>(

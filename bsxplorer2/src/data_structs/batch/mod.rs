@@ -4,6 +4,7 @@ mod encoded;
 mod lazy;
 mod traits;
 mod utils;
+mod encoded2;
 
 pub use builder::*;
 pub use decoded::*;

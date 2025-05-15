@@ -11,8 +11,9 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
 
 use crate::data_structs::coords::Contig;
-use crate::data_structs::enums::Strand;
+use crate::data_structs::enums::{IPCEncodedEnum, Strand};
 use crate::data_structs::typedef::BsxSmallStr;
+use crate::with_field_fn;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GffEntryAttributes {
@@ -78,72 +79,19 @@ impl GffEntryAttributes {
         self
     }
 
-    /// Sets the Target attribute.
-    pub fn with_target(
-        mut self,
-        target: Option<Vec<Contig<Arc<str>, u32>>>,
-    ) -> Self {
-        self.target = target;
-        self
-    }
+    with_field_fn!(target, Option<Vec<Contig<Arc<str>, u32>>>);
 
-    /// Sets the Gap attribute.
-    pub fn with_gap(
-        mut self,
-        gap: Option<Vec<String>>,
-    ) -> Self {
-        self.gap = gap;
-        self
-    }
+    with_field_fn!(gap, Option<Vec<String>>);
 
-    /// Sets the Derives_from attribute.
-    pub fn with_derives_from(
-        mut self,
-        derives_from: Option<Vec<String>>,
-    ) -> Self {
-        self.derives_from = derives_from;
-        self
-    }
+    with_field_fn!(derives_from, Option<Vec<String>>);
 
-    /// Sets the Note attribute.
-    pub fn with_note(
-        mut self,
-        note: Option<Vec<String>>,
-    ) -> Self {
-        self.note = note;
-        self
-    }
+    with_field_fn!(note, Option<Vec<String>>);
 
-    /// Sets the Dbxref attribute.
-    pub fn with_dbxref<S: Into<BsxSmallStr>>(
-        mut self,
-        dbxref: Option<Vec<S>>,
-    ) -> Self {
-        self.dbxref = dbxref.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
-        self
-    }
+    with_field_fn!(dbxref, Option<Vec<BsxSmallStr>>);
 
-    /// Sets the Ontology_term attribute.
-    pub fn with_ontology_term(
-        mut self,
-        ontology_term: Option<Vec<String>>,
-    ) -> Self {
-        self.ontology_term = ontology_term;
-        self
-    }
+    with_field_fn!(ontology_term, Option<Vec<String>>);
 
-    /// Sets the Other attributes.
-    pub fn with_other(
-        mut self,
-        other: HashMap<String, String>,
-    ) -> Self {
-        self.other = other;
-        self
-    }
+    with_field_fn!(other, HashMap<String, String>);
 }
 
 impl fmt::Display for GffEntryAttributes {
@@ -446,7 +394,7 @@ impl TryFrom<RawGffEntry> for GffEntry {
     fn try_from(value: RawGffEntry) -> Result<Self, Self::Error> {
         let seqid = ArcStr::from(value.seqid.as_str());
         let source = ArcStr::from(value.source.as_str());
-        let strand = Strand::from(value.strand.to_string().as_str());
+        let strand = <Strand as IPCEncodedEnum>::from_str(value.strand.to_string().as_str());
         let feature_type = ArcStr::from(value.feature_type.as_str());
         let attributes =
             GffEntryAttributes::from_str(value.attributes.as_str())?;

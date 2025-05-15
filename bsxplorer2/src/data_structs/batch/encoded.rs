@@ -2,6 +2,7 @@ use once_cell::sync::OnceCell;
 use polars::prelude::*;
 
 use super::traits::{colnames, BatchType, BsxTypeTag};
+use super::BsxSchema;
 use crate::data_structs::batch::traits::BsxBatchMethods;
 use crate::data_structs::typedef::BsxSmallStr;
 
@@ -54,7 +55,7 @@ impl From<EncodedBsxBatch> for DataFrame {
     }
 }
 
-impl BsxBatchMethods for EncodedBsxBatch {
+impl BsxSchema for EncodedBsxBatch {
     type ChrType = UInt32Type;
     type ContextType = BooleanType;
     type CountType = Int16Type;
@@ -118,7 +119,9 @@ impl BsxBatchMethods for EncodedBsxBatch {
             .f32()
             .unwrap()
     }
+}
 
+impl BsxBatchMethods for EncodedBsxBatch {
     #[inline(always)]
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         EncodedBsxBatch {
@@ -168,6 +171,9 @@ impl BsxTypeTag for EncodedBsxBatch {
 }
 
 #[cfg(test)]
+pub(crate) use tests::create_test_batch;
+
+#[cfg(test)]
 mod tests {
     use polars::df;
 
@@ -211,7 +217,7 @@ mod tests {
 
     // Helper function to create an EncodedBsxBatch (unchecked for simplicity in
     // tests)
-    fn create_test_batch() -> EncodedBsxBatch {
+    pub fn create_test_batch() -> EncodedBsxBatch {
         unsafe { EncodedBsxBatch::new_unchecked(create_test_df()) }
     }
 
@@ -233,7 +239,7 @@ mod tests {
         // 0
         let expected = Series::new(CHR_NAME.into(), &[0u32, 0, 0]);
         assert_eq!(
-            <EncodedBsxBatch as BsxBatchMethods>::chr(&batch)
+            <EncodedBsxBatch as BsxSchema>::chr(&batch)
                 .clone()
                 .into_series(),
             expected

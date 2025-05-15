@@ -49,7 +49,12 @@ bzip2 = { version = "0.5.2", optional = true }
 zip = { version = "2.6.1", optional = true }
 flate2 = { version = "1.1.1", optional = true }
 clap = { version = "4.1", features = ["derive"], optional = true }
+bitvec = "1.0.1"
+polars-arrow = "0.45.0"
+typed_floats = "1.0.5"
+either = "1.15.0"
 
+paste.workspace = true
 anyhow.workspace = true
 bio.workspace = true
 itertools.workspace = true
@@ -61,7 +66,6 @@ serde_json.workspace = true
 statrs.workspace = true
 polars.workspace = true
 hashbrown.workspace = true
-typed_floats = "1.0.5"
 
 
 [lints]

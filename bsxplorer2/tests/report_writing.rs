@@ -6,7 +6,7 @@ use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchMethods};
 #[cfg(feature = "compression")]
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{ReportReaderBuilder,
-                             ReportTypeSchema,
+                             ReportType,
                              ReportWriter};
 use polars::prelude::*;
 use rand::rngs::StdRng;
@@ -23,13 +23,13 @@ const N_CHR: usize = 3;
 const CHUNK_SIZE: usize = 10000;
 
 #[rstest]
-#[case::bismark_batched(ReportTypeSchema::Bismark, true)]
-#[case::bismark(ReportTypeSchema::Bismark, false)]
-#[case::cgmap(ReportTypeSchema::CgMap, false)]
-#[case::bedgraph(ReportTypeSchema::BedGraph, false)]
-#[case::coverage(ReportTypeSchema::Coverage, false)]
+#[case::bismark_batched(ReportType::Bismark, true)]
+#[case::bismark(ReportType::Bismark, false)]
+#[case::cgmap(ReportType::CgMap, false)]
+#[case::bedgraph(ReportType::BedGraph, false)]
+#[case::coverage(ReportType::Coverage, false)]
 fn test_report_writing_reading_roundtrip(
-    #[case] report_type: ReportTypeSchema,
+    #[case] report_type: ReportType,
     #[case] write_batch: bool,
     mut report_data: DemoReportBuilder<StdRng>,
 ) -> anyhow::Result<()> {
@@ -67,7 +67,7 @@ fn test_report_writing_reading_roundtrip(
     let buffer = NamedTempFile::new()?;
 
     // Handle BedGraph header manually for writing test if needed
-    if report_type == ReportTypeSchema::BedGraph {
+    if report_type == ReportType::BedGraph {
         writeln!(buffer.reopen()?, "track type=bedGraph")?;
     }
 
@@ -105,7 +105,7 @@ fn test_report_writing_reading_roundtrip(
     // Add fasta path if alignment is needed by the reader for this report type
     if report_type.need_align() {
         report_reader_builder = report_reader_builder
-            .with_fasta_path(sequence_file.path().to_path_buf());
+            .with_fasta_path(Some(sequence_file.path().to_path_buf()));
     }
     // Note: We are reading into `BsxBatch` (decoded), which doesn't require
     // chr_dtype from fasta for non-aligning types. The builder handles this.

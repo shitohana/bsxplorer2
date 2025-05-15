@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bsxplorer2::io::report::ReportTypeSchema as RustReportTypeSchema;
+use bsxplorer2::io::report::ReportType as RustReportTypeSchema;
 use pyo3::prelude::*;
 use pyo3_polars::PySchema;
 

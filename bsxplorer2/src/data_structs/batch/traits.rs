@@ -39,8 +39,7 @@ pub mod colnames {
 }
 use colnames::*;
 
-/// Trait for common methods for [BsxBatch] and [EncodedBsxBatch]
-pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
+pub trait BsxSchema {
     /// Type for chromosome data
     type ChrType: PolarsDataType;
     /// Type for position data
@@ -138,6 +137,12 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
             (DENSITY_NAME, Self::DensityType::get_dtype()),
         ])
     }
+}
+
+pub trait BsxBatchMethods {
+    // ------------------------------------------------------------------------
+    //                       METHODS WITHOUT BSXSCHEMA
+    // ------------------------------------------------------------------------
 
     /// Create a new batch from a DataFrame without checks
     ///
@@ -149,15 +154,17 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     where
         Self: Sized;
 
-    /// Create an empty batch
-    fn empty() -> Self
+    /// Returns reference to inner [DataFrame]
+    fn data(&self) -> &DataFrame;
+
+    /// Returns mutable reference to inner [DataFrame]
+    fn data_mut(&mut self) -> &mut DataFrame;
+
+    /// Consumes and returns the inner DataFrame
+    fn take(self) -> DataFrame
     where
-        Self: Sized, {
-        unsafe {
-            Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema()))
-        }
-    }
-    /// Checks if the batch is empty
+        Self: Sized;
+
     fn is_empty(&self) -> bool {
         self.data().is_empty()
     }
@@ -183,76 +190,15 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     ) -> Self
     where
         Self: Sized, {
-        let slice = self
-            .data()
-            .slice(start as i64, length as usize);
+        let slice = self.data().slice(start as i64, length as usize);
         unsafe { Self::new_unchecked(slice) }
     }
-
-    /// Returns reference to inner [DataFrame]
-    fn data(&self) -> &DataFrame;
-    /// Returns mutable reference to inner [DataFrame]
-    fn data_mut(&mut self) -> &mut DataFrame;
-
-    /// Consumes and returns the inner DataFrame
-    fn take(self) -> DataFrame
-    where
-        Self: Sized;
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn lazy(self) -> LazyBsxBatch<Self>
     where
         Self: Sized, {
         LazyBsxBatch::from(self)
-    }
-    /// Get chromosome value as string
-    fn chr_val(&self) -> &BsxSmallStr;
-
-    /// Get start position
-    fn start_pos(&self) -> u32 {
-        self.data()
-            .column(POS_NAME)
-            .unwrap()
-            .get(0)
-            .map(|v| {
-                v.cast(&DataType::UInt32)
-                    .try_extract()
-                    .unwrap()
-            })
-            .unwrap_or_default()
-    }
-    /// Get end position
-    fn end_pos(&self) -> u32 {
-        self.data()
-            .column(POS_NAME)
-            .unwrap()
-            .get(self.height() - 1)
-            .map(|v| {
-                v.cast(&DataType::UInt32)
-                    .try_extract()
-                    .unwrap()
-            })
-            .unwrap_or_default()
-    }
-
-    /// Returns the genomic position at the start of the batch
-    fn start_gpos<S, P>(&self) -> GenomicPosition<S, P>
-    where
-        S: SeqNameStr,
-        P: SeqPosNum, {
-        let pos = P::from(self.start_pos()).unwrap();
-        let chr = S::from(self.chr_val());
-        GenomicPosition::new(chr, pos)
-    }
-
-    /// Returns the genomic position at the end of the batch
-    fn end_gpos<S, P>(&self) -> GenomicPosition<S, P>
-    where
-        S: SeqNameStr,
-        P: SeqPosNum, {
-        let pos = P::from(self.end_pos()).unwrap();
-        let chr = S::from(self.chr_val());
-        GenomicPosition::new(chr, pos)
     }
 
     /// Vertically stack with another batch
@@ -272,7 +218,9 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
     fn extend(
         &mut self,
         other: &Self,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()>
+    where
+        Self: Sized, {
         self.data_mut().extend(other.data())?;
         BsxBatchBuilder::all_checks().check(self.data())?;
         Ok(())
@@ -294,11 +242,89 @@ pub trait BsxBatchMethods: BsxTypeTag + Eq + PartialEq {
         self.data().height()
     }
 
+    fn equals(
+        &self,
+        other: &Self,
+        null_equal: bool,
+    ) -> bool
+    where
+        Self: Sized, {
+        if !null_equal {
+            self.data().equals(other.data())
+        }
+        else {
+            self.data().equals_missing(other.data())
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    //                         METHODS WITH BSXSCHEMA
+    // ------------------------------------------------------------------------
+
+    /// Create an empty batch
+    fn empty() -> Self
+    where
+        Self: Sized + BsxSchema, {
+        unsafe { Self::new_unchecked(DataFrame::empty_with_schema(&Self::schema())) }
+    }
+
+    /// Get chromosome value as string
+    fn chr_val(&self) -> &BsxSmallStr
+    where
+        Self: BsxSchema + Sized;
+
+    /// Get start position
+    fn start_pos(&self) -> u32
+    where
+        Self: BsxSchema + Sized, {
+        self.data()
+            .column(POS_NAME)
+            .unwrap()
+            .get(0)
+            .map(|v| v.cast(&DataType::UInt32).try_extract().unwrap())
+            .unwrap_or_default()
+    }
+    /// Get end position
+    fn end_pos(&self) -> u32
+    where
+        Self: BsxSchema + Sized, {
+        self.data()
+            .column(POS_NAME)
+            .unwrap()
+            .get(self.height() - 1)
+            .map(|v| v.cast(&DataType::UInt32).try_extract().unwrap())
+            .unwrap_or_default()
+    }
+
+    /// Returns the genomic position at the start of the batch
+    fn start_gpos<S, P>(&self) -> GenomicPosition<S, P>
+    where
+        S: SeqNameStr,
+        P: SeqPosNum,
+        Self: BsxSchema + Sized, {
+        let pos = P::from(self.start_pos()).unwrap();
+        let chr = S::from(self.chr_val());
+        GenomicPosition::new(chr, pos)
+    }
+
+    /// Returns the genomic position at the end of the batch
+    fn end_gpos<S, P>(&self) -> GenomicPosition<S, P>
+    where
+        S: SeqNameStr,
+        P: SeqPosNum,
+        Self: BsxSchema + Sized, {
+        let pos = P::from(self.end_pos()).unwrap();
+        let chr = S::from(self.chr_val());
+        GenomicPosition::new(chr, pos)
+    }
+
+
     /// Convert batch to genomic contig
     fn as_contig<S, P>(&self) -> anyhow::Result<Option<Contig<S, P>>>
     where
         S: SeqNameStr,
-        P: SeqPosNum, {
+        P: SeqPosNum,
+        Self: BsxSchema + Sized, {
         if self.is_empty() {
             Ok(None)
         }

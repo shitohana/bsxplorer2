@@ -56,19 +56,19 @@ impl PyReportReader {
             .with_queue_len(queue_len);
 
         if let Some(fp) = fasta_path {
-            builder = builder.with_fasta_path(fp);
+            builder = builder.with_fasta_path(Some(fp));
         }
         if let Some(fai) = fai_path {
-            builder = builder.with_fai_path(fai);
+            builder = builder.with_fai_path(Some(fai));
         }
         if let Some(n) = n_threads {
-            builder = builder.with_n_threads(n);
+            builder = builder.with_n_threads(Some(n));
         }
 
         {
             if let Some(comp) = compression {
                 let comp_enum = Compression::from(comp);
-                builder = builder.with_compression(comp_enum);
+                builder = builder.with_compression(Some(comp_enum));
             }
         }
 

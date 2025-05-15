@@ -1,4 +1,4 @@
-use once_cell::sync::OnceCell;
+    use once_cell::sync::OnceCell;
 use polars::prelude::*;
 
 use crate::data_structs::batch::builder::BsxBatchBuilder;
@@ -7,6 +7,8 @@ use crate::data_structs::batch::traits::{colnames,
                                          BsxBatchMethods,
                                          BsxTypeTag};
 use crate::data_structs::typedef::BsxSmallStr;
+
+use super::{BsxSchema, EncodedBsxBatch};
 
 /// A batch of BSX data stored in a DataFrame with the following guarantees:
 /// 1. Non-null chr and position columns
@@ -28,7 +30,7 @@ impl PartialEq for BsxBatch {
     }
 }
 
-impl BsxBatchMethods for BsxBatch {
+impl BsxSchema for BsxBatch {
     type ChrType = StringType;
     type ContextType = StringType;
     type CountType = UInt32Type;
@@ -91,7 +93,9 @@ impl BsxBatchMethods for BsxBatch {
             .f64()
             .unwrap()
     }
+}
 
+impl BsxBatchMethods for BsxBatch {
     #[inline(always)]
     unsafe fn new_unchecked(data_frame: DataFrame) -> Self {
         BsxBatch {
@@ -146,6 +150,14 @@ impl TryFrom<DataFrame> for BsxBatch {
 impl From<BsxBatch> for DataFrame {
     fn from(b: BsxBatch) -> Self {
         b.data
+    }
+}
+
+impl TryFrom<EncodedBsxBatch> for BsxBatch {
+    type Error = anyhow::Error;
+
+    fn try_from(value: EncodedBsxBatch) -> Result<Self, Self::Error> {
+        BsxBatchBuilder::decode_batch(value)
     }
 }
 

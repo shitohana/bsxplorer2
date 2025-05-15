@@ -9,7 +9,7 @@ use log::error;
 use polars::prelude::{Column, DataType};
 use rayon::prelude::*;
 
-use crate::data_structs::batch::{colnames, merge_replicates, BsxBatchMethods};
+use crate::data_structs::batch::{colnames, merge_replicates, BsxBatchMethods, BsxSchema};
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::tv_recurse_segment;
@@ -39,7 +39,7 @@ pub(crate) fn segment_reading<I, B>(
     sender: Sender<(String, SegmentOwned)>,
 ) where
     I: Iterator<Item = B>,
-    B: BsxBatchMethods, {
+    B: BsxBatchMethods + BsxSchema, {
     loop {
         match (
             left_readers

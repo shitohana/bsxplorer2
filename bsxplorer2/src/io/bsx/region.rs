@@ -7,9 +7,7 @@ use polars::prelude::search_sorted::binary_search_ca;
 use polars::prelude::SearchSortedSide;
 
 use super::BsxFileReader;
-use crate::data_structs::batch::{BsxBatchBuilder,
-                                 BsxBatchMethods,
-                                 EncodedBsxBatch};
+use crate::data_structs::batch::{BsxBatchBuilder, BsxBatchMethods, BsxSchema, EncodedBsxBatch};
 use crate::data_structs::coords::Contig;
 use crate::data_structs::typedef::{SeqNameStr, SeqPosNum};
 use crate::io::bsx::BatchIndex;
@@ -215,7 +213,7 @@ where
                 && contig.start() <= min_pos_val
                 && contig.end() <= max_pos_val
             {
-                IntersectionKind::PartialRight
+                IntersectionKind::PartialLeft
             }
             // |-------------<cache>------------|
             //                  |----<region>------|
@@ -226,7 +224,7 @@ where
             // |----<cache>----|
             //                   |----<contig>-----|
             {
-                IntersectionKind::PartialLeft
+                IntersectionKind::PartialRight
             }
             else {
                 IntersectionKind::None
@@ -365,6 +363,7 @@ where
 
 /// Enum representing the intersection kind between the cached region and the
 /// query contig.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IntersectionKind {
     Full,
     PartialRight,

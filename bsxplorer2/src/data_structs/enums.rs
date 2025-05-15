@@ -134,6 +134,25 @@ pub enum Strand {
     None,
 }
 
+impl Into<bool> for Strand {
+    fn into(self) -> bool {
+        match self {
+            Strand::Forward => true,
+            Strand::Reverse => false,
+            Strand::None => unimplemented!(),
+        }
+    }
+}
+
+impl From<bool> for Strand {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Strand::Forward,
+            false => Strand::Reverse,
+        }
+    }
+}
+
 impl From<Strand> for char {
     fn from(value: Strand) -> Self {
         match value {
@@ -144,15 +163,6 @@ impl From<Strand> for char {
     }
 }
 
-impl<T: AsRef<str>> From<T> for Strand {
-    fn from(value: T) -> Self {
-        match value.as_ref() {
-            "+" => Strand::Forward,
-            "-" => Strand::Reverse,
-            _ => Strand::None,
-        }
-    }
-}
 
 impl Display for Strand {
     fn fmt(

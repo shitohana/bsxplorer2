@@ -2,7 +2,7 @@ use bsxplorer2::data_structs::enums::{Context as RsContext,
                                       Strand as RsStrand};
 use pyo3::prelude::*;
 
-#[pyclass(name = "Strand", eq, eq_int)]
+#[pyclass(name = "Strand", eq, eq_int, hash, frozen)]
 #[derive(PartialEq, Debug, Clone, Copy, Hash)]
 pub enum PyStrand {
     Forward,
@@ -17,6 +17,18 @@ impl PyStrand {
             "reverse" => Some(PyStrand::Reverse),
             "null" => Some(PyStrand::Null),
             _ => None,
+        }
+    }
+}
+
+#[pymethods]
+impl PyStrand {
+    #[getter]
+    fn name(&self) -> &str {
+        match self {
+            PyStrand::Forward => "Forward",
+            PyStrand::Reverse => "Reverse",
+            PyStrand::Null => "Null",
         }
     }
 }
@@ -41,7 +53,7 @@ impl From<PyStrand> for RsStrand {
     }
 }
 
-#[pyclass(name = "Context", eq, eq_int)]
+#[pyclass(name = "Context", eq, eq_int, hash, frozen)]
 #[derive(PartialEq, Debug, Clone, Copy, Hash)]
 pub enum PyContext {
     CG,
@@ -56,6 +68,18 @@ impl PyContext {
             "chg" => Some(PyContext::CHG),
             "chh" => Some(PyContext::CHH),
             _ => None,
+        }
+    }
+}
+
+#[pymethods]
+impl PyContext {
+    #[getter]
+    fn name(&self) -> &str {
+        match self {
+            PyContext::CG => "CG",
+            PyContext::CHG => "CHG",
+            PyContext::CHH => "CHH",
         }
     }
 }
