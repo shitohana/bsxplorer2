@@ -4,24 +4,37 @@ use std::str::FromStr;
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::NoStrand;
-use num::{PrimInt, Unsigned};
 use serde::{Deserialize, Serialize};
+
+use crate::data_structs::typedef::{SeqNameStr, SeqPosNum};
 
 /// Represents a genomic position with a sequence name and a position.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt, {
+    R: SeqNameStr,
+    P: SeqPosNum, {
     seqname:  R,
     position: P,
 }
 
+impl<R, P> Default for GenomicPosition<R, P>
+where
+    R: SeqNameStr + Default,
+    P: SeqPosNum + Default,
+{
+    fn default() -> Self {
+        Self {
+            seqname:  R::default(),
+            position: P::default(),
+        }
+    }
+}
 
 impl<R, P> GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Creates a new `GenomicPosition`.
     pub fn new(
@@ -32,38 +45,39 @@ where
     }
 
     /// Returns the sequence name.
-    pub fn seqname(&self) -> R { self.seqname.clone() }
+    pub fn seqname(&self) -> R {
+        self.seqname.clone()
+    }
 
     /// Returns the position.
-    pub fn position(&self) -> P { self.position }
+    pub fn position(&self) -> P {
+        self.position
+    }
 
     pub fn is_zero(&self) -> bool {
         self.position == P::zero() && self.seqname.as_ref() == ""
     }
 }
 
-impl<P, S> From<bio::bio_types::annot::pos::SeqPosUnstranded>
-    for GenomicPosition<S, P>
+impl<P, S> From<bio::bio_types::annot::pos::SeqPosUnstranded> for GenomicPosition<S, P>
 where
-    S: AsRef<str> + Clone + FromStr,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr + FromStr,
+    P: SeqPosNum,
     <S as FromStr>::Err: std::fmt::Debug,
 {
     /// Converts from `bio_types::annot::pos::SeqPosUnstranded`.
     fn from(value: bio::bio_types::annot::pos::SeqPosUnstranded) -> Self {
         Self {
             seqname:  S::from_str(value.refid()).unwrap(),
-            position: P::from(value.pos())
-                .expect("Failed to convert position to P"),
+            position: P::from(value.pos()).expect("Failed to convert position to P"),
         }
     }
 }
 
-impl<R, P> From<GenomicPosition<R, P>>
-    for bio::bio_types::annot::pos::SeqPosUnstranded
+impl<R, P> From<GenomicPosition<R, P>> for bio::bio_types::annot::pos::SeqPosUnstranded
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts into `bio_types::annot::pos::SeqPosUnstranded`.
     fn from(value: GenomicPosition<R, P>) -> Self {
@@ -80,8 +94,8 @@ where
 
 impl<R, P> Sub for GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     type Output = Option<Self>;
 
@@ -106,8 +120,8 @@ where
 
 impl<R, P> Add for GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     type Output = Option<Self>;
 
@@ -128,8 +142,8 @@ where
 
 impl<R, P> Ord for GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn cmp(
         &self,
@@ -142,15 +156,15 @@ where
 
 impl<R, P> Eq for GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
 }
 
 impl<R, P> PartialEq for GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn eq(
         &self,
@@ -164,8 +178,8 @@ where
 #[allow(clippy::non_canonical_partial_ord_impl)]
 impl<R, P> PartialOrd for GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn partial_cmp(
         &self,
@@ -190,8 +204,8 @@ where
 
 impl<R, P> Display for GenomicPosition<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn fmt(
         &self,

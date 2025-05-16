@@ -13,6 +13,7 @@ pub fn register_io_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<compression::PyCompression>()?;
     module.add_class::<report::PyReportReader>()?;
     module.add_class::<report::PyReportWriter>()?;
+    module.add_class::<region::PyRegionReader>()?;
 
     parent_module.add_submodule(&module)?;
     Ok(())

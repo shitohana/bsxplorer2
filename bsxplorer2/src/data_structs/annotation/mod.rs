@@ -2,7 +2,7 @@ mod annot_store;
 mod gff_entry;
 
 pub use annot_store::AnnotStore;
-pub use gff_entry::{GffEntry, GffEntryAttributes};
+pub use gff_entry::{GffEntry, GffEntryAttributes, RawGffEntry};
 
 #[cfg(test)]
 mod tests {
@@ -31,8 +31,7 @@ mod tests {
 
     #[test]
     fn test_gff_entry_attributes_deserialization() {
-        let gff_string =
-            "ID=gene123;Name=my_gene;Alias=another_name;custom=value";
+        let gff_string = "ID=gene123;Name=my_gene;Alias=another_name;custom=value";
         let deserialized = GffEntryAttributes::from_str(gff_string).unwrap();
 
         let mut expected_attributes = GffEntryAttributes::default();
@@ -62,7 +61,7 @@ mod tests {
 
         let gff_entry = GffEntry::try_from(raw_gff_entry).unwrap();
 
-        assert_eq!(gff_entry.contig.seqname(), ArcStr::from("chr1"));
+        assert_eq!(gff_entry.contig.seqname().to_owned(), ArcStr::from("chr1"));
         assert_eq!(gff_entry.contig.start(), 100);
         assert_eq!(gff_entry.contig.end(), 200);
         assert_eq!(gff_entry.source, ArcStr::from("test"));
@@ -108,8 +107,7 @@ mod tests {
     fn test_annot_store_parent_child_relationships() {
         let mut store = AnnotStore::new();
 
-        let contig1 =
-            Contig::new(ArcStr::from("chr1"), 1, 100, Strand::Forward);
+        let contig1 = Contig::new(ArcStr::from("chr1"), 1, 100, Strand::Forward);
         let attributes1 = GffEntryAttributes {
             id:            Some("gene1".into()),
             name:          None,
@@ -132,8 +130,7 @@ mod tests {
             Some(attributes1),
         );
 
-        let contig2 =
-            Contig::new(ArcStr::from("chr1"), 10, 50, Strand::Forward);
+        let contig2 = Contig::new(ArcStr::from("chr1"), 10, 50, Strand::Forward);
         let attributes2 = GffEntryAttributes {
             id:            Some("exon1".into()),
             name:          None,
@@ -159,14 +156,10 @@ mod tests {
         store.insert(entry1);
         store.insert(entry2);
 
-        let parents = store
-            .get_parents(&"exon1".into())
-            .unwrap();
+        let parents = store.get_parents(&"exon1".into()).unwrap();
         assert_eq!(parents, &vec!["gene1".to_string()]);
 
-        let children = store
-            .get_children(&"gene1".into())
-            .unwrap();
+        let children = store.get_children(&"gene1".into()).unwrap();
         assert_eq!(children, &vec!["exon1".to_string()]);
     }
 }

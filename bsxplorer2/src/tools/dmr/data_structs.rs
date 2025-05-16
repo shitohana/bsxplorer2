@@ -45,16 +45,22 @@ impl<'a> SegmentView<'a> {
         &self.parent.group_b[self.rel_start..self.rel_end]
     }
 
-    pub fn start_pos(&self) -> u64 { self.parent.positions[self.rel_start] }
+    pub fn start_pos(&self) -> u64 {
+        self.parent.positions[self.rel_start]
+    }
 
-    pub fn end_pos(&self) -> u64 { self.parent.positions[self.rel_end - 1] }
+    pub fn end_pos(&self) -> u64 {
+        self.parent.positions[self.rel_end - 1]
+    }
 
     #[allow(dead_code)]
     pub fn positions(&self) -> &[u64] {
         &self.parent.positions[self.rel_start..self.rel_end]
     }
 
-    pub fn size(&self) -> usize { self.rel_end - self.rel_start }
+    pub fn size(&self) -> usize {
+        self.rel_end - self.rel_start
+    }
 
     pub fn slice(
         &self,
@@ -77,12 +83,7 @@ impl<'a> SegmentView<'a> {
         &self,
         other: &Self,
     ) -> SegmentView<'a> {
-        debug_assert!(
-            other
-                .rel_start
-                .saturating_sub(self.rel_end)
-                < 2
-        );
+        debug_assert!(other.rel_start.saturating_sub(self.rel_end) < 2);
         SegmentView::new(self.rel_start, other.rel_end, self.parent.clone())
     }
 
@@ -136,8 +137,7 @@ impl PartialOrd for SegmentView<'_> {
         other: &Self,
     ) -> Option<Ordering> {
         if self.parent == other.parent {
-            self.rel_start
-                .partial_cmp(&other.rel_start)
+            self.rel_start.partial_cmp(&other.rel_start)
         }
         else {
             None
@@ -190,33 +190,26 @@ impl SegmentOwned {
         mut self,
         max_dist: u64,
     ) -> Vec<Self> {
-        let mut split_idxs =
-            segmentation::arg_split_segment(&self.positions, max_dist);
+        let mut split_idxs = segmentation::arg_split_segment(&self.positions, max_dist);
         split_idxs.reverse();
         if split_idxs.is_empty() {
             vec![self]
         }
         else {
-            let mut res =
-                split_idxs
-                    .into_iter()
-                    .fold(Vec::new(), |mut acc, idx| {
-                        let positions = self
-                            .positions
-                            .drain(idx..)
-                            .collect_vec();
-                        let group_a = self.group_a.drain(idx..).collect_vec();
-                        let group_b = self.group_b.drain(idx..).collect_vec();
-                        let mds_orig = self.mds_orig.drain(idx..).collect_vec();
+            let mut res = split_idxs.into_iter().fold(Vec::new(), |mut acc, idx| {
+                let positions = self.positions.drain(idx..).collect_vec();
+                let group_a = self.group_a.drain(idx..).collect_vec();
+                let group_b = self.group_b.drain(idx..).collect_vec();
+                let mds_orig = self.mds_orig.drain(idx..).collect_vec();
 
-                        acc.push(Self {
-                            positions,
-                            group_a,
-                            group_b,
-                            mds_orig,
-                        });
-                        acc
-                    });
+                acc.push(Self {
+                    positions,
+                    group_a,
+                    group_b,
+                    mds_orig,
+                });
+                acc
+            });
             res.reverse();
             res
         }
@@ -228,10 +221,8 @@ impl SegmentOwned {
     ) -> SegmentOwned {
         self.group_a.append(&mut other.group_a);
         self.group_b.append(&mut other.group_b);
-        self.mds_orig
-            .append(&mut other.mds_orig);
-        self.positions
-            .append(&mut other.positions);
+        self.mds_orig.append(&mut other.mds_orig);
+        self.positions.append(&mut other.positions);
         self
     }
 
@@ -239,7 +230,9 @@ impl SegmentOwned {
         SegmentView::new(0, self.mds_orig.len(), Arc::new(self))
     }
 
-    pub fn size(&self) -> usize { self.positions.len() }
+    pub fn size(&self) -> usize {
+        self.positions.len()
+    }
 }
 
 pub struct ReaderMetadata {
@@ -275,10 +268,8 @@ impl DMRegion {
         segment: SegmentView,
         chr: String,
     ) -> Self {
-        let a_mean =
-            segment.group_a().iter().sum::<f32>() / segment.size() as f32;
-        let b_mean =
-            segment.group_b().iter().sum::<f32>() / segment.size() as f32;
+        let a_mean = segment.group_a().iter().sum::<f32>() / segment.size() as f32;
+        let b_mean = segment.group_b().iter().sum::<f32>() / segment.size() as f32;
 
         DMRegion {
             chr,
@@ -293,12 +284,18 @@ impl DMRegion {
         }
     }
 
-    pub fn meth_diff(&self) -> f32 { self.meth_left - self.meth_right }
+    pub fn meth_diff(&self) -> f32 {
+        self.meth_left - self.meth_right
+    }
 
     #[allow(dead_code)]
-    fn meth_mean(&self) -> f32 { (self.meth_left + self.meth_right) / 2.0 }
+    fn meth_mean(&self) -> f32 {
+        (self.meth_left + self.meth_right) / 2.0
+    }
 
-    pub fn length(&self) -> u32 { self.end - self.start + 1 }
+    pub fn length(&self) -> u32 {
+        self.end - self.start + 1
+    }
 }
 
 fn serialize_scientific<S>(

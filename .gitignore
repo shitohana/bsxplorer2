@@ -1,12 +1,16 @@
+.env
+.ropeproject
 .DS_Store
 .git
 .idea
 .zed
 .vscode
 .venv
+.pytest_cache
 *.ipc
 *.lock
 *.pyc
+*.so
 dist
 target
 __pycache__

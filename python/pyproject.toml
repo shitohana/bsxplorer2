@@ -1,19 +1,28 @@
-[build-system]
-requires = ["maturin>=1,<2"]
-build-backend = "maturin"
-
-[project]
+[tool.poetry]
 name = "bsx2"
 version = "0.1.0"
-requires-python = ">=3.9,<3.12"
-dependencies = [
-    "polars",
-    "pyarrow"
-]
+description = "A high-performance library for bisulfite sequencing data analysis and DNA methylation research"
+authors = ["shitohana <kyudytskiy@gmail.com>"]
+readme = "README.md"
 
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-include = ["bsx2"]
-exclude = ["src"]
-stubPath = "./typings"
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+polars = "^1.0.0"
+pyarrow = "*"
+numpy = ">=2.0"
+scipy = "*"
+matplotlib = ">=3.8,<4.0"
+plotly = ">=5.0,<6.0"
+pydantic = "~=2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+
+[tool.maturin]
+python-source = "."
+module-name = "bsx2._native"
+features = ["nightly"]
+
+[build-system]
+requires = ["poetry-core", "maturin>=1,<2"]
+build-backend = "maturin"

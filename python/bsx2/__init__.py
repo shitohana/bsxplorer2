@@ -1,5 +1,11 @@
-from .bsx2 import *
+"""BSX2 - Python bindings for bsxplorer2 for DNA methylation analysis
 
-__doc__ = bsx2.__doc__
-if hasattr(bsx2, "__all__"):
-    __all__ = bsx2.__all__
+This package provides Python bindings to the bsxplorer2 Rust library.
+It offers high-performance data structures and algorithms for analyzing
+bisulfite sequencing data.
+"""
+
+from . import types  #type: ignore
+from . import io  #type: ignore
+
+__version__ = "0.1.0"

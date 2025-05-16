@@ -6,7 +6,7 @@ use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 /// Supported methylation report file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
-pub enum ReportTypeSchema {
+pub enum ReportType {
     /// Bismark methylation extractor output format
     Bismark,
     /// CG methylation map format
@@ -17,14 +17,14 @@ pub enum ReportTypeSchema {
     Coverage,
 }
 
-impl ReportTypeSchema {
+impl ReportType {
     /// Returns column names for this report format.
     pub const fn col_names(&self) -> &[&'static str] {
         match self {
             Self::Bismark => {
                 &[
-                    "chr", "position", "strand", "count_m", "count_um",
-                    "context", "trinuc",
+                    "chr", "position", "strand", "count_m", "count_um", "context",
+                    "trinuc",
                 ]
             },
             Self::Coverage => {
@@ -48,7 +48,7 @@ impl ReportTypeSchema {
 
     /// Returns data types for each column.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    const fn col_types(&self) -> &[DataType] {
+    pub const fn col_types(&self) -> &[DataType] {
         match self {
             Self::Bismark => {
                 &[
@@ -98,9 +98,7 @@ impl ReportTypeSchema {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn chr_col(&self) -> &'static str {
         match self {
-            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => {
-                "chr"
-            },
+            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => "chr",
         }
     }
 
@@ -197,9 +195,13 @@ pub(crate) struct BismarkRow {
 }
 
 impl ReportRow<'_> for BismarkRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.position }
+    fn get_pos(&self) -> usize {
+        self.position
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -215,9 +217,13 @@ pub(crate) struct CgMapRow {
 }
 
 impl ReportRow<'_> for CgMapRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.position }
+    fn get_pos(&self) -> usize {
+        self.position
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -229,9 +235,13 @@ pub(crate) struct BedGraphRow {
 }
 
 impl ReportRow<'_> for BedGraphRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.start }
+    fn get_pos(&self) -> usize {
+        self.start
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -245,7 +255,11 @@ pub(crate) struct CoverageRow {
 }
 
 impl ReportRow<'_> for CoverageRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
+    fn get_chr(&self) -> String {
+        self.chr.clone()
+    }
 
-    fn get_pos(&self) -> usize { self.start }
+    fn get_pos(&self) -> usize {
+        self.start
+    }
 }

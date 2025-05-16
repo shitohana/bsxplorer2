@@ -1,18 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::hash::Hash;
 use std::io::{Read, Seek};
 
 use anyhow::{anyhow, bail};
 use itertools::Itertools;
-use num::{PrimInt, Unsigned};
 use polars::prelude::search_sorted::binary_search_ca;
 use polars::prelude::SearchSortedSide;
 
 use super::BsxFileReader;
-use crate::data_structs::batch::{BsxBatchBuilder,
-                                 BsxBatchMethods,
-                                 EncodedBsxBatch};
+use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
 use crate::data_structs::coords::Contig;
+use crate::data_structs::typedef::{BsxSmallStr, SeqNameStr, SeqPosNum};
 use crate::io::bsx::BatchIndex;
 
 /// RegionReader is a reader for BSX files that operates on a specific region of
@@ -20,25 +17,24 @@ use crate::io::bsx::BatchIndex;
 pub struct RegionReader<R, S, P>
 where
     R: Read + Seek,
-    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
-    P: Unsigned + PrimInt, {
+    S: SeqNameStr,
+    P: SeqPosNum, {
     /// Cache of encoded BSX batches.
-    cache:         BTreeMap<usize, EncodedBsxBatch>,
+    cache:         BTreeMap<usize, BsxBatch>,
     /// Inner reader for the BSX file.
     inner:         BsxFileReader<R>,
     /// Index of the BSX file.
     index:         BatchIndex<S, P>,
     /// Preprocessing function to be applied to each batch before it is cached.
-    preprocess_fn:
-        Option<fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>>,
+    preprocess_fn: Option<Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
 }
 
 // PRIVATE METHODS
 impl<R, S, P> RegionReader<R, S, P>
 where
     R: Read + Seek,
-    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Finds the batches that overlap the given contig.
     fn find(
@@ -47,14 +43,10 @@ where
     ) -> Option<Vec<usize>> {
         let required_batches = self.index().find(&contig.clone());
 
-        let batches_found = !{
-            required_batches.is_none()
-                || (required_batches.is_some()
-                    && required_batches
-                        .as_ref()
-                        .unwrap()
-                        .is_empty())
-        };
+        let batches_found = required_batches
+            .as_ref()
+            .map(|v| v.len() > 0)
+            .unwrap_or(false);
 
         if batches_found {
             required_batches
@@ -89,19 +81,14 @@ where
         }
 
         for idx in to_read {
-            let mut data = self
-                .inner
-                .get_batch(idx)
-                .transpose()?
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Batch index {} reported by find() but not found by \
-                         get_batch()",
-                        idx
-                    )
-                })?;
+            let mut data = self.inner.get_batch(idx).transpose()?.ok_or_else(|| {
+                anyhow!(
+                    "Batch index {} reported by find() but not found by get_batch()",
+                    idx
+                )
+            })?;
 
-            if let Some(postprocess_fn) = self.preprocess_fn {
+            if let Some(postprocess_fn) = self.preprocess_fn.as_ref() {
                 data = postprocess_fn(data)?;
             }
 
@@ -114,14 +101,14 @@ where
     fn get_batches_for_contig(
         &self,
         contig: &Contig<S, P>,
-    ) -> anyhow::Result<Vec<&EncodedBsxBatch>> {
+    ) -> anyhow::Result<Vec<&BsxBatch>> {
         self.index()
             .find(&contig.clone())
             .unwrap()
             .into_iter()
             .sorted()
             .map(|idx| self.cache.get(&idx))
-            .collect::<Option<Vec<&EncodedBsxBatch>>>()
+            .collect::<Option<Vec<&BsxBatch>>>()
             .ok_or(anyhow!("Batch data missing"))
     }
 
@@ -132,8 +119,8 @@ where
     fn assemble_region(
         &self,
         contig: &Contig<S, P>,
-        batches: Vec<&EncodedBsxBatch>,
-    ) -> anyhow::Result<Option<EncodedBsxBatch>> {
+        batches: Vec<&BsxBatch>,
+    ) -> anyhow::Result<Option<BsxBatch>> {
         let batches_total = batches.len();
 
         let mut res = vec![];
@@ -161,13 +148,14 @@ where
                 )[0]
             }
             else {
-                batch.height() as u32
+                batch.len() as u32
             };
 
-            let slice = batch.slice(slice_start, slice_end - slice_start);
+            let slice =
+                batch.slice(slice_start as i64, (slice_end - slice_start) as usize);
             res.push(slice);
         }
-        res.sort_by_key(|b| b.start_pos());
+        res.sort_by_key(|b| b.first_pos());
         if res.is_empty() {
             Ok(None)
         }
@@ -175,7 +163,9 @@ where
             Ok(Some(res.pop().unwrap()))
         }
         else {
-            Some(BsxBatchBuilder::concat(res)).transpose()
+            Some(BsxBatchBuilder::concat(res))
+                .transpose()
+                .map_err(|e| anyhow::anyhow!(e))
         }
     }
 
@@ -188,48 +178,70 @@ where
         let min_cached_pos = self
             .cache
             .first_key_value()
-            .map(|(_k, v)| v.start_gpos::<String, u32>());
+            .map(|(_k, v)| v.first_genomic_pos());
         let max_cached_pos = self
             .cache
             .last_key_value()
-            .map(|(_k, v)| v.end_gpos::<String, u32>());
+            .map(|(_k, v)| v.last_genomic_pos());
 
-        let intersection_kind = if let Some((min_pos, max_pos)) =
-            min_cached_pos.zip(max_cached_pos)
-        {
-            assert_eq!(min_pos.seqname(), max_pos.seqname());
-            if min_pos.seqname() == contig.seqname().as_ref()
-                && P::from(min_pos.position()).unwrap() <= contig.start()
-                && P::from(max_pos.position()).unwrap() >= contig.end()
-            {
-                IntersectionKind::Full
-            }
-            else if min_pos.seqname() == contig.seqname().as_ref()
-                && P::from(min_pos.position()).unwrap() <= contig.start()
-                && P::from(max_pos.position()).unwrap() >= contig.end()
-            {
-                IntersectionKind::PartialRight
-            }
-            else if min_pos.seqname() == contig.seqname().as_ref()
-                && P::from(min_pos.position()).unwrap() > contig.start()
-                && P::from(max_pos.position()).unwrap() >= contig.end()
-            {
-                IntersectionKind::PartialLeft
+        if min_cached_pos.is_none() || max_cached_pos.is_none() {
+            return Ok(IntersectionKind::None);
+        }
+        let min_cached_pos = min_cached_pos.unwrap();
+        let max_cached_pos = max_cached_pos.unwrap();
+
+        let intersection_kind =
+            if let Some((min_pos, max_pos)) = min_cached_pos.zip(max_cached_pos) {
+                assert_eq!(min_pos.seqname(), max_pos.seqname());
+                let seqname = min_pos.seqname();
+                let min_pos_val = P::from(min_pos.position()).unwrap();
+                let max_pos_val = P::from(max_pos.position()).unwrap();
+
+                // |-------------<cache>------------|
+                //        |------<contig>----|
+                if seqname == contig.seqname().as_ref()
+                    && contig.start() >= min_pos_val
+                    && contig.end() <= max_pos_val
+                {
+                    IntersectionKind::Full
+                }
+                //        |-------------<cache>------------|
+                // |--------<contig>----|
+                // But this will qualify as PartialRight too, even though it
+                // is not a partial intersection
+                //        |-------------<cache>------------|
+                // tig>-|
+                else if min_pos.seqname() == contig.seqname().as_ref()
+                    && contig.start() <= min_pos_val
+                    && contig.end() <= max_pos_val
+                {
+                    IntersectionKind::PartialLeft
+                }
+                // |-------------<cache>------------|
+                //                  |----<region>------|
+                else if min_pos.seqname() == contig.seqname().as_ref()
+                    && contig.start() > min_pos_val
+                    && contig.start() < max_pos_val
+                    && contig.end() >= max_pos_val
+                // |----<cache>----|
+                //                   |----<contig>-----|
+                {
+                    IntersectionKind::PartialRight
+                }
+                else {
+                    IntersectionKind::None
+                }
             }
             else {
                 IntersectionKind::None
-            }
-        }
-        else {
-            IntersectionKind::None
-        };
+            };
 
         Ok(intersection_kind)
     }
 }
 
 // PUBLIC METHODS
-impl<R> RegionReader<R, String, u32>
+impl<R> RegionReader<R, BsxSmallStr, u32>
 where
     R: Read + Seek,
 {
@@ -243,15 +255,13 @@ where
 impl<R, S, P> RegionReader<R, S, P>
 where
     R: Read + Seek,
-    S: AsRef<str> + Clone + Eq + Hash + Into<String>,
-    P: PrimInt + Unsigned,
+    S: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Sets the preprocessing function.
     pub fn set_preprocess_fn(
         &mut self,
-        preprocess_fn: Option<
-            fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>,
-        >,
+        preprocess_fn: Option<Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
     ) {
         self.preprocess_fn = preprocess_fn;
     }
@@ -260,40 +270,38 @@ where
     pub fn new(
         inner: BsxFileReader<R>,
         index: BatchIndex<S, P>,
-        preprocess_fn: Option<
-            fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>,
-        >,
+        preprocess_fn: Option<fn(BsxBatch) -> anyhow::Result<BsxBatch>>,
     ) -> Self {
         Self {
             cache: BTreeMap::new(),
             inner,
             index,
-            preprocess_fn,
+            preprocess_fn: preprocess_fn.map(|c| {
+                Box::new(c) as Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>
+            }),
         }
     }
 
     /// Returns the index of the BSX file.
-    pub fn index(&self) -> &BatchIndex<S, P> { &self.index }
+    pub fn index(&self) -> &BatchIndex<S, P> {
+        &self.index
+    }
 
     /// Resets the cache.
-    pub fn reset(&mut self) { self.cache.clear(); }
+    pub fn reset(&mut self) {
+        self.cache.clear();
+    }
 
     /// Queries the BSX file for the given contig.
     pub fn query(
         &mut self,
         contig: Contig<S, P>,
-        postprocess_fn: Option<
-            fn(EncodedBsxBatch) -> anyhow::Result<EncodedBsxBatch>,
-        >,
-    ) -> anyhow::Result<Option<EncodedBsxBatch>> {
+        postprocess_fn: Option<Box<fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
+    ) -> anyhow::Result<Option<BsxBatch>> {
         const MAX_ITERATION_LIMIT: usize = 10;
         let mut depth = 0usize;
 
-        if !self
-            .index()
-            .chr_order()
-            .contains(&contig.seqname())
-        {
+        if !self.index().get_chr_order().contains(contig.seqname()) {
             bail!("Contig seqname not found in index")
         }
 
@@ -306,16 +314,20 @@ where
             match self.determine_intersection(&contig)? {
                 IntersectionKind::PartialLeft => {
                     bail!(
-                        "Required batch has already been processed. Make sure \
-                         the regions are sorted with BatchIndex.sort"
+                        "Required batch has already been processed. Make sure the \
+                         regions are sorted with BatchIndex.sort"
                     )
                 },
                 IntersectionKind::Full => {
                     let batches = self.get_batches_for_contig(&contig)?;
                     let res = self.assemble_region(&contig, batches)?;
                     if let Some(data) = res {
-                        return Some(postprocess_fn.unwrap_or(Ok)(data))
-                            .transpose();
+                        if let Some(postprocess_fn) = postprocess_fn {
+                            return Some(postprocess_fn(data)).transpose();
+                        }
+                        else {
+                            return Some(Ok(data)).transpose();
+                        }
                     }
                     else {
                         return Ok(None);
@@ -337,6 +349,7 @@ where
 
 /// Enum representing the intersection kind between the cached region and the
 /// query contig.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IntersectionKind {
     Full,
     PartialRight,

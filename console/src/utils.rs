@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 
-use bsxplorer2::exports::polars::prelude::IpcCompression;
-use bsxplorer2::exports::{anyhow, rayon};
 use clap::{Args, ValueEnum};
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
+use polars::prelude::IpcCompression;
 
 pub fn init_pbar(total: usize) -> anyhow::Result<ProgressBar> {
     let progress_bar = ProgressBar::new(total as u64);
@@ -67,8 +66,7 @@ pub struct UtilsArgs {
         long,
         required = false,
         default_value_t = true,
-        help = "Display progress bar (Disable if you need clean pipeline \
-                logs)."
+        help = "Display progress bar (Disable if you need clean pipeline logs)."
     )]
     pub(crate) progress: bool,
     #[arg(
@@ -90,7 +88,7 @@ pub struct UtilsArgs {
 impl UtilsArgs {
     pub fn setup(&self) -> anyhow::Result<()> {
         if self.verbose {
-            bsxplorer2::exports::pretty_env_logger::try_init()?
+            pretty_env_logger::try_init()?
         }
         rayon::ThreadPoolBuilder::new()
             .num_threads(self.threads)

@@ -3,13 +3,14 @@
 
 mod io;
 mod types;
+mod utils;
 
 use io::register_io_module;
 use pyo3::prelude::*;
 use types::register_data_structs_module;
 
 #[pymodule]
-fn bsx2(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     register_data_structs_module(m)?;
     register_io_module(m)?;
     Ok(())

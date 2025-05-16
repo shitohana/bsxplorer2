@@ -165,18 +165,14 @@ where
             c_low -= 1;
             index_low[c_low] = i;
             if c_low > s_low + 1 {
-                slope_low[c_low] = (lower_bound[i]
-                    - lower_bound[index_low[c_low - 1]])
+                slope_low[c_low] = (lower_bound[i] - lower_bound[index_low[c_low - 1]])
                     / num::FromPrimitive::from_usize(i - index_low[c_low - 1])
-                        .expect(
-                            "Unable to convert usize to num::FromPrimitive.",
-                        );
+                        .expect("Unable to convert usize to num::FromPrimitive.");
             }
             else {
                 slope_low[c_low] = (lower_bound[i] - z[c])
-                    / num::FromPrimitive::from_usize(i - index[c]).expect(
-                        "Unable to convert usize to num::FromPrimitive.",
-                    );
+                    / num::FromPrimitive::from_usize(i - index[c])
+                        .expect("Unable to convert usize to num::FromPrimitive.");
             }
         }
 
@@ -187,18 +183,14 @@ where
             c_up -= 1;
             index_up[c_up] = i;
             if c_up > s_up + 1 {
-                slope_up[c_up] = (upper_bound[i]
-                    - upper_bound[index_up[c_up - 1]])
+                slope_up[c_up] = (upper_bound[i] - upper_bound[index_up[c_up - 1]])
                     / num::FromPrimitive::from_usize(i - index_up[c_up - 1])
-                        .expect(
-                            "Unable to convert usize to num::FromPrimitive.",
-                        );
+                        .expect("Unable to convert usize to num::FromPrimitive.");
             }
             else {
                 slope_up[c_up] = (upper_bound[i] - z[c])
-                    / num::FromPrimitive::from_usize(i - index[c]).expect(
-                        "Unable to convert usize to num::FromPrimitive.",
-                    );
+                    / num::FromPrimitive::from_usize(i - index[c])
+                        .expect("Unable to convert usize to num::FromPrimitive.");
             }
         }
         while (c_low == s_low + 1)
@@ -306,8 +298,7 @@ where
     // segment.
     let mut segment_start = 0;
 
-    let twolambda =
-        T::from_u8(2).expect("Unable to transform `2` to T.") * lambda;
+    let twolambda = T::from_u8(2).expect("Unable to transform `2` to T.") * lambda;
     let minlambda = -lambda;
 
     // `umin` and `umax` are used for keeping track of previous data_structs
@@ -440,12 +431,8 @@ where
                     // higher.
                     kminus = current_input_index;
                     segment_lower_bound += (umin - lambda)
-                        / num::FromPrimitive::from_usize(
-                            kminus - segment_start + 1,
-                        )
-                        .expect(
-                            "Unable to convert usize to num::FromPrimitive.",
-                        );
+                        / num::FromPrimitive::from_usize(kminus - segment_start + 1)
+                            .expect("Unable to convert usize to num::FromPrimitive.");
                     umin = lambda;
                 }
                 if umax <= minlambda {
@@ -454,12 +441,8 @@ where
                     // lower.
                     kplus = current_input_index;
                     segment_upper_bound += (umax + lambda)
-                        / num::FromPrimitive::from_usize(
-                            kplus - segment_start + 1,
-                        )
-                        .expect(
-                            "Unable to convert usize to num::FromPrimitive.",
-                        );
+                        / num::FromPrimitive::from_usize(kplus - segment_start + 1)
+                            .expect("Unable to convert usize to num::FromPrimitive.");
                     umax = minlambda;
                 }
             }
@@ -507,8 +490,7 @@ mod tests {
 
     #[test]
     fn tautstring_test_moderate_lambda() {
-        let input =
-            vec![111.0f64, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
+        let input = vec![111.0f64, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
         let output = tautstring(&input, 5.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
@@ -554,14 +536,13 @@ mod tests {
 
     #[test]
     fn condat_test_large_lambda() {
-        let input =
-            vec![111.0f64, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
+        let input = vec![111.0f64, 422.1, 145.2, 248.2, 871.4, 675.2, 436.2, 310.1];
         let output = condat(&input, 700.0);
         // The expected output is taken from the Laurent Condat's C
         // implementation.
         let output_expected = vec![
-            402.425049, 402.425049, 402.425049, 402.425049, 402.425049,
-            402.425049, 402.425049, 402.425049,
+            402.425049, 402.425049, 402.425049, 402.425049, 402.425049, 402.425049,
+            402.425049, 402.425049,
         ];
         println!("{:?}", output);
         for i in 0..input.len() {
@@ -578,8 +559,8 @@ mod tests {
         // The expected output is taken from the Laurent Condat's C
         // implementation.
         let output_expected = vec![
-            3.050000, 3.050000, 4.933333, 4.933333, 4.933333, 5.200000,
-            6.200000, 7.100000,
+            3.050000, 3.050000, 4.933333, 4.933333, 4.933333, 5.200000, 6.200000,
+            7.100000,
         ];
         for i in 0..input.len() {
             let output_data = output[i];

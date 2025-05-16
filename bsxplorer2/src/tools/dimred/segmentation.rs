@@ -25,20 +25,15 @@ impl MethDataBinom {
             count_total.len(),
             "count_m and count_total must have the same length"
         );
-        let count_m_cumsum = count_m
-            .iter()
-            .fold(vec![0], |mut acc, new| {
-                acc.push(acc.last().unwrap() + *new);
-                acc
-            });
+        let count_m_cumsum = count_m.iter().fold(vec![0], |mut acc, new| {
+            acc.push(acc.last().unwrap() + *new);
+            acc
+        });
 
-        let count_total_cumsum =
-            count_total
-                .iter()
-                .fold(vec![0], |mut acc, new| {
-                    acc.push(acc.last().unwrap() + *new);
-                    acc
-                });
+        let count_total_cumsum = count_total.iter().fold(vec![0], |mut acc, new| {
+            acc.push(acc.last().unwrap() + *new);
+            acc
+        });
 
         Self {
             count_m_cumsum,
@@ -68,7 +63,9 @@ impl SegmentationData for MethDataBinom {
         -2.0 * (m as f64 * p.ln() + (n - m) as f64 * (1.0 - p).ln())
     }
 
-    fn len(&self) -> usize { self.count_m_cumsum.len() - 1 }
+    fn len(&self) -> usize {
+        self.count_m_cumsum.len() - 1
+    }
 }
 
 /// PELT algorithm for segmentation based on doi:10.1080/01621459.2012.737745

@@ -115,9 +115,9 @@ pub fn tv_recurse_segment(
             .map(|(start, end, _)| cur_seg.slice(*start, *end))
             .collect_vec();
 
-        let (mut short_segments, mut better_segments) = new_segments
-            .iter()
-            .fold((Vec::new(), Vec::new()), |(mut short, mut better), s| {
+        let (mut short_segments, mut better_segments) = new_segments.iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut short, mut better), s| {
                 if s.size() <= min_cpg {
                     short.push(s.clone())
                 }
@@ -125,7 +125,8 @@ pub fn tv_recurse_segment(
                     better.push(s.clone())
                 }
                 (short, better)
-            });
+            },
+        );
 
         result.append(&mut short_segments);
         if better_segments.is_empty() {
@@ -280,8 +281,7 @@ pub fn merge_segments(
     let mut current_segments = segments.to_vec();
     loop {
         current_segments.sort_by_key(|s| s.rel_start);
-        let merged =
-            merge_adjacent_segments(current_segments.clone(), p_threshold);
+        let merged = merge_adjacent_segments(current_segments.clone(), p_threshold);
         if merged.len() == current_segments.len() {
             break;
         }

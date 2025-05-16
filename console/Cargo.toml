@@ -19,20 +19,15 @@ wild = "2.0"
 
 adjustp.workspace = true
 anyhow.workspace = true
-bio.workspace = true
-itertools.workspace = true
-log.workspace = true
 pretty_env_logger.workspace = true
 rayon.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-statrs.workspace = true
 polars.workspace = true
 
 [dependencies.bsxplorer2]
-version = "0.2.0-rc.1"
+path = "../bsxplorer2"
 default-features = false
-features = ["console", "performant", "compression"]
+features = ["console", "performant", "compression", "tools"]
 
 [[bin]]
 name = "bsxplorer"

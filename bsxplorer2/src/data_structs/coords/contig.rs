@@ -4,19 +4,19 @@ use std::str::FromStr;
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::ReqStrand;
-use num::{PrimInt, Unsigned};
 use serde::{Deserialize, Serialize};
 
 use super::GenomicPosition;
 use crate::data_structs::enums::Strand;
+use crate::data_structs::typedef::{SeqNameStr, SeqPosNum};
 
 /// Represents a contig with a sequence name, start position, end position, and
 /// strand.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt, {
+    R: SeqNameStr,
+    P: SeqPosNum, {
     seqname: R,
     start:   P,
     end:     P,
@@ -25,8 +25,8 @@ where
 
 impl<R, P> Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Creates a new `Contig`.
     pub fn new(
@@ -48,10 +48,14 @@ where
     }
 
     /// Returns the start position.
-    pub fn start(&self) -> P { self.start }
+    pub fn start(&self) -> P {
+        self.start
+    }
 
     /// Returns the end position.
-    pub fn end(&self) -> P { self.end }
+    pub fn end(&self) -> P {
+        self.end
+    }
 
     /// Returns the start position of the contig.
     pub fn start_gpos(&self) -> GenomicPosition<R, P> {
@@ -64,13 +68,19 @@ where
     }
 
     /// Returns the strand of the contig.
-    pub fn strand(&self) -> Strand { self.strand }
+    pub fn strand(&self) -> Strand {
+        self.strand
+    }
 
     /// Returns the sequence name of the contig.
-    pub fn seqname(&self) -> R { self.seqname.clone() }
+    pub fn seqname(&self) -> &R {
+        &self.seqname
+    }
 
     /// Returns the length of the contig.
-    pub fn length(&self) -> P { self.end - self.start }
+    pub fn length(&self) -> P {
+        self.end - self.start
+    }
 
     /// Extends the contig upstream by a given length.
     pub fn extend_upstream(
@@ -115,7 +125,7 @@ where
     }
 
     /// Casts the contig to a new type.
-    pub fn cast<R2: AsRef<str> + Clone, P2: Unsigned + PrimInt>(
+    pub fn cast<R2: SeqNameStr, P2: SeqPosNum>(
         self,
         seqname_fn: fn(R) -> R2,
         pos_fn: fn(P) -> P2,
@@ -137,8 +147,8 @@ where
 
 impl<R, P> From<Range<GenomicPosition<R, P>>> for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts from a range of `GenomicPosition`s.
     fn from(value: Range<GenomicPosition<R, P>>) -> Self {
@@ -158,8 +168,8 @@ where
 
 impl<R, P> From<Contig<R, P>> for Range<GenomicPosition<R, P>>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts into a range of `GenomicPosition`s.
     fn from(value: Contig<R, P>) -> Self {
@@ -169,24 +179,19 @@ where
 
 impl<S, P> From<bio::io::bed::Record> for Contig<S, P>
 where
-    S: AsRef<str> + Clone + FromStr,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr + FromStr,
+    P: SeqPosNum,
     <S as FromStr>::Err: std::fmt::Debug,
 {
     /// Converts from a `bio::io::bed::Record`.
     fn from(value: bio::io::bed::Record) -> Self {
         Self {
             seqname: S::from_str(value.chrom()).unwrap(),
-            start:   P::from(value.start())
-                .expect("Failed to convert start to P"),
+            start:   P::from(value.start()).expect("Failed to convert start to P"),
             end:     P::from(value.end()).expect("Failed to convert end to P"),
             strand:  match value.strand() {
-                Some(bio::bio_types::strand::Strand::Forward) => {
-                    Strand::Forward
-                },
-                Some(bio::bio_types::strand::Strand::Reverse) => {
-                    Strand::Reverse
-                },
+                Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
+                Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
                 Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,
                 None => Strand::None,
             },
@@ -196,8 +201,8 @@ where
 
 impl<R, P> From<Contig<R, P>> for bio::io::bed::Record
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts into a `bio::io::bed::Record`.
     fn from(value: Contig<R, P>) -> Self {
@@ -209,20 +214,15 @@ where
                 .to_u64()
                 .expect("Failed to convert start to u64"),
         );
-        record.set_end(
-            value
-                .end
-                .to_u64()
-                .expect("Failed to convert end to u64"),
-        );
+        record.set_end(value.end.to_u64().expect("Failed to convert end to u64"));
         record
     }
 }
 
 impl<S, P> From<bio::io::gff::Record> for Contig<S, P>
 where
-    S: AsRef<str> + Clone + FromStr,
-    P: Unsigned + PrimInt,
+    S: SeqNameStr + FromStr,
+    P: SeqPosNum,
     <S as FromStr>::Err: std::fmt::Debug,
 {
     /// Converts from a `bio::io::gff::Record`.
@@ -234,12 +234,8 @@ where
             end:     P::from(value.end().to_owned())
                 .expect("Failed to convert end to P"),
             strand:  match value.strand() {
-                Some(bio::bio_types::strand::Strand::Forward) => {
-                    Strand::Forward
-                },
-                Some(bio::bio_types::strand::Strand::Reverse) => {
-                    Strand::Reverse
-                },
+                Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
+                Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
                 Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,
                 None => Strand::None,
             },
@@ -249,8 +245,8 @@ where
 
 impl<R, P, S> From<bio::bio_types::annot::contig::Contig<R, S>> for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
     S: Into<Option<ReqStrand>> + Copy,
 {
     /// Converts from a `bio_types::annot::contig::Contig`.
@@ -274,8 +270,8 @@ where
 impl<R, P> From<Contig<R, P>>
     for bio::bio_types::annot::contig::Contig<R, Option<ReqStrand>>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Converts into a `bio_types::annot::contig::Contig`.
     fn from(value: Contig<R, P>) -> Self {
@@ -301,8 +297,8 @@ where
 
 impl<R, P> PartialOrd for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     /// Compares two `Contig`s.
     ///
@@ -326,15 +322,15 @@ where
 
 impl<R, P> Eq for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
 }
 
 impl<R, P> PartialEq for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn eq(
         &self,
@@ -349,8 +345,8 @@ where
 
 impl<R, P> Display for Contig<R, P>
 where
-    R: AsRef<str> + Clone,
-    P: Unsigned + PrimInt,
+    R: SeqNameStr,
+    P: SeqPosNum,
 {
     fn fmt(
         &self,
@@ -363,9 +359,7 @@ where
             self.start
                 .to_usize()
                 .expect("Failed to convert start to usize"),
-            self.end
-                .to_usize()
-                .expect("Failed to convert end to usize"),
+            self.end.to_usize().expect("Failed to convert end to usize"),
             self.strand
         )
     }

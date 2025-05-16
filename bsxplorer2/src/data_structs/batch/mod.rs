@@ -1,13 +1,11 @@
+mod batch;
 mod builder;
-mod decoded;
-mod encoded;
 mod lazy;
-mod traits;
+mod schema;
 mod utils;
 
+pub use batch::*;
 pub use builder::*;
-pub use decoded::*;
-pub use encoded::*;
 pub use lazy::*;
-pub use traits::*;
+pub use schema::*;
 pub use utils::*;
