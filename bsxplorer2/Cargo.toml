@@ -40,7 +40,6 @@ nanoid = "0.4.0"
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] } # We're using *-rc, because release version needs rust 1.85
 bincode_derive = { version = "=2.0.0-rc.3" }
 smallstr = { version = "0.3.0", features = ["serde"] }
-histogram = "0.11.3"
 noodles = { version = "0.90.0", features = ["fasta"] }
 zstd = { version = "0.13.3", optional = true }
 lz4 = { version = "1.28.1", optional = true }
@@ -49,9 +48,7 @@ bzip2 = { version = "0.5.2", optional = true }
 zip = { version = "2.6.1", optional = true }
 flate2 = { version = "1.1.1", optional = true }
 clap = { version = "4.1", features = ["derive"], optional = true }
-bitvec = "1.0.1"
 polars-arrow = "0.45.0"
-typed_floats = "1.0.5"
 either = "1.15.0"
 
 paste.workspace = true
