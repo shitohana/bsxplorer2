@@ -2,10 +2,8 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::process::exit;
 
-use bsxplorer2::data_structs::batch::{BsxBatch,
-                                      BsxBatchBuilder,
-                                      BsxBatchMethods};
 use bsxplorer2::data_structs::coords::GenomicPosition;
+use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use bsxplorer2::io::bsx::{BsxFileReader, BsxIpcWriter};
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{ReportReaderBuilder,
@@ -111,7 +109,7 @@ impl ToBsxConvert {
         };
 
         let mut report_reader_builder =
-            ReportReaderBuilder::<BsxBatch>::default()
+            ReportReaderBuilder::default()
                 .with_n_threads(Some(utils_args.threads))
                 .with_batch_size(self.batch_size)
                 .with_chunk_size(self.chunk_size)
@@ -157,7 +155,7 @@ impl ToBsxConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos: GenomicPosition<String, u32> = batch.end_gpos();
+            let cur_pos: GenomicPosition<BsxSmallStr, u32> = batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 
@@ -216,8 +214,7 @@ impl FromBsxConvert {
         };
 
         for batch in bsx_reader.iter() {
-            let batch = BsxBatchBuilder::decode_batch(batch?)?;
-            writer.write_batch(batch)?;
+            writer.write_batch(batch?)?;
             pbar.inc(1);
         }
         writer.finish()?;
@@ -285,7 +282,7 @@ impl R2RConvert {
         };
 
         let mut report_reader_builder =
-            ReportReaderBuilder::<BsxBatch>::default()
+            ReportReaderBuilder::default()
                 .with_n_threads(Some(utils_args.threads))
                 .with_batch_size(self.batch_size)
                 .with_low_memory(self.low_memory)
@@ -309,7 +306,7 @@ impl R2RConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos: GenomicPosition<String, u32> = batch.end_gpos();
+            let cur_pos: GenomicPosition<_, _> = batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 

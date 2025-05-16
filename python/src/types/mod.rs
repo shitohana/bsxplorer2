@@ -19,14 +19,12 @@ pub fn register_data_structs_module(
     module.add_class::<utils::PyContext>()?;
 
     module.add_class::<batch::PyBsxBatch>()?;
-    module.add_class::<batch::PyEncodedBsxBatch>()?;
 
     module.add_class::<context_data::PyContextData>()?;
 
     module.add_class::<report_schema::PyReportTypeSchema>()?;
 
     module.add_class::<lazy::PyLazyBsxBatch>()?;
-    module.add_class::<lazy::PyLazyEncodedBsxBatch>()?;
 
     module.add_class::<coords::PyContig>()?;
     module.add_class::<coords::PyGenomicPosition>()?;
@@ -35,9 +33,6 @@ pub fn register_data_structs_module(
 
     module.add_class::<annot::PyAnnotStore>()?;
     module.add_class::<index::PyBatchIndex>()?;
-
-    module.add_function(wrap_pyfunction!(batch::encode, &module)?);
-    module.add_function(wrap_pyfunction!(batch::decode, &module)?);
 
     parent_module.add_submodule(&module)?;
     Ok(())

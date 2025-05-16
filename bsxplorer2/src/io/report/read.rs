@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
@@ -12,7 +11,7 @@ use hashbrown::HashMap;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 
-use crate::data_structs::batch::{BatchType, BsxBatchBuilder, BsxBatchMethods, BsxSchema, BsxTypeTag, LazyBsxBatch};
+use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
 use crate::data_structs::context_data::ContextData;
 use crate::data_structs::typedef::BsxSmallStr;
 #[cfg(feature = "compression")]
@@ -73,7 +72,7 @@ where
 }
 
 /// Builder for `ReportReader` to configure its behavior.
-pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
+pub struct ReportReaderBuilder {
     report_type: ReportType,
     chunk_size:  usize,
     fasta_path:  Option<PathBuf>,
@@ -84,10 +83,9 @@ pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
     queue_len:   usize,
     #[cfg(feature = "compression")]
     compression: Option<Compression>,
-    _batch_type: PhantomData<B>,
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
+impl Default for ReportReaderBuilder {
     fn default() -> Self {
         Self {
             report_type: ReportType::Bismark,
@@ -100,12 +98,11 @@ impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
             queue_len: 1000,
             #[cfg(feature = "compression")]
             compression: None,
-            _batch_type: PhantomData,
         }
     }
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+impl ReportReaderBuilder {
     with_field_fn!(report_type, ReportType);
 
     with_field_fn!(chunk_size, usize);
@@ -126,7 +123,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     with_field_fn!(compression, Option<Compression>);
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+impl ReportReaderBuilder {
     /// Determines the data type of the chromosome column based on FASTA/FAI.
     fn get_chr_dtype(&self) -> anyhow::Result<Option<DataType>> {
         let chroms = match (self.fasta_path.as_ref(), self.fai_path.as_ref()) {
@@ -200,14 +197,13 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     pub fn build_from_handle(
         self,
         handle: Box<dyn MmapBytesReader>,
-    ) -> anyhow::Result<ReportReader<B>> {
+    ) -> anyhow::Result<ReportReader> {
         use ReportType as RS;
 
         let chr_dtype = self.get_chr_dtype()?;
-        if matches!(B::type_enum(), BatchType::Encoded) && chr_dtype.is_none() {
+        if chr_dtype.is_none() {
             bail!(
-                "Either Fasta path or Fai path must be specified for Encoded \
-                 reading"
+                "Either Fasta path or Fai path must be specified"
             )
         }
         let fasta_reader = self.get_fasta_iterator()?;
@@ -251,18 +247,18 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     pub fn build(
         self,
         path: PathBuf,
-    ) -> anyhow::Result<ReportReader<B>> {
+    ) -> anyhow::Result<ReportReader> {
         let handle = self.get_file_handle(path)?;
         self.build_from_handle(handle)
     }
 }
 
 /// Reads report data and yields batches.
-pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
+pub struct ReportReader {
     _join_handle:  JoinHandle<()>,
     data_receiver: Receiver<DataFrame>,
     report_type:   ReportType,
-    cached_batch:  BTreeMap<usize, B>,
+    cached_batch:  BTreeMap<usize, BsxBatch>,
     seen_chr:      HashMap<BsxSmallStr, usize>,
     chunk_size:    usize,
 
@@ -271,12 +267,12 @@ pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
     chr_dtype:    Option<DataType>,
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> ReportReader<B> {
+impl ReportReader {
     /// Tries to take a cached batch.
     fn take_cached(
         &mut self,
         force: bool,
-    ) -> Option<B> {
+    ) -> Option<BsxBatch> {
         // No cache at all
         if self.cached_batch.is_empty() {
             return None;
@@ -307,14 +303,14 @@ impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> ReportReader<B> {
     /// Aligns a batch with context data.
     fn align_batch(
         &mut self,
-        batch: B,
+        batch: BsxBatch,
         is_final: bool,
-    ) -> anyhow::Result<B> {
+    ) -> anyhow::Result<BsxBatch> {
         // If some cached chr data
         if let Some((chr, mut cached_data)) = Option::take(&mut self.cached_chr)
         {
             // If cached different chromosome raise
-            if batch.chr_val() != chr.as_str() {
+            if batch.seqname().unwrap_or_default() != chr.as_str() {
                 bail!("Chromosome mismatch")
             // Else align
             }
@@ -325,16 +321,14 @@ impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> ReportReader<B> {
                 // If not final, take till end of batch
                 }
                 else {
-                    let drained = cached_data.drain_until(batch.end_pos());
+                    let drained = cached_data.drain_until(batch.first_pos().unwrap_or(0));
                     (drained, Some((chr, cached_data)))
                 };
                 // Update cache (leftover if not final else None)
                 self.cached_chr = new_cache;
-                let chr_val = batch.chr_val().to_string();
+                let _chr_val = batch.seqname().unwrap_or_default().to_string();
                 // Align batch
-                let aligned = LazyBsxBatch::from(batch)
-                    .align_with_contexts(context_data, &chr_val)
-                    .collect()?;
+                let aligned = batch.add_context_data(context_data)?;
                 Ok(aligned)
             }
         // If cache is empty read next chromosome
@@ -385,10 +379,9 @@ impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> ReportReader<B> {
         for (index, data) in partitioned.into_iter().enumerate() {
             // Convert to BSX batch format
             let mut bsx_batch = BsxBatchBuilder::all_checks()
-                .with_report_type(Some(self.report_type))
                 .with_check_single_chr(false)
-                .with_chr_dtype(self.chr_dtype.clone()) // Will raise if not specified
-                .build::<B>(data)?;
+                .with_chr_dtype(self.chr_dtype.clone())
+                .build_from_report(data, self.report_type)?;
 
             // Align batch if required
             if self.report_type.need_align() {
@@ -397,7 +390,7 @@ impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> ReportReader<B> {
             }
 
             // Add chromosome to seen and retrieve chr index
-            let batch_chr = bsx_batch.chr_val().to_owned();
+            let batch_chr = bsx_batch.seqname().unwrap_or_default().into();
             let seen_chr_len = self.seen_chr.len();
             let chr_idx = self
                 .seen_chr
@@ -425,8 +418,8 @@ impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> ReportReader<B> {
     }
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag + BsxSchema> Iterator for ReportReader<B> {
-    type Item = anyhow::Result<B>;
+impl Iterator for ReportReader {
+    type Item = anyhow::Result<BsxBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

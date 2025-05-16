@@ -6,10 +6,11 @@ use bio::bio_types::annot::refids::RefIDSet;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
 use log::error;
-use polars::prelude::{Column, DataType};
+use polars::prelude::Column;
 use rayon::prelude::*;
 
-use crate::data_structs::batch::{colnames, merge_replicates, BsxBatchMethods, BsxSchema};
+use crate::data_structs::batch::BsxBatch;
+use crate::data_structs::batch::merge_replicates;
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::tv_recurse_segment;
@@ -33,23 +34,22 @@ fn merge_density(columns: Vec<&Column>) -> Column {
     Rc::unwrap_or_clone(agg).div(length)
 }
 
-pub(crate) fn segment_reading<I, B>(
+pub(crate) fn segment_reading<I>(
     mut left_readers: Vec<I>,
     mut right_readers: Vec<I>,
     sender: Sender<(String, SegmentOwned)>,
 ) where
-    I: Iterator<Item = B>,
-    B: BsxBatchMethods + BsxSchema, {
+    I: Iterator<Item = BsxBatch>,{
     loop {
         match (
             left_readers
                 .iter_mut()
                 .map(|x| x.next())
-                .collect::<Option<Vec<B>>>(),
+                .collect::<Option<Vec<_>>>(),
             right_readers
                 .iter_mut()
                 .map(|x| x.next())
-                .collect::<Option<Vec<B>>>(),
+                .collect::<Option<Vec<_>>>(),
         ) {
             (Some(left), Some(right)) => {
                 let left_merged =
@@ -59,40 +59,22 @@ pub(crate) fn segment_reading<I, B>(
                     merge_replicates(right, merge_counts, merge_density)
                         .expect("Failed to merge replicates");
 
-                let chr = left_merged.chr_val().to_string();
+                let chr = left_merged.seqname().unwrap_or_default();
                 // TODO add filtering
                 // TODO change segment position datatype to u32
                 let positions = left_merged
-                    .data()
-                    .column(colnames::POS_NAME)
-                    .unwrap()
-                    .cast(&DataType::UInt64)
-                    .unwrap()
-                    .u64()
-                    .unwrap()
-                    .to_vec_null_aware()
-                    .left()
-                    .expect("Unexpected nulls");
+                    .position()
+                    .into_no_null_iter()
+                    .map(|v| v as u64)
+                    .collect_vec();
 
                 let left_density: Vec<f32> = left_merged
-                    .data()
-                    .column(colnames::DENSITY_NAME)
-                    .unwrap()
-                    .cast(&DataType::Float32)
-                    .unwrap()
-                    .f32()
-                    .unwrap()
+                    .density()
                     .into_iter()
                     .map(|v| v.unwrap_or(f32::NAN))
                     .collect_vec();
                 let right_density: Vec<f32> = right_merged
-                    .data()
-                    .column(colnames::DENSITY_NAME)
-                    .unwrap()
-                    .cast(&DataType::Float32)
-                    .unwrap()
-                    .f32()
-                    .unwrap()
+                    .density()
                     .into_iter()
                     .map(|v| v.unwrap_or(f32::NAN))
                     .collect_vec();
@@ -101,7 +83,7 @@ pub(crate) fn segment_reading<I, B>(
                     SegmentOwned::new(positions, left_density, right_density);
 
                 sender
-                    .send((chr, segment))
+                    .send((chr.to_string(), segment))
                     .expect("Failed to send segment");
             },
             (None, Some(_)) => panic!("Unexpected end of input (left readers)"),

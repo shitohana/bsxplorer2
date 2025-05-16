@@ -1,5 +1,3 @@
-use bsxplorer2::data_structs::batch::{BsxBatch as RsBsxBatch,
-                                      EncodedBsxBatch as RsEncodedBsxBatch};
 use bsxplorer2::data_structs::context_data::ContextData as RustContextData;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
@@ -60,15 +58,7 @@ impl PyContextData {
     }
 
     fn to_decoded_df(&self) -> PyResult<PyDataFrame> {
-        let df = self.inner.clone().to_df::<RsBsxBatch>();
-        Ok(PyDataFrame(df))
-    }
-
-    pub fn to_encoded_df(&self) -> PyResult<PyDataFrame> {
-        let df = self
-            .inner
-            .clone()
-            .to_df::<RsEncodedBsxBatch>();
+        let df = self.inner.clone().to_df();
         Ok(PyDataFrame(df))
     }
 

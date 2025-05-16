@@ -1,7 +1,6 @@
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{ReportReader as RustReportReader,
                              ReportReaderBuilder,
@@ -18,7 +17,7 @@ use crate::utils::FileOrFileLike;
 
 #[pyclass(name = "ReportReader", unsendable)]
 pub struct PyReportReader {
-    reader: Option<RustReportReader<BsxBatch>>,
+    reader: Option<RustReportReader>,
 }
 
 #[pymethods]
@@ -48,7 +47,7 @@ impl PyReportReader {
         queue_len: usize,
         compression: Option<PyCompression>,
     ) -> PyResult<Self> {
-        let mut builder = ReportReaderBuilder::<BsxBatch>::default()
+        let mut builder = ReportReaderBuilder::default()
             .with_report_type(report_type.to_rust())
             .with_chunk_size(chunk_size)
             .with_batch_size(batch_size)

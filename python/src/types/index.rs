@@ -3,6 +3,7 @@ use std::io::{BufReader, BufWriter};
 
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::enums::Strand;
+use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use bsxplorer2::io::bsx::BatchIndex;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -13,23 +14,23 @@ use super::coords::PyContig;
 #[pyclass(name = "BatchIndex")]
 #[derive(Debug, Clone)]
 pub struct PyBatchIndex {
-    inner: BatchIndex<String, u32>,
+    inner: BatchIndex<BsxSmallStr, u32>,
 }
 
-impl From<BatchIndex<String, u32>> for PyBatchIndex {
-    fn from(index: BatchIndex<String, u32>) -> Self {
+impl From<BatchIndex<BsxSmallStr, u32>> for PyBatchIndex {
+    fn from(index: BatchIndex<BsxSmallStr, u32>) -> Self {
         PyBatchIndex { inner: index }
     }
 }
 
-impl From<PyBatchIndex> for BatchIndex<String, u32> {
+impl From<PyBatchIndex> for BatchIndex<BsxSmallStr, u32> {
     fn from(py_index: PyBatchIndex) -> Self {
         py_index.inner
     }
 }
 
 impl PyBatchIndex {
-    pub fn inner(&self) -> &BatchIndex<String, u32> {
+    pub fn inner(&self) -> &BatchIndex<BsxSmallStr, u32> {
         &self.inner
     }
 }
@@ -53,7 +54,7 @@ impl PyBatchIndex {
         end: u32,
         batch_idx: usize,
     ) -> PyResult<()> {
-        let contig = Contig::new(seqname, start, end, Strand::None);
+        let contig = Contig::new(seqname.into(), start, end, Strand::None);
         self.inner.insert(contig, batch_idx);
         Ok(())
     }
@@ -66,7 +67,7 @@ impl PyBatchIndex {
         start: u32,
         end: u32,
     ) -> PyResult<Option<Vec<usize>>> {
-        let contig = Contig::new(seqname, start, end, Strand::None);
+        let contig = Contig::new(seqname.into(), start, end, Strand::None);
         Ok(self.inner.find(&contig))
     }
 
@@ -77,6 +78,7 @@ impl PyBatchIndex {
             .get_chr_order()
             .iter()
             .cloned()
+            .map(|v| v.to_string())
             .collect())
     }
 
@@ -85,7 +87,7 @@ impl PyBatchIndex {
         &self,
         chr: String,
     ) -> PyResult<Option<usize>> {
-        Ok(self.inner.get_chr_index(&chr))
+        Ok(self.inner.get_chr_index(&chr.into()))
     }
 
     /// Save index to a file
@@ -111,7 +113,7 @@ impl PyBatchIndex {
         let file = File::open(filename)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         let mut reader = BufReader::new(file);
-        let inner = BatchIndex::<String, u32>::from_file(&mut reader)
+        let inner = BatchIndex::<BsxSmallStr, u32>::from_file(&mut reader)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyBatchIndex { inner })
     }
@@ -124,7 +126,7 @@ impl PyBatchIndex {
             .sort(
                 contigs
                     .into_iter()
-                    .map(|contig| contig.into()),
+                    .map(|contig| Contig::new(contig.seqname.into(), contig.start, contig.end, contig.strand.into())),
             )
             .map(|contig| contig.into())
             .collect()

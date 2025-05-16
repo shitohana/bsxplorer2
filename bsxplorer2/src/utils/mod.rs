@@ -5,7 +5,6 @@ use log::warn;
 use noodles::fasta::io::Indexer;
 use num::{Float, PrimInt, Unsigned};
 use polars::prelude::*;
-use paste::paste;
 
 mod stats;
 pub use stats::*;

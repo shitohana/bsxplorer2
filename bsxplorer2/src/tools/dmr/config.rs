@@ -9,7 +9,7 @@ use bio::bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 use polars::io::mmap::MmapBytesReader;
 
-use crate::data_structs::batch::EncodedBsxBatch;
+use crate::data_structs::batch::BsxBatch;
 use crate::data_structs::enums::Context;
 use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;
@@ -167,7 +167,7 @@ impl Default for DmrConfig {
 
 fn init_bsx_readers<F: Read + Seek + 'static>(
     handles: Vec<F>
-) -> (usize, Vec<Box<dyn Iterator<Item = EncodedBsxBatch>>>) {
+) -> (usize, Vec<Box<dyn Iterator<Item = BsxBatch>>>) {
     assert!(!handles.is_empty(), "No readers supplied");
     let bsx_readers = handles
         .into_iter()
@@ -192,7 +192,7 @@ fn init_bsx_readers<F: Read + Seek + 'static>(
             reader.map(|batch_res| batch_res.expect("could not read batch"))
         })
         .map(|reader| {
-            Box::new(reader) as Box<dyn Iterator<Item = EncodedBsxBatch>>
+            Box::new(reader) as Box<dyn Iterator<Item = BsxBatch>>
         })
         .collect_vec();
     (n_batches, iterators)

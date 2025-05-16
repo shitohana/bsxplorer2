@@ -1,18 +1,19 @@
-use bsxplorer2::data_structs::batch::EncodedBsxBatch;
+use bsxplorer2::data_structs::batch::BsxBatch;
+use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use pyo3_polars::PyDataFrame;
 
-use crate::types::batch::PyEncodedBsxBatch;
+use crate::types::batch::PyBsxBatch;
 use crate::types::coords::PyContig;
 use crate::types::index::PyBatchIndex;
 use crate::utils::{FileOrFileLike, ReadHandle};
 
 #[pyclass(unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
-    inner: RegionReader<Box<dyn ReadHandle>, String, u32>,
+    inner: RegionReader<Box<dyn ReadHandle>, BsxSmallStr, u32>,
 }
 
 #[pymethods]
@@ -21,7 +22,7 @@ impl PyRegionReader {
     fn new(file: FileOrFileLike) -> PyResult<Self> {
         let file = file.get_reader()?;
         let mut bsx_reader: BsxFileReader<Box<_>> = BsxFileReader::new(file);
-        let index: BatchIndex<String, u32> = bsx_reader
+        let index: BatchIndex<BsxSmallStr, u32> = bsx_reader
             .index()
             .map_err(PyErr::from)?
             .clone();
@@ -51,15 +52,15 @@ impl PyRegionReader {
 
         // Create a Box<dyn Fn> to match the expected function type
         let rust_postprocess = Box::new(
-            move |entry: EncodedBsxBatch| -> anyhow::Result<EncodedBsxBatch> {
+            move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
                 let py_batch_res =
-                    Python::with_gil(|py| -> PyResult<PyEncodedBsxBatch> {
-                        let py_batch = PyEncodedBsxBatch::from(entry);
+                    Python::with_gil(|py| -> PyResult<PyBsxBatch> {
+                        let py_batch = PyBsxBatch::from(entry);
                         let args =
                             PyTuple::new_bound(py, &[py_batch.into_py(py)]);
                         let result = postprocess_fn.call1(py, args)?;
                         let py_batch =
-                            result.extract::<PyEncodedBsxBatch>(py)?;
+                            result.extract::<PyBsxBatch>(py)?;
                         Ok(py_batch)
                     });
                 py_batch_res
@@ -71,7 +72,7 @@ impl PyRegionReader {
         let result = self.inner.query(contig.into(), None);
 
         match result {
-            Ok(Some(batch)) => Ok(Some(PyDataFrame(batch.into()))),
+            Ok(Some(batch)) => Ok(Some(PyDataFrame(batch.into_inner()))),
             Ok(None) => Ok(None),
             Err(e) => Err(PyErr::from(e)),
         }
@@ -87,6 +88,7 @@ impl PyRegionReader {
             .get_chr_order()
             .iter()
             .cloned()
+            .map(|chr| chr.to_string())
             .collect()
     }
 
@@ -109,15 +111,15 @@ impl PyRegionReader {
 
         // Create a Box<dyn Fn> to match the expected function type
         let rust_preprocess_fn = Box::new(
-            move |entry: EncodedBsxBatch| -> anyhow::Result<EncodedBsxBatch> {
+            move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
                 let py_batch_res =
-                    Python::with_gil(|py| -> PyResult<PyEncodedBsxBatch> {
-                        let py_batch = PyEncodedBsxBatch::from(entry);
+                    Python::with_gil(|py| -> PyResult<PyBsxBatch> {
+                        let py_batch = PyBsxBatch::from(entry);
                         let args =
                             PyTuple::new_bound(py, &[py_batch.into_py(py)]);
                         let result = preprocess_fn.call1(py, args)?;
                         let py_batch =
-                            result.extract::<PyEncodedBsxBatch>(py)?;
+                            result.extract::<PyBsxBatch>(py)?;
                         Ok(py_batch)
                     });
                 py_batch_res

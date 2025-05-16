@@ -3,7 +3,7 @@ use bsxplorer2::data_structs::enums::{Context as RsContext,
 use pyo3::prelude::*;
 
 #[pyclass(name = "Strand", eq, eq_int, hash, frozen)]
-#[derive(PartialEq, Debug, Clone, Copy, Hash)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Eq)]
 pub enum PyStrand {
     Forward,
     Reverse,
@@ -54,7 +54,7 @@ impl From<PyStrand> for RsStrand {
 }
 
 #[pyclass(name = "Context", eq, eq_int, hash, frozen)]
-#[derive(PartialEq, Debug, Clone, Copy, Hash)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Eq)]
 pub enum PyContext {
     CG,
     CHG,

@@ -2,6 +2,7 @@ use std::ops::{Add, Sub};
 
 use bsxplorer2::data_structs::coords::{Contig, GenomicPosition};
 use bsxplorer2::data_structs::enums::Strand as RsStrand;
+use bsxplorer2::data_structs::typedef::{SeqNameStr, SeqPosNum};
 use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use pyo3::prelude::*;
 
@@ -111,11 +112,11 @@ impl PyGenomicPosition {
 }
 
 // Implement conversions between Rust and PyO3 structs
-impl From<GenomicPosition<String, u32>> for PyGenomicPosition {
-    fn from(gp: GenomicPosition<String, u32>) -> Self {
+impl<S: SeqNameStr, P: SeqPosNum> From<GenomicPosition<S, P>> for PyGenomicPosition {
+    fn from(gp: GenomicPosition<S, P>) -> Self {
         Self {
-            seqname:  gp.seqname(),
-            position: gp.position(),
+            seqname:  gp.seqname().to_owned().as_ref().to_string(),
+            position: gp.position().to_u32().unwrap(),
         }
     }
 }
@@ -129,18 +130,29 @@ impl From<&PyGenomicPosition> for GenomicPosition<String, u32> {
 #[pyclass(name = "Contig", get_all, set_all)] // Allows access to seqname, start, end directly
 #[derive(Debug, Clone)] // Need these for conversion
 pub struct PyContig {
-    seqname: String,
-    start:   u32,
-    end:     u32,
-    strand:  PyStrand, // Store the Rust enum internally
+    pub(crate) seqname: String,
+    pub(crate) start:   u32,
+    pub(crate) end:     u32,
+    pub(crate) strand:  PyStrand, // Store the Rust enum internally
 }
 
-impl From<PyContig> for Contig<String, u32> {
+impl<R: SeqNameStr, P: SeqPosNum> From<Contig<R, P>> for PyContig {
+    fn from(value: Contig<R, P>) -> Self {
+        PyContig {
+            seqname: value.seqname().to_owned().as_ref().to_string(),
+            start:   value.start().to_u32().unwrap(),
+            end:     value.end().to_u32().unwrap(),
+            strand:  value.strand().into(),
+        }
+    }
+}
+
+impl<R: SeqNameStr + From<String>, P: SeqPosNum> From<PyContig> for Contig<R, P> {
     fn from(py_contig: PyContig) -> Self {
         Self::new(
-            py_contig.seqname.clone(),
-            py_contig.start,
-            py_contig.end,
+            R::from(py_contig.seqname.to_string()),
+            P::from(py_contig.start).unwrap(),
+            P::from(py_contig.end).unwrap(),
             py_contig.strand.into(),
         )
     }
@@ -296,18 +308,6 @@ impl PyContig {
                     },
                 }
             },
-        }
-    }
-}
-
-// Implement conversions between Rust and PyO3 structs
-impl From<Contig<String, u32>> for PyContig {
-    fn from(c: Contig<String, u32>) -> Self {
-        Self {
-            seqname: c.seqname().clone(),
-            start:   c.start(),
-            end:     c.end(),
-            strand:  PyStrand::from(c.strand()),
         }
     }
 }

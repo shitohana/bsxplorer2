@@ -1,7 +1,7 @@
 from typing import Optional, Union, List, BinaryIO, Callable, Any
 from pathlib import Path
 
-from .types import ReportTypeSchema, BsxBatch, Contig, EncodedBsxBatch, BatchIndex
+from .types import ReportTypeSchema, BsxBatch, Contig, BatchIndex
 import polars as pl
 
 __all__ = [
@@ -44,7 +44,7 @@ class RegionReader:
         """
         pass
 
-    def query(self, contig: Contig, postprocess_fn: Callable[[EncodedBsxBatch], EncodedBsxBatch]) -> Optional[pl.DataFrame]:
+    def query(self, contig: Contig, postprocess_fn: Callable[[BsxBatch], BsxBatch]) -> Optional[pl.DataFrame]:
         """
         Queries the BSX file for data within a specific genomic region.
 
@@ -104,7 +104,7 @@ class RegionReader:
         Parameters
         ----------
         preprocess_fn : callable
-            A function that takes an EncodedBsxBatch and returns a processed EncodedBsxBatch
+            A function that takes a BsxBatch and returns a processed BsxBatch
 
         Raises
         ------
@@ -387,7 +387,7 @@ class BsxFileReader:
         """
         pass
 
-    def query(self, query: Contig) -> Optional[EncodedBsxBatch]:
+    def query(self, query: Contig) -> Optional[BsxBatch]:
         """Query the BSX file for data within a specific genomic region.
 
         Parameters
@@ -397,7 +397,7 @@ class BsxFileReader:
 
         Returns
         -------
-        Optional[EncodedBsxBatch]
+        Optional[BsxBatch]
             The batch data for the specified region, or None if not found.
 
         Raises
@@ -427,10 +427,8 @@ class BsxIpcWriter:
         Path or file-like object to write to.
     chr_names : list[str]
         List of chromosome names.
-    compression : str, optional
-        Compression algorithm to use ('uncompressed', 'lz4', 'zstd'). Defaults to None (uncompressed).
-    custom_metadata : bytes, optional
-        Custom metadata to embed in the IPC file.
+    compression : IpcCompression, optional
+        Compression algorithm to use (LZ4, ZSTD). Defaults to None (uncompressed).
     """
     def __init__(
         self,
@@ -454,10 +452,8 @@ class BsxIpcWriter:
             Path or file-like object to write to.
         fai_path : str
             Path to the FASTA index file.
-        compression : str, optional
-            Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to None.
-        custom_metadata : bytes, optional
-            Custom metadata.
+        compression : IpcCompression, optional
+            Compression algorithm (LZ4, ZSTD). Defaults to None.
 
         Returns
         -------
@@ -480,10 +476,8 @@ class BsxIpcWriter:
             Path or file-like object to write to.
         fasta_path : str
             Path to the FASTA file.
-        compression : str, optional
-            Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to None.
-        custom_metadata : bytes, optional
-            Custom metadata.
+        compression : IpcCompression, optional
+            Compression algorithm (LZ4, ZSTD). Defaults to None.
 
         Returns
         -------

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::annotation::gff_entry::RawGffEntry;
+use bsxplorer2::data_structs::annotation::RawGffEntry;
 use bsxplorer2::data_structs::annotation::{AnnotStore,
                                            GffEntry,
                                            GffEntryAttributes};

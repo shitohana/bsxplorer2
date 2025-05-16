@@ -7,14 +7,11 @@ ContextData = _native.types.ContextData
 Contig = _native.types.Contig
 GenomicPosition = _native.types.GenomicPosition
 AnnotStore = _native.types.AnnotStore
+GffEntry = _native.types.GffEntry
 BatchIndex = _native.types.BatchIndex
 MethylationStats = _native.types.MethylationStats
-EncodedBsxBatch = _native.types.EncodedBsxBatch
 BsxBatch = _native.types.BsxBatch
 LazyBsxBatch = _native.types.LazyBsxBatch
-LazyEncodedBsxBatch = _native.types.LazyEncodedBsxBatch
-encode = _native.types.encode
-decode = _native.types.decode
 
 
 __all__ = [
@@ -26,11 +23,8 @@ __all__ = [
     "Contig",
     "BatchIndex",
     "AnnotStore",
+    "GffEntry",
     "MethylationStats",
-    "EncodedBsxBatch",
     "BsxBatch",
-    "LazyBsxBatch",
-    "LazyEncodedBsxBatch",
-    "encode",
-    "decode"
+    "LazyBsxBatch"
 ]

@@ -6,13 +6,8 @@ use std::ops::BitOr;
 
 use anyhow::bail;
 use bio::io::fasta::Record;
-use bsxplorer2::data_structs::batch::colnames::{CONTEXT_NAME,
-                                                COUNT_M_NAME,
-                                                COUNT_TOTAL_NAME,
-                                                STRAND_NAME};
-use bsxplorer2::data_structs::batch::{BsxBatch,
-                                      BsxBatchBuilder,
-                                      BsxBatchMethods};
+use bsxplorer2::data_structs::batch::{BsxBatch, BsxColumns,
+                                      BsxBatchBuilder};
 use bsxplorer2::data_structs::context_data::ContextData;
 use bsxplorer2::io::bsx::BsxIpcWriter;
 use bsxplorer2::io::report::ReportType;
@@ -72,7 +67,7 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         let mut chr_batches = BTreeMap::new();
 
         for (_record, mut full_batch) in self.into_iter().take(n_chr) {
-            let chr = full_batch.chr_val().to_owned();
+            let chr = full_batch.seqname().unwrap().to_owned();
             orig_batches.push(full_batch.clone());
             let mut partitioned = Vec::new();
 
@@ -96,10 +91,7 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
             .collect::<Vec<_>>();
         let mut writer = BsxIpcWriter::try_new(
             sink,
-            chr_list
-                .iter()
-                .map(SmallString::to_string)
-                .collect(),
+            chr_list.clone(),
             None,
             None,
         )?;
@@ -212,7 +204,7 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
         let (count_total, count_methylated) =
             self.generate_methylation(&context_data);
 
-        let mut context_df = context_data.to_df::<BsxBatch>();
+        let mut context_df = context_data.to_df();
         context_df
             .with_column(Column::new("count_total".into(), count_total))
             .unwrap();
@@ -247,9 +239,9 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
             .unwrap();
 
         let batch = BsxBatchBuilder::all_checks()
-            .build(context_df)
+            .cast_only(context_df)
             .unwrap();
-        Some((record, batch))
+        Some((record, unsafe {BsxBatchBuilder::build_unchecked(batch)}))
     }
 }
 
@@ -258,14 +250,14 @@ pub fn compare_batches(
     read: &BsxBatch,
     report_type: &ReportType,
 ) -> anyhow::Result<()> {
-    if original.chr_val() != read.chr_val() {
+    if original.seqname() != read.seqname() {
         bail!(
             "Chromosomes differ for original: {}\nread: {}",
             original.data(),
             read.data()
         );
     }
-    if original.height() != read.height() {
+    if original.len() != read.len() {
         bail!(
             "Heights differ for original: {}\nread: {}",
             original.data(),
@@ -286,13 +278,27 @@ pub fn compare_batches(
             // STRAND_NAME]), )
         }
         else {
-            (original.data().clone(), read.data().clone())
+            // Cast the "chr" column to string in both dataframes
+            let mut original_df = original.data().clone();
+            let mut read_df = read.data().clone();
+
+            if let Ok(chr_col) = original_df.column("chr") {
+                original_df.with_column(chr_col.cast(&DataType::String).unwrap()).unwrap();
+            }
+
+            if let Ok(chr_col) = read_df.column("chr") {
+                read_df.with_column(chr_col.cast(&DataType::String).unwrap()).unwrap();
+            }
+
+            (original_df, read_df)
         };
     if !original_df.equals_missing(&read_df) {
-        let diff_mask = original_df
-            .materialized_column_iter()
-            .zip(read_df.materialized_column_iter())
-            .map(|(orig, read)| !orig.equal(read).unwrap())
+        let colnames = original_df.schema().iter_names_cloned().collect_vec();
+
+
+        let diff_mask = colnames.iter()
+            .map(|name| (original_df.column(name).unwrap().as_materialized_series(), read_df.column(name).unwrap().as_materialized_series()))
+            .map(|(orig, read)| !orig.equal(read).expect(format!("Equality check failed for {}, {}", orig, read).as_str()))
             .reduce(|acc, new| acc.bitor(new))
             .unwrap();
         let orig_diff = original_df.filter(&diff_mask)?;

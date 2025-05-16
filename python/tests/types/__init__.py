@@ -1,6 +1,6 @@
 import polars as pl
 import pytest
-from bsx2.types import BsxBatch, EncodedBsxBatch, encode
+from bsx2.types import BsxBatch
 
 
 @pytest.fixture
@@ -16,9 +16,5 @@ def create_dummy_df() -> pl.DataFrame:
     ))
 
 @pytest.fixture
-def create_dummy_decoded(create_dummy_df) -> BsxBatch:
+def create_dummy_batch(create_dummy_df) -> BsxBatch:
     return BsxBatch(create_dummy_df)
-
-@pytest.fixture
-def create_dummy_encoded(create_dummy_decoded) -> EncodedBsxBatch:
-    return encode(create_dummy_decoded, ["chr1"])

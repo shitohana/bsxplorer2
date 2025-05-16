@@ -18,6 +18,19 @@ where
     position: P,
 }
 
+impl<R, P> Default for GenomicPosition<R, P>
+where
+    R: SeqNameStr + Default,
+    P: SeqPosNum + Default,
+{
+    fn default() -> Self {
+        Self {
+            seqname:  R::default(),
+            position: P::default(),
+        }
+    }
+}
+
 impl<R, P> GenomicPosition<R, P>
 where
     R: SeqNameStr,

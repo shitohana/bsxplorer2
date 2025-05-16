@@ -4,8 +4,7 @@ use anyhow::anyhow;
 use log::{debug, info, warn};
 use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
 use polars::prelude::*;
-
-use crate::data_structs::batch::{BsxBatch, LazyBsxBatch};
+use crate::data_structs::batch::BsxBatch;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::report::schema::ReportType;
@@ -61,8 +60,7 @@ impl ReportWriter {
         &mut self,
         batch: BsxBatch,
     ) -> anyhow::Result<()> {
-        let mut converted =
-            LazyBsxBatch::<BsxBatch>::from(batch).into_report(&self.schema)?;
+        let mut converted = batch.into_report(self.schema)?;
 
         converted.rechunk_mut();
 

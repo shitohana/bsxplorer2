@@ -1,11 +1,11 @@
 import pytest
 from bsx2.types import BsxBatch
-from tests.types import create_dummy_decoded, create_dummy_df, create_dummy_encoded #type: ignore
+from tests.types import create_dummy_batch, create_dummy_df #type: ignore
 import polars as pl
 
-def test_batch_creation(create_dummy_decoded):
+def test_batch_creation(create_dummy_batch):
     """Test basic creation of BsxBatch"""
-    batch = create_dummy_decoded
+    batch = create_dummy_batch
 
     assert not batch.is_empty()
     assert batch.chr_val() == "chr1"
@@ -23,25 +23,25 @@ def test_batch_creation(create_dummy_decoded):
     ("count_total", [10, 20, 30]),
     ("density", [0.5, 0.5, 0.5])
 ])
-def test_batch_accessors(create_dummy_decoded, field, correct):
+def test_batch_accessors(create_dummy_batch, field, correct):
     """Test BsxBatch accessors"""
-    batch = create_dummy_decoded
+    batch = create_dummy_batch
 
     method = getattr(batch, field)
     assert method().to_list() == correct
 
-def test_batch_take_and_data(create_dummy_decoded):
+def test_batch_take_and_data(create_dummy_batch):
     """Test take and data methods"""
-    batch = create_dummy_decoded
+    batch = create_dummy_batch
 
     taken_df = batch.take()
     data_df = batch.data()
 
     assert taken_df.equals(data_df, null_equal=True)
 
-def test_batch_split_at(create_dummy_decoded):
+def test_batch_split_at(create_dummy_batch):
     """Test split_at method"""
-    batch = create_dummy_decoded
+    batch = create_dummy_batch
 
     batch1, batch2 = batch.split_at(1)
 
@@ -54,9 +54,9 @@ def test_batch_split_at(create_dummy_decoded):
     assert batch1.position().to_list() == [10]
     assert batch2.position().to_list() == [20, 30]
 
-def test_batch_filter_mask(create_dummy_decoded):
+def test_batch_filter_mask(create_dummy_batch):
     """Test filter_mask method"""
-    batch = create_dummy_decoded
+    batch = create_dummy_batch
 
     # Create a mask for positions > 15
     mask = pl.Series([pos > 15 for pos in batch.position().to_list()])
@@ -66,9 +66,9 @@ def test_batch_filter_mask(create_dummy_decoded):
     assert filtered.position().to_list() == [20, 30]
 
 @pytest.mark.xfail
-def test_batch_vstack(create_dummy_decoded):
+def test_batch_vstack(create_dummy_batch):
     """Test vstack method"""
-    batch1 = create_dummy_decoded
+    batch1 = create_dummy_batch
 
     # Create a second batch with only the first row
     batch2 = BsxBatch.from_dataframe_unchecked(batch1.data().slice(0, 1))

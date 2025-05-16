@@ -6,12 +6,11 @@ use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
 use polars::datatypes::DataType;
-use polars::error::{PolarsError, PolarsResult};
+use polars::error::PolarsResult;
 use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 
-use crate::data_structs::batch::{colnames, BsxBatch, BsxBatchBuilder, BsxBatchMethods, BsxSchema, EncodedBsxBatch};
-use crate::utils::get_categorical_dtype;
+use crate::data_structs::batch::{create_caregorical_dtype, BsxColumns, BsxBatch};
 
 /// Writer for BSX data in Arrow IPC format with optional compression.
 pub struct BsxIpcWriter<W>
@@ -46,9 +45,11 @@ where
         };
 
         info!("Initializing writer with compression: {:?}", compression);
-        let chr_dtype = get_categorical_dtype(chr_names);
-        let mut schema = EncodedBsxBatch::schema();
-        schema.set_dtype(colnames::CHR_NAME, chr_dtype);
+        let chr_dtype = create_caregorical_dtype(
+            chr_names.into_iter().map(|s| Some(s)).collect_vec(),
+        );
+        let mut schema = BsxColumns::schema();
+        schema.set_dtype(BsxColumns::Chr.as_str(), chr_dtype);
 
         let mut writer = opts.to_writer(sink);
         if let Some(metadata) = custom_metadata {
@@ -124,30 +125,11 @@ where
     }
 
     /// Writes an encoded BSX batch.
-    pub fn write_encoded_batch(
-        &mut self,
-        batch: EncodedBsxBatch,
-    ) -> PolarsResult<()> {
-        self.writer.write_batch(batch.data())
-    }
-
-    /// Encodes and writes a BSX batch.
     pub fn write_batch(
         &mut self,
         batch: BsxBatch,
     ) -> PolarsResult<()> {
-        let encoded = match BsxBatchBuilder::encode_batch(
-            batch,
-            self.get_chr_dtype().clone(),
-        ) {
-            Ok(encoded) => encoded,
-            Err(_) => {
-                return Err(PolarsError::ComputeError(
-                    "failed to encode batch".into(),
-                ));
-            },
-        };
-        self.write_encoded_batch(encoded)
+        self.writer.write_batch(batch.data())
     }
 
     /// Finalizes the IPC file and closes the writer.
