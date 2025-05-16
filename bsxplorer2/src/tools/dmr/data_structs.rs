@@ -5,6 +5,7 @@ use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize, Serializer};
 
+use crate::data_structs::typedef::{DensityType, PosType};
 use crate::tools::dmr::segmentation;
 use crate::utils::mann_whitney_u;
 
@@ -33,28 +34,28 @@ impl<'a> SegmentView<'a> {
         }
     }
 
-    pub fn mds_orig(&self) -> &[f32] {
+    pub fn mds_orig(&self) -> &[DensityType] {
         &self.parent.mds_orig[self.rel_start..self.rel_end]
     }
 
-    pub fn group_a(&self) -> &[f32] {
+    pub fn group_a(&self) -> &[DensityType] {
         &self.parent.group_a[self.rel_start..self.rel_end]
     }
 
-    pub fn group_b(&self) -> &[f32] {
+    pub fn group_b(&self) -> &[DensityType] {
         &self.parent.group_b[self.rel_start..self.rel_end]
     }
 
-    pub fn start_pos(&self) -> u64 {
+    pub fn start_pos(&self) -> PosType {
         self.parent.positions[self.rel_start]
     }
 
-    pub fn end_pos(&self) -> u64 {
+    pub fn end_pos(&self) -> PosType {
         self.parent.positions[self.rel_end - 1]
     }
 
     #[allow(dead_code)]
-    pub fn positions(&self) -> &[u64] {
+    pub fn positions(&self) -> &[PosType] {
         &self.parent.positions[self.rel_start..self.rel_end]
     }
 
@@ -159,17 +160,17 @@ impl Ord for SegmentView<'_> {
 
 #[derive(Debug)]
 pub struct SegmentOwned {
-    group_a:   Vec<f32>,
-    group_b:   Vec<f32>,
-    mds_orig:  Vec<f32>,
-    positions: Vec<u64>,
+    group_a:   Vec<DensityType>,
+    group_b:   Vec<DensityType>,
+    mds_orig:  Vec<DensityType>,
+    positions: Vec<PosType>,
 }
 
 impl SegmentOwned {
     pub fn new(
-        positions: Vec<u64>,
-        group_a: Vec<f32>,
-        group_b: Vec<f32>,
+        positions: Vec<PosType>,
+        group_a: Vec<DensityType>,
+        group_b: Vec<DensityType>,
     ) -> Self {
         let mds_orig = group_a
             .iter()
@@ -188,7 +189,7 @@ impl SegmentOwned {
 
     pub fn split_by_dist(
         mut self,
-        max_dist: u64,
+        max_dist: PosType,
     ) -> Vec<Self> {
         let mut split_idxs = segmentation::arg_split_segment(&self.positions, max_dist);
         split_idxs.reverse();
@@ -252,15 +253,15 @@ impl ReaderMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMRegion {
     pub chr:         String,
-    pub start:       u32,
-    pub end:         u32,
+    pub start:       PosType,
+    pub end:         PosType,
     #[serde(serialize_with = "serialize_scientific")]
     pub p_value:     f64,
-    pub meth_left:   f32,
-    pub meth_right:  f32,
+    pub meth_left:   DensityType,
+    pub meth_right:  DensityType,
     pub n_cytosines: usize,
-    pub meth_diff:   f32,
-    pub meth_mean:   f32,
+    pub meth_diff:   DensityType,
+    pub meth_mean:   DensityType,
 }
 
 impl DMRegion {
@@ -273,8 +274,8 @@ impl DMRegion {
 
         DMRegion {
             chr,
-            start: segment.start_pos() as u32,
-            end: segment.end_pos() as u32,
+            start: segment.start_pos(),
+            end: segment.end_pos(),
             p_value: segment.get_pvalue(),
             meth_left: a_mean,
             meth_right: b_mean,
@@ -284,16 +285,16 @@ impl DMRegion {
         }
     }
 
-    pub fn meth_diff(&self) -> f32 {
+    pub fn meth_diff(&self) -> DensityType {
         self.meth_left - self.meth_right
     }
 
     #[allow(dead_code)]
-    fn meth_mean(&self) -> f32 {
+    fn meth_mean(&self) -> DensityType {
         (self.meth_left + self.meth_right) / 2.0
     }
 
-    pub fn length(&self) -> u32 {
+    pub fn length(&self) -> PosType {
         self.end - self.start + 1
     }
 }

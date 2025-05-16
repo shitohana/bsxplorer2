@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use crate::data_structs::enums::{Context, Strand};
 
+use super::typedef::{CountType, DensityType};
+
 /// Serializes a HashMap in a deterministic order based on keys.
 /// This is useful for consistent JSON outputs and testing.
 fn serialize_sorted_map<S, K: Ord + Serialize, V: Serialize>(
@@ -30,27 +32,27 @@ where
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MethylationStats {
     /// Overall mean methylation level across all analyzed positions
-    mean_methylation: f64,
+    mean_methylation: DensityType,
 
     /// Variance of methylation levels across all analyzed positions
-    methylation_var: f64,
+    methylation_var: DensityType,
 
     /// Maps coverage levels to their frequency
     /// Key: coverage depth, Value: number of positions with that coverage
     #[serde(serialize_with = "serialize_sorted_map")]
-    coverage_distribution: HashMap<u16, u32>,
+    coverage_distribution: HashMap<CountType, u32>,
 
     /// Methylation statistics per sequence context
     /// Key: context (CG, CHG, CHH), Value: (sum of methylation levels, count
     /// of positions)
     #[serde(serialize_with = "serialize_sorted_map")]
-    context_methylation: HashMap<Context, (f64, u32)>,
+    context_methylation: HashMap<Context, (DensityType, u32)>,
 
     /// Methylation statistics per DNA strand
     /// Key: strand (Forward, Reverse), Value: (sum of methylation levels,
     /// count of positions)
     #[serde(serialize_with = "serialize_sorted_map")]
-    strand_methylation: HashMap<Strand, (f64, u32)>,
+    strand_methylation: HashMap<Strand, (DensityType, u32)>,
 }
 
 /// A flattened representation of methylation statistics.
@@ -60,40 +62,40 @@ pub struct MethylationStats {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MethylationStatFlat {
     /// Overall mean methylation level
-    pub mean_methylation: f64,
+    pub mean_methylation: DensityType,
 
     /// Overall variance in methylation levels
-    pub methylation_var: f64,
+    pub methylation_var: DensityType,
 
     /// Average coverage across all positions
     pub mean_coverage: f64,
 
     /// Mean methylation level in CG context
-    pub cg_mean_methylation: f64,
+    pub cg_mean_methylation: DensityType,
 
     /// Number of positions in CG context
     pub cg_coverage: u32,
 
     /// Mean methylation level in CHG context
-    pub chg_mean_methylation: f64,
+    pub chg_mean_methylation: DensityType,
 
     /// Number of positions in CHG context
     pub chg_coverage: u32,
 
     /// Mean methylation level in CHH context
-    pub chh_mean_methylation: f64,
+    pub chh_mean_methylation: DensityType,
 
     /// Number of positions in CHH context
     pub chh_coverage: u32,
 
     /// Mean methylation level on forward strand
-    pub fwd_mean_methylation: f64,
+    pub fwd_mean_methylation: DensityType,
 
     /// Number of positions on forward strand
     pub fwd_coverage: u32,
 
     /// Mean methylation level on reverse strand
-    pub rev_mean_methylation: f64,
+    pub rev_mean_methylation: DensityType,
 
     /// Number of positions on reverse strand
     pub rev_coverage: u32,
@@ -120,7 +122,7 @@ impl From<MethylationStats> for MethylationStatFlat {
                 0.0,
                 |(sum_m, count)| {
                     if *count > 0 {
-                        sum_m / *count as f64
+                        sum_m / *count as f32
                     }
                     else {
                         0.0
@@ -135,7 +137,7 @@ impl From<MethylationStats> for MethylationStatFlat {
                 0.0,
                 |(sum_m, count)| {
                     if *count > 0 {
-                        sum_m / *count as f64
+                        sum_m / *count as f32
                     }
                     else {
                         0.0
@@ -150,7 +152,7 @@ impl From<MethylationStats> for MethylationStatFlat {
                 0.0,
                 |(sum_m, count)| {
                     if *count > 0 {
-                        sum_m / *count as f64
+                        sum_m / *count as f32
                     }
                     else {
                         0.0
@@ -166,7 +168,7 @@ impl From<MethylationStats> for MethylationStatFlat {
                 .get(&Strand::Forward)
                 .map_or(0.0, |(sum_m, count)| {
                     if *count > 0 {
-                        sum_m / *count as f64
+                        sum_m / *count as f32
                     }
                     else {
                         0.0
@@ -181,7 +183,7 @@ impl From<MethylationStats> for MethylationStatFlat {
                 .get(&Strand::Reverse) // Fixed: was using Forward before
                 .map_or(0.0, |(sum_m, count)| {
                     if *count > 0 {
-                        sum_m / *count as f64
+                        sum_m / *count as f32
                     } else {
                         0.0
                     }
@@ -229,11 +231,11 @@ impl MethylationStats {
     /// A new MethylationStats instance with the provided data_structs, handling
     /// NaN values gracefully.
     pub fn from_data(
-        mean_methylation: f64,
-        variance_methylation: f64,
+        mean_methylation: DensityType,
+        variance_methylation: DensityType,
         coverage_distribution: HashMap<u16, u32>,
-        context_methylation: HashMap<Context, (f64, u32)>,
-        strand_methylation: HashMap<Strand, (f64, u32)>,
+        context_methylation: HashMap<Context, (DensityType, u32)>,
+        strand_methylation: HashMap<Strand, (DensityType, u32)>,
     ) -> MethylationStats {
         debug!(
             "Creating MethylationStats from data_structs with mean: {}, variance: {}",
@@ -279,8 +281,8 @@ impl MethylationStats {
         &mut self,
         other: &MethylationStats,
     ) {
-        let weight_self = self.total_coverage() as f64;
-        let weight_other = other.total_coverage() as f64;
+        let weight_self = self.total_coverage() as DensityType;
+        let weight_other = other.total_coverage() as DensityType;
         let total_weight = weight_self + weight_other;
 
         debug!(
@@ -353,7 +355,7 @@ impl MethylationStats {
 
         for (context, (sum_methylation, count)) in &mut self.context_methylation {
             if *count > 0 {
-                *sum_methylation /= *count as f64;
+                *sum_methylation /= *count as DensityType;
             }
             else {
                 debug!(
@@ -365,7 +367,7 @@ impl MethylationStats {
 
         for (strand, (sum_methylation, count)) in &mut self.strand_methylation {
             if *count > 0 {
-                *sum_methylation /= *count as f64;
+                *sum_methylation /= *count as DensityType;
                 trace!(
                     "Finalized {:?} strand methylation to {}",
                     strand,
@@ -404,7 +406,7 @@ impl MethylationStats {
     ///
     /// The mean methylation level, or 0.0 if no coverage data_structs is
     /// available.
-    pub fn mean_methylation(&self) -> f64 {
+    pub fn mean_methylation(&self) -> DensityType {
         if self.total_coverage() == 0 {
             debug!("No coverage data_structs, returning 0.0 for mean methylation");
             0.0
@@ -531,15 +533,15 @@ impl MethylationStats {
         &self.coverage_distribution
     }
 
-    pub fn methylation_var(&self) -> f64 {
+    pub fn methylation_var(&self) -> DensityType {
         self.methylation_var
     }
 
-    pub fn context_methylation(&self) -> &HashMap<Context, (f64, u32)> {
+    pub fn context_methylation(&self) -> &HashMap<Context, (DensityType, u32)> {
         &self.context_methylation
     }
 
-    pub fn strand_methylation(&self) -> &HashMap<Strand, (f64, u32)> {
+    pub fn strand_methylation(&self) -> &HashMap<Strand, (DensityType, u32)> {
         &self.strand_methylation
     }
 }
@@ -557,19 +559,20 @@ mod tests {
 
     use crate::data_structs::enums::{Context, Strand};
     use crate::data_structs::methstats::MethylationStats;
+    use crate::data_structs::typedef::DensityType;
 
     /// Helper function to create a dummy `MethylationStats`
     fn sample_stats(
-        mean: f64,
-        variance: f64,
+        mean: DensityType,
+        variance: DensityType,
         coverage: Vec<(u16, u32)>,
-        context: Vec<(Context, f64, u32)>,
+        context: Vec<(Context, DensityType, u32)>,
     ) -> MethylationStats {
         let coverage_distribution = coverage.into_iter().collect::<HashMap<u16, u32>>();
         let context_methylation = context
             .into_iter()
             .map(|(ctx, sum_m, count)| (ctx, (sum_m, count)))
-            .collect::<HashMap<Context, (f64, u32)>>();
+            .collect::<HashMap<Context, (DensityType, u32)>>();
 
         MethylationStats {
             mean_methylation: mean,

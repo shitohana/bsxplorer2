@@ -18,7 +18,7 @@ use crate::data_structs::context_data::ContextData;
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
 use crate::data_structs::methstats::MethylationStats;
-use crate::data_structs::typedef::BsxSmallStr;
+use crate::data_structs::typedef::{BsxSmallStr, CountType, DensityType, PosType};
 use crate::io::report::ReportType;
 use crate::plsmallstr;
 
@@ -53,11 +53,11 @@ impl BsxBatch {
     pub fn try_from_columns(
         chr: &str,
         chr_dtype: Option<DataType>,
-        positions: Vec<u32>,
+        positions: Vec<PosType>,
         strand: Vec<bool>,
         context: Vec<Option<bool>>,
-        count_m: Vec<u16>,
-        count_total: Vec<u16>,
+        count_m: Vec<CountType>,
+        count_total: Vec<CountType>,
     ) -> PolarsResult<Self> {
         assert!(
             [
@@ -74,7 +74,7 @@ impl BsxBatch {
         let density = count_m
             .iter()
             .zip(count_total.iter())
-            .map(|(m, t)| *m as f32 / *t as f32)
+            .map(|(m, t)| *m as DensityType / *t as DensityType)
             .collect_vec();
         let height = positions.len();
         let df = DataFrame::from_iter([
@@ -202,7 +202,7 @@ impl BsxBatch {
                     .alias(BsxCol::CountTotal.as_str()),
                 BsxCol::Density
                     .col()
-                    .fill_null(lit(f32::NAN))
+                    .fill_null(lit(DensityType::NAN))
                     .alias(BsxCol::Density.as_str()),
             ]);
         let res = joined.collect()?;
@@ -255,8 +255,8 @@ impl BsxBatch {
 
     pub fn get_methylation_stats(&self) -> MethylationStats {
         let nonull = self.density().drop_nulls();
-        let mean = nonull.mean().unwrap_or(f64::NAN);
-        let var = nonull.into_no_null_iter().map(|x| x as f64).variance();
+        let mean = nonull.mean().map(|v| v as DensityType).unwrap_or(DensityType::NAN);
+        let var = nonull.into_no_null_iter().map(|x| x as f64).variance() as DensityType;
 
         MethylationStats::from_data(
             mean,
@@ -267,7 +267,7 @@ impl BsxBatch {
         )
     }
 
-    pub fn get_coverage_dist(&self) -> HashMap<u16, u32> {
+    pub fn get_coverage_dist(&self) -> HashMap<CountType, u32> {
         izip!(self.count_m(), self.count_total())
             .filter_map(|(k, v)| Option::zip(k, v))
             .into_group_map()
@@ -277,10 +277,10 @@ impl BsxBatch {
     }
 
     /// Returns context -> (sum methylation ratios, total counts)
-    pub fn get_context_stats(&self) -> HashMap<Context, (f64, u32)> {
+    pub fn get_context_stats(&self) -> HashMap<Context, (DensityType, u32)> {
         izip!(self.context(), self.density())
             .filter_map(|(k, v)| {
-                Option::map(v, |density| (Context::from_bool(k), density as f64))
+                Option::map(v, |density| (Context::from_bool(k), density))
             })
             .into_group_map()
             .into_iter()
@@ -289,10 +289,10 @@ impl BsxBatch {
     }
 
     /// Returns strand -> (sum methylation ratios, total counts)
-    pub fn get_strand_stats(&self) -> HashMap<Strand, (f64, u32)> {
+    pub fn get_strand_stats(&self) -> HashMap<Strand, (DensityType, u32)> {
         izip!(self.strand(), self.density())
             .filter_map(|(k, v)| {
-                Option::map(v, |density| (Strand::from_bool(k), density as f64))
+                Option::map(v, |density| (Strand::from_bool(k), density))
             })
             .into_group_map()
             .into_iter()

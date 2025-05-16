@@ -10,6 +10,7 @@ use polars::prelude::Column;
 use rayon::prelude::*;
 
 use crate::data_structs::batch::{merge_replicates, BsxBatch};
+use crate::data_structs::typedef::{DensityType, PosType};
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::tv_recurse_segment;
@@ -62,18 +63,18 @@ pub(crate) fn segment_reading<I>(
                 let positions = left_merged
                     .position()
                     .into_no_null_iter()
-                    .map(|v| v as u64)
+                    .map(|v| v as PosType)
                     .collect_vec();
 
-                let left_density: Vec<f32> = left_merged
+                let left_density: Vec<DensityType> = left_merged
                     .density()
                     .into_iter()
-                    .map(|v| v.unwrap_or(f32::NAN))
+                    .map(|v| v.unwrap_or(DensityType::NAN))
                     .collect_vec();
-                let right_density: Vec<f32> = right_merged
+                let right_density: Vec<DensityType> = right_merged
                     .density()
                     .into_iter()
-                    .map(|v| v.unwrap_or(f32::NAN))
+                    .map(|v| v.unwrap_or(DensityType::NAN))
                     .collect_vec();
 
                 let segment = SegmentOwned::new(positions, left_density, right_density);

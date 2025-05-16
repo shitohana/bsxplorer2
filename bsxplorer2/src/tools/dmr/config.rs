@@ -11,6 +11,7 @@ use polars::io::mmap::MmapBytesReader;
 
 use crate::data_structs::batch::BsxBatch;
 use crate::data_structs::enums::Context;
+use crate::data_structs::typedef::{CountType, DensityType, PosType};
 use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
@@ -20,14 +21,14 @@ use crate::tools::dmr::{segment_reading, DmrIterator};
 pub struct DmrConfig {
     pub context:        Context,
     pub n_missing:      usize,
-    pub min_coverage:   i16,
-    pub diff_threshold: f32,
+    pub min_coverage:   CountType,
+    pub diff_threshold: DensityType,
     pub min_cpgs:       usize,
-    pub max_dist:       u64,
+    pub max_dist:       PosType,
     pub initial_l:      f64,
     pub l_min:          f64,
     pub l_coef:         f64,
-    pub seg_tolerance:  f32,
+    pub seg_tolerance:  DensityType,
     pub merge_pvalue:   f64,
     pub seg_pvalue:     f64,
 }
@@ -117,14 +118,14 @@ impl DmrConfig {
     pub fn new(
         context: Context,
         n_missing: usize,
-        min_coverage: i16,
-        diff_threshold: f32,
+        min_coverage: CountType,
+        diff_threshold: DensityType,
         min_cpgs: usize,
-        max_dist: u64,
+        max_dist: PosType,
         initial_l: f64,
         l_min: f64,
         l_coef: f64,
-        seg_tolerance: f32,
+        seg_tolerance: DensityType,
         merge_pvalue: f64,
         seg_pvalue: f64,
     ) -> Self {

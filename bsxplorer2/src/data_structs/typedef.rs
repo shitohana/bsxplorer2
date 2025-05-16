@@ -5,6 +5,9 @@ use smallstr::SmallString;
 
 pub const SMALLSTR_SIZE: usize = 20;
 pub type BsxSmallStr = SmallString<[u8; SMALLSTR_SIZE]>;
+pub type PosType = u32;
+pub type CountType = u16;
+pub type DensityType = f32;
 
 pub trait SeqNameStr:
     for<'a> From<&'a str> + AsRef<str> + Clone + Eq + PartialEq + Hash {

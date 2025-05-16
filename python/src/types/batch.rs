@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchBuilder, BsxColumns};
 use bsxplorer2::data_structs::context_data::ContextData;
+use bsxplorer2::data_structs::typedef::DensityType;
 use bsxplorer2::utils::get_categorical_dtype;
 use polars::prelude::{DataFrame, IntoSeries};
 use pyo3::prelude::*;
@@ -258,13 +259,13 @@ impl PyBsxBatch {
         Ok(self.inner.get_coverage_dist().into_iter().collect())
     }
 
-    pub fn get_context_stats(&self) -> PyResult<HashMap<PyContext, (f64, u32)>> {
+    pub fn get_context_stats(&self) -> PyResult<HashMap<PyContext, (DensityType, u32)>> {
         let rust_stats = self.inner.get_context_stats();
         let py_stats = rust_stats.into_iter().map(|(k, v)| (k.into(), v)).collect();
         Ok(py_stats)
     }
 
-    pub fn get_strand_stats(&self) -> PyResult<HashMap<PyStrand, (f64, u32)>> {
+    pub fn get_strand_stats(&self) -> PyResult<HashMap<PyStrand, (DensityType, u32)>> {
         let rust_stats = self.inner.get_strand_stats();
         let py_stats = rust_stats.into_iter().map(|(k, v)| (k.into(), v)).collect();
         Ok(py_stats)

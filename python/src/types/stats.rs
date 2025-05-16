@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use bsxplorer2::data_structs::enums::{Context, Strand};
 use bsxplorer2::data_structs::methstats::MethylationStats;
+use bsxplorer2::data_structs::typedef::DensityType;
 use itertools::Itertools;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
@@ -36,22 +37,22 @@ impl PyMethylationStats {
 
     #[staticmethod]
     pub fn from_data(
-        mean_methylation: f64,
-        variance_methylation: f64,
+        mean_methylation: DensityType,
+        variance_methylation: DensityType,
         coverage_distribution: HashMap<u16, u32>,
-        context_methylation: HashMap<String, (f64, u32)>,
-        strand_methylation: HashMap<String, (f64, u32)>,
+        context_methylation: HashMap<String, (DensityType, u32)>,
+        strand_methylation: HashMap<String, (DensityType, u32)>,
     ) -> Self {
         use hashbrown::HashMap as HashbrownMap;
         let coverage_distribution: HashbrownMap<u16, u32> =
             HashbrownMap::from_iter(coverage_distribution.into_iter());
-        let context_distribution: HashbrownMap<Context, (f64, u32)> =
+        let context_distribution: HashbrownMap<Context, (DensityType, u32)> =
             HashbrownMap::from_iter(
                 context_methylation
                     .into_iter()
                     .map(|(key, value)| (Context::from_str(&key).unwrap(), value)),
             );
-        let strand_distribution: HashbrownMap<Strand, (f64, u32)> =
+        let strand_distribution: HashbrownMap<Strand, (DensityType, u32)> =
             HashbrownMap::from_iter(
                 strand_methylation
                     .into_iter()
@@ -83,7 +84,7 @@ impl PyMethylationStats {
         self.inner.total_coverage()
     }
 
-    pub fn mean_methylation(&self) -> f64 {
+    pub fn mean_methylation(&self) -> DensityType {
         self.inner.mean_methylation()
     }
 
@@ -108,11 +109,11 @@ impl PyMethylationStats {
             .collect()
     }
 
-    pub fn methylation_var(&self) -> f64 {
+    pub fn methylation_var(&self) -> DensityType {
         self.inner.methylation_var()
     }
 
-    pub fn context_methylation(&self) -> HashMap<String, (f64, u32)> {
+    pub fn context_methylation(&self) -> HashMap<String, (DensityType, u32)> {
         self.inner
             .context_methylation()
             .into_iter()
@@ -120,7 +121,7 @@ impl PyMethylationStats {
             .collect()
     }
 
-    pub fn strand_methylation(&self) -> HashMap<String, (f64, u32)> {
+    pub fn strand_methylation(&self) -> HashMap<String, (DensityType, u32)> {
         self.inner
             .strand_methylation()
             .into_iter()

@@ -3,7 +3,8 @@ use std::iter::repeat_n;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
-use bsxplorer2::data_structs::enums::Context;
+use bsxplorer2::data_structs::typedef::{DensityType, PosType};
+use bsxplorer2::data_structs::{enums::Context, typedef::CountType};
 use bsxplorer2::tools::dmr::DMRegion;
 use clap::{Args, ValueEnum};
 use console::style;
@@ -75,7 +76,7 @@ pub(crate) struct DmrArgs {
         help = "Set coverage threshold. Cytosines with coverage below this value in \
                 any of the samples will be discarded."
     )]
-    pub min_coverage: i16,
+    pub min_coverage: CountType,
 
     #[arg(
         short,
@@ -96,7 +97,7 @@ pub(crate) struct DmrArgs {
                 methylation proportion between the two groups smaller than this value \
                 will be discarded."
     )]
-    pub diff_threshold: f32,
+    pub diff_threshold: DensityType,
 
     #[arg(
         short = 'D',
@@ -106,7 +107,7 @@ pub(crate) struct DmrArgs {
         help = "Maximum distance between adjacent cytosines in a segment.  Cytosines \
                 further apart than this distance will be in separate segments."
     )]
-    max_dist: u32,
+    max_dist: PosType,
 
     #[arg(
         short = 'L',
@@ -148,7 +149,7 @@ pub(crate) struct DmrArgs {
                 segments being merged. Should be very small to avoid \
                 over-segmentation after denoising."
     )]
-    tolerance: f32,
+    tolerance: DensityType,
 
     #[arg(
         long,
@@ -255,7 +256,7 @@ impl DmrArgs {
             min_coverage:   self.min_coverage,
             diff_threshold: self.diff_threshold,
             min_cpgs:       self.min_cytosines,
-            max_dist:       self.max_dist as u64,
+            max_dist:       self.max_dist,
             initial_l:      self.initial_l,
             l_min:          self.l_min,
             l_coef:         self.l_coef,
