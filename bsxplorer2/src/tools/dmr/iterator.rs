@@ -9,8 +9,7 @@ use log::error;
 use polars::prelude::Column;
 use rayon::prelude::*;
 
-use crate::data_structs::batch::BsxBatch;
-use crate::data_structs::batch::merge_replicates;
+use crate::data_structs::batch::{merge_replicates, BsxBatch};
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::tv_recurse_segment;
@@ -39,7 +38,7 @@ pub(crate) fn segment_reading<I>(
     mut right_readers: Vec<I>,
     sender: Sender<(String, SegmentOwned)>,
 ) where
-    I: Iterator<Item = BsxBatch>,{
+    I: Iterator<Item = BsxBatch>, {
     loop {
         match (
             left_readers
@@ -52,12 +51,10 @@ pub(crate) fn segment_reading<I>(
                 .collect::<Option<Vec<_>>>(),
         ) {
             (Some(left), Some(right)) => {
-                let left_merged =
-                    merge_replicates(left, merge_counts, merge_density)
-                        .expect("Failed to merge replicates");
-                let right_merged =
-                    merge_replicates(right, merge_counts, merge_density)
-                        .expect("Failed to merge replicates");
+                let left_merged = merge_replicates(left, merge_counts, merge_density)
+                    .expect("Failed to merge replicates");
+                let right_merged = merge_replicates(right, merge_counts, merge_density)
+                    .expect("Failed to merge replicates");
 
                 let chr = left_merged.seqname().unwrap_or_default();
                 // TODO add filtering
@@ -79,8 +76,7 @@ pub(crate) fn segment_reading<I>(
                     .map(|v| v.unwrap_or(f32::NAN))
                     .collect_vec();
 
-                let segment =
-                    SegmentOwned::new(positions, left_density, right_density);
+                let segment = SegmentOwned::new(positions, left_density, right_density);
 
                 sender
                     .send((chr.to_string(), segment))
@@ -174,8 +170,7 @@ impl DmrIterator {
                 preseg = leftover.concat(preseg);
             }
         }
-        initial_segments
-            .append(&mut preseg.split_by_dist(self.config.max_dist));
+        initial_segments.append(&mut preseg.split_by_dist(self.config.max_dist));
 
         self.last_chr = chr.clone();
         self.leftover = Some(initial_segments.pop().unwrap());
@@ -186,8 +181,7 @@ impl DmrIterator {
             .flatten()
             .collect::<Vec<_>>();
 
-        self.regions_cache
-            .append(&mut new_cache);
+        self.regions_cache.append(&mut new_cache);
         Ok(())
     }
 
@@ -196,10 +190,8 @@ impl DmrIterator {
         if let Some(leftover) = self.leftover.take() {
             let mut new_cache = self.comp_segment(leftover);
 
-            self.regions_cache
-                .append(&mut new_cache);
-            self.regions_cache
-                .sort_by_key(|d| d.start);
+            self.regions_cache.append(&mut new_cache);
+            self.regions_cache.sort_by_key(|d| d.start);
             Ok(true)
         }
         else {

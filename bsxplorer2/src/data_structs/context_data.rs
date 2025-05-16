@@ -187,11 +187,7 @@ impl ContextData {
         &mut self,
         pos: u32,
     ) -> Self {
-        let split_point = self
-            .entries
-            .iter()
-            .find(|entry| entry.0 > pos)
-            .cloned();
+        let split_point = self.entries.iter().find(|entry| entry.0 > pos).cloned();
 
         let mut drained = std::collections::BTreeSet::new();
         if let Some(split_entry) = split_point {
@@ -239,7 +235,8 @@ impl ContextData {
             "position" => positions,
             "strand" => strands.into_iter().map(|x| x.to_bool()).collect_vec(),
             "context" => contexts.into_iter().map(|x| x.to_bool()).collect_vec(),
-        ).unwrap()
+        )
+        .unwrap()
     }
 }
 
@@ -345,7 +342,10 @@ mod tests {
     #[case(b"A", 1)] // Length < 3
     #[case(b"AT", 1)] // Length < 3
     #[case(b"ATC", 1)] // No trinuc matches, no CG suffix
-    fn test_read_sequence_empty_or_short(#[case] seq: &[u8], #[case] start: u32) {
+    fn test_read_sequence_empty_or_short(
+        #[case] seq: &[u8],
+        #[case] start: u32,
+    ) {
         let mut data = ContextData::empty();
         data.read_sequence(seq, start);
         assert!(data.is_empty());
@@ -446,14 +446,13 @@ mod tests {
     fn test_to_df_empty() {
         let data = ContextData::empty();
 
-        let df_decoded = data
-            .clone()
-            .to_df();
+        let df_decoded = data.clone().to_df();
         let expected_df_decoded = df!(
             "position" => Series::new_empty("position".into(), &DataType::UInt32),
             "strand" => Series::new_empty("strand".into(), &DataType::Boolean),
             "context" => Series::new_empty("context".into(), &DataType::Boolean),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(df_decoded.schema(), expected_df_decoded.schema());
         assert_eq!(df_decoded.height(), 0);
     }

@@ -91,7 +91,7 @@ impl PyGenomicPosition {
         // Use the Rust Add implementation
         match self_rust.add(other_rust) {
             Some(result_rust) => Ok(Some(result_rust.into())), /* Convert result back to PyO3 type */
-            None => Ok(None), // Different seqnames
+            None => Ok(None),                                  // Different seqnames
         }
     }
 
@@ -106,7 +106,8 @@ impl PyGenomicPosition {
         // Use the Rust Sub implementation
         match self_rust.sub(other_rust) {
             Some(result_rust) => Ok(Some(result_rust.into())), /* Convert result back to PyO3 type */
-            None => Ok(None), // Different seqnames or rhs > lhs
+            None => Ok(None),                                  /* Different seqnames
+                                                                 * or rhs > lhs */
         }
     }
 }
@@ -184,8 +185,8 @@ impl PyContig {
             "." | "none" => PyStrand::Null,
             _ => {
                 return Err(PyValueError::new_err(format!(
-                    "Invalid strand value: '{}'. Must be '+', '-', '.', \
-                     'Forward', 'Reverse', or 'None' (case-insensitive).",
+                    "Invalid strand value: '{}'. Must be '+', '-', '.', 'Forward', \
+                     'Reverse', or 'None' (case-insensitive).",
                     strand
                 )))
             },
@@ -302,8 +303,8 @@ impl PyContig {
                         // NotImplemented for incomparable items.
                         // Returning NotImplemented allows chaining comparisons.
                         Err(PyNotImplementedError::new_err(
-                            "Contigs on different seqnames or with \
-                             intersecting regions are not strictly comparable.",
+                            "Contigs on different seqnames or with intersecting \
+                             regions are not strictly comparable.",
                         ))
                     },
                 }

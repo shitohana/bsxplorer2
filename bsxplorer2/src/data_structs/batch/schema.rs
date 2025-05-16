@@ -1,9 +1,9 @@
 use std::any::Any;
 
 use polars::prelude::*;
-use crate::plsmallstr;
 
 use super::{create_empty_categorical_dtype, name_dtype_tuple};
+use crate::plsmallstr;
 
 pub enum BsxColumns {
     Chr,
@@ -96,7 +96,9 @@ impl BsxColumns {
                         .unwrap_or(AnyValue::Null)
                 })
             },
-            BsxColumns::CountM => value.downcast_ref::<u16>().map(|v| AnyValue::UInt16(*v)),
+            BsxColumns::CountM => {
+                value.downcast_ref::<u16>().map(|v| AnyValue::UInt16(*v))
+            },
             BsxColumns::CountTotal => {
                 value.downcast_ref::<u16>().map(|v| AnyValue::UInt16(*v))
             },

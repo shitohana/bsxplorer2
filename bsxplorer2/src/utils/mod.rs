@@ -1,4 +1,5 @@
-use std::{io::{BufReader, Read}, sync::Arc};
+use std::io::{BufReader, Read};
+use std::sync::Arc;
 
 use itertools::Itertools;
 use log::warn;
@@ -12,10 +13,7 @@ pub use stats::*;
 /// Creates a categorical data_structs type from a list of categories.
 pub fn get_categorical_dtype(categories: Vec<String>) -> DataType {
     let categories = polars::export::arrow::array::Utf8ViewArray::from_vec(
-        categories
-            .iter()
-            .map(String::as_str)
-            .collect_vec(),
+        categories.iter().map(String::as_str).collect_vec(),
         ArrowDataType::Utf8View,
     );
     let rev_mapping = Arc::new(RevMapping::build_local(categories));
@@ -34,13 +32,7 @@ pub(crate) fn schema_from_arrays(
             dtypes.len()
         );
     }
-    Schema::from_iter(
-        names
-            .iter()
-            .cloned()
-            .map_into()
-            .zip(dtypes.iter().cloned()),
-    )
+    Schema::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
 }
 
 /// Creates a hashmap from separate arrays of names and data_structs types.
@@ -55,13 +47,7 @@ pub(crate) fn hashmap_from_arrays<'a>(
             dtypes.len()
         );
     }
-    PlHashMap::from_iter(
-        names
-            .iter()
-            .cloned()
-            .map_into()
-            .zip(dtypes.iter().cloned()),
-    )
+    PlHashMap::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
 }
 
 #[macro_export]
@@ -91,7 +77,9 @@ macro_rules! with_field_fn {
 
 pub fn read_chrs_from_fai<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
     let records: Vec<noodles::fasta::fai::Record> =
-        noodles::fasta::fai::io::Reader::new(BufReader::new(reader)).read_index()?.into();
+        noodles::fasta::fai::io::Reader::new(BufReader::new(reader))
+            .read_index()?
+            .into();
     Ok(records
         .into_iter()
         .map(|r| String::from_utf8_lossy(r.name()).to_string())
@@ -125,10 +113,7 @@ pub(crate) fn float2int<F: Float, U: Unsigned + PrimInt>(
         Ok(U::max_value())
     }
     else {
-        Ok(
-            U::from((value * F::from(U::max_value()).unwrap()).floor())
-                .unwrap(),
-        )
+        Ok(U::from((value * F::from(U::max_value()).unwrap()).floor()).unwrap())
     }
 }
 

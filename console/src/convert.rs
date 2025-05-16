@@ -4,11 +4,9 @@ use std::process::exit;
 
 use bsxplorer2::data_structs::coords::GenomicPosition;
 use bsxplorer2::data_structs::typedef::BsxSmallStr;
-use bsxplorer2::io::bsx::{BsxFileReader, BsxIpcWriter};
+use bsxplorer2::io::bsx::{BsxFileReader, BsxFileWriter};
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{ReportReaderBuilder,
-                             ReportType,
-                             ReportWriter};
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportType, ReportWriter};
 use clap::{Args, ValueEnum};
 use console::style;
 
@@ -89,10 +87,8 @@ impl ToBsxConvert {
         &self,
         utils_args: &UtilsArgs,
     ) -> anyhow::Result<()> {
-        if matches!(
-            self.from_type,
-            ReportType::BedGraph | ReportType::Coverage
-        ) && !(self.fasta_path.is_some() && self.fai_path.is_some())
+        if matches!(self.from_type, ReportType::BedGraph | ReportType::Coverage)
+            && !(self.fasta_path.is_some() && self.fai_path.is_some())
         {
             eprintln!(
                 "For {:?} report type conversion, both {}",
@@ -108,14 +104,13 @@ impl ToBsxConvert {
             init_hidden()?
         };
 
-        let mut report_reader_builder =
-            ReportReaderBuilder::default()
-                .with_n_threads(Some(utils_args.threads))
-                .with_batch_size(self.batch_size)
-                .with_chunk_size(self.chunk_size)
-                .with_low_memory(self.low_memory)
-                .with_report_type(self.from_type)
-                .with_compression(Some(self.from_compression));
+        let mut report_reader_builder = ReportReaderBuilder::default()
+            .with_n_threads(Some(utils_args.threads))
+            .with_batch_size(self.batch_size)
+            .with_chunk_size(self.chunk_size)
+            .with_low_memory(self.low_memory)
+            .with_report_type(self.from_type)
+            .with_compression(Some(self.from_compression));
 
         if let Some(fasta_path) = &self.fasta_path {
             report_reader_builder =
@@ -130,7 +125,7 @@ impl ToBsxConvert {
 
         let sink = File::create(self.output.clone())?;
         let mut bsx_writer = if let Some(fai_path) = &self.fai_path {
-            BsxIpcWriter::try_from_sink_and_fai(
+            BsxFileWriter::try_from_sink_and_fai(
                 sink,
                 fai_path.clone(),
                 self.to_compression.into(),
@@ -138,7 +133,7 @@ impl ToBsxConvert {
             )?
         }
         else if let Some(fasta_path) = &self.fasta_path {
-            BsxIpcWriter::try_from_sink_and_fasta(
+            BsxFileWriter::try_from_sink_and_fasta(
                 sink,
                 fasta_path.clone(),
                 self.to_compression.into(),
@@ -155,7 +150,8 @@ impl ToBsxConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos: GenomicPosition<BsxSmallStr, u32> = batch.last_genomic_pos().unwrap_or_default();
+            let cur_pos: GenomicPosition<BsxSmallStr, u32> =
+                batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 
@@ -281,13 +277,12 @@ impl R2RConvert {
             init_hidden()?
         };
 
-        let mut report_reader_builder =
-            ReportReaderBuilder::default()
-                .with_n_threads(Some(utils_args.threads))
-                .with_batch_size(self.batch_size)
-                .with_low_memory(self.low_memory)
-                .with_report_type(self.from_type)
-                .with_compression(Some(self.from_compression));
+        let mut report_reader_builder = ReportReaderBuilder::default()
+            .with_n_threads(Some(utils_args.threads))
+            .with_batch_size(self.batch_size)
+            .with_low_memory(self.low_memory)
+            .with_report_type(self.from_type)
+            .with_compression(Some(self.from_compression));
 
         if let Some(fasta_path) = &self.fasta_path {
             report_reader_builder =
@@ -306,7 +301,8 @@ impl R2RConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos: GenomicPosition<_, _> = batch.last_genomic_pos().unwrap_or_default();
+            let cur_pos: GenomicPosition<_, _> =
+                batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 

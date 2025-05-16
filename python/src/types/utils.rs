@@ -1,5 +1,4 @@
-use bsxplorer2::data_structs::enums::{Context as RsContext,
-                                      Strand as RsStrand};
+use bsxplorer2::data_structs::enums::{Context as RsContext, Strand as RsStrand};
 use pyo3::prelude::*;
 
 #[pyclass(name = "Strand", eq, eq_int, hash, frozen)]

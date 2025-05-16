@@ -24,3 +24,5 @@
 * [ ] Segmentation algorithm
 * [ ] Dimensionality reduction algorithm
 * [ ] Metagene constructor interface
+
+TODO: Add get function to AnnotMap

@@ -93,8 +93,7 @@ impl DmrConfig {
                     .collect_vec(),
             );
             assert_eq!(left_n, right_n, "Number of batches does not match");
-            local_block_count
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            local_block_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             segment_reading(left_readers, right_readers, sender)
         });
 
@@ -174,26 +173,15 @@ fn init_bsx_readers<F: Read + Seek + 'static>(
         .map(|reader| BsxFileReader::new(reader))
         .collect_vec();
     assert!(
-        bsx_readers
-            .iter()
-            .map(|r| r.blocks_total())
-            .all_equal(),
+        bsx_readers.iter().map(|r| r.blocks_total()).all_equal(),
         "Number of blocks not equal in files"
     );
     #[allow(unsafe_code)]
-    let n_batches = unsafe {
-        bsx_readers
-            .get_unchecked(0)
-            .blocks_total()
-    };
+    let n_batches = unsafe { bsx_readers.get_unchecked(0).blocks_total() };
     let iterators = bsx_readers
         .into_iter()
-        .map(|reader| {
-            reader.map(|batch_res| batch_res.expect("could not read batch"))
-        })
-        .map(|reader| {
-            Box::new(reader) as Box<dyn Iterator<Item = BsxBatch>>
-        })
+        .map(|reader| reader.map(|batch_res| batch_res.expect("could not read batch")))
+        .map(|reader| Box::new(reader) as Box<dyn Iterator<Item = BsxBatch>>)
         .collect_vec();
     (n_batches, iterators)
 }

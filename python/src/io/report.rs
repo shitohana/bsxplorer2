@@ -73,22 +73,14 @@ impl PyReportReader {
 
         let reader = builder.build(path).map_err(|e| {
             // Attempt to classify error
-            if e.to_string()
-                .contains("No such file or directory")
-            {
+            if e.to_string().contains("No such file or directory") {
                 PyFileNotFoundError::new_err(e.to_string())
             }
-            else if e
-                .to_string()
-                .contains("must be specified")
-            {
+            else if e.to_string().contains("must be specified") {
                 PyValueError::new_err(e.to_string())
             }
             else {
-                PyRuntimeError::new_err(format!(
-                    "Failed to build ReportReader: {}",
-                    e
-                ))
+                PyRuntimeError::new_err(format!("Failed to build ReportReader: {}", e))
             }
         })?;
 
@@ -160,10 +152,7 @@ impl PyReportWriter {
             compression_level,
         )
         .map_err(|e| {
-            PyRuntimeError::new_err(format!(
-                "Failed to create ReportWriter: {}",
-                e
-            ))
+            PyRuntimeError::new_err(format!("Failed to create ReportWriter: {}", e))
         })?;
 
         Ok(Self {
@@ -194,10 +183,7 @@ impl PyReportWriter {
         if let Some(writer) = self.writer.as_mut() {
             let rust_df: DataFrame = df.into();
             writer.write_df(&rust_df).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "Failed to write DataFrame: {}",
-                    e
-                ))
+                PyRuntimeError::new_err(format!("Failed to write DataFrame: {}", e))
             })
         }
         else {

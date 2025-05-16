@@ -31,6 +31,20 @@ pub struct GffEntryAttributes {
 }
 
 impl GffEntryAttributes {
+    with_field_fn!(target, Option<Vec<Contig<Arc<str>, u32>>>);
+
+    with_field_fn!(gap, Option<Vec<String>>);
+
+    with_field_fn!(derives_from, Option<Vec<String>>);
+
+    with_field_fn!(note, Option<Vec<String>>);
+
+    with_field_fn!(dbxref, Option<Vec<BsxSmallStr>>);
+
+    with_field_fn!(ontology_term, Option<Vec<String>>);
+
+    with_field_fn!(other, HashMap<String, String>);
+
     /// Sets the ID attribute.
     pub fn with_id<S: Into<BsxSmallStr>>(
         mut self,
@@ -45,11 +59,7 @@ impl GffEntryAttributes {
         mut self,
         name: Option<Vec<S>>,
     ) -> Self {
-        self.name = name.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
+        self.name = name.map(|v| v.into_iter().map(|s| s.into()).collect());
         self
     }
 
@@ -58,11 +68,7 @@ impl GffEntryAttributes {
         mut self,
         alias: Option<Vec<S>>,
     ) -> Self {
-        self.alias = alias.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
+        self.alias = alias.map(|v| v.into_iter().map(|s| s.into()).collect());
         self
     }
 
@@ -71,27 +77,9 @@ impl GffEntryAttributes {
         mut self,
         parent: Option<Vec<S>>,
     ) -> Self {
-        self.parent = parent.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
+        self.parent = parent.map(|v| v.into_iter().map(|s| s.into()).collect());
         self
     }
-
-    with_field_fn!(target, Option<Vec<Contig<Arc<str>, u32>>>);
-
-    with_field_fn!(gap, Option<Vec<String>>);
-
-    with_field_fn!(derives_from, Option<Vec<String>>);
-
-    with_field_fn!(note, Option<Vec<String>>);
-
-    with_field_fn!(dbxref, Option<Vec<BsxSmallStr>>);
-
-    with_field_fn!(ontology_term, Option<Vec<String>>);
-
-    with_field_fn!(other, HashMap<String, String>);
 }
 
 impl fmt::Display for GffEntryAttributes {
@@ -117,9 +105,7 @@ impl FromStr for GffEntryAttributes {
             }
 
             let mut parts = pair.splitn(2, '=');
-            let key = parts
-                .next()
-                .ok_or(anyhow!("Missing key"))?;
+            let key = parts.next().ok_or(anyhow!("Missing key"))?;
             let value = parts.next();
 
             match key {
@@ -145,42 +131,28 @@ impl FromStr for GffEntryAttributes {
                                               // is unimplemented
                 },
                 "Gap" => {
-                    attributes.gap = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.gap =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 "Derives_from" => {
-                    attributes.derives_from = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.derives_from =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 "Note" => {
-                    attributes.note = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.note =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 "Dbxref" => {
                     attributes.dbxref =
                         value.map(|s| s.split(',').map(|s| s.into()).collect());
                 },
                 "Ontology_term" => {
-                    attributes.ontology_term = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.ontology_term =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 _ => {
                     if let Some(val) = value {
-                        attributes
-                            .other
-                            .insert(key.to_string(), val.to_string());
+                        attributes.other.insert(key.to_string(), val.to_string());
                     }
                 },
             }
@@ -253,8 +225,7 @@ impl Serialize for GffEntryAttributes {
         }
         if let Some(id) = self.id.as_ref() {
             // No need to check 'first' here, ID is always first if present
-            write!(serialized, "ID={}", id)
-                .map_err(serde::ser::Error::custom)?;
+            write!(serialized, "ID={}", id).map_err(serde::ser::Error::custom)?;
             first = false; // Mark that we've written the first attribute
         }
 
@@ -282,8 +253,7 @@ impl Serialize for GffEntryAttributes {
             }
             // Use write! for potentially better performance than format! +
             // push_str
-            write!(serialized, "{}={}", k, v)
-                .map_err(serde::ser::Error::custom)?;
+            write!(serialized, "{}={}", k, v).map_err(serde::ser::Error::custom)?;
         }
 
         serializer.serialize_str(&serialized)
@@ -312,8 +282,7 @@ impl<'de> serde::Deserialize<'de> for GffEntryAttributes {
             ) -> Result<GffEntryAttributes, E>
             where
                 E: de::Error, {
-                GffEntryAttributes::from_str(value)
-                    .map_err(serde::de::Error::custom)
+                GffEntryAttributes::from_str(value).map_err(serde::de::Error::custom)
             }
         }
 
@@ -352,9 +321,7 @@ impl From<bio::io::bed::Record> for GffEntry {
             contig,
             None,
             None,
-            value
-                .score()
-                .map(|s| s.parse::<f64>().unwrap_or(f64::NAN)),
+            value.score().map(|s| s.parse::<f64>().unwrap_or(f64::NAN)),
             None,
             None,
         )
@@ -394,10 +361,10 @@ impl TryFrom<RawGffEntry> for GffEntry {
     fn try_from(value: RawGffEntry) -> Result<Self, Self::Error> {
         let seqid = ArcStr::from(value.seqid.as_str());
         let source = ArcStr::from(value.source.as_str());
-        let strand = <Strand as IPCEncodedEnum>::from_str(value.strand.to_string().as_str());
+        let strand =
+            <Strand as IPCEncodedEnum>::from_str(value.strand.to_string().as_str());
         let feature_type = ArcStr::from(value.feature_type.as_str());
-        let attributes =
-            GffEntryAttributes::from_str(value.attributes.as_str())?;
+        let attributes = GffEntryAttributes::from_str(value.attributes.as_str())?;
 
         Ok(GffEntry::new(
             Contig::new(seqid, value.start, value.end, strand),

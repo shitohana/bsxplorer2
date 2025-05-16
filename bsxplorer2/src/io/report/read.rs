@@ -141,14 +141,10 @@ impl ReportReaderBuilder {
         &self
     ) -> anyhow::Result<Option<Box<dyn Iterator<Item = FastaRecord>>>> {
         if let Some(fasta_path) = self.fasta_path.as_ref() {
-            let reader =
-                FastaReader::new(BufReader::new(File::open(fasta_path)?));
+            let reader = FastaReader::new(BufReader::new(File::open(fasta_path)?));
             let iterator = Some(Box::new(
-                reader
-                    .records()
-                    .map(|r| r.expect("Failed to read record")),
-            )
-                as Box<dyn Iterator<Item = FastaRecord>>);
+                reader.records().map(|r| r.expect("Failed to read record")),
+            ) as Box<dyn Iterator<Item = FastaRecord>>);
             Ok(iterator)
         }
         else {
@@ -186,10 +182,8 @@ impl ReportReaderBuilder {
             .with_chunk_size(self.batch_size)
             .into_reader_with_file_handle(handle);
 
-        let owned_batched = OwnedBatchedCsvReader::new(
-            csv_reader,
-            self.report_type.schema().into(),
-        );
+        let owned_batched =
+            OwnedBatchedCsvReader::new(csv_reader, self.report_type.schema().into());
         Ok(owned_batched)
     }
 
@@ -202,17 +196,13 @@ impl ReportReaderBuilder {
 
         let chr_dtype = self.get_chr_dtype()?;
         if chr_dtype.is_none() {
-            bail!(
-                "Either Fasta path or Fai path must be specified"
-            )
+            bail!("Either Fasta path or Fai path must be specified")
         }
         let fasta_reader = self.get_fasta_iterator()?;
         if matches!(self.report_type, RS::Coverage | RS::BedGraph)
             && fasta_reader.is_none()
         {
-            bail!(
-                "Fasta path must be specified for Bedgraph or Coverage reading"
-            )
+            bail!("Fasta path must be specified for Bedgraph or Coverage reading")
         }
 
         let mut csv_reader = self.get_csv_reader(handle)?;
@@ -223,9 +213,7 @@ impl ReportReaderBuilder {
                 if df.len() != 1 {
                     panic!("Unexpected batch count {}", df.len());
                 }
-                sender
-                    .send(df.pop().unwrap())
-                    .expect("Failed to send data");
+                sender.send(df.pop().unwrap()).expect("Failed to send data");
             }
         });
 
@@ -307,8 +295,7 @@ impl ReportReader {
         is_final: bool,
     ) -> anyhow::Result<BsxBatch> {
         // If some cached chr data
-        if let Some((chr, mut cached_data)) = Option::take(&mut self.cached_chr)
-        {
+        if let Some((chr, mut cached_data)) = Option::take(&mut self.cached_chr) {
             // If cached different chromosome raise
             if batch.seqname().unwrap_or_default() != chr.as_str() {
                 bail!("Chromosome mismatch")
@@ -321,7 +308,8 @@ impl ReportReader {
                 // If not final, take till end of batch
                 }
                 else {
-                    let drained = cached_data.drain_until(batch.first_pos().unwrap_or(0));
+                    let drained =
+                        cached_data.drain_until(batch.first_pos().unwrap_or(0));
                     (drained, Some((chr, cached_data)))
                 };
                 // Update cache (leftover if not final else None)
@@ -335,17 +323,11 @@ impl ReportReader {
         }
         else {
             // Try read
-            if let Some(new_sequence) = self
-                .fasta_reader
-                .as_mut()
-                .unwrap()
-                .next()
-            {
+            if let Some(new_sequence) = self.fasta_reader.as_mut().unwrap().next() {
                 // Process sequence
                 let mut new_context_data = ContextData::empty();
                 new_context_data.read_sequence(new_sequence.seq(), 1);
-                self.cached_chr =
-                    Some((new_sequence.id().into(), new_context_data));
+                self.cached_chr = Some((new_sequence.id().into(), new_context_data));
                 // Try aligning again
                 Ok(self
                     .align_batch(batch, is_final)
@@ -365,14 +347,11 @@ impl ReportReader {
             anyhow::anyhow!("Channel closed unexpectedly while reading a batch")
                 .context(e)
         })?;
-        let last_one =
-            self.data_receiver.is_empty() && self._join_handle.is_finished();
+        let last_one = self.data_receiver.is_empty() && self._join_handle.is_finished();
         // Partition by chromosome
         let partitioned = new_batch
             .partition_by_stable([self.report_type.chr_col()], true)
-            .map_err(|e| {
-                anyhow::anyhow!("Failed to partition batch").context(e)
-            })?;
+            .map_err(|e| anyhow::anyhow!("Failed to partition batch").context(e))?;
         // 1 if single chromosome or > 1 if multiple
         let n_partitioned = partitioned.len();
 
@@ -392,16 +371,12 @@ impl ReportReader {
             // Add chromosome to seen and retrieve chr index
             let batch_chr = bsx_batch.seqname().unwrap_or_default().into();
             let seen_chr_len = self.seen_chr.len();
-            let chr_idx = self
-                .seen_chr
-                .entry(batch_chr)
-                .or_insert(seen_chr_len);
+            let chr_idx = self.seen_chr.entry(batch_chr).or_insert(seen_chr_len);
             // Update cached batch
             self.cached_batch
                 .entry(*chr_idx)
                 .and_modify(|b| {
-                    b.extend(&bsx_batch)
-                        .expect("vstack failed");
+                    b.extend(&bsx_batch).expect("vstack failed");
                 })
                 .or_insert(bsx_batch);
         }
@@ -428,9 +403,7 @@ impl Iterator for ReportReader {
                 return Some(Ok(batch));
             }
             // If the reader thread is still alive or we can expect more data
-            if !self._join_handle.is_finished()
-                || !self.data_receiver.is_empty()
-            {
+            if !self._join_handle.is_finished() || !self.data_receiver.is_empty() {
                 if let Err(e) = self.fill_cache() {
                     return Some(Err(e));
                 }

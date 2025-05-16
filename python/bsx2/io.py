@@ -6,7 +6,7 @@ ReportReader = _native.io.ReportReader
 ReportWriter = _native.io.ReportWriter
 BsxFileReader = _native.io.BsxFileReader
 IpcCompression = _native.io.IpcCompression
-BsxIpcWriter = _native.io.BsxIpcWriter
+BsxFileWriter = _native.io.BsxFileWriter
 
 __all__ = [
     "RegionReader",
@@ -15,5 +15,5 @@ __all__ = [
     "ReportWriter",
     "BsxFileReader",
     "IpcCompression",
-    "BsxIpcWriter"
+    "BsxFileWriter"
 ]

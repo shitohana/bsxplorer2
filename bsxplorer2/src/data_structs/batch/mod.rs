@@ -1,11 +1,11 @@
-mod builder;
-mod utils;
 mod batch;
-mod schema;
+mod builder;
 mod lazy;
+mod schema;
+mod utils;
 
-pub use builder::*;
-pub use utils::*;
 pub use batch::*;
-pub use schema::*;
+pub use builder::*;
 pub use lazy::*;
+pub use schema::*;
+pub use utils::*;

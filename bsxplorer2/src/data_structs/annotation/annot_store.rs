@@ -93,16 +93,9 @@ impl AnnotStore {
             None
         }
         else {
-            self.id_map
-                .insert(entry.id.clone(), entry.clone());
-            for parent in entry
-                .attributes
-                .parent
-                .as_ref()
-                .unwrap_or(&vec![])
-            {
-                self.parent_map
-                    .insert(entry.id.clone(), parent.to_owned());
+            self.id_map.insert(entry.id.clone(), entry.clone());
+            for parent in entry.attributes.parent.as_ref().unwrap_or(&vec![]) {
+                self.parent_map.insert(entry.id.clone(), parent.to_owned());
                 self.children_map
                     .insert(parent.to_owned(), entry.id.clone());
             }
@@ -155,24 +148,21 @@ impl AnnotStore {
         &self,
         index: &BatchIndex<S, P>,
     ) -> AnnotIterator {
-        let iterator: Box<dyn Iterator<Item = _>> =
-            Box::from(
-                self.iter()
-                    .into_group_map_by(|(_id, entry)| {
-                        index.get_chr_index(&S::from(
-                            entry.contig.seqname().as_str(),
-                        ))
-                    })
-                    .into_iter()
-                    .sorted_by_cached_key(|(key, _value)| *key)
-                    .map(|(_key, value)| {
-                        value.into_iter().sorted_by_cached_key(
-                            |(_id, entry)| entry.contig.start(),
-                        )
-                    })
-                    .flatten()
-                    .map(|(id, value)| (id.clone(), value.clone())),
-            );
+        let iterator: Box<dyn Iterator<Item = _>> = Box::from(
+            self.iter()
+                .into_group_map_by(|(_id, entry)| {
+                    index.get_chr_index(&S::from(entry.contig.seqname().as_str()))
+                })
+                .into_iter()
+                .sorted_by_cached_key(|(key, _value)| *key)
+                .map(|(_key, value)| {
+                    value
+                        .into_iter()
+                        .sorted_by_cached_key(|(_id, entry)| entry.contig.start())
+                })
+                .flatten()
+                .map(|(id, value)| (id.clone(), value.clone())),
+        );
 
         AnnotIterator {
             store: self,
@@ -290,11 +280,8 @@ impl AnnotStore {
                             UPSTREAM_TYPE_NAME.into()
                         }
                         else {
-                            format!(
-                                "{}_{}",
-                                entry.feature_type, UPSTREAM_TYPE_NAME
-                            )
-                            .into()
+                            format!("{}_{}", entry.feature_type, UPSTREAM_TYPE_NAME)
+                                .into()
                         },
                     ),
                     None,
@@ -361,11 +348,8 @@ impl AnnotStore {
                             DOWNSTREAM_TYPE_NAME.into()
                         }
                         else {
-                            format!(
-                                "{}_{}",
-                                entry.feature_type, DOWNSTREAM_TYPE_NAME
-                            )
-                            .into()
+                            format!("{}_{}", entry.feature_type, DOWNSTREAM_TYPE_NAME)
+                                .into()
                         },
                     ),
                     None,
@@ -483,10 +467,9 @@ impl FromIterator<GffEntry> for AnnotStore {
 impl FromIterator<(String, GffEntry)> for AnnotStore {
     fn from_iter<T: IntoIterator<Item = (String, GffEntry)>>(iter: T) -> Self {
         let mut new_self = Self::new();
-        iter.into_iter()
-            .for_each(|(_id, entry)| {
-                new_self.insert(entry);
-            });
+        iter.into_iter().for_each(|(_id, entry)| {
+            new_self.insert(entry);
+        });
         new_self
     }
 }
@@ -504,8 +487,7 @@ pub fn create_test_entry(
     let contig =
         Contig::new(arcstr::ArcStr::from(seqname), start, end, Strand::Forward);
 
-    let attrs =
-        GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
+    let attrs = GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
 
     GffEntry::new(
         contig,
@@ -536,10 +518,7 @@ pub fn create_test_entry_with_parent(
 
     if let Some(parents) = parent {
         attrs = attrs.with_parent(Some(
-            parents
-                .into_iter()
-                .map(|p| BsxSmallStr::from(p))
-                .collect(),
+            parents.into_iter().map(|p| BsxSmallStr::from(p)).collect(),
         ));
     }
 
@@ -601,8 +580,7 @@ mod tests {
         let mut store = AnnotStore::new();
 
         // Create parent entry
-        let parent =
-            create_test_entry_with_parent("gene1", "chr1", 1000, 5000, None);
+        let parent = create_test_entry_with_parent("gene1", "chr1", 1000, 5000, None);
         store.insert(parent);
 
         // Create child entries with parent references
@@ -644,28 +622,20 @@ mod tests {
         store.insert(entry);
 
         // Add upstream regions
-        store.add_upstream(
-            |entry| entry.feature_type == ArcStr::from("gene"),
-            500,
-        );
+        store.add_upstream(|entry| entry.feature_type == ArcStr::from("gene"), 500);
         assert_eq!(store.len(), 2);
 
         // Add downstream regions
-        store.add_downstream(
-            |entry| entry.feature_type == ArcStr::from("gene"),
-            500,
-        );
+        store.add_downstream(|entry| entry.feature_type == ArcStr::from("gene"), 500);
         assert_eq!(store.len(), 3);
 
         // Check types
         let has_upstream = store
             .iter()
             .any(|(_, entry)| entry.feature_type.contains("upstream"));
-        let has_downstream = store.iter().any(|(_, entry)| {
-            entry
-                .feature_type
-                .contains("downstream")
-        });
+        let has_downstream = store
+            .iter()
+            .any(|(_, entry)| entry.feature_type.contains("downstream"));
         assert!(has_upstream);
         assert!(has_downstream);
     }

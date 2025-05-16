@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::annotation::RawGffEntry;
 use bsxplorer2::data_structs::annotation::{AnnotStore,
                                            GffEntry,
-                                           GffEntryAttributes};
+                                           GffEntryAttributes,
+                                           RawGffEntry};
 use bsxplorer2::data_structs::coords::Contig;
 use pyo3::exceptions::{PyFileNotFoundError, PyIOError, PyValueError};
 use pyo3::prelude::*;
@@ -66,10 +66,7 @@ impl PyAnnotStore {
         use std::fs::File;
 
         let file = File::open(&path).map_err(|e| {
-            PyFileNotFoundError::new_err(format!(
-                "Failed to open BED file: {}",
-                e
-            ))
+            PyFileNotFoundError::new_err(format!("Failed to open BED file: {}", e))
         })?;
 
         use bio::io::bed;
@@ -78,10 +75,7 @@ impl PyAnnotStore {
 
         for record in reader.records() {
             let record = record.map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Error reading BED record: {}",
-                    e
-                ))
+                PyValueError::new_err(format!("Error reading BED record: {}", e))
             })?;
 
             let entry = GffEntry::from(record);
@@ -122,12 +116,7 @@ impl PyAnnotStore {
     ) -> Option<Vec<String>> {
         self.inner
             .get_children(&id.into())
-            .map(|entry| {
-                entry
-                    .into_iter()
-                    .map(|child| child.to_string())
-                    .collect()
-            })
+            .map(|entry| entry.into_iter().map(|child| child.to_string()).collect())
     }
 
     pub fn get_parents(
@@ -136,12 +125,7 @@ impl PyAnnotStore {
     ) -> Option<Vec<String>> {
         self.inner
             .get_parents(&id.into())
-            .map(|entry| {
-                entry
-                    .into_iter()
-                    .map(|parent| parent.to_string())
-                    .collect()
-            })
+            .map(|entry| entry.into_iter().map(|parent| parent.to_string()).collect())
     }
 
     pub fn id_map(&self) -> HashMap<String, PyGffEntry> {
@@ -159,9 +143,7 @@ impl PyAnnotStore {
             .map(|(k, v)| {
                 (
                     k.to_string(),
-                    v.into_iter()
-                        .map(|parent| parent.to_string())
-                        .collect(),
+                    v.into_iter().map(|parent| parent.to_string()).collect(),
                 )
             })
             .collect()
@@ -174,9 +156,7 @@ impl PyAnnotStore {
             .map(|(k, v)| {
                 (
                     k.to_string(),
-                    v.into_iter()
-                        .map(|child| child.to_string())
-                        .collect(),
+                    v.into_iter().map(|child| child.to_string()).collect(),
                 )
             })
             .collect()
@@ -186,8 +166,7 @@ impl PyAnnotStore {
         &mut self,
         length: u32,
     ) -> PyResult<()> {
-        self.inner
-            .add_upstream(|_| true, length);
+        self.inner.add_upstream(|_| true, length);
         Ok(())
     }
 
@@ -195,8 +174,7 @@ impl PyAnnotStore {
         &mut self,
         length: u32,
     ) -> PyResult<()> {
-        self.inner
-            .add_downstream(|_| true, length);
+        self.inner.add_downstream(|_| true, length);
         Ok(())
     }
 

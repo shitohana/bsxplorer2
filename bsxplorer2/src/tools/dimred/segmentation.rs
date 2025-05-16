@@ -25,20 +25,15 @@ impl MethDataBinom {
             count_total.len(),
             "count_m and count_total must have the same length"
         );
-        let count_m_cumsum = count_m
-            .iter()
-            .fold(vec![0], |mut acc, new| {
-                acc.push(acc.last().unwrap() + *new);
-                acc
-            });
+        let count_m_cumsum = count_m.iter().fold(vec![0], |mut acc, new| {
+            acc.push(acc.last().unwrap() + *new);
+            acc
+        });
 
-        let count_total_cumsum =
-            count_total
-                .iter()
-                .fold(vec![0], |mut acc, new| {
-                    acc.push(acc.last().unwrap() + *new);
-                    acc
-                });
+        let count_total_cumsum = count_total.iter().fold(vec![0], |mut acc, new| {
+            acc.push(acc.last().unwrap() + *new);
+            acc
+        });
 
         Self {
             count_m_cumsum,

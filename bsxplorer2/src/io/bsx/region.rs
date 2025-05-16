@@ -18,14 +18,13 @@ pub struct RegionReader<R, S, P>
 where
     R: Read + Seek,
     S: SeqNameStr,
-    P: SeqPosNum,
-{
+    P: SeqPosNum, {
     /// Cache of encoded BSX batches.
-    cache: BTreeMap<usize, BsxBatch>,
+    cache:         BTreeMap<usize, BsxBatch>,
     /// Inner reader for the BSX file.
-    inner: BsxFileReader<R>,
+    inner:         BsxFileReader<R>,
     /// Index of the BSX file.
-    index: BatchIndex<S, P>,
+    index:         BatchIndex<S, P>,
     /// Preprocessing function to be applied to each batch before it is cached.
     preprocess_fn: Option<Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
 }
@@ -51,7 +50,8 @@ where
 
         if batches_found {
             required_batches
-        } else {
+        }
+        else {
             None
         }
     }
@@ -83,8 +83,7 @@ where
         for idx in to_read {
             let mut data = self.inner.get_batch(idx).transpose()?.ok_or_else(|| {
                 anyhow!(
-                    "Batch index {} reported by find() but not found by \
-                         get_batch()",
+                    "Batch index {} reported by find() but not found by get_batch()",
                     idx
                 )
             })?;
@@ -135,7 +134,8 @@ where
                     SearchSortedSide::Left,
                     false,
                 )[0]
-            } else {
+            }
+            else {
                 0
             };
 
@@ -146,20 +146,26 @@ where
                     SearchSortedSide::Left,
                     false,
                 )[0]
-            } else {
+            }
+            else {
                 batch.len() as u32
             };
 
-            let slice = batch.slice(slice_start as i64, (slice_end - slice_start) as usize);
+            let slice =
+                batch.slice(slice_start as i64, (slice_end - slice_start) as usize);
             res.push(slice);
         }
         res.sort_by_key(|b| b.first_pos());
         if res.is_empty() {
             Ok(None)
-        } else if res.len() == 1 {
+        }
+        else if res.len() == 1 {
             Ok(Some(res.pop().unwrap()))
-        } else {
-            Some(BsxBatchBuilder::concat(res)).transpose().map_err(|e| anyhow::anyhow!(e))
+        }
+        else {
+            Some(BsxBatchBuilder::concat(res))
+                .transpose()
+                .map_err(|e| anyhow::anyhow!(e))
         }
     }
 
@@ -221,10 +227,12 @@ where
                 //                   |----<contig>-----|
                 {
                     IntersectionKind::PartialRight
-                } else {
+                }
+                else {
                     IntersectionKind::None
                 }
-            } else {
+            }
+            else {
                 IntersectionKind::None
             };
 
@@ -306,8 +314,8 @@ where
             match self.determine_intersection(&contig)? {
                 IntersectionKind::PartialLeft => {
                     bail!(
-                        "Required batch has already been processed. Make sure \
-                         the regions are sorted with BatchIndex.sort"
+                        "Required batch has already been processed. Make sure the \
+                         regions are sorted with BatchIndex.sort"
                     )
                 },
                 IntersectionKind::Full => {
@@ -316,10 +324,12 @@ where
                     if let Some(data) = res {
                         if let Some(postprocess_fn) = postprocess_fn {
                             return Some(postprocess_fn(data)).transpose();
-                        } else {
+                        }
+                        else {
                             return Some(Ok(data)).transpose();
                         }
-                    } else {
+                    }
+                    else {
                         return Ok(None);
                     }
                 },
@@ -327,7 +337,8 @@ where
                     if let Some(required_batches) = self.find(&contig) {
                         self.update_cache(&required_batches)?;
                         continue;
-                    } else {
+                    }
+                    else {
                         return Ok(None);
                     }
                 },

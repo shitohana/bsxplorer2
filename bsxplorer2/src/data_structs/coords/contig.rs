@@ -187,16 +187,11 @@ where
     fn from(value: bio::io::bed::Record) -> Self {
         Self {
             seqname: S::from_str(value.chrom()).unwrap(),
-            start:   P::from(value.start())
-                .expect("Failed to convert start to P"),
+            start:   P::from(value.start()).expect("Failed to convert start to P"),
             end:     P::from(value.end()).expect("Failed to convert end to P"),
             strand:  match value.strand() {
-                Some(bio::bio_types::strand::Strand::Forward) => {
-                    Strand::Forward
-                },
-                Some(bio::bio_types::strand::Strand::Reverse) => {
-                    Strand::Reverse
-                },
+                Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
+                Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
                 Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,
                 None => Strand::None,
             },
@@ -219,12 +214,7 @@ where
                 .to_u64()
                 .expect("Failed to convert start to u64"),
         );
-        record.set_end(
-            value
-                .end
-                .to_u64()
-                .expect("Failed to convert end to u64"),
-        );
+        record.set_end(value.end.to_u64().expect("Failed to convert end to u64"));
         record
     }
 }
@@ -244,12 +234,8 @@ where
             end:     P::from(value.end().to_owned())
                 .expect("Failed to convert end to P"),
             strand:  match value.strand() {
-                Some(bio::bio_types::strand::Strand::Forward) => {
-                    Strand::Forward
-                },
-                Some(bio::bio_types::strand::Strand::Reverse) => {
-                    Strand::Reverse
-                },
+                Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
+                Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
                 Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,
                 None => Strand::None,
             },
@@ -373,9 +359,7 @@ where
             self.start
                 .to_usize()
                 .expect("Failed to convert start to usize"),
-            self.end
-                .to_usize()
-                .expect("Failed to convert end to usize"),
+            self.end.to_usize().expect("Failed to convert end to usize"),
             self.strand
         )
     }

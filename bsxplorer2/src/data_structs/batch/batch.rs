@@ -8,6 +8,12 @@ use polars::prelude::*;
 use statrs::distribution::DiscreteCDF;
 use statrs::statistics::Statistics;
 
+use super::lazy::LazyBsxBatch;
+use super::{create_empty_categorical_dtype,
+            create_empty_series,
+            get_col_fn,
+            BsxBatchBuilder,
+            BsxColumns as BsxCol};
 use crate::data_structs::context_data::ContextData;
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
@@ -15,10 +21,6 @@ use crate::data_structs::methstats::MethylationStats;
 use crate::data_structs::typedef::BsxSmallStr;
 use crate::io::report::ReportType;
 use crate::plsmallstr;
-use super::lazy::LazyBsxBatch;
-use super::{
-    create_empty_categorical_dtype, create_empty_series, get_col_fn, BsxBatchBuilder, BsxColumns as BsxCol
-};
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,9 +71,11 @@ impl BsxBatch {
             .all_equal(),
             "All input vectors must have the same length"
         );
-        let density = count_m.iter().zip(count_total.iter())
-                .map(|(m, t)| *m as f32 / *t as f32 )
-                .collect_vec();
+        let density = count_m
+            .iter()
+            .zip(count_total.iter())
+            .map(|(m, t)| *m as f32 / *t as f32)
+            .collect_vec();
         let height = positions.len();
         let df = DataFrame::from_iter([
             {
@@ -151,7 +155,10 @@ impl BsxBatch {
         }
     }
 
-    pub fn extend(&mut self, other: &Self) -> PolarsResult<()> {
+    pub fn extend(
+        &mut self,
+        other: &Self,
+    ) -> PolarsResult<()> {
         let mut new = self.data.vstack(other.data())?;
         new.rechunk_mut();
         BsxBatchBuilder::no_checks()
@@ -162,27 +169,39 @@ impl BsxBatch {
         Ok(())
     }
 
-    pub fn add_context_data(self, context_data: ContextData) -> PolarsResult<Self> {
+    pub fn add_context_data(
+        self,
+        context_data: ContextData,
+    ) -> PolarsResult<Self> {
         let chr = self.seqname().unwrap_or_default().to_owned();
         let context_df = context_data.to_df();
 
         let self_selected = self
-            .data.lazy()
+            .data
+            .lazy()
             .drop([BsxCol::Strand.col(), BsxCol::Context.col()]);
         let joined = context_df
             .lazy()
-            .left_join(self_selected, BsxCol::Position.col(), BsxCol::Position.col())
+            .left_join(
+                self_selected,
+                BsxCol::Position.col(),
+                BsxCol::Position.col(),
+            )
             .with_columns([
-                BsxCol::Chr.col()
+                BsxCol::Chr
+                    .col()
                     .fill_null(lit(chr))
                     .alias(BsxCol::Chr.as_str()),
-                BsxCol::CountM.col()
+                BsxCol::CountM
+                    .col()
                     .fill_null(lit(0))
                     .alias(BsxCol::CountM.as_str()),
-                BsxCol::CountTotal.col()
+                BsxCol::CountTotal
+                    .col()
                     .fill_null(lit(0))
                     .alias(BsxCol::CountTotal.as_str()),
-                BsxCol::Density.col()
+                BsxCol::Density
+                    .col()
                     .fill_null(lit(f32::NAN))
                     .alias(BsxCol::Density.as_str()),
             ]);
@@ -211,8 +230,14 @@ impl BsxBatch {
             ReportType::CgMap => report_type_conversion::cgmap(lf),
             ReportType::Coverage => report_type_conversion::coverage(lf),
         }
-            .cast(report_type.hashmap(), true)
-            .select(report_type.col_names().into_iter().map(|s| col(*s)).collect_vec());
+        .cast(report_type.hashmap(), true)
+        .select(
+            report_type
+                .col_names()
+                .into_iter()
+                .map(|s| col(*s))
+                .collect_vec(),
+        );
 
         let res_schema = res.collect_schema()?;
         let target_schema = SchemaRef::new(report_type.schema());
@@ -493,7 +518,8 @@ mod tests {
     use rstest::{fixture, rstest};
 
     use super::*;
-    use crate::{data_structs::batch::create_caregorical_dtype, utils::get_categorical_dtype};
+    use crate::data_structs::batch::create_caregorical_dtype;
+    use crate::utils::get_categorical_dtype;
 
     #[test]
     fn test_empty_batch() {
@@ -510,8 +536,9 @@ mod tests {
             vec![true, false, true, true, false],
             vec![Some(true), Some(false), Some(true), None, None],
             vec![5, 10, 15, 10, 5],
-            vec![10, 30, 20, 10, 10]
-        ).unwrap()
+            vec![10, 30, 20, 10, 10],
+        )
+        .unwrap()
     }
 
     #[rstest]
@@ -524,28 +551,63 @@ mod tests {
 
         // Test position column
         let positions = test_batch.position();
-        assert_eq!(positions.into_iter().collect::<Vec<_>>(), vec![Some(3), Some(5), Some(9), Some(12), Some(15)]);
+        assert_eq!(positions.into_iter().collect::<Vec<_>>(), vec![
+            Some(3),
+            Some(5),
+            Some(9),
+            Some(12),
+            Some(15)
+        ]);
 
         // Test strand column
         let strands = test_batch.strand();
-        assert_eq!(strands.into_iter().collect::<Vec<_>>(), vec![Some(true), Some(false), Some(true), Some(true), Some(false)]);
+        assert_eq!(strands.into_iter().collect::<Vec<_>>(), vec![
+            Some(true),
+            Some(false),
+            Some(true),
+            Some(true),
+            Some(false)
+        ]);
 
         // Test context column
         let contexts = test_batch.context();
-        assert_eq!(contexts.into_iter().collect::<Vec<_>>(), vec![Some(true), Some(false), Some(true), None, None]);
+        assert_eq!(contexts.into_iter().collect::<Vec<_>>(), vec![
+            Some(true),
+            Some(false),
+            Some(true),
+            None,
+            None
+        ]);
 
         // Test count_m column
         let count_m = test_batch.count_m();
-        assert_eq!(count_m.into_iter().collect::<Vec<_>>(), vec![Some(5), Some(10), Some(15), Some(10), Some(5)]);
+        assert_eq!(count_m.into_iter().collect::<Vec<_>>(), vec![
+            Some(5),
+            Some(10),
+            Some(15),
+            Some(10),
+            Some(5)
+        ]);
 
         // Test count_total column
         let count_total = test_batch.count_total();
-        assert_eq!(count_total.into_iter().collect::<Vec<_>>(), vec![Some(10), Some(30), Some(20), Some(10), Some(10)]);
+        assert_eq!(count_total.into_iter().collect::<Vec<_>>(), vec![
+            Some(10),
+            Some(30),
+            Some(20),
+            Some(10),
+            Some(10)
+        ]);
 
         // Test density column
         let density = test_batch.density();
-        assert_eq!(density.into_iter().map(|v| v.map(|f| (f * 100.0).round() / 100.0)).collect::<Vec<_>>(),
-                 vec![Some(0.5), Some(0.33), Some(0.75), Some(1.0), Some(0.5)]);
+        assert_eq!(
+            density
+                .into_iter()
+                .map(|v| v.map(|f| (f * 100.0).round() / 100.0))
+                .collect::<Vec<_>>(),
+            vec![Some(0.5), Some(0.33), Some(0.75), Some(1.0), Some(0.5)]
+        );
     }
 
     #[rstest]
@@ -555,8 +617,15 @@ mod tests {
         assert_eq!(left.len(), 2);
         assert_eq!(right.len(), 3);
 
-        assert_eq!(left.position().into_iter().collect::<Vec<_>>(), vec![Some(3), Some(5)]);
-        assert_eq!(right.position().into_iter().collect::<Vec<_>>(), vec![Some(9), Some(12), Some(15)]);
+        assert_eq!(left.position().into_iter().collect::<Vec<_>>(), vec![
+            Some(3),
+            Some(5)
+        ]);
+        assert_eq!(right.position().into_iter().collect::<Vec<_>>(), vec![
+            Some(9),
+            Some(12),
+            Some(15)
+        ]);
     }
 
     #[rstest]
@@ -564,7 +633,11 @@ mod tests {
         let sliced = test_batch.slice(1, 3);
 
         assert_eq!(sliced.len(), 3);
-        assert_eq!(sliced.position().into_iter().collect::<Vec<_>>(), vec![Some(5), Some(9), Some(12)]);
+        assert_eq!(sliced.position().into_iter().collect::<Vec<_>>(), vec![
+            Some(5),
+            Some(9),
+            Some(12)
+        ]);
     }
 
     #[rstest]

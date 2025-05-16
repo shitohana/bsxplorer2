@@ -27,8 +27,7 @@ where
         + fmt::Debug, {
     if x.len() != y.len() {
         warn!(
-            "Cannot calculate Pearson's r: x length ({}) doesn't match y \
-             length ({})",
+            "Cannot calculate Pearson's r: x length ({}) doesn't match y length ({})",
             x.len(),
             y.len()
         );
@@ -40,14 +39,8 @@ where
         return 0.0;
     }
 
-    let x_f64 = x
-        .iter()
-        .map(|x| x.to_f64().unwrap())
-        .collect::<Vec<_>>();
-    let y_f64 = y
-        .iter()
-        .map(|y| y.to_f64().unwrap())
-        .collect::<Vec<_>>();
+    let x_f64 = x.iter().map(|x| x.to_f64().unwrap()).collect::<Vec<_>>();
+    let y_f64 = y.iter().map(|y| y.to_f64().unwrap()).collect::<Vec<_>>();
 
     let x_mean = x_f64.iter().mean();
     let y_mean = y_f64.iter().mean();
@@ -61,14 +54,8 @@ where
 
     // Calculate denominator (product of standard deviations)
     let denominator = {
-        let x_dev: f64 = x_f64
-            .iter()
-            .map(|valx| (valx - x_mean).powi(2))
-            .sum();
-        let y_dev: f64 = y_f64
-            .iter()
-            .map(|valy| (valy - y_mean).powi(2))
-            .sum();
+        let x_dev: f64 = x_f64.iter().map(|valx| (valx - x_mean).powi(2)).sum();
+        let y_dev: f64 = y_f64.iter().map(|valy| (valy - y_mean).powi(2)).sum();
         (x_dev * y_dev).sqrt()
     };
 
@@ -163,11 +150,7 @@ pub fn mann_whitney_u<F: Float>(
         let avg_rank = (start as f64 + 1.0 + end as f64) / 2.0; // ranks are 1-indexed
 
         // Assign average rank to all tied values
-        for val in observations
-            .iter_mut()
-            .take(end)
-            .skip(start)
-        {
+        for val in observations.iter_mut().take(end).skip(start) {
             val.rank = avg_rank;
         }
 

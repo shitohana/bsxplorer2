@@ -22,10 +22,8 @@ impl PyRegionReader {
     fn new(file: FileOrFileLike) -> PyResult<Self> {
         let file = file.get_reader()?;
         let mut bsx_reader: BsxFileReader<Box<_>> = BsxFileReader::new(file);
-        let index: BatchIndex<BsxSmallStr, u32> = bsx_reader
-            .index()
-            .map_err(PyErr::from)?
-            .clone();
+        let index: BatchIndex<BsxSmallStr, u32> =
+            bsx_reader.index().map_err(PyErr::from)?.clone();
 
         Ok(Self {
             inner: RegionReader::new(bsx_reader, index, None),
@@ -38,11 +36,7 @@ impl PyRegionReader {
         postprocess_fn: Py<PyAny>,
     ) -> PyResult<Option<PyDataFrame>> {
         Python::with_gil(|py| {
-            if !postprocess_fn
-                .clone_ref(py)
-                .into_bound(py)
-                .is_callable()
-            {
+            if !postprocess_fn.clone_ref(py).into_bound(py).is_callable() {
                 return Err(PyValueError::new_err(
                     "Preprocess function must be callable",
                 ));
@@ -51,23 +45,19 @@ impl PyRegionReader {
         })?;
 
         // Create a Box<dyn Fn> to match the expected function type
-        let rust_postprocess = Box::new(
-            move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
-                let py_batch_res =
-                    Python::with_gil(|py| -> PyResult<PyBsxBatch> {
-                        let py_batch = PyBsxBatch::from(entry);
-                        let args =
-                            PyTuple::new_bound(py, &[py_batch.into_py(py)]);
-                        let result = postprocess_fn.call1(py, args)?;
-                        let py_batch =
-                            result.extract::<PyBsxBatch>(py)?;
-                        Ok(py_batch)
-                    });
+        let rust_postprocess =
+            Box::new(move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
+                let py_batch_res = Python::with_gil(|py| -> PyResult<PyBsxBatch> {
+                    let py_batch = PyBsxBatch::from(entry);
+                    let args = PyTuple::new_bound(py, &[py_batch.into_py(py)]);
+                    let result = postprocess_fn.call1(py, args)?;
+                    let py_batch = result.extract::<PyBsxBatch>(py)?;
+                    Ok(py_batch)
+                });
                 py_batch_res
                     .map_err(|e| anyhow::anyhow!("{}", e))
                     .map(|batch| batch.into())
-            },
-        );
+            });
 
         let result = self.inner.query(contig.into(), None);
 
@@ -97,11 +87,7 @@ impl PyRegionReader {
         preprocess_fn: Py<PyAny>,
     ) -> PyResult<()> {
         Python::with_gil(|py| {
-            if !preprocess_fn
-                .clone_ref(py)
-                .into_bound(py)
-                .is_callable()
-            {
+            if !preprocess_fn.clone_ref(py).into_bound(py).is_callable() {
                 return Err(PyValueError::new_err(
                     "Preprocess function must be callable",
                 ));
@@ -110,26 +96,21 @@ impl PyRegionReader {
         })?;
 
         // Create a Box<dyn Fn> to match the expected function type
-        let rust_preprocess_fn = Box::new(
-            move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
-                let py_batch_res =
-                    Python::with_gil(|py| -> PyResult<PyBsxBatch> {
-                        let py_batch = PyBsxBatch::from(entry);
-                        let args =
-                            PyTuple::new_bound(py, &[py_batch.into_py(py)]);
-                        let result = preprocess_fn.call1(py, args)?;
-                        let py_batch =
-                            result.extract::<PyBsxBatch>(py)?;
-                        Ok(py_batch)
-                    });
+        let rust_preprocess_fn =
+            Box::new(move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
+                let py_batch_res = Python::with_gil(|py| -> PyResult<PyBsxBatch> {
+                    let py_batch = PyBsxBatch::from(entry);
+                    let args = PyTuple::new_bound(py, &[py_batch.into_py(py)]);
+                    let result = preprocess_fn.call1(py, args)?;
+                    let py_batch = result.extract::<PyBsxBatch>(py)?;
+                    Ok(py_batch)
+                });
                 py_batch_res
                     .map_err(|e| anyhow::anyhow!("{}", e))
                     .map(|batch| batch.into())
-            },
-        );
+            });
 
-        self.inner
-            .set_preprocess_fn(Some(rust_preprocess_fn));
+        self.inner.set_preprocess_fn(Some(rust_preprocess_fn));
         Ok(())
     }
 

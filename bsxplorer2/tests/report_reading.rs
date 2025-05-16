@@ -111,12 +111,12 @@
 //         }
 //     }
 
-//     // Verify we have the expected number of final batches (one per chromosome)
-//     assert_eq!(final_batch_num, N_CHR);
+//     // Verify we have the expected number of final batches (one per
+// chromosome)     assert_eq!(final_batch_num, N_CHR);
 
 //     // Compare read data with original data
-//     // Note: We may need to combine read batches if they were split due to chunk
-//     // size
+//     // Note: We may need to combine read batches if they were split due to
+// chunk     // size
 //     let mut combined_read_batches = Vec::new();
 //     let mut current_chr = String::new();
 //     let mut current_batch = None;

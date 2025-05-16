@@ -40,7 +40,8 @@ impl PyBsxBatch {
     #[pyo3(signature = (chr, chr_dtype, positions, strand, context, count_m, count_total))]
     pub fn new(
         chr: String,
-        chr_dtype: Option<PyDataType>, // Can optionally provide a specific categorical dtype
+        chr_dtype: Option<PyDataType>, /* Can optionally provide a specific
+                                        * categorical dtype */
         positions: Vec<u32>,
         strand: Vec<bool>,
         context: Vec<Option<bool>>,
@@ -106,7 +107,8 @@ impl PyBsxBatch {
             casted_df.rechunk_mut()
         }
 
-        // Safety: The checks should guarantee the DataFrame conforms to the BsxBatch schema
+        // Safety: The checks should guarantee the DataFrame conforms to the BsxBatch
+        // schema
         Ok(unsafe { BsxBatch::new_unchecked(casted_df) }.into())
     }
 
@@ -125,12 +127,12 @@ impl PyBsxBatch {
 
     #[staticmethod]
     pub fn concat(batches: Vec<PyBsxBatch>) -> PyResult<Self> {
-        let rust_batches: Vec<BsxBatch> = batches.into_iter().map(|b| b.inner).collect();
+        let rust_batches: Vec<BsxBatch> =
+            batches.into_iter().map(|b| b.inner).collect();
         let result = BsxBatchBuilder::concat(rust_batches)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(result.into())
     }
-
 
     // COLUMN GETTERS (return PySeries)
     pub fn chr(&self) -> PyResult<PySeries> {
@@ -162,10 +164,12 @@ impl PyBsxBatch {
     }
 
     // General column accessor
-    pub fn column(&self, name: &str) -> Option<PySeries> {
-         self.inner.column(name).map(|s| PySeries(s.clone()))
+    pub fn column(
+        &self,
+        name: &str,
+    ) -> Option<PySeries> {
+        self.inner.column(name).map(|s| PySeries(s.clone()))
     }
-
 
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
@@ -197,11 +201,17 @@ impl PyBsxBatch {
         self.inner.slice(start, length).into()
     }
 
-    pub fn add_context_data(&self, context_data: PyContextData) -> PyResult<Self> {
+    pub fn add_context_data(
+        &self,
+        context_data: PyContextData,
+    ) -> PyResult<Self> {
         // clone needed because add_context_data takes Self, not &Self
         let context_data: ContextData = context_data.into();
-        let result_batch = self.inner.clone().add_context_data(context_data)
-             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        let result_batch = self
+            .inner
+            .clone()
+            .add_context_data(context_data)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(result_batch.into())
     }
 
@@ -239,10 +249,10 @@ impl PyBsxBatch {
         self.inner.as_contig().map(|contig| contig.into())
     }
 
-
     // Stats methods
-    // Skipping get_methylation_stats for now as it needs a wrapper type PyMethylationStats
-    // pub fn get_methylation_stats(&self) -> PyResult<PyMethylationStats> { ... }
+    // Skipping get_methylation_stats for now as it needs a wrapper type
+    // PyMethylationStats pub fn get_methylation_stats(&self) ->
+    // PyResult<PyMethylationStats> { ... }
 
     pub fn get_coverage_dist(&self) -> PyResult<HashMap<u16, u32>> {
         Ok(self.inner.get_coverage_dist().into_iter().collect())
@@ -250,19 +260,13 @@ impl PyBsxBatch {
 
     pub fn get_context_stats(&self) -> PyResult<HashMap<PyContext, (f64, u32)>> {
         let rust_stats = self.inner.get_context_stats();
-        let py_stats = rust_stats
-            .into_iter()
-            .map(|(k, v)| (k.into(), v))
-            .collect();
+        let py_stats = rust_stats.into_iter().map(|(k, v)| (k.into(), v)).collect();
         Ok(py_stats)
     }
 
     pub fn get_strand_stats(&self) -> PyResult<HashMap<PyStrand, (f64, u32)>> {
         let rust_stats = self.inner.get_strand_stats();
-        let py_stats = rust_stats
-            .into_iter()
-            .map(|(k, v)| (k.into(), v))
-            .collect();
+        let py_stats = rust_stats.into_iter().map(|(k, v)| (k.into(), v)).collect();
         Ok(py_stats)
     }
 
@@ -271,9 +275,12 @@ impl PyBsxBatch {
         mean: f64,
         pvalue: f64,
     ) -> PyResult<Self> {
-         // clone needed because as_binom takes Self, not &Self
-        let binom_batch = self.inner.clone().as_binom(mean, pvalue)
-             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        // clone needed because as_binom takes Self, not &Self
+        let binom_batch = self
+            .inner
+            .clone()
+            .as_binom(mean, pvalue)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(binom_batch.into())
     }
 
@@ -284,7 +291,8 @@ impl PyBsxBatch {
     ) -> PyResult<PyDataFrame> {
         let batch = self.inner.clone(); // Clone the batch to avoid consuming it
         let report_type = report_type.to_rust();
-        batch.into_report(report_type)
+        batch
+            .into_report(report_type)
             .map(|df| PyDataFrame(df))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     }
@@ -294,11 +302,11 @@ impl PyBsxBatch {
         Ok(self.inner.clone().lazy().into())
     }
 
-
     // Python special methods
     pub fn height(&self) -> usize {
         self.inner.len()
     }
+
     pub fn __len__(&self) -> usize {
         self.inner.len()
     }
@@ -331,4 +339,5 @@ impl PyBsxBatch {
 }
 
 
-// Removed PyEncodedBsxBatch, encode, and decode functions as they have no corresponding Rust types/methods in the provided context.
+// Removed PyEncodedBsxBatch, encode, and decode functions as they have no
+// corresponding Rust types/methods in the provided context.

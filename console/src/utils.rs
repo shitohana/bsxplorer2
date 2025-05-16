@@ -66,8 +66,7 @@ pub struct UtilsArgs {
         long,
         required = false,
         default_value_t = true,
-        help = "Display progress bar (Disable if you need clean pipeline \
-                logs)."
+        help = "Display progress bar (Disable if you need clean pipeline logs)."
     )]
     pub(crate) progress: bool,
     #[arg(

@@ -46,14 +46,8 @@ impl PyContextData {
         let (ids, strands, contexts) = self.inner.clone().take();
         (
             ids,
-            strands
-                .into_iter()
-                .map(PyStrand::from)
-                .collect(),
-            contexts
-                .into_iter()
-                .map(PyContext::from)
-                .collect(),
+            strands.into_iter().map(PyStrand::from).collect(),
+            contexts.into_iter().map(PyContext::from).collect(),
         )
     }
 

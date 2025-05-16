@@ -45,8 +45,9 @@ impl PyBatchIndex {
     }
 
     /// Insert a contig and its corresponding batch index
-    #[pyo3(text_signature = "($self, seqname: str, start: int, end: int, \
-                             batch_idx: int)")]
+    #[pyo3(
+        text_signature = "($self, seqname: str, start: int, end: int, batch_idx: int)"
+    )]
     fn insert(
         &mut self,
         seqname: String,
@@ -96,8 +97,8 @@ impl PyBatchIndex {
         &self,
         filename: String,
     ) -> PyResult<()> {
-        let file = File::create(filename)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let file =
+            File::create(filename).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let mut writer = BufWriter::new(file);
         self.inner
             .clone()
@@ -110,8 +111,8 @@ impl PyBatchIndex {
     #[staticmethod]
     #[pyo3(text_signature = "(filename)")]
     fn load(filename: String) -> PyResult<Self> {
-        let file = File::open(filename)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let file =
+            File::open(filename).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let mut reader = BufReader::new(file);
         let inner = BatchIndex::<BsxSmallStr, u32>::from_file(&mut reader)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -123,11 +124,14 @@ impl PyBatchIndex {
         contigs: Vec<PyContig>,
     ) -> Vec<PyContig> {
         self.inner
-            .sort(
-                contigs
-                    .into_iter()
-                    .map(|contig| Contig::new(contig.seqname.into(), contig.start, contig.end, contig.strand.into())),
-            )
+            .sort(contigs.into_iter().map(|contig| {
+                Contig::new(
+                    contig.seqname.into(),
+                    contig.start,
+                    contig.end,
+                    contig.strand.into(),
+                )
+            }))
             .map(|contig| contig.into())
             .collect()
     }

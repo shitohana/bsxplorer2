@@ -1,14 +1,15 @@
-
 use hashbrown::HashMap;
 use itertools::Itertools;
 use polars::prelude::*;
 
+use super::{create_caregorical_dtype,
+            create_empty_categorical_dtype,
+            name_dtype_tuple,
+            BsxBatch,
+            BsxColumns as BsxCol};
 use crate::data_structs::coords::Contig;
 use crate::io::report::ReportType;
 use crate::with_field_fn;
-use super::{
-    create_caregorical_dtype, create_empty_categorical_dtype, name_dtype_tuple, BsxBatch, BsxColumns as BsxCol
-};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BsxBatchBuilder {
@@ -170,22 +171,17 @@ impl BsxBatchBuilder {
             .collect::<Option<Vec<_>>>();
 
         if contigs.is_none() {
-            return Ok(BsxBatch::empty(None))
+            return Ok(BsxBatch::empty(None));
         }
         let contigs = contigs.unwrap();
 
-        if !contigs
-            .iter()
-            .map(Contig::seqname)
-            .all_equal()
-        {
-            return Err(PolarsError::ComputeError("Chromosomes do not match".into()))
+        if !contigs.iter().map(Contig::seqname).all_equal() {
+            return Err(PolarsError::ComputeError("Chromosomes do not match".into()));
         }
-        if !contigs
-            .windows(2)
-            .all(|w| w[1].start() >= w[0].end())
-        {
-            return Err(PolarsError::ComputeError("Batch positions are not sorted".into()))
+        if !contigs.windows(2).all(|w| w[1].start() >= w[0].end()) {
+            return Err(PolarsError::ComputeError(
+                "Batch positions are not sorted".into(),
+            ));
         }
         let data = concat(
             batches
@@ -200,10 +196,7 @@ impl BsxBatchBuilder {
             .with_rechunk(true)
             .with_check_duplicates(true)
             .with_chr_dtype(Some(
-                data.schema()
-                    .get(BsxCol::Chr.as_str())
-                    .unwrap()
-                    .clone(),
+                data.schema().get(BsxCol::Chr.as_str()).unwrap().clone(),
             ));
 
         builder.checks_only(&data)?;
@@ -225,7 +218,9 @@ mod build {
     pub fn check_sorted(df: &DataFrame) -> PolarsResult<bool> {
         let pos_col = df.column(BsxCol::Position.as_str())?;
         if pos_col.n_chunks() > 1 {
-            return Err(PolarsError::ComputeError("Column is chunked. Rechunk before operation".into()))
+            return Err(PolarsError::ComputeError(
+                "Column is chunked. Rechunk before operation".into(),
+            ));
         }
 
         Ok(df
@@ -234,8 +229,7 @@ mod build {
             .iter()
             .map(|v| v.try_extract())
             .collect::<PolarsResult<Vec<u64>>>()?
-            .is_sorted()
-        )
+            .is_sorted())
     }
 
     /// Check nulls in the chromosome and position columns
@@ -297,8 +291,7 @@ mod build {
 
     /// Processes Bismark format data into standardized BSX format.
     pub fn bismark_expr(lf: LazyFrame) -> LazyFrame {
-        lf
-            .with_column(count_total_col_expr().alias(BsxCol::CountTotal.as_str()))
+        lf.with_column(count_total_col_expr().alias(BsxCol::CountTotal.as_str()))
             .with_columns([
                 context_to_bool_expr().alias(BsxCol::Context.as_str()),
                 strand_to_bool_expr().alias(BsxCol::Strand.as_str()),
@@ -318,14 +311,13 @@ mod build {
 
     /// Processes coverage format data into standardized BSX format.
     pub fn coverage_expr(lf: LazyFrame) -> LazyFrame {
-        lf
-            .with_columns([
-                count_total_col_expr().alias(BsxCol::CountTotal.as_str()),
-                col(ReportType::Coverage.position_col()).alias(BsxCol::Position.as_str()),
-                lit(NULL).alias("strand"),
-                lit(NULL).alias("context"),
-            ])
-            .select(BsxCol::colnames().into_iter().map(col).collect_vec())
+        lf.with_columns([
+            count_total_col_expr().alias(BsxCol::CountTotal.as_str()),
+            col(ReportType::Coverage.position_col()).alias(BsxCol::Position.as_str()),
+            lit(NULL).alias("strand"),
+            lit(NULL).alias("context"),
+        ])
+        .select(BsxCol::colnames().into_iter().map(col).collect_vec())
     }
 
     /// Processes BedGraph format data into standardized BSX format.
@@ -345,8 +337,9 @@ mod build {
 mod tests {
     use polars::series::IsSorted;
     use rstest::{fixture, rstest};
-    use super::*;
+
     use super::build::*;
+    use super::*;
 
     #[fixture]
     fn test_df() -> DataFrame {
@@ -401,7 +394,7 @@ mod tests {
         test_df: DataFrame,
         no_cols_df: DataFrame,
         #[case] should_not_pass_df: DataFrame,
-        #[case] check_fn: fn(&DataFrame) -> PolarsResult<bool>
+        #[case] check_fn: fn(&DataFrame) -> PolarsResult<bool>,
     ) {
         assert_eq!(check_fn(&test_df).unwrap(), true);
         assert_eq!(check_fn(&should_not_pass_df).unwrap(), false);
@@ -421,7 +414,8 @@ mod tests {
     fn test_conversion_expressions() {
         // Test nuc_to_bool_expr
         let df = df!("nuc" => ["C", "G", "A"]).unwrap();
-        let res = df.lazy()
+        let res = df
+            .lazy()
             .with_column(nuc_to_bool_expr().alias("result"))
             .collect()
             .unwrap();
@@ -432,7 +426,8 @@ mod tests {
 
         // Test strand_to_bool_expr
         let df = df!("strand" => ["+", "-", "."]).unwrap();
-        let res = df.lazy()
+        let res = df
+            .lazy()
             .with_column(strand_to_bool_expr().alias("result"))
             .collect()
             .unwrap();
@@ -443,7 +438,8 @@ mod tests {
 
         // Test context_to_bool_expr
         let df = df!("context" => ["CG", "CHG", "CHH"]).unwrap();
-        let res = df.lazy()
+        let res = df
+            .lazy()
             .with_column(context_to_bool_expr().alias("result"))
             .collect()
             .unwrap();
@@ -458,10 +454,13 @@ mod tests {
         let df = df!(
             "count_m" => [5i64, 10],
             "count_um" => [5i64, 10]
-        ).unwrap();
+        )
+        .unwrap();
 
         // Test count_total_col_expr
-        let res = df.clone().lazy()
+        let res = df
+            .clone()
+            .lazy()
             .with_column(count_total_col_expr().alias("count_total"))
             .collect()
             .unwrap();
@@ -470,7 +469,8 @@ mod tests {
         assert_eq!(totals.get(1), Some(20));
 
         // Test density_col_expr
-        let res = df.lazy()
+        let res = df
+            .lazy()
             .with_column(count_total_col_expr().alias("count_total"))
             .with_column(density_col_expr().alias("density"))
             .collect()
@@ -538,7 +538,8 @@ mod tests {
         #[case] report_type: ReportType,
         #[case] input_df: DataFrame,
     ) -> anyhow::Result<()> {
-        let batch = BsxBatchBuilder::all_checks().build_from_report(input_df, report_type)?;
+        let batch =
+            BsxBatchBuilder::all_checks().build_from_report(input_df, report_type)?;
         let _data = batch.data();
         Ok(())
     }

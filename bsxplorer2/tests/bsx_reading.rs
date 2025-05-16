@@ -24,8 +24,8 @@
 // #[fixture]
 // fn test_gffreader() -> GffReader<File> {
 //     GffReader::from_file(
-//         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/annot.gff"),
-//         bio::io::gff::GffType::GFF3,
+//         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/annot.gff"
+// ),         bio::io::gff::GffType::GFF3,
 //     )
 //     .expect("Error opening test GFF file")
 // }
@@ -37,8 +37,8 @@
 //     RegionReader::from_reader(test_bsxreader).unwrap()
 // }
 
-// /// Test that the reader will return error, if required batch has already been
-// /// processed.
+// /// Test that the reader will return error, if required batch has already
+// been /// processed.
 // #[rstest]
 // #[should_panic]
 // fn unsorted_pos(mut test_regionreader: RegionReader<File, String, u32>) {
@@ -85,9 +85,9 @@
 //     let test_contigs = [
 //         Contig::new("NC_003070.9".to_string(), 50_000, 51_000, Strand::None),
 //         Contig::new("NC_003070.9".to_string(), 52_000, 53_000, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 151_000, 151_001, Strand::None),
-//     ];
+//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000,
+// Strand::None),         Contig::new("NC_003070.9".to_string(), 151_000,
+// 151_001, Strand::None),     ];
 //     assert!(check_batch(
 //         &test_contigs[0],
 //         &test_regionreader
@@ -123,9 +123,9 @@
 //     let test_contigs = [
 //         Contig::new("NC_003070.9".to_string(), 52_000, 53_000, Strand::None),
 //         Contig::new("NC_003070.9".to_string(), 50_000, 51_000, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 151_000, 151_001, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000, Strand::None),
-//     ];
+//         Contig::new("NC_003070.9".to_string(), 151_000, 151_001,
+// Strand::None),         Contig::new("NC_003070.9".to_string(), 101_000,
+// 150_000, Strand::None),     ];
 
 //     let sorted = test_regionreader
 //         .index()
@@ -135,9 +135,9 @@
 //     let expected_order = [
 //         Contig::new("NC_003070.9".to_string(), 50_000, 51_000, Strand::None),
 //         Contig::new("NC_003070.9".to_string(), 52_000, 53_000, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 151_000, 151_001, Strand::None),
-//     ]
+//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000,
+// Strand::None),         Contig::new("NC_003070.9".to_string(), 151_000,
+// 151_001, Strand::None),     ]
 //     .to_vec();
 
 //     assert_eq!(sorted, expected_order);
@@ -177,9 +177,9 @@
 //     let test_contigs = [
 //         Contig::new("NC_003074.8".to_string(), 52_000, 53_000, Strand::None),
 //         Contig::new("NC_003071.7".to_string(), 50_000, 51_000, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 151_000, 151_001, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000, Strand::None),
-//     ];
+//         Contig::new("NC_003070.9".to_string(), 151_000, 151_001,
+// Strand::None),         Contig::new("NC_003070.9".to_string(), 101_000,
+// 150_000, Strand::None),     ];
 
 //     let sorted = test_regionreader
 //         .index()
@@ -187,11 +187,11 @@
 //         .collect::<Vec<_>>();
 
 //     let expected_order = [
-//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000, Strand::None),
-//         Contig::new("NC_003070.9".to_string(), 151_000, 151_001, Strand::None),
-//         Contig::new("NC_003074.8".to_string(), 52_000, 53_000, Strand::None),
-//         Contig::new("NC_003071.7".to_string(), 50_000, 51_000, Strand::None),
-//     ]
+//         Contig::new("NC_003070.9".to_string(), 101_000, 150_000,
+// Strand::None),         Contig::new("NC_003070.9".to_string(), 151_000,
+// 151_001, Strand::None),         Contig::new("NC_003074.8".to_string(),
+// 52_000, 53_000, Strand::None),         Contig::new("NC_003071.7".to_string(),
+// 50_000, 51_000, Strand::None),     ]
 //     .to_vec();
 
 //     assert_eq!(sorted, expected_order);

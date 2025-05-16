@@ -22,8 +22,7 @@ mod tests {
 
     #[test]
     fn test_genomic_position_from_seq_pos_unstranded_u32() {
-        let bio_pos =
-            SeqPosUnstranded::new("chr1".to_string(), 100, NoStrand::Unknown);
+        let bio_pos = SeqPosUnstranded::new("chr1".to_string(), 100, NoStrand::Unknown);
         let gp: GenomicPosition<String, u32> = bio_pos.into();
         assert_eq!(gp.seqname(), "chr1");
         assert_eq!(gp.position(), 100);
@@ -31,11 +30,8 @@ mod tests {
 
     #[test]
     fn test_genomic_position_from_seq_pos_unstranded_u64() {
-        let bio_pos = SeqPosUnstranded::new(
-            "chrX".to_string(),
-            1_000_000,
-            NoStrand::Unknown,
-        );
+        let bio_pos =
+            SeqPosUnstranded::new("chrX".to_string(), 1_000_000, NoStrand::Unknown);
         let gp: GenomicPosition<String, u64> = bio_pos.into();
         assert_eq!(gp.seqname(), "chrX");
         assert_eq!(gp.position(), 1_000_000);
@@ -165,8 +161,7 @@ mod tests {
 
     #[test]
     fn test_contig_extend_upstream() {
-        let mut contig =
-            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.extend_upstream(50u32);
         assert_eq!(contig.start(), 50);
         assert_eq!(contig.end(), 200);
@@ -181,8 +176,7 @@ mod tests {
 
     #[test]
     fn test_contig_extend_downstream() {
-        let mut contig =
-            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.extend_downstream(50u32);
         assert_eq!(contig.start(), 100);
         assert_eq!(contig.end(), 250);
@@ -190,8 +184,7 @@ mod tests {
 
     #[test]
     fn test_contig_set_start() {
-        let mut contig =
-            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.set_start(150u32);
         assert_eq!(contig.start(), 150);
         assert_eq!(contig.end(), 200);
@@ -199,8 +192,7 @@ mod tests {
 
     #[test]
     fn test_contig_set_end() {
-        let mut contig =
-            Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
+        let mut contig = Contig::new("chr1".to_string(), 100u32, 200u32, Strand::None);
         contig.set_end(250u32);
         assert_eq!(contig.start(), 100);
         assert_eq!(contig.end(), 250);
@@ -253,8 +245,7 @@ mod tests {
 
     #[test]
     fn test_contig_into_bed_record() {
-        let contig =
-            Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Reverse);
+        let contig = Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Reverse);
         let bed_record: BedRecord = contig.into();
         assert_eq!(bed_record.chrom(), "chr1");
         assert_eq!(bed_record.start(), 100);
@@ -280,12 +271,8 @@ mod tests {
         assert_eq!(contig.end(), 200);
         assert_eq!(contig.strand(), Strand::Reverse);
 
-        let bio_contig_no_strand = BioContig::new(
-            "chr2".to_string(),
-            50,
-            50 as usize,
-            None::<ReqStrand>,
-        ); // start 50, length 50 -> end 100
+        let bio_contig_no_strand =
+            BioContig::new("chr2".to_string(), 50, 50 as usize, None::<ReqStrand>); // start 50, length 50 -> end 100
         let contig_no_strand: Contig<String, u64> = bio_contig_no_strand.into();
         assert_eq!(contig_no_strand.seqname(), "chr2");
         assert_eq!(contig_no_strand.start(), 50);
@@ -295,8 +282,7 @@ mod tests {
 
     #[test]
     fn test_contig_into_bio_contig() {
-        let contig =
-            Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Forward); // start 100, end 200 -> length 100
+        let contig = Contig::new("chr1".to_string(), 100u64, 200u64, Strand::Forward); // start 100, end 200 -> length 100
         let bio_contig: BioContig<String, Option<ReqStrand>> = contig.into();
         assert_eq!(bio_contig.refid(), "chr1");
         assert_eq!(bio_contig.start(), 100);
@@ -334,8 +320,7 @@ mod tests {
 
     #[test]
     fn test_contig_display() {
-        let contig =
-            Contig::new("chrX".to_string(), 1000u32, 2000u32, Strand::Forward);
+        let contig = Contig::new("chrX".to_string(), 1000u32, 2000u32, Strand::Forward);
         assert_eq!(format!("{}", contig), "chrX:1000-2000 (+)");
     }
 }

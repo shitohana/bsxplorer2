@@ -49,17 +49,13 @@ impl PyMethylationStats {
             HashbrownMap::from_iter(
                 context_methylation
                     .into_iter()
-                    .map(|(key, value)| {
-                        (Context::from_str(&key).unwrap(), value)
-                    }),
+                    .map(|(key, value)| (Context::from_str(&key).unwrap(), value)),
             );
         let strand_distribution: HashbrownMap<Strand, (f64, u32)> =
             HashbrownMap::from_iter(
                 strand_methylation
                     .into_iter()
-                    .map(|(key, value)| {
-                        (Strand::from_str(&key).unwrap(), value)
-                    }),
+                    .map(|(key, value)| (Strand::from_str(&key).unwrap(), value)),
             );
         PyMethylationStats {
             inner: MethylationStats::from_data(
@@ -98,10 +94,7 @@ impl PyMethylationStats {
     ) -> PyResult<Self> {
         let list: &Bound<PyList> = stats_list.downcast::<PyList>()?;
         let stats: Vec<PyMethylationStats> = list.extract()?;
-        let inner_stats = stats
-            .into_iter()
-            .map(|s| s.inner)
-            .collect_vec();
+        let inner_stats = stats.into_iter().map(|s| s.inner).collect_vec();
         Ok(PyMethylationStats {
             inner: MethylationStats::merge_multiple(&inner_stats),
         })

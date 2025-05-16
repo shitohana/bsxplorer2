@@ -23,8 +23,8 @@ impl ReportType {
         match self {
             Self::Bismark => {
                 &[
-                    "chr", "position", "strand", "count_m", "count_um",
-                    "context", "trinuc",
+                    "chr", "position", "strand", "count_m", "count_um", "context",
+                    "trinuc",
                 ]
             },
             Self::Coverage => {
@@ -98,9 +98,7 @@ impl ReportType {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn chr_col(&self) -> &'static str {
         match self {
-            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => {
-                "chr"
-            },
+            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => "chr",
         }
     }
 

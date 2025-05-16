@@ -11,7 +11,7 @@ __all__ = [
     "ReportWriter",
     "BsxFileReader",
     "IpcCompression",
-    "BsxIpcWriter"
+    "BsxFileWriter"
 ]
 
 class RegionReader:
@@ -337,7 +337,7 @@ class BsxFileReader:
         """
         pass
 
-    def get_batch(self, batch_idx: int) -> Optional[pl.DataFrame]:
+    def get_batch(self, batch_idx: int) -> Optional[BsxBatch]:
         """Get a specific batch by index.
 
         Parameters
@@ -418,7 +418,7 @@ class IpcCompression:
     LZ4: str
     ZSTD: str
 
-class BsxIpcWriter:
+class BsxFileWriter:
     """Writer for BSX data in Arrow IPC format.
 
     Parameters
@@ -443,7 +443,7 @@ class BsxIpcWriter:
         sink: Union[str, BinaryIO],
         fai_path: Union[str, Path],
         compression: Optional[IpcCompression] = None,
-    ) -> "BsxIpcWriter":
+    ) -> "BsxFileWriter":
         """Create a writer using a FASTA index file (.fai) to get chromosome names.
 
         Parameters
@@ -467,7 +467,7 @@ class BsxIpcWriter:
         sink: Union[str, BinaryIO],
         fasta_path: Union[str, Path],
         compression: Optional[IpcCompression] = None,
-    ) -> "BsxIpcWriter":
+    ) -> "BsxFileWriter":
         """Create a writer using a FASTA file to get chromosome names (will index if needed).
 
         Parameters
@@ -486,17 +486,7 @@ class BsxIpcWriter:
         """
         pass
 
-    def write_encoded_batch(self, batch: pl.DataFrame) -> None:
-        """Write an already encoded BSX batch (DataFrame).
-
-        Parameters
-        ----------
-        batch : DataFrame
-            The encoded BSX batch (Polars DataFrame) to write.
-        """
-        pass
-
-    def write_batch(self, batch: pl.DataFrame) -> None:
+    def write_batch(self, batch: BsxBatch) -> None:
         """Encode and write a BSX batch (DataFrame).
 
         Parameters
@@ -510,7 +500,7 @@ class BsxIpcWriter:
         """Finalize the IPC file and close the writer."""
         pass
 
-    def __enter__(self) -> "BsxIpcWriter":
+    def __enter__(self) -> "BsxFileWriter":
         pass
 
     def __exit__(self, exc_type: Optional[type], exc_value: Optional[BaseException], traceback: Optional[object]) -> None:

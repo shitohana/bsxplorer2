@@ -72,8 +72,8 @@
 //     }
 
 //     #[cfg(not(feature = "compression"))]
-//     let mut writer = ReportWriter::try_new(buffer.reopen()?, report_type, 8)?;
-//     #[cfg(feature = "compression")]
+//     let mut writer = ReportWriter::try_new(buffer.reopen()?, report_type,
+// 8)?;     #[cfg(feature = "compression")]
 //     let mut writer = ReportWriter::try_new(
 //         buffer.reopen()?,
 //         report_type,
@@ -102,8 +102,8 @@
 //         .with_chunk_size(CHUNK_SIZE) // Use same chunk size as reading test
 //         .with_report_type(report_type);
 
-//     // Add fasta path if alignment is needed by the reader for this report type
-//     if report_type.need_align() {
+//     // Add fasta path if alignment is needed by the reader for this report
+// type     if report_type.need_align() {
 //         report_reader_builder = report_reader_builder
 //             .with_fasta_path(Some(sequence_file.path().to_path_buf()));
 //     }
@@ -118,8 +118,8 @@
 //         .into_iter()
 //         .collect::<Result<_, _>>()?;
 
-//     // 5. Combine original and read batches by chromosome (as reader outputs one
-//     //    batch per chr after final chunk)
+//     // 5. Combine original and read batches by chromosome (as reader outputs
+// one     //    batch per chr after final chunk)
 //     // Note: The reader combines chunks of the same chromosome. So we need to
 //     // combine original batches too.
 //     let mut combined_original_batches: Vec<BsxBatch> = Vec::new();
@@ -149,10 +149,10 @@
 //         combined_original_batches.push(completed_batch);
 //     }
 
-//     // The reader already returns combined batches per chromosome (at least for
-//     // the final batches) The logic in the reading test combines chunks from
-//     // the reader into per-chromosome batches. Let's reuse that combination
-//     // logic here for the read batches.
+//     // The reader already returns combined batches per chromosome (at least
+// for     // the final batches) The logic in the reading test combines chunks
+// from     // the reader into per-chromosome batches. Let's reuse that
+// combination     // logic here for the read batches.
 
 //     let mut combined_read_batches: Vec<BsxBatch> = Vec::new();
 //     let mut current_read_chr = String::new();

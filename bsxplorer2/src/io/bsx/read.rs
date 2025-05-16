@@ -52,7 +52,8 @@ impl<R: Read + Seek> BsxFileReader<R> {
                     .expect("Batch index out of bounds")?;
                 // We unwrap as we expect that there is NO empty batches in bsx
                 // file
-                let contig = batch.as_contig()
+                let contig = batch
+                    .as_contig()
                     .ok_or(anyhow!("Batch with no data encountered in file"))?;
 
                 new_index.insert(contig, batch_idx);
@@ -100,16 +101,8 @@ impl<R: Read + Seek> BsxFileReader<R> {
     ) -> PolarsResult<BsxBatch> {
         batch
             .map(|batch| {
-                DataFrame::try_from((
-                    batch,
-                    self.ipc_reader
-                        .metadata()
-                        .schema
-                        .as_ref(),
-                ))
-                .expect(
-                    "Failed to create DataFrame from batch - schema mismatch",
-                )
+                DataFrame::try_from((batch, self.ipc_reader.metadata().schema.as_ref()))
+                    .expect("Failed to create DataFrame from batch - schema mismatch")
             })
             .map(|df| unsafe { BsxBatch::new_unchecked(df) })
     }
@@ -198,14 +191,12 @@ impl<R: Read + Seek> Iterator for BsxFileIterator<'_, R> {
     fn count(self) -> usize
     where
         Self: Sized, {
-        self.reader.ipc_reader.blocks_total()
-            - self.reader.ipc_reader.current_block()
+        self.reader.ipc_reader.blocks_total() - self.reader.ipc_reader.current_block()
     }
 
     fn last(self) -> Option<Self::Item>
     where
         Self: Sized, {
-        self.reader
-            .get_batch(self.reader.blocks_total() - 1)
+        self.reader.get_batch(self.reader.blocks_total() - 1)
     }
 }

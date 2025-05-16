@@ -8,4 +8,4 @@ mod write;
 pub use index::BatchIndex;
 pub use read::{BsxFileIterator, BsxFileReader};
 pub use region::RegionReader;
-pub use write::BsxIpcWriter;
+pub use write::BsxFileWriter;

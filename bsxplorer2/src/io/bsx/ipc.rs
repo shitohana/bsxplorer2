@@ -34,11 +34,7 @@ use polars::export::arrow::io::ipc::read::{read_batch,
                                            Dictionaries,
                                            FileMetadata};
 use polars::export::arrow::record_batch::RecordBatchT;
-use polars::prelude::{ArrowSchema,
-                      DataFrame,
-                      PlHashMap,
-                      PolarsError,
-                      PolarsResult};
+use polars::prelude::{ArrowSchema, DataFrame, PlHashMap, PolarsError, PolarsResult};
 
 fn apply_projection(
     chunk: RecordBatchT<Box<dyn Array>>,
@@ -68,14 +64,13 @@ pub fn prepare_projection(
 
     let mut indices = (0..projection.len()).collect::<Vec<_>>();
     indices.sort_unstable_by_key(|&i| &projection[i]);
-    let map = indices
-        .iter()
-        .copied()
-        .enumerate()
-        .fold(PlHashMap::default(), |mut acc, (index, new_index)| {
+    let map = indices.iter().copied().enumerate().fold(
+        PlHashMap::default(),
+        |mut acc, (index, new_index)| {
             acc.insert(index, new_index);
             acc
-        });
+        },
+    );
     projection.sort_unstable();
 
     // check unique
@@ -118,11 +113,10 @@ impl<R: Read + Seek> IpcFileReader<R> {
         projection: Option<Vec<usize>>,
         limit: Option<usize>,
     ) -> Self {
-        let metadata = read_file_metadata(&mut reader)
-            .expect("could not read ipc metadata");
+        let metadata =
+            read_file_metadata(&mut reader).expect("could not read ipc metadata");
         let projection = projection.map(|projection| {
-            let (p, h, schema) =
-                prepare_projection(&metadata.schema, projection);
+            let (p, h, schema) = prepare_projection(&metadata.schema, projection);
             (p, h, schema)
         });
         let blocks_total = metadata.blocks.len();
@@ -140,9 +134,7 @@ impl<R: Read + Seek> IpcFileReader<R> {
     }
 
     pub(crate) fn reopen(mut self) -> Self {
-        self.reader
-            .seek(SeekFrom::Start(0))
-            .unwrap();
+        self.reader.seek(SeekFrom::Start(0)).unwrap();
         Self {
             reader: self.reader,
             metadata: self.metadata,
@@ -218,18 +210,13 @@ impl<R: Read + Seek> IpcFileReader<R> {
             &mut self.reader,
             self.dictionaries.as_ref().unwrap(),
             &self.metadata,
-            self.projection
-                .as_ref()
-                .map(|x| x.0.as_ref()),
+            self.projection.as_ref().map(|x| x.0.as_ref()),
             Some(self.remaining),
             num,
             &mut self.message_scratch,
             &mut self.data_scratch,
         );
-        self.remaining -= chunk
-            .as_ref()
-            .map(|x| x.len())
-            .unwrap_or_default();
+        self.remaining -= chunk.as_ref().map(|x| x.len()).unwrap_or_default();
         let chunk = if let Some((_, map, _)) = &self.projection {
             // re-order according to projection
             chunk.map(|chunk| apply_projection(chunk, map))
@@ -244,11 +231,8 @@ impl<R: Read + Seek> IpcFileReader<R> {
         &mut self,
         num: usize,
     ) -> Result<DataFrame, PolarsError> {
-        let batch = self
-            .read_at(num)
-            .expect("Failed to read");
-        let result =
-            DataFrame::try_from((batch?, self.metadata.schema.as_ref()));
+        let batch = self.read_at(num).expect("Failed to read");
+        let result = DataFrame::try_from((batch?, self.metadata.schema.as_ref()));
         result
     }
 
@@ -285,18 +269,13 @@ impl<R: Read + Seek> Iterator for IpcFileReader<R> {
             &mut self.reader,
             self.dictionaries.as_ref().unwrap(),
             &self.metadata,
-            self.projection
-                .as_ref()
-                .map(|x| x.0.as_ref()),
+            self.projection.as_ref().map(|x| x.0.as_ref()),
             Some(self.remaining),
             block,
             &mut self.message_scratch,
             &mut self.data_scratch,
         );
-        self.remaining -= chunk
-            .as_ref()
-            .map(|x| x.len())
-            .unwrap_or_default();
+        self.remaining -= chunk.as_ref().map(|x| x.len()).unwrap_or_default();
 
         let chunk = if let Some((_, map, _)) = &self.projection {
             // re-order according to projection

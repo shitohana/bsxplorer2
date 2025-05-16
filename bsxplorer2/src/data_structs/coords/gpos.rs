@@ -59,8 +59,7 @@ where
     }
 }
 
-impl<P, S> From<bio::bio_types::annot::pos::SeqPosUnstranded>
-    for GenomicPosition<S, P>
+impl<P, S> From<bio::bio_types::annot::pos::SeqPosUnstranded> for GenomicPosition<S, P>
 where
     S: SeqNameStr + FromStr,
     P: SeqPosNum,
@@ -70,14 +69,12 @@ where
     fn from(value: bio::bio_types::annot::pos::SeqPosUnstranded) -> Self {
         Self {
             seqname:  S::from_str(value.refid()).unwrap(),
-            position: P::from(value.pos())
-                .expect("Failed to convert position to P"),
+            position: P::from(value.pos()).expect("Failed to convert position to P"),
         }
     }
 }
 
-impl<R, P> From<GenomicPosition<R, P>>
-    for bio::bio_types::annot::pos::SeqPosUnstranded
+impl<R, P> From<GenomicPosition<R, P>> for bio::bio_types::annot::pos::SeqPosUnstranded
 where
     R: SeqNameStr,
     P: SeqPosNum,

@@ -1,14 +1,13 @@
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::batch::{BsxBatch};
+use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::io::bsx::{BsxFileReader as RsBsxFileReader,
-                          BsxIpcWriter as RsBsxIpcWriter};
+                          BsxFileWriter as RsBsxIpcWriter};
 use polars::prelude::IpcCompression;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
-use pyo3_polars::PyDataFrame;
 
 use crate::types::batch::PyBsxBatch;
 use crate::types::coords::PyContig;
@@ -50,9 +49,9 @@ impl PyBsxFileReader {
     pub fn get_batch(
         &mut self,
         batch_idx: usize,
-    ) -> PyResult<Option<PyDataFrame>> {
+    ) -> PyResult<Option<PyBsxBatch>> {
         match self.reader.get_batch(batch_idx) {
-            Some(Ok(batch)) => Ok(Some(PyDataFrame(batch.into_inner()))),
+            Some(Ok(batch)) => Ok(Some(batch.into())),
             Some(Err(e)) => Err(PyPolarsErr::Polars(e).into()),
             None => Ok(None),
         }
@@ -70,18 +69,14 @@ impl PyBsxFileReader {
         &mut self,
         index: PyBatchIndex,
     ) -> () {
-        self.reader
-            .set_index(Some(index.into()))
+        self.reader.set_index(Some(index.into()))
     }
 
     pub fn query(
         &mut self,
         query: PyContig,
     ) -> PyResult<Option<PyBsxBatch>> {
-        Ok(self
-            .reader
-            .query(&query.into())?
-            .map(PyBsxBatch::from))
+        Ok(self.reader.query(&query.into())?.map(PyBsxBatch::from))
     }
 
     pub fn blocks_total(&self) -> usize {
@@ -92,11 +87,9 @@ impl PyBsxFileReader {
         slf
     }
 
-    pub fn __next__(
-        mut slf: PyRefMut<'_, Self>
-    ) -> Option<PyResult<PyDataFrame>> {
+    pub fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyResult<PyBsxBatch>> {
         slf.reader.next().map(|res| {
-            res.map(|batch| PyDataFrame(batch.into_inner()))
+            res.map(PyBsxBatch::from)
                 .map_err(|e| PyPolarsErr::Polars(e).into())
         })
     }
@@ -128,7 +121,7 @@ impl From<IpcCompression> for PyIpcCompression {
     }
 }
 
-#[pyclass(name = "BsxIpcWriter", unsendable)]
+#[pyclass(name = "BsxFileWriter", unsendable)]
 pub struct PyBsxFileWriter {
     writer: Option<RsBsxIpcWriter<BufWriter<Box<dyn SinkHandle>>>>,
 }
@@ -199,36 +192,20 @@ impl PyBsxFileWriter {
     }
 
     #[allow(unsafe_code)]
-    pub fn write_encoded_batch(
-        &mut self,
-        batch: PyDataFrame,
-    ) -> PyResult<()> {
-        let encoded_batch = unsafe { BsxBatch::new_unchecked(batch.0) };
-        self.writer
-            .as_mut()
-            .ok_or_else(|| PyIOError::new_err("Writer is closed"))?
-            .write_batch(encoded_batch)
-            .map_err(|e| PyPolarsErr::Polars(e).into())
-    }
-
-    #[allow(unsafe_code)]
     pub fn write_batch(
         &mut self,
-        batch: PyDataFrame,
+        batch: PyBsxBatch,
     ) -> PyResult<()> {
-        let bsx_batch = unsafe { BsxBatch::new_unchecked(batch.0) };
         self.writer
             .as_mut()
             .ok_or_else(|| PyIOError::new_err("Writer is closed"))?
-            .write_batch(bsx_batch)
+            .write_batch(batch.into())
             .map_err(|e| PyPolarsErr::Polars(e).into())
     }
 
     pub fn close(&mut self) -> PyResult<()> {
         if let Some(mut writer) = self.writer.take() {
-            writer
-                .close()
-                .map_err(|e| PyPolarsErr::Polars(e))?;
+            writer.close().map_err(|e| PyPolarsErr::Polars(e))?;
         }
         Ok(())
     }

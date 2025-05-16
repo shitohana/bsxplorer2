@@ -106,8 +106,7 @@ impl From<MethylationStats> for MethylationStatFlat {
         trace!("Converting MethylationStats to MethylationStatFlat");
 
         let mean_coverage = if !value.coverage_distribution.is_empty() {
-            value.total_coverage() as f64
-                / value.coverage_distribution.len() as f64
+            value.total_coverage() as f64 / value.coverage_distribution.len() as f64
         }
         else {
             0.0
@@ -117,47 +116,47 @@ impl From<MethylationStats> for MethylationStatFlat {
             mean_methylation: value.mean_methylation,
             methylation_var: value.methylation_var,
             mean_coverage,
-            cg_mean_methylation: value
-                .context_methylation
-                .get(&Context::CG)
-                .map_or(0.0, |(sum_m, count)| {
+            cg_mean_methylation: value.context_methylation.get(&Context::CG).map_or(
+                0.0,
+                |(sum_m, count)| {
                     if *count > 0 {
                         sum_m / *count as f64
                     }
                     else {
                         0.0
                     }
-                }),
+                },
+            ),
             cg_coverage: value
                 .context_methylation
                 .get(&Context::CG)
                 .map_or(0, |(_, count)| *count),
-            chg_mean_methylation: value
-                .context_methylation
-                .get(&Context::CHG)
-                .map_or(0.0, |(sum_m, count)| {
+            chg_mean_methylation: value.context_methylation.get(&Context::CHG).map_or(
+                0.0,
+                |(sum_m, count)| {
                     if *count > 0 {
                         sum_m / *count as f64
                     }
                     else {
                         0.0
                     }
-                }),
+                },
+            ),
             chg_coverage: value
                 .context_methylation
                 .get(&Context::CHG)
                 .map_or(0, |(_, count)| *count),
-            chh_mean_methylation: value
-                .context_methylation
-                .get(&Context::CHH)
-                .map_or(0.0, |(sum_m, count)| {
+            chh_mean_methylation: value.context_methylation.get(&Context::CHH).map_or(
+                0.0,
+                |(sum_m, count)| {
                     if *count > 0 {
                         sum_m / *count as f64
                     }
                     else {
                         0.0
                     }
-                }),
+                },
+            ),
             chh_coverage: value
                 .context_methylation
                 .get(&Context::CHH)
@@ -237,8 +236,7 @@ impl MethylationStats {
         strand_methylation: HashMap<Strand, (f64, u32)>,
     ) -> MethylationStats {
         debug!(
-            "Creating MethylationStats from data_structs with mean: {}, \
-             variance: {}",
+            "Creating MethylationStats from data_structs with mean: {}, variance: {}",
             mean_methylation, variance_methylation
         );
 
@@ -300,8 +298,7 @@ impl MethylationStats {
             // Correct variance computation considering mean shift
             self.methylation_var = ((weight_self * self.methylation_var
                 + weight_other * other.methylation_var)
-                + (weight_self * weight_other / total_weight)
-                    * (delta * delta))
+                + (weight_self * weight_other / total_weight) * (delta * delta))
                 / total_weight;
 
             trace!(
@@ -311,25 +308,17 @@ impl MethylationStats {
             );
         }
         else {
-            debug!(
-                "Skipping mean/variance calculations due to zero total weight"
-            );
+            debug!("Skipping mean/variance calculations due to zero total weight");
         }
 
         // Merge coverage distribution
         for (&count_total, &frequency) in &other.coverage_distribution {
-            *self
-                .coverage_distribution
-                .entry(count_total)
-                .or_insert(0) += frequency;
+            *self.coverage_distribution.entry(count_total).or_insert(0) += frequency;
         }
 
         // Merge context methylation
         for (context, &(sum_methylation, count)) in &other.context_methylation {
-            let entry = self
-                .context_methylation
-                .entry(*context)
-                .or_insert((0.0, 0));
+            let entry = self.context_methylation.entry(*context).or_insert((0.0, 0));
             entry.0 += sum_methylation;
             entry.1 += count;
             trace!(
@@ -342,10 +331,7 @@ impl MethylationStats {
 
         // Merge strand methylation
         for (strand, &(sum_methylation, count)) in &other.strand_methylation {
-            let entry = self
-                .strand_methylation
-                .entry(*strand)
-                .or_insert((0.0, 0));
+            let entry = self.strand_methylation.entry(*strand).or_insert((0.0, 0));
             entry.0 += sum_methylation;
             entry.1 += count;
             trace!(
@@ -365,8 +351,7 @@ impl MethylationStats {
     pub fn finalize_methylation(&mut self) {
         debug!("Finalizing methylation statistics");
 
-        for (context, (sum_methylation, count)) in &mut self.context_methylation
-        {
+        for (context, (sum_methylation, count)) in &mut self.context_methylation {
             if *count > 0 {
                 *sum_methylation /= *count as f64;
             }
@@ -421,9 +406,7 @@ impl MethylationStats {
     /// available.
     pub fn mean_methylation(&self) -> f64 {
         if self.total_coverage() == 0 {
-            debug!(
-                "No coverage data_structs, returning 0.0 for mean methylation"
-            );
+            debug!("No coverage data_structs, returning 0.0 for mean methylation");
             0.0
         }
         else {
@@ -480,9 +463,7 @@ impl MethylationStats {
     ///
     /// A formatted string containing detailed methylation statistics.
     pub fn display_long(&mut self) -> anyhow::Result<String> {
-        debug!(
-            "Generating detailed text representation of methylation statistics"
-        );
+        debug!("Generating detailed text representation of methylation statistics");
 
         let mut buf = String::new();
         self.finalize_methylation();
@@ -510,10 +491,8 @@ impl MethylationStats {
             .iter()
             .sorted_by_key(|(k, _)| **k)
         {
-            writeln!(&mut buf, "{}\t{}", key, value).context(format!(
-                "Failed to write coverage entry for key {}",
-                key
-            ))?;
+            writeln!(&mut buf, "{}\t{}", key, value)
+                .context(format!("Failed to write coverage entry for key {}", key))?;
         }
 
         writeln!(&mut buf)
@@ -526,9 +505,8 @@ impl MethylationStats {
             .context("Failed to write context methylation column headers")?;
 
         for (key, (mean, count)) in self.context_methylation.iter() {
-            writeln!(&mut buf, "{}\t{:.6}\t{}", key, mean, count).context(
-                format!("Failed to write context entry for {:?}", key),
-            )?;
+            writeln!(&mut buf, "{}\t{:.6}\t{}", key, mean, count)
+                .context(format!("Failed to write context entry for {:?}", key))?;
         }
 
         writeln!(&mut buf)
@@ -541,9 +519,8 @@ impl MethylationStats {
             .context("Failed to write strand methylation column headers")?;
 
         for (key, (mean, count)) in self.strand_methylation.iter() {
-            writeln!(&mut buf, "{}\t{:.6}\t{}", key, mean, count).context(
-                format!("Failed to write strand entry for {:?}", key),
-            )?;
+            writeln!(&mut buf, "{}\t{:.6}\t{}", key, mean, count)
+                .context(format!("Failed to write strand entry for {:?}", key))?;
         }
 
         trace!("Successfully generated detailed methylation statistics text");
@@ -588,9 +565,7 @@ mod tests {
         coverage: Vec<(u16, u32)>,
         context: Vec<(Context, f64, u32)>,
     ) -> MethylationStats {
-        let coverage_distribution = coverage
-            .into_iter()
-            .collect::<HashMap<u16, u32>>();
+        let coverage_distribution = coverage.into_iter().collect::<HashMap<u16, u32>>();
         let context_methylation = context
             .into_iter()
             .map(|(ctx, sum_m, count)| (ctx, (sum_m, count)))
@@ -620,12 +595,11 @@ mod tests {
     /// Test merging of two `MethylationStats` structures
     #[test]
     fn test_merge_methylation_stats() {
-        let mut stats1 = sample_stats(
-            0.3,
-            0.01,
-            vec![(10, 100), (20, 50)],
-            vec![(Context::CG, 45.0, 150)],
-        );
+        let mut stats1 = sample_stats(0.3, 0.01, vec![(10, 100), (20, 50)], vec![(
+            Context::CG,
+            45.0,
+            150,
+        )]);
         let stats2 = sample_stats(0.5, 0.02, vec![(10, 200), (30, 75)], vec![
             (Context::CG, 110.0, 275),
             (Context::CHG, 60.0, 100), /* Fixed: was 0.6 which is incorrect
@@ -664,22 +638,14 @@ mod tests {
         // CG context should be (45.0 + 110.0) / (150 + 275) = 155.0 / 425 =
         // 0.36470588
         assert_approx_eq!(
-            stats1
-                .context_methylation
-                .get(&Context::CG)
-                .unwrap()
-                .0,
+            stats1.context_methylation.get(&Context::CG).unwrap().0,
             155.0 / 425.0,
             1e-6
         );
 
         // CHG context should be 60.0 / 100 = 0.6
         assert_approx_eq!(
-            stats1
-                .context_methylation
-                .get(&Context::CHG)
-                .unwrap()
-                .0,
+            stats1.context_methylation.get(&Context::CHG).unwrap().0,
             0.6,
             1e-6
         );
@@ -688,13 +654,12 @@ mod tests {
     /// Test genome-wide mean methylation calculation
     #[test]
     fn test_genome_wide_mean_methylation() {
-        let stats =
-            sample_stats(0.4, 0.02, vec![(10, 100), (20, 200)], vec![(
-                Context::CG,
-                120.0, /* 0.4 * 300 = 120.0 (should use sum not mean for
-                        * context) */
-                300,
-            )]);
+        let stats = sample_stats(0.4, 0.02, vec![(10, 100), (20, 200)], vec![(
+            Context::CG,
+            120.0, /* 0.4 * 300 = 120.0 (should use sum not mean for
+                    * context) */
+            300,
+        )]);
         assert!((stats.mean_methylation() - 0.4).abs() < 1e-6);
 
         // Also test with zero coverage
@@ -721,8 +686,7 @@ mod tests {
             300,
         )]);
 
-        let merged =
-            MethylationStats::merge_multiple(&vec![stats1, stats2, stats3]);
+        let merged = MethylationStats::merge_multiple(&vec![stats1, stats2, stats3]);
 
         let weight1 = 100.0;
         let weight2 = 200.0;
@@ -733,8 +697,7 @@ mod tests {
         let mean3 = 0.6;
 
         let expected_mean =
-            (weight1 * mean1 + weight2 * mean2 + weight3 * mean3)
-                / total_weight;
+            (weight1 * mean1 + weight2 * mean2 + weight3 * mean3) / total_weight;
 
         // Variance calculation is complex in multi-merge and not correctly
         // implemented in test The test adds pairwise delta terms which
@@ -748,21 +711,13 @@ mod tests {
 
         // Check context-specific methylation after finalization
         assert_approx_eq!(
-            merged
-                .context_methylation
-                .get(&Context::CG)
-                .unwrap()
-                .0,
+            merged.context_methylation.get(&Context::CG).unwrap().0,
             (20.0 + 80.0) / 300.0, /* (sum1 + sum2) / (count1 + count2) =
                                     * 100/300 = 0.33333 */
             1e-6
         );
         assert_approx_eq!(
-            merged
-                .context_methylation
-                .get(&Context::CHG)
-                .unwrap()
-                .0,
+            merged.context_methylation.get(&Context::CHG).unwrap().0,
             180.0 / 300.0, // sum3 / count3 = 0.6
             1e-6
         );
@@ -772,26 +727,18 @@ mod tests {
     #[test]
     fn test_finalize_context_methylation() {
         let mut stats = sample_stats(0.5, 0.01, vec![], vec![
-            (Context::CG, 1.5, 3), // Sum = 1.5, should become mean = 0.5
+            (Context::CG, 1.5, 3),  // Sum = 1.5, should become mean = 0.5
             (Context::CHH, 0.9, 3), // Sum = 0.9, should become mean = 0.3
         ]);
         stats.finalize_methylation();
 
         assert_approx_eq!(
-            stats
-                .context_methylation
-                .get(&Context::CG)
-                .unwrap()
-                .0,
+            stats.context_methylation.get(&Context::CG).unwrap().0,
             0.5,
             1e-6
         );
         assert_approx_eq!(
-            stats
-                .context_methylation
-                .get(&Context::CHH)
-                .unwrap()
-                .0,
+            stats.context_methylation.get(&Context::CHH).unwrap().0,
             0.3,
             1e-6
         );
@@ -816,8 +763,8 @@ mod tests {
             .strand_methylation
             .insert(Strand::Reverse, (70.0, 200));
 
-        let json = serde_json::to_string(&stats_with_strand)
-            .expect("Serialization failed");
+        let json =
+            serde_json::to_string(&stats_with_strand).expect("Serialization failed");
         let deserialized: MethylationStats =
             serde_json::from_str(&json).expect("Deserialization failed");
 

@@ -2,9 +2,8 @@ use itertools::Itertools;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-
-use crate::plsmallstr;
 use super::{BsxBatch, BsxColumns};
+use crate::plsmallstr;
 
 pub fn merge_replicates(
     mut batches: Vec<BsxBatch>,
@@ -38,11 +37,7 @@ pub fn merge_replicates(
         let count_total_col = count_agg(
             batches
                 .iter()
-                .map(|b| {
-                    b.data()
-                        .column(BsxColumns::CountTotal.as_str())
-                        .unwrap()
-                })
+                .map(|b| b.data().column(BsxColumns::CountTotal.as_str()).unwrap())
                 .collect_vec(),
         )
         .with_name(plsmallstr!(BsxColumns::CountTotal.as_str())); // Ensure correct name
@@ -50,11 +45,7 @@ pub fn merge_replicates(
         let density_col = density_agg(
             batches
                 .iter()
-                .map(|b| {
-                    b.data()
-                        .column(BsxColumns::Density.as_str())
-                        .unwrap()
-                })
+                .map(|b| b.data().column(BsxColumns::Density.as_str()).unwrap())
                 .collect_vec(),
         )
         .with_name(plsmallstr!(BsxColumns::Density.as_str())); // Ensure correct name
@@ -116,7 +107,7 @@ macro_rules! get_col_fn {
     };
 }
 
-pub(crate) use {name_dtype_tuple, create_empty_series, get_col_fn};
+pub(crate) use {create_empty_series, get_col_fn, name_dtype_tuple};
 
 
 #[cfg(test)]
@@ -135,11 +126,7 @@ mod tests {
 
         let series_vec: Vec<Series> = cols
             .into_iter()
-            .map(|c| {
-                c.to_owned()
-                    .as_materialized_series()
-                    .clone()
-            })
+            .map(|c| c.to_owned().as_materialized_series().clone())
             .collect();
 
         let initial_series = series_vec[0].clone();
@@ -156,11 +143,8 @@ mod tests {
 
     fn mean_agg(cols: Vec<&Column>) -> Column {
         if cols.is_empty() {
-            return Series::new_empty(
-                "mean_agg_empty".into(),
-                &DataType::Float64,
-            )
-            .into();
+            return Series::new_empty("mean_agg_empty".into(), &DataType::Float64)
+                .into();
         }
 
         let series_vec: PolarsResult<Vec<Series>> = cols
@@ -237,8 +221,7 @@ mod tests {
         let batch2 = create_decoded_batch_2();
         let batches = vec![batch1, batch2];
 
-        let merged_batch: BsxBatch =
-            merge_replicates(batches, sum_agg, mean_agg)?;
+        let merged_batch: BsxBatch = merge_replicates(batches, sum_agg, mean_agg)?;
 
         // Expected results
         let expected_df = df!(
@@ -275,8 +258,7 @@ mod tests {
     fn test_merge_replicates_single() -> anyhow::Result<()> {
         let batch1 = create_decoded_batch_1();
         let batches = vec![batch1.clone()]; // Clone batch1 for comparison
-        let result_batch: BsxBatch =
-            merge_replicates(batches, sum_agg, mean_agg)?;
+        let result_batch: BsxBatch = merge_replicates(batches, sum_agg, mean_agg)?;
         assert_eq!(result_batch, batch1); // Should return the original batch
         Ok(())
     }

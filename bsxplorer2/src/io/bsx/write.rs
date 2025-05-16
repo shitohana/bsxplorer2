@@ -10,17 +10,17 @@ use polars::error::PolarsResult;
 use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 
-use crate::data_structs::batch::{create_caregorical_dtype, BsxColumns, BsxBatch};
+use crate::data_structs::batch::{create_caregorical_dtype, BsxBatch, BsxColumns};
 
 /// Writer for BSX data in Arrow IPC format with optional compression.
-pub struct BsxIpcWriter<W>
+pub struct BsxFileWriter<W>
 where
     W: Write, {
     writer: polars::io::ipc::BatchedWriter<W>,
     schema: Schema,
 }
 
-impl<W> BsxIpcWriter<W>
+impl<W> BsxFileWriter<W>
 where
     W: Write,
 {
@@ -30,7 +30,7 @@ where
         chr_names: Vec<String>,
         compression: Option<IpcCompression>,
         custom_metadata: Option<Arc<Metadata>>,
-    ) -> Result<BsxIpcWriter<W>> {
+    ) -> Result<BsxFileWriter<W>> {
         debug!(
             "Creating new BsxIpcWriter with {} chromosome names",
             chr_names.len()
@@ -78,10 +78,9 @@ where
             fai_path
         );
 
-        let index =
-            bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
-                format!("Failed to read FASTA index from {:?}", fai_path)
-            })?;
+        let index = bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
+            format!("Failed to read FASTA index from {:?}", fai_path)
+        })?;
 
         let chr_names = index
             .sequences()
@@ -89,13 +88,9 @@ where
             .map(|seq| seq.name)
             .collect_vec();
 
-        Self::try_new(sink, chr_names, compression, custom_metadata)
-            .with_context(|| {
-                format!(
-                    "Failed to create writer from FASTA index at {:?}",
-                    fai_path
-                )
-            })
+        Self::try_new(sink, chr_names, compression, custom_metadata).with_context(
+            || format!("Failed to create writer from FASTA index at {:?}", fai_path),
+        )
     }
 
     /// Creates a writer from a sink and FASTA file.
@@ -108,9 +103,8 @@ where
         info!("Creating BsxIpcWriter from FASTA file: {:?}", fasta_path);
 
         // Create index if it doesn't exist
-        noodles::fasta::fs::index(fasta_path.clone()).with_context(|| {
-            format!("Failed to index FASTA file {:?}", fasta_path)
-        })?;
+        noodles::fasta::fs::index(fasta_path.clone())
+            .with_context(|| format!("Failed to index FASTA file {:?}", fasta_path))?;
 
         let index_path = format!("{}.fai", fasta_path.to_str().unwrap());
         Self::try_from_sink_and_fai(
@@ -145,7 +139,7 @@ where
     }
 }
 
-impl<W: Write> Drop for BsxIpcWriter<W> {
+impl<W: Write> Drop for BsxFileWriter<W> {
     /// Ensures resources are properly cleaned up when dropped.
     fn drop(&mut self) {
         if let Err(e) = self.close() {

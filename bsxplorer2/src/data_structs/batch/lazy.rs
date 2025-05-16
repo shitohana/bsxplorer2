@@ -1,9 +1,8 @@
 use itertools::Itertools;
 use polars::prelude::*;
+
+use super::{BsxBatch, BsxColumns as BsxCol};
 use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
-use super::{
-    BsxBatch, BsxColumns as BsxCol
-};
 
 #[derive(Clone)]
 pub struct LazyBsxBatch {
@@ -12,17 +11,18 @@ pub struct LazyBsxBatch {
 
 impl From<BsxBatch> for LazyBsxBatch {
     fn from(batch: BsxBatch) -> Self {
-        Self { data: batch.into_inner().lazy() }
+        Self {
+            data: batch.into_inner().lazy(),
+        }
     }
 }
 
 impl LazyBsxBatch {
     pub fn collect(self) -> PolarsResult<BsxBatch> {
-        let data = self.data.collect()?.select(
-            BsxCol::schema()
-                .iter_names_cloned()
-                .collect_vec(),
-        )?;
+        let data = self
+            .data
+            .collect()?
+            .select(BsxCol::schema().iter_names_cloned().collect_vec())?;
         Ok(unsafe { BsxBatch::new_unchecked(data) })
     }
 
@@ -31,15 +31,13 @@ impl LazyBsxBatch {
         predicate: Expr,
     ) -> Self {
         Self {
-            data:     self.data.filter(predicate),
+            data: self.data.filter(predicate),
         }
     }
 
     /// Creates a LazyBsxBatch from an existing LazyFrame.
     fn from_lazy(lazy: LazyFrame) -> Self {
-        Self {
-            data:     lazy,
-        }
+        Self { data: lazy }
     }
 
     /// Filters positions less than the specified value.
@@ -71,10 +69,11 @@ impl LazyBsxBatch {
         self,
         value: Strand,
     ) -> Self {
-        self.filter(BsxCol::Strand.col().eq(value
-            .to_bool()
-            .map(lit)
-            .unwrap_or(lit(NULL))))
+        self.filter(
+            BsxCol::Strand
+                .col()
+                .eq(value.to_bool().map(lit).unwrap_or(lit(NULL))),
+        )
     }
 
     /// Filters entries by context value.
@@ -82,9 +81,10 @@ impl LazyBsxBatch {
         self,
         value: Context,
     ) -> Self {
-        self.filter(BsxCol::Context.col().eq(value
-            .to_bool()
-            .map(lit)
-            .unwrap_or(lit(NULL))))
+        self.filter(
+            BsxCol::Context
+                .col()
+                .eq(value.to_bool().map(lit).unwrap_or(lit(NULL))),
+        )
     }
 }
