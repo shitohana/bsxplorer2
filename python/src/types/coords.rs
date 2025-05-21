@@ -2,7 +2,7 @@ use std::ops::{Add, Sub};
 
 use bsxplorer2::data_structs::coords::{Contig, GenomicPosition};
 use bsxplorer2::data_structs::enums::Strand as RsStrand;
-use bsxplorer2::data_structs::typedef::{SeqNameStr, SeqPosNum};
+use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use pyo3::prelude::*;
 
@@ -30,7 +30,10 @@ impl PyGenomicPosition {
         // Leverage the existing Display implementation
         format!(
             "{}",
-            GenomicPosition::new(self.seqname.clone(), self.position)
+            GenomicPosition::new(
+                BsxSmallStr::from(self.seqname.to_owned()),
+                self.position
+            )
         )
     }
 
@@ -52,8 +55,14 @@ impl PyGenomicPosition {
         op: pyo3::basic::CompareOp,
     ) -> PyResult<bool> {
         // Convert to Rust type for comparison
-        let self_rust: GenomicPosition<String, u32> = self.into();
-        let other_rust: GenomicPosition<String, u32> = other.into();
+        let self_rust = GenomicPosition::new(
+            BsxSmallStr::from(self.seqname.clone()),
+            self.position,
+        );
+        let other_rust = GenomicPosition::new(
+            BsxSmallStr::from(other.seqname.clone()),
+            other.position,
+        );
 
         match op {
             pyo3::basic::CompareOp::Eq => Ok(self_rust == other_rust),
@@ -85,13 +94,24 @@ impl PyGenomicPosition {
         other: &PyGenomicPosition,
     ) -> PyResult<Option<Self>> {
         // Convert to Rust type for operation
-        let self_rust: GenomicPosition<String, u32> = self.into();
-        let other_rust: GenomicPosition<String, u32> = other.into();
+        let self_rust = GenomicPosition::new(
+            BsxSmallStr::from(self.seqname.clone()),
+            self.position,
+        );
+        let other_rust = GenomicPosition::new(
+            BsxSmallStr::from(other.seqname.clone()),
+            other.position,
+        );
 
         // Use the Rust Add implementation
         match self_rust.add(other_rust) {
-            Some(result_rust) => Ok(Some(result_rust.into())), /* Convert result back to PyO3 type */
-            None => Ok(None),                                  // Different seqnames
+            Some(result_rust) => {
+                Ok(Some(Self {
+                    seqname:  result_rust.seqname().to_string(),
+                    position: result_rust.position(),
+                }))
+            },
+            None => Ok(None), // Different seqnames
         }
     }
 
@@ -100,31 +120,41 @@ impl PyGenomicPosition {
         other: &PyGenomicPosition,
     ) -> PyResult<Option<Self>> {
         // Convert to Rust type for operation
-        let self_rust: GenomicPosition<String, u32> = self.into();
-        let other_rust: GenomicPosition<String, u32> = other.into();
+        let self_rust = GenomicPosition::new(
+            BsxSmallStr::from(self.seqname.clone()),
+            self.position,
+        );
+        let other_rust = GenomicPosition::new(
+            BsxSmallStr::from(other.seqname.clone()),
+            other.position,
+        );
 
         // Use the Rust Sub implementation
         match self_rust.sub(other_rust) {
-            Some(result_rust) => Ok(Some(result_rust.into())), /* Convert result back to PyO3 type */
-            None => Ok(None),                                  /* Different seqnames
-                                                                 * or rhs > lhs */
+            Some(result_rust) => {
+                Ok(Some(Self {
+                    seqname:  result_rust.seqname().to_string(),
+                    position: result_rust.position(),
+                }))
+            },
+            None => Ok(None), // Different seqnames or rhs > lhs
         }
     }
 }
 
 // Implement conversions between Rust and PyO3 structs
-impl<S: SeqNameStr, P: SeqPosNum> From<GenomicPosition<S, P>> for PyGenomicPosition {
-    fn from(gp: GenomicPosition<S, P>) -> Self {
+impl From<GenomicPosition> for PyGenomicPosition {
+    fn from(gp: GenomicPosition) -> Self {
         Self {
-            seqname:  gp.seqname().to_owned().as_ref().to_string(),
-            position: gp.position().to_u32().unwrap(),
+            seqname:  gp.seqname().to_string(),
+            position: gp.position(),
         }
     }
 }
 
-impl From<&PyGenomicPosition> for GenomicPosition<String, u32> {
+impl From<&PyGenomicPosition> for GenomicPosition {
     fn from(py_gp: &PyGenomicPosition) -> Self {
-        Self::new(py_gp.seqname.clone(), py_gp.position)
+        Self::new(BsxSmallStr::from(py_gp.seqname.clone()), py_gp.position)
     }
 }
 
@@ -137,23 +167,23 @@ pub struct PyContig {
     pub(crate) strand:  PyStrand, // Store the Rust enum internally
 }
 
-impl<R: SeqNameStr, P: SeqPosNum> From<Contig<R, P>> for PyContig {
-    fn from(value: Contig<R, P>) -> Self {
+impl From<Contig> for PyContig {
+    fn from(value: Contig) -> Self {
         PyContig {
-            seqname: value.seqname().to_owned().as_ref().to_string(),
-            start:   value.start().to_u32().unwrap(),
-            end:     value.end().to_u32().unwrap(),
+            seqname: value.seqname().to_string(),
+            start:   value.start(),
+            end:     value.end(),
             strand:  value.strand().into(),
         }
     }
 }
 
-impl<R: SeqNameStr + From<String>, P: SeqPosNum> From<PyContig> for Contig<R, P> {
+impl From<PyContig> for Contig {
     fn from(py_contig: PyContig) -> Self {
         Self::new(
-            R::from(py_contig.seqname.to_string()),
-            P::from(py_contig.start).unwrap(),
-            P::from(py_contig.end).unwrap(),
+            BsxSmallStr::from(py_contig.seqname),
+            py_contig.start,
+            py_contig.end,
             py_contig.strand.into(),
         )
     }
@@ -216,11 +246,17 @@ impl PyContig {
 
     // GenomicPosition methods
     fn start_gpos(&self) -> PyGenomicPosition {
-        GenomicPosition::new(self.seqname.clone(), self.start).into()
+        PyGenomicPosition {
+            seqname:  self.seqname.clone(),
+            position: self.start,
+        }
     }
 
     fn end_gpos(&self) -> PyGenomicPosition {
-        GenomicPosition::new(self.seqname.clone(), self.end).into()
+        PyGenomicPosition {
+            seqname:  self.seqname.clone(),
+            position: self.end,
+        }
     }
 
     // Extend methods
@@ -244,8 +280,8 @@ impl PyContig {
         other: &PyContig,
     ) -> bool {
         // Convert to Rust type for the method call
-        let self_rust: Contig<String, u32> = self.into();
-        let other_rust: Contig<String, u32> = other.into();
+        let self_rust = Contig::from(self.clone());
+        let other_rust = Contig::from(other.clone());
         self_rust.is_in(&other_rust)
     }
 
@@ -259,7 +295,7 @@ impl PyContig {
         format!(
             "{}",
             Contig::new(
-                self.seqname.clone(),
+                BsxSmallStr::from(self.seqname.clone()),
                 self.start,
                 self.end,
                 RsStrand::from(self.strand)
@@ -286,8 +322,8 @@ impl PyContig {
         op: pyo3::basic::CompareOp,
     ) -> PyResult<bool> {
         // Convert to Rust type for comparison
-        let self_rust: Contig<String, u32> = self.into();
-        let other_rust: Contig<String, u32> = other.into();
+        let self_rust = Contig::from(self.clone());
+        let other_rust = Contig::from(other.clone());
 
         match op {
             pyo3::basic::CompareOp::Eq => Ok(self_rust == other_rust),
@@ -313,10 +349,10 @@ impl PyContig {
     }
 }
 
-impl From<&PyContig> for Contig<String, u32> {
+impl From<&PyContig> for Contig {
     fn from(py_c: &PyContig) -> Self {
         Self::new(
-            py_c.seqname.clone(),
+            BsxSmallStr::from(py_c.seqname.clone()),
             py_c.start,
             py_c.end,
             RsStrand::from(py_c.strand),

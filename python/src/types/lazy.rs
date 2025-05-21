@@ -72,13 +72,13 @@ impl PyLazyBsxBatch {
         }
     }
 
-    // Based on LazyBsxBatch::filter_coverage_lt
-    pub fn filter_coverage_lt(
+    // Based on LazyBsxBatch::filter_coverage_gt
+    pub fn filter_coverage_gt(
         &self,
         coverage: u32,
     ) -> Self {
         Self {
-            inner: self.inner.clone().filter_coverage_lt(coverage),
+            inner: self.inner.clone().filter_coverage_gt(coverage),
         }
     }
 

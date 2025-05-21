@@ -64,9 +64,21 @@ macro_rules! plsmallstr {
 }
 
 #[macro_export]
+macro_rules! getter_fn {
+    ($field_name: ident, $field_type: ty) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        pub fn $field_name(&self) -> &$field_type {
+            &self.$field_name
+        }
+    };
+}
+pub use getter_fn;
+
+#[macro_export]
 macro_rules! with_field_fn {
     ($field_name: ident, $field_type: ty) => {
         paste::paste! {
+            #[cfg_attr(coverage_nightly, coverage(off))]
             pub fn [<with_$field_name>](mut self, value: $field_type) -> Self {
             self.$field_name = value;
             self
@@ -119,10 +131,10 @@ pub(crate) fn float2int<F: Float, U: Unsigned + PrimInt>(
 
 pub(crate) fn int2float<F: Float, U: Unsigned + PrimInt>(value: U) -> F {
     if value == U::max_value() {
-        return F::from(1.0).unwrap();
+        F::from(1.0).unwrap()
     }
     else if value == U::min_value() {
-        return F::from(0.0).unwrap();
+        F::from(0.0).unwrap()
     }
     else {
         F::from(value).unwrap() / F::from(U::max_value()).unwrap()

@@ -35,28 +35,32 @@ pub fn init_hidden() -> anyhow::Result<ProgressBar> {
 }
 
 pub fn expand_wildcards(paths: Vec<String>) -> Vec<PathBuf> {
-    let mut expanded_paths = Vec::new();
+    paths
+        .iter()
+        .map(|path| expand_wildcards_single(path))
+        .flatten()
+        .collect()
+}
 
-    for path in paths {
-        if path.contains('*') || path.contains('?') {
-            // Expand wildcard using glob
-            match glob(&path) {
-                Ok(matches) => {
-                    for entry in matches.filter_map(Result::ok) {
-                        expanded_paths.push(entry);
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Error processing wildcard '{}': {}", path, e)
-                },
-            }
-        }
-        else {
-            // If not a wildcard, push the path as-is
-            expanded_paths.push(PathBuf::from(path));
+pub fn expand_wildcards_single(path: &String) -> Vec<PathBuf> {
+    let mut expanded_paths = vec![];
+    if path.contains('*') || path.contains('?') {
+        // Expand wildcard using glob
+        match glob(&path) {
+            Ok(matches) => {
+                for entry in matches.filter_map(Result::ok) {
+                    expanded_paths.push(entry);
+                }
+            },
+            Err(e) => {
+                eprintln!("Error processing wildcard '{}': {}", path, e)
+            },
         }
     }
-
+    else {
+        // If not a wildcard, push the path as-is
+        expanded_paths.push(PathBuf::from(path));
+    }
     expanded_paths
 }
 
@@ -93,6 +97,7 @@ impl UtilsArgs {
         rayon::ThreadPoolBuilder::new()
             .num_threads(self.threads)
             .build_global()?;
+        println!("Using {} threads", rayon::current_num_threads());
         Ok(())
     }
 }

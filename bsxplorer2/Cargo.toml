@@ -12,6 +12,7 @@ edition.workspace = true
 readme.workspace = true
 
 [features]
+default = ["tools"]
 compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip", "tempfile"]
 performant = ["polars/performant", "polars/cse"]
 performant_nightly = ["polars/nightly"]
@@ -45,9 +46,10 @@ zstd = { version = "0.13.3", optional = true }
 lz4 = { version = "1.28.1", optional = true }
 xz2 = { version = "0.1.7", optional = true }
 bzip2 = { version = "0.5.2", optional = true }
-zip = { version = "2.6.1", optional = true }
+zip = { version = "3.0.0", optional = true }
 flate2 = { version = "1.1.1", optional = true }
 clap = { version = "4.1", features = ["derive"], optional = true }
+id_tree = "1.8.0"
 polars-arrow = "0.45.0"
 either = "1.15.0"
 

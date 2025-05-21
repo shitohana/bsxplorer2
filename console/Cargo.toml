@@ -8,6 +8,9 @@ repository.workspace = true
 version.workspace = true
 edition.workspace = true
 
+[features]
+nightly = ["bsxplorer2/performant_nightly"]
+
 [dependencies]
 clap = { version = "4.1", features = ["derive"] }
 console = "0.15"
@@ -23,6 +26,7 @@ pretty_env_logger.workspace = true
 rayon.workspace = true
 serde.workspace = true
 polars.workspace = true
+itertools.workspace = true
 
 [dependencies.bsxplorer2]
 path = "../bsxplorer2"

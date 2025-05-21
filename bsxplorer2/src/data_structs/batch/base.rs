@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
 use std::ops::Deref;
 
+use anyhow::bail;
 use hashbrown::HashMap;
 use itertools::{izip, Itertools};
 use num::Zero;
@@ -21,7 +23,8 @@ use crate::data_structs::methstats::MethylationStats;
 use crate::data_structs::typedef::{BsxSmallStr, CountType, DensityType, PosType};
 use crate::io::report::ReportType;
 use crate::plsmallstr;
-
+#[cfg(feature = "tools")]
+use crate::tools::dimred::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BsxBatch {
@@ -45,6 +48,8 @@ impl BsxBatch {
     get_col_fn!(density, BsxCol::Density.as_str(), f32, Float32Chunked);
 
     // CONSTRUCTORS
+    /// # Safety
+    /// The caller must ensure that the DataFrame is valid.
     #[inline(always)]
     pub unsafe fn new_unchecked(df: DataFrame) -> Self {
         BsxBatch { data: df }
@@ -114,6 +119,7 @@ impl BsxBatch {
     }
 
     // CONVERSION
+    #[inline(always)]
     pub fn data(&self) -> &DataFrame {
         &self.data
     }
@@ -129,14 +135,12 @@ impl BsxBatch {
 
     pub fn column(
         &self,
-        name: &str,
-    ) -> Option<&Series> {
-        if BsxCol::has_name(name) {
-            Some(self.data().column(name).unwrap().as_materialized_series())
-        }
-        else {
-            None
-        }
+        name: BsxCol,
+    ) -> &Series {
+        self.data()
+            .column(name.as_str())
+            .unwrap()
+            .as_materialized_series()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -144,6 +148,22 @@ impl BsxBatch {
     }
 
     // OPERATIONS
+    #[cfg(test)]
+    pub fn create_test_df() -> Self {
+        use super::create_caregorical_dtype;
+
+        BsxBatch::try_from_columns(
+            "chr1",
+            Some(create_caregorical_dtype(vec!["chr1".into()])),
+            vec![3, 5, 9, 12, 15],
+            vec![true, false, true, true, false],
+            vec![Some(true), Some(false), Some(true), None, None],
+            vec![5, 10, 15, 10, 5],
+            vec![10, 30, 20, 10, 10],
+        )
+        .unwrap()
+    }
+
     pub fn split_at(
         &self,
         index: usize,
@@ -153,6 +173,10 @@ impl BsxBatch {
         unsafe {
             (Self::new_unchecked(left), Self::new_unchecked(right))
         }
+    }
+
+    pub fn rechunk(&mut self) {
+        self.data.rechunk_mut();
     }
 
     pub fn extend(
@@ -167,6 +191,13 @@ impl BsxBatch {
             .checks_only(&new)?;
         self.data = new;
         Ok(())
+    }
+
+    pub unsafe fn extend_unchecked(
+        &mut self,
+        other: &Self,
+    ) -> PolarsResult<()> {
+        self.data.extend(other.data())
     }
 
     pub fn add_context_data(
@@ -205,7 +236,7 @@ impl BsxBatch {
                     .fill_null(lit(DensityType::NAN))
                     .alias(BsxCol::Density.as_str()),
             ]);
-        let res = joined.collect()?;
+        let res = joined.collect()?.select(BsxCol::colnames()).unwrap();
         Ok(unsafe { Self::new_unchecked(res) })
     }
 
@@ -234,14 +265,14 @@ impl BsxBatch {
         .select(
             report_type
                 .col_names()
-                .into_iter()
+                .iter()
                 .map(|s| col(*s))
                 .collect_vec(),
         );
 
         let res_schema = res.collect_schema()?;
         let target_schema = SchemaRef::new(report_type.schema());
-        let schemas_equal = res_schema.deref().eq(&target_schema.deref());
+        let schemas_equal = res_schema.deref().eq(target_schema.deref());
 
         if !schemas_equal {
             Err(PolarsError::SchemaMismatch(
@@ -255,8 +286,12 @@ impl BsxBatch {
 
     pub fn get_methylation_stats(&self) -> MethylationStats {
         let nonull = self.density().drop_nulls();
-        let mean = nonull.mean().map(|v| v as DensityType).unwrap_or(DensityType::NAN);
-        let var = nonull.into_no_null_iter().map(|x| x as f64).variance() as DensityType;
+        let mean = nonull
+            .mean()
+            .map(|v| v as DensityType)
+            .unwrap_or(DensityType::NAN);
+        let var =
+            nonull.into_no_null_iter().map(|x| x as f64).variance() as DensityType;
 
         MethylationStats::from_data(
             mean,
@@ -268,11 +303,12 @@ impl BsxBatch {
     }
 
     pub fn get_coverage_dist(&self) -> HashMap<CountType, u32> {
-        izip!(self.count_m(), self.count_total())
-            .filter_map(|(k, v)| Option::zip(k, v))
+        self.count_total()
+            .into_iter()
+            .filter_map(|v| v.map(|v1| (v1, v1)))
             .into_group_map()
             .into_iter()
-            .map(|(k, v)| (k, v.iter().count() as u32))
+            .map(|(k, v)| (k, v.len() as u32))
             .collect()
     }
 
@@ -338,7 +374,7 @@ impl BsxBatch {
                         0
                     }
                 })
-                .map(|v| AnyValue::UInt16(v))
+                .map(AnyValue::UInt16)
                 .collect_vec(),
             true,
         )?
@@ -357,7 +393,7 @@ impl BsxBatch {
                         0
                     }
                 })
-                .map(|v| AnyValue::UInt16(v))
+                .map(AnyValue::UInt16)
                 .collect_vec(),
             true,
         )?
@@ -375,18 +411,183 @@ impl BsxBatch {
         Ok(unsafe { Self::new_unchecked(new_data) })
     }
 
+    #[cfg(feature = "tools")]
+    pub fn shrink(
+        &self,
+        method: SegmentAlgorithm,
+    ) -> anyhow::Result<(Vec<f64>, Vec<f64>)> {
+        if self.is_empty() {
+            return Ok(Default::default());
+        }
+
+        if self.count_m().null_count() != 0 || self.count_total().null_count() != 0 {
+            anyhow::bail!("Can not segment region. Missing counts data");
+        }
+        let (count_m, count_total) = unsafe {
+            (
+                self.count_m().to_vec_null_aware().left().unwrap_unchecked(),
+                self.count_total()
+                    .to_vec_null_aware()
+                    .left()
+                    .unwrap_unchecked(),
+            )
+        };
+        let meth_data = MethDataBinom::new(&count_m, &count_total);
+
+        let segment_boundaries = match method {
+            SegmentAlgorithm::Pelt(beta, min_size) => {
+                let (segments, _score) = pelt(
+                    &meth_data,
+                    beta.unwrap_or((meth_data.len() as f64).ln()),
+                    min_size,
+                );
+                segments.iter().map(|v| v + 1).collect_vec()
+            },
+        };
+
+        self.partition(segment_boundaries, AggMethod::Mean.get_fn())
+    }
+
+    pub fn discretise(
+        &self,
+        n_fragments: usize,
+        agg_fn: AggMethod,
+    ) -> anyhow::Result<(Vec<f64>, Vec<f64>)> {
+        // Check valid number of fragments
+        if n_fragments == 0 {
+            bail!("Cannot partition batch into 0 fragments")
+        }
+        if self.is_empty() {
+            return Ok(Default::default());
+        }
+        if n_fragments == 1 {
+            return self.partition(vec![self.len()], agg_fn.get_fn());
+        }
+
+        let positions_series = self.position();
+        let positions: Vec<PosType> = positions_series.into_no_null_iter().collect();
+        let size = positions.len();
+
+        let start = self.first_pos().unwrap(); // Guaranteed to exist because not empty
+        let end = self.last_pos().unwrap(); // Guaranteed to exist because not empty
+        let genomic_length = end + 1 - start; // Genomic range length
+
+        let fragment_genomic_length = genomic_length as f64 / n_fragments as f64;
+        let mut target_positions: Vec<PosType> = Vec::with_capacity(n_fragments - 1);
+        for i in 1..n_fragments {
+            let target_pos_f64 = start as f64 + i as f64 * fragment_genomic_length;
+            let target_pos = target_pos_f64.round() as PosType;
+            target_positions.push(target_pos);
+        }
+
+        let mut breakpoints: Vec<usize> = Vec::with_capacity(n_fragments - 1);
+        let mut current_search_start_index = 0; // Optimization: positions are sorted, search from last found index
+
+        for target_pos in target_positions {
+            // Search in the remaining slice of positions, starting from the last found
+            // index.
+            let search_slice = &positions[current_search_start_index..];
+
+            // Find the index within the *slice* where the first position >= target_pos
+            // occurs.
+            let result_in_slice =
+                search_slice.binary_search_by(|pos| pos.cmp(&target_pos));
+
+            let breakpoint_index_in_slice = match result_in_slice {
+                Ok(idx) => idx, // Found exact match
+                Err(idx) => idx, /* No exact match, idx is the insertion point
+                                  * (first element >= target) */
+            };
+
+            // Convert the index in the slice back to an index in the original
+            // 'positions' vector.
+            let breakpoint_index =
+                current_search_start_index + breakpoint_index_in_slice;
+            let final_index = std::cmp::min(breakpoint_index, size);
+
+            breakpoints.push(final_index);
+
+            current_search_start_index = final_index;
+        }
+
+        debug_assert_eq!(breakpoints.len(), n_fragments - 1);
+        self.partition(breakpoints, agg_fn.get_fn())
+    }
+
+    pub fn partition(
+        &self,
+        mut breakpoints: Vec<usize>,
+        agg_fn: Box<dyn Fn(&[f32]) -> f64>,
+    ) -> anyhow::Result<(Vec<f64>, Vec<f64>)> {
+        if self.is_empty() || breakpoints.is_empty() {
+            return Ok(Default::default());
+        }
+        let size = self.len();
+        if breakpoints.iter().any(|v| v > &size) {
+            bail!("Partition index out of bounds")
+        }
+        if breakpoints.first().unwrap() == &0 {
+            bail!("Partition index can not be 0")
+        }
+        if self.density().null_count() > 0 {
+            bail!("Density contains nulls")
+        }
+
+        let start = self.first_pos().unwrap();
+        let end = self.last_pos().unwrap();
+        let length = (end + 1 - start) as f64;
+
+        if breakpoints.last().map(|p| p != &size).unwrap_or(true) {
+            breakpoints.push(size);
+        }
+
+        let rel_positions = unsafe {
+            let positions = self.position();
+            let mut boundary_ends = (0..(breakpoints.len() - 1))
+                .map(|i| positions.get_unchecked(*&breakpoints[i]).unwrap_unchecked())
+                .map(|pos| (pos - start) as f64 / length)
+                .collect_vec();
+            boundary_ends.push(1.0);
+            boundary_ends
+        };
+
+        let mut breakpoints_ext = breakpoints;
+        breakpoints_ext.insert(0, 0);
+        let densities = {
+            let density_vals = self.density().iter().map(|v| v.unwrap()).collect_vec();
+            breakpoints_ext
+                .windows(2)
+                .map(|window| {
+                    let start_i = window[0];
+                    let end_i = window[1];
+                    agg_fn(&density_vals[start_i..end_i])
+                })
+                .collect_vec()
+        };
+        Ok((rel_positions, densities))
+    }
+
     // POSITION
     #[inline]
     pub fn first_pos(&self) -> Option<u32> {
+        if self.data.is_empty() {
+            return None;
+        }
         self.position().first()
     }
 
     #[inline]
     pub fn last_pos(&self) -> Option<u32> {
+        if self.data.is_empty() {
+            return None;
+        }
         self.position().last()
     }
 
     pub fn seqname(&self) -> Option<&str> {
+        if self.data.is_empty() {
+            return None;
+        }
         self.chr().iter_str().next().flatten()
     }
 
@@ -395,19 +596,19 @@ impl BsxBatch {
         self.data().height()
     }
 
-    pub fn first_genomic_pos(&self) -> Option<GenomicPosition<BsxSmallStr, u32>> {
+    pub fn first_genomic_pos(&self) -> Option<GenomicPosition> {
         let seqname = self.seqname().map(BsxSmallStr::from);
         let pos = self.first_pos();
         seqname.and_then(|seqname| pos.map(|pos| GenomicPosition::new(seqname, pos)))
     }
 
-    pub fn last_genomic_pos(&self) -> Option<GenomicPosition<BsxSmallStr, u32>> {
+    pub fn last_genomic_pos(&self) -> Option<GenomicPosition> {
         let seqname = self.seqname().map(BsxSmallStr::from);
         let pos = self.last_pos();
         seqname.and_then(|seqname| pos.map(|pos| GenomicPosition::new(seqname, pos)))
     }
 
-    pub fn as_contig(&self) -> Option<Contig<BsxSmallStr, u32>> {
+    pub fn as_contig(&self) -> Option<Contig> {
         let seqname = self.seqname().map(BsxSmallStr::from);
         let first = self.first_pos();
         let last = self.last_pos();
@@ -428,7 +629,7 @@ mod report_type_conversion {
             // chr
             BsxCol::Chr.col().cast(DataType::String).alias("chr"),
             BsxCol::Position.col().alias("start"),
-            BsxCol::Position.col().alias("end"),
+            (BsxCol::Position.col() + lit(1)).alias("end"),
             BsxCol::Density.col().alias("density"),
         ])
         .drop_nans(Some(vec![BsxCol::Density.col()]))
@@ -439,10 +640,10 @@ mod report_type_conversion {
         lf.select([
             BsxCol::Chr.col().cast(DataType::String).alias("chr"),
             BsxCol::Position.col().alias("start"),
-            BsxCol::Position.col().alias("end"),
+            (BsxCol::Position.col() + lit(1)).alias("end"),
+            BsxCol::Density.col().alias("density"),
             BsxCol::CountM.col().alias("count_m"),
             (BsxCol::CountTotal.col() - BsxCol::CountM.col()).alias("count_um"),
-            BsxCol::Density.col().alias("density"),
         ])
         .drop_nans(Some(vec![BsxCol::Density.col()]))
         .cast(ReportType::Coverage.hashmap(), true)
@@ -450,9 +651,9 @@ mod report_type_conversion {
 
     pub fn bismark(lf: LazyFrame) -> LazyFrame {
         lf.with_column(
-            when(BsxCol::Context.col() == lit(NULL))
+            when(BsxCol::Context.col().is_null())
                 .then(lit("CHH"))
-                .when(BsxCol::Context.col() == lit(false))
+                .when(BsxCol::Context.col().eq(lit(false)))
                 .then(lit("CHG"))
                 .otherwise(lit("CG"))
                 .cast(DataType::String)
@@ -462,9 +663,9 @@ mod report_type_conversion {
             BsxCol::Chr.col().cast(DataType::String).alias("chr"),
             BsxCol::Position.col().alias("position"),
             // strand
-            when(BsxCol::Strand.col() == lit(true))
+            when(BsxCol::Strand.col().eq(lit(true)))
                 .then(lit("+"))
-                .when(BsxCol::Strand.col() == lit(false))
+                .when(BsxCol::Strand.col().eq(lit(false)))
                 .then(lit("-"))
                 .otherwise(lit("."))
                 .cast(DataType::String)
@@ -479,9 +680,9 @@ mod report_type_conversion {
 
     pub fn cgmap(lf: LazyFrame) -> LazyFrame {
         lf.with_column(
-            when(BsxCol::Context.col() == lit(NULL))
+            when(BsxCol::Context.col().is_null())
                 .then(lit("CHH"))
-                .when(BsxCol::Context.col() == lit(false))
+                .when(BsxCol::Context.col().eq(lit(false)))
                 .then(lit("CHG"))
                 .otherwise(lit("CG"))
                 .cast(DataType::String)
@@ -491,11 +692,12 @@ mod report_type_conversion {
             // chr
             BsxCol::Chr.col().cast(DataType::String).alias("chr"),
             // nuc
-            when(BsxCol::Strand.col() == lit(true))
+            when(BsxCol::Strand.col().eq(lit(true)))
                 .then(lit("C"))
-                .when(BsxCol::Strand.col() == lit(false))
+                .when(BsxCol::Strand.col().eq(lit(false)))
                 .then(lit("G"))
                 .otherwise(lit("."))
+                .cast(DataType::String)
                 .alias("nuc"),
             // position
             BsxCol::Position.col().alias("position"),
@@ -513,249 +715,53 @@ mod report_type_conversion {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use rstest::{fixture, rstest};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AggMethod {
+    Mean,
+    GeometricMean,
+    Median,
+    Max,
+    Min,
+}
 
-    use super::*;
-    use crate::data_structs::batch::create_caregorical_dtype;
-    use crate::utils::get_categorical_dtype;
+impl AggMethod {
+    pub(crate) fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64> {
+        use statrs::statistics::*;
 
-    #[test]
-    fn test_empty_batch() {
-        let batch = BsxBatch::empty(None);
-        assert!(batch.is_empty());
-    }
-
-    #[fixture]
-    fn test_batch() -> BsxBatch {
-        BsxBatch::try_from_columns(
-            "chr1",
-            Some(create_caregorical_dtype(vec!["chr1".into()])),
-            vec![3, 5, 9, 12, 15],
-            vec![true, false, true, true, false],
-            vec![Some(true), Some(false), Some(true), None, None],
-            vec![5, 10, 15, 10, 5],
-            vec![10, 30, 20, 10, 10],
-        )
-        .unwrap()
-    }
-
-    #[rstest]
-    fn test_column_getters(test_batch: BsxBatch) {
-        assert_eq!(test_batch.len(), 5);
-
-        // Test chr column
-        let chr = test_batch.chr();
-        assert!(chr.iter_str().all(|c| c.unwrap() == "chr1"));
-
-        // Test position column
-        let positions = test_batch.position();
-        assert_eq!(positions.into_iter().collect::<Vec<_>>(), vec![
-            Some(3),
-            Some(5),
-            Some(9),
-            Some(12),
-            Some(15)
-        ]);
-
-        // Test strand column
-        let strands = test_batch.strand();
-        assert_eq!(strands.into_iter().collect::<Vec<_>>(), vec![
-            Some(true),
-            Some(false),
-            Some(true),
-            Some(true),
-            Some(false)
-        ]);
-
-        // Test context column
-        let contexts = test_batch.context();
-        assert_eq!(contexts.into_iter().collect::<Vec<_>>(), vec![
-            Some(true),
-            Some(false),
-            Some(true),
-            None,
-            None
-        ]);
-
-        // Test count_m column
-        let count_m = test_batch.count_m();
-        assert_eq!(count_m.into_iter().collect::<Vec<_>>(), vec![
-            Some(5),
-            Some(10),
-            Some(15),
-            Some(10),
-            Some(5)
-        ]);
-
-        // Test count_total column
-        let count_total = test_batch.count_total();
-        assert_eq!(count_total.into_iter().collect::<Vec<_>>(), vec![
-            Some(10),
-            Some(30),
-            Some(20),
-            Some(10),
-            Some(10)
-        ]);
-
-        // Test density column
-        let density = test_batch.density();
-        assert_eq!(
-            density
-                .into_iter()
-                .map(|v| v.map(|f| (f * 100.0).round() / 100.0))
-                .collect::<Vec<_>>(),
-            vec![Some(0.5), Some(0.33), Some(0.75), Some(1.0), Some(0.5)]
-        );
-    }
-
-    #[rstest]
-    fn test_split_at(test_batch: BsxBatch) {
-        let (left, right) = test_batch.split_at(2);
-
-        assert_eq!(left.len(), 2);
-        assert_eq!(right.len(), 3);
-
-        assert_eq!(left.position().into_iter().collect::<Vec<_>>(), vec![
-            Some(3),
-            Some(5)
-        ]);
-        assert_eq!(right.position().into_iter().collect::<Vec<_>>(), vec![
-            Some(9),
-            Some(12),
-            Some(15)
-        ]);
-    }
-
-    #[rstest]
-    fn test_slice(test_batch: BsxBatch) {
-        let sliced = test_batch.slice(1, 3);
-
-        assert_eq!(sliced.len(), 3);
-        assert_eq!(sliced.position().into_iter().collect::<Vec<_>>(), vec![
-            Some(5),
-            Some(9),
-            Some(12)
-        ]);
-    }
-
-    #[rstest]
-    fn test_position_methods(test_batch: BsxBatch) {
-        assert_eq!(test_batch.first_pos(), Some(3));
-        assert_eq!(test_batch.last_pos(), Some(15));
-        assert_eq!(test_batch.seqname(), Some("chr1"));
-
-        let first_genomic_pos = test_batch.first_genomic_pos();
-        assert!(first_genomic_pos.is_some());
-        assert_eq!(first_genomic_pos.clone().unwrap().position(), 3);
-        assert_eq!(first_genomic_pos.clone().unwrap().seqname(), "chr1");
-
-        let last_genomic_pos = test_batch.last_genomic_pos();
-        assert!(last_genomic_pos.is_some());
-        assert_eq!(last_genomic_pos.clone().unwrap().position(), 15);
-        assert_eq!(last_genomic_pos.clone().unwrap().seqname(), "chr1");
-
-        let contig = test_batch.as_contig();
-        assert!(contig.is_some());
-        assert_eq!(contig.clone().unwrap().start(), 3);
-        assert_eq!(contig.clone().unwrap().end(), 15);
-        assert_eq!(contig.clone().unwrap().seqname(), "chr1");
-    }
-
-    #[rstest]
-    fn test_stats_methods(test_batch: BsxBatch) {
-        // Test methylation stats
-        let meth_stats = test_batch.get_methylation_stats();
-        assert!((meth_stats.mean_methylation() - 0.616).abs() < 0.001);
-
-        // Test coverage distribution
-        let cov_dist = test_batch.get_coverage_dist();
-        assert_eq!(cov_dist.get(&5), Some(&2));
-        assert_eq!(cov_dist.get(&10), Some(&2));
-        assert_eq!(cov_dist.get(&15), Some(&1));
-
-        // Test context stats
-        let context_stats = test_batch.get_context_stats();
-        assert_eq!(context_stats.len(), 3);
-        let cg_stats = context_stats.get(&Context::CG);
-        assert!(cg_stats.is_some());
-        let chg_stats = context_stats.get(&Context::CHG);
-        assert!(chg_stats.is_some());
-
-        // Test strand stats
-        let strand_stats = test_batch.get_strand_stats();
-        assert_eq!(strand_stats.len(), 2);
-        let pos_stats = strand_stats.get(&Strand::Forward);
-        assert!(pos_stats.is_some());
-        let neg_stats = strand_stats.get(&Strand::Reverse);
-        assert!(neg_stats.is_some());
-    }
-
-    #[rstest]
-    fn test_as_binom(test_batch: BsxBatch) {
-        let binom_batch = test_batch.as_binom(0.5, 0.05).unwrap();
-        assert_eq!(binom_batch.len(), 5);
-
-        // Verify that the binom transform changed count_m and density values
-        let count_m = binom_batch.count_m();
-        let count_total = binom_batch.count_total();
-        let density = binom_batch.density();
-
-        // Check types remain the same
-        assert_eq!(count_m.dtype(), &DataType::UInt16);
-        assert_eq!(count_total.dtype(), &DataType::UInt16);
-        assert_eq!(density.dtype(), &DataType::Float32);
-    }
-
-    #[rstest]
-    fn test_is_empty(test_batch: BsxBatch) {
-        assert!(!test_batch.is_empty());
-        assert!(BsxBatch::empty(None).is_empty());
-    }
-
-    #[rstest]
-    #[case::no_chr(None, None)]
-    #[case::both_chr(Some(get_categorical_dtype(vec!["chr1".into()])), Some(get_categorical_dtype(vec!["chr1".into()])))]
-    #[should_panic]
-    #[case::different_types(None, Some(get_categorical_dtype(vec!["chr1".into()])))]
-    fn test_can_extend(
-        #[case] first_dtype: Option<DataType>,
-        #[case] second_dtype: Option<DataType>,
-    ) {
-        let batch1 = BsxBatch::empty(first_dtype.as_ref());
-        let batch2 = BsxBatch::try_from_columns(
-            "chr1",
-            second_dtype,
-            vec![1, 2, 3],
-            vec![true, false, true],
-            vec![Some(true), Some(false), None],
-            vec![1, 2, 3],
-            vec![3, 6, 9],
-        )
-        .unwrap();
-
-        assert!(matches!(
-            batch1.column(BsxCol::Chr.as_str()).unwrap().dtype(),
-            DataType::Categorical(_, _) | DataType::Enum(_, _)
-        ));
-        assert!(matches!(
-            batch2.column(BsxCol::Chr.as_str()).unwrap().dtype(),
-            DataType::Categorical(_, _) | DataType::Enum(_, _)
-        ));
-
-        let vstack = batch1.data().vstack(&batch2.data()).unwrap();
-        assert!(matches!(
-            vstack.column(BsxCol::Chr.as_str()).unwrap().dtype(),
-            DataType::Categorical(_, _) | DataType::Enum(_, _)
-        ));
-        assert!(vstack
-            .column(BsxCol::Chr.as_str())
-            .unwrap()
-            .categorical()
-            .unwrap()
-            .get_rev_map()
-            .find("chr1")
-            .is_some());
+        Box::new(match self {
+            AggMethod::Mean => {
+                |arr: &[f32]| {
+                    let len = arr.len();
+                    arr.iter().sum::<f32>() as f64 / len as f64
+                }
+            },
+            AggMethod::GeometricMean => {
+                |arr: &[f32]| {
+                    let len = arr.len();
+                    (arr.iter().map(|v| (*v as f64).ln()).sum::<f64>() / len as f64)
+                        .exp()
+                }
+            },
+            AggMethod::Median => {
+                |arr: &[f32]| {
+                    Data::new(arr.iter().map(|v| *v as f64).collect_vec())
+                        .percentile(50)
+                }
+            },
+            AggMethod::Max => {
+                |arr: &[f32]| {
+                    *arr.iter()
+                        .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                        .unwrap_or(&f32::NAN) as f64
+                }
+            },
+            AggMethod::Min => {
+                |arr: &[f32]| {
+                    *arr.iter()
+                        .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                        .unwrap_or(&f32::NAN) as f64
+                }
+            },
+        })
     }
 }

@@ -75,7 +75,7 @@ impl BsxBatchBuilder {
         S: AsRef<str>,
         P: AsRef<[S]>, {
         let dtype = Some(create_caregorical_dtype(
-            chr_values.into_iter().map(|v| Some(v)).collect_vec(),
+            chr_values.into_iter().map(Some).collect_vec(),
         ));
         self.chr_dtype = dtype;
         self
@@ -118,7 +118,7 @@ impl BsxBatchBuilder {
             .cast(
                 HashMap::from_iter([
                     (
-                        BsxCol::Chr.as_str().into(),
+                        BsxCol::Chr.as_str(),
                         self.chr_dtype
                             .clone()
                             .unwrap_or(create_empty_categorical_dtype()),
@@ -159,6 +159,8 @@ impl BsxBatchBuilder {
         Ok(unsafe { BsxBatch::new_unchecked(casted) })
     }
 
+    /// # Safety
+    /// Batch data and schema are assumed to be correct
     pub unsafe fn build_unchecked(df: DataFrame) -> BsxBatch {
         BsxBatch::new_unchecked(df)
     }
@@ -204,7 +206,7 @@ impl BsxBatchBuilder {
     }
 }
 
-mod build {
+pub(super) mod build {
     use polars::series::IsSorted;
 
     use super::*;

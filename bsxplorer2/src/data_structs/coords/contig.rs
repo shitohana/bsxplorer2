@@ -1,6 +1,5 @@
 use std::fmt::Display;
 use std::ops::Range;
-use std::str::FromStr;
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::ReqStrand;
@@ -8,31 +7,24 @@ use serde::{Deserialize, Serialize};
 
 use super::GenomicPosition;
 use crate::data_structs::enums::Strand;
-use crate::data_structs::typedef::{SeqNameStr, SeqPosNum};
+use crate::data_structs::typedef::{BsxSmallStr, PosType, SeqNameStr};
 
 /// Represents a contig with a sequence name, start position, end position, and
 /// strand.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Contig<R, P>
-where
-    R: SeqNameStr,
-    P: SeqPosNum, {
-    seqname: R,
-    start:   P,
-    end:     P,
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+pub struct Contig {
+    seqname: BsxSmallStr,
+    start:   PosType,
+    end:     PosType,
     strand:  Strand,
 }
 
-impl<R, P> Contig<R, P>
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
+impl Contig {
     /// Creates a new `Contig`.
     pub fn new(
-        seqname: R,
-        start: P,
-        end: P,
+        seqname: BsxSmallStr,
+        start: PosType,
+        end: PosType,
         strand: Strand,
     ) -> Self {
         assert!(
@@ -48,22 +40,22 @@ where
     }
 
     /// Returns the start position.
-    pub fn start(&self) -> P {
+    pub fn start(&self) -> PosType {
         self.start
     }
 
     /// Returns the end position.
-    pub fn end(&self) -> P {
+    pub fn end(&self) -> PosType {
         self.end
     }
 
     /// Returns the start position of the contig.
-    pub fn start_gpos(&self) -> GenomicPosition<R, P> {
+    pub fn start_gpos(&self) -> GenomicPosition {
         GenomicPosition::new(self.seqname.clone(), self.start)
     }
 
     /// Returns the end position of the contig.
-    pub fn end_gpos(&self) -> GenomicPosition<R, P> {
+    pub fn end_gpos(&self) -> GenomicPosition {
         GenomicPosition::new(self.seqname.clone(), self.end)
     }
 
@@ -73,19 +65,19 @@ where
     }
 
     /// Returns the sequence name of the contig.
-    pub fn seqname(&self) -> &R {
+    pub fn seqname(&self) -> &BsxSmallStr {
         &self.seqname
     }
 
     /// Returns the length of the contig.
-    pub fn length(&self) -> P {
+    pub fn length(&self) -> PosType {
         self.end - self.start
     }
 
     /// Extends the contig upstream by a given length.
     pub fn extend_upstream(
         &mut self,
-        length: P,
+        length: PosType,
     ) {
         self.start = self.start.saturating_sub(length);
     }
@@ -93,7 +85,7 @@ where
     /// Extends the contig downstream by a given length.
     pub fn extend_downstream(
         &mut self,
-        length: P,
+        length: PosType,
     ) {
         self.end = self.end.saturating_add(length);
     }
@@ -101,7 +93,7 @@ where
     /// Sets the start position of the contig.
     pub fn set_start(
         &mut self,
-        start: P,
+        start: PosType,
     ) {
         self.start = start;
     }
@@ -109,7 +101,7 @@ where
     /// Sets the end position of the contig.
     pub fn set_end(
         &mut self,
-        end: P,
+        end: PosType,
     ) {
         self.end = end;
     }
@@ -119,46 +111,24 @@ where
         &self,
         other: &Self,
     ) -> bool {
-        self.seqname.as_ref() == other.seqname.as_ref()
+        self.seqname == other.seqname
             && self.start >= other.start
             && self.end <= other.end
     }
 
-    /// Casts the contig to a new type.
-    pub fn cast<R2: SeqNameStr, P2: SeqPosNum>(
-        self,
-        seqname_fn: fn(R) -> R2,
-        pos_fn: fn(P) -> P2,
-    ) -> Contig<R2, P2> {
-        Contig {
-            seqname: seqname_fn(self.seqname),
-            start:   pos_fn(self.start),
-            end:     pos_fn(self.end),
-            strand:  self.strand,
-        }
-    }
-
     pub fn is_empty(&self) -> bool {
-        self.start == self.end
-            && self.start == P::zero()
-            && self.seqname.as_ref() == ""
+        self.start == self.end && self.start == 0 && self.seqname.as_str() == ""
     }
 }
 
-impl<R, P> From<Range<GenomicPosition<R, P>>> for Contig<R, P>
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
+impl From<Range<GenomicPosition>> for Contig {
     /// Converts from a range of `GenomicPosition`s.
-    fn from(value: Range<GenomicPosition<R, P>>) -> Self {
-        assert_eq!(
-            value.start.seqname().as_ref(),
-            value.end.seqname().as_ref(),
-            "Start and end positions must have the same sequence name"
-        );
+    fn from(value: Range<GenomicPosition>) -> Self {
+        if value.start.seqname() != value.end.seqname() {
+            panic!("Start and end positions must have the same sequence name")
+        }
         Self {
-            seqname: value.start.seqname(),
+            seqname: value.start.seqname().clone(),
             start:   value.start.position(),
             end:     value.end.position(),
             strand:  Strand::None,
@@ -166,29 +136,27 @@ where
     }
 }
 
-impl<R, P> From<Contig<R, P>> for Range<GenomicPosition<R, P>>
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
+impl From<Contig> for Range<GenomicPosition> {
     /// Converts into a range of `GenomicPosition`s.
-    fn from(value: Contig<R, P>) -> Self {
+    fn from(value: Contig) -> Self {
         value.start_gpos()..value.end_gpos()
     }
 }
 
-impl<S, P> From<bio::io::bed::Record> for Contig<S, P>
-where
-    S: SeqNameStr + FromStr,
-    P: SeqPosNum,
-    <S as FromStr>::Err: std::fmt::Debug,
-{
+impl From<&Contig> for Range<GenomicPosition> {
+    /// Converts into a range of `GenomicPosition`s.
+    fn from(value: &Contig) -> Self {
+        value.start_gpos()..value.end_gpos()
+    }
+}
+
+impl From<bio::io::bed::Record> for Contig {
     /// Converts from a `bio::io::bed::Record`.
     fn from(value: bio::io::bed::Record) -> Self {
         Self {
-            seqname: S::from_str(value.chrom()).unwrap(),
-            start:   P::from(value.start()).expect("Failed to convert start to P"),
-            end:     P::from(value.end()).expect("Failed to convert end to P"),
+            seqname: BsxSmallStr::from(value.chrom()),
+            start:   value.start() as PosType,
+            end:     value.end() as PosType,
             strand:  match value.strand() {
                 Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
                 Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
@@ -199,40 +167,24 @@ where
     }
 }
 
-impl<R, P> From<Contig<R, P>> for bio::io::bed::Record
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
+impl From<Contig> for bio::io::bed::Record {
     /// Converts into a `bio::io::bed::Record`.
-    fn from(value: Contig<R, P>) -> Self {
+    fn from(value: Contig) -> Self {
         let mut record = bio::io::bed::Record::new();
         record.set_chrom(value.seqname.as_ref());
-        record.set_start(
-            value
-                .start
-                .to_u64()
-                .expect("Failed to convert start to u64"),
-        );
-        record.set_end(value.end.to_u64().expect("Failed to convert end to u64"));
+        record.set_start(value.start as u64);
+        record.set_end(value.end as u64);
         record
     }
 }
 
-impl<S, P> From<bio::io::gff::Record> for Contig<S, P>
-where
-    S: SeqNameStr + FromStr,
-    P: SeqPosNum,
-    <S as FromStr>::Err: std::fmt::Debug,
-{
+impl From<bio::io::gff::Record> for Contig {
     /// Converts from a `bio::io::gff::Record`.
     fn from(value: bio::io::gff::Record) -> Self {
         Self {
-            seqname: S::from_str(value.seqname()).unwrap(),
-            start:   P::from(value.start().to_owned())
-                .expect("Failed to convert start to P"),
-            end:     P::from(value.end().to_owned())
-                .expect("Failed to convert end to P"),
+            seqname: BsxSmallStr::from(value.seqname()),
+            start:   *value.start() as PosType,
+            end:     *value.end() as PosType,
             strand:  match value.strand() {
                 Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
                 Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
@@ -243,10 +195,9 @@ where
     }
 }
 
-impl<R, P, S> From<bio::bio_types::annot::contig::Contig<R, S>> for Contig<R, P>
+impl<R, S> From<bio::bio_types::annot::contig::Contig<R, S>> for Contig
 where
     R: SeqNameStr,
-    P: SeqPosNum,
     S: Into<Option<ReqStrand>> + Copy,
 {
     /// Converts from a `bio_types::annot::contig::Contig`.
@@ -258,48 +209,35 @@ where
             None => Strand::None,
         };
         Self::new(
-            value.refid().to_owned(),
-            P::from(value.start()).expect("Failed to convert start to P"),
-            P::from(value.start() + value.length() as isize)
-                .expect("Failed to convert position to P"),
+            BsxSmallStr::from(value.refid().as_ref()),
+            value.start() as PosType,
+            (value.start() + value.length() as isize) as PosType,
             strand,
         )
     }
 }
 
-impl<R, P> From<Contig<R, P>>
-    for bio::bio_types::annot::contig::Contig<R, Option<ReqStrand>>
+impl<R> From<Contig> for bio::bio_types::annot::contig::Contig<R, Option<ReqStrand>>
 where
-    R: SeqNameStr,
-    P: SeqPosNum,
+    R: SeqNameStr + From<String>,
 {
     /// Converts into a `bio_types::annot::contig::Contig`.
-    fn from(value: Contig<R, P>) -> Self {
+    fn from(value: Contig) -> Self {
         let strand = match value.strand {
             Strand::Forward => Some(ReqStrand::Forward),
             Strand::Reverse => Some(ReqStrand::Reverse),
             Strand::None => None,
         };
         bio::bio_types::annot::contig::Contig::new(
-            value.seqname.to_owned(),
-            value
-                .start
-                .to_isize()
-                .expect("Failed to convert start to isize"),
-            value
-                .length()
-                .to_usize()
-                .expect("Failed to convert length to usize"),
+            R::from(value.seqname.to_string()),
+            value.start as isize,
+            (value.length()) as usize,
             strand,
         )
     }
 }
 
-impl<R, P> PartialOrd for Contig<R, P>
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
+impl PartialOrd for Contig {
     /// Compares two `Contig`s.
     ///
     /// Returns `None` if the sequence names are different or regions intersect.
@@ -307,7 +245,7 @@ where
         &self,
         other: &Self,
     ) -> Option<std::cmp::Ordering> {
-        if self.seqname.as_ref() != other.seqname.as_ref() {
+        if self.seqname != other.seqname {
             return None;
         }
         if self.start >= other.end {
@@ -320,34 +258,21 @@ where
     }
 }
 
-impl<R, P> Eq for Contig<R, P>
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
-}
+impl Eq for Contig {}
 
-impl<R, P> PartialEq for Contig<R, P>
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
+impl PartialEq for Contig {
     fn eq(
         &self,
         other: &Self,
     ) -> bool {
-        self.seqname.as_ref() == other.seqname.as_ref()
+        self.seqname == other.seqname
             && self.start == other.start
             && self.end == other.end
             && self.strand == other.strand
     }
 }
 
-impl<R, P> Display for Contig<R, P>
-where
-    R: SeqNameStr,
-    P: SeqPosNum,
-{
+impl Display for Contig {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
@@ -355,12 +280,7 @@ where
         write!(
             f,
             "{}:{}-{} ({})",
-            self.seqname.as_ref(),
-            self.start
-                .to_usize()
-                .expect("Failed to convert start to usize"),
-            self.end.to_usize().expect("Failed to convert end to usize"),
-            self.strand
+            self.seqname, self.start, self.end, self.strand
         )
     }
 }

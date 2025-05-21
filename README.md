@@ -3,7 +3,6 @@
 
 A high-performance, Rust-based library for bisulfite sequencing data analysis and DNA methylation research.
 
-[![codecov](https://codecov.io/gh/shitohana/bsxplorer2/graph/badge.svg?token=8FSM5NCOBN)](https://codecov.io/gh/shitohana/bsxplorer2)
 ![License](https://img.shields.io/badge/license-Prosperity-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-green)
 
@@ -14,14 +13,12 @@ A high-performance, Rust-based library for bisulfite sequencing data analysis an
 * [Features](#features)
 * [Installation](#installation)
 * [Usage](#usage)
-  * [Basic Example: Reading and Processing Methylation Data](#basic-example-reading-and-processing-methylation-data)
 * [Console Application](#console-application)
 * [BSX Format (IPC File Format)](#bsx-format-ipc-file-format)
   * [Performance Benefits](#performance-benefits)
   * [Compression Capabilities](#compression-capabilities)
   * [Data Organization](#data-organization)
   * [Integration Advantages](#integration-advantages)
-* [DMR Identification Benchmark](#dmr-identification-benchmark)
 * [Roadmap](#roadmap)
 * [License](#license)
 * [Acknowledgements](#acknowledgements)
@@ -87,39 +84,6 @@ Documentation is available at [docs.rs](https://docs.rs/bsxplorer2)
 
 ## Usage
 
-### Basic Example: Reading and Processing Methylation Data
-
-```rust
-use bsxplorer::io::bsx::read::BsxFileReader;
-use bsxplorer::data_structs::bsx_batch::BsxBatchMethods;
-use bsxplorer::utils::types::Context;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Open a BSX file
-    let mut reader = BsxFileReader::new(std::fs::File::open("sample.bsx")?);
-
-    // Process the first batch
-    if let Some(batch_result) = reader.next() {
-        let batch = batch_result?;
-
-        // Filter for CG context only
-        let cg_batch = batch.filter(Some(Context::CG), None);
-
-        // Calculate methylation statistics
-        let stats = cg_batch.get_methylation_stats()?;
-        println!("Mean methylation: {}", stats.mean_methylation());
-
-        // Access positions and methylation values
-        let positions = cg_batch.get_position_vals()?;
-        let methylation = cg_batch.get_density_vals()?;
-
-        println!("Analyzed {} CpG sites", positions.len());
-    }
-
-    Ok(())
-}
-```
-
 ## Console Application
 BSXplorer includes a powerful command-line interface for direct interaction with methylation data. The console
 application provides convenient access to the library's core functionality without requiring Rust programming knowledge.
@@ -158,15 +122,6 @@ delivering significant advantages for methylation data processing:
 
 The BSX format combines these advantages into a specialized format optimized for methylation data, ensuring the best
 possible performance for complex analytical tasks.
-
-## DMR Identification Benchmark
-
-We've evaluated our DMR identification model F1-score, using benchmarking dataset from
-_C. Kreutz et al., ‘A blind and independent benchmark study for detecting differentially
-methylated regions in plants’, Bioinformatics, vol. 36, no. 11, pp. 3314–3321, Jun. 2020,
-doi: 10.1093/bioinformatics/btaa191._
-
-![](https://private-user-images.githubusercontent.com/43905117/427238513-85507124-6347-4b51-930c-a153466c1646.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDMwMjU4NDYsIm5iZiI6MTc0MzAyNTU0NiwicGF0aCI6Ii80MzkwNTExNy80MjcyMzg1MTMtODU1MDcxMjQtNjM0Ny00YjUxLTkzMGMtYTE1MzQ2NmMxNjQ2LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTAzMjYlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwMzI2VDIxNDU0NlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTU5ZWYzMGU5MmU0MTY5NDMyODk5NGJkNWZmODU3YTQ2NWY1MjVhMDE0NzUzZDQ4ZTIzNmFhY2Y3YmZmZjgyZWImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.cut1umPWh_WNMdObsMgwXs5HIdRrHY-apxp_hp1a_VM)
 
 ## Roadmap
 

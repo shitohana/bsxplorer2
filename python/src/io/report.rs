@@ -32,7 +32,6 @@ impl PyReportReader {
         batch_size=100000,
         n_threads=None,
         low_memory=false,
-        queue_len=1000,
         compression=None,
     ))]
     fn new(
@@ -44,15 +43,13 @@ impl PyReportReader {
         batch_size: usize,
         n_threads: Option<usize>,
         low_memory: bool,
-        queue_len: usize,
         compression: Option<PyCompression>,
     ) -> PyResult<Self> {
         let mut builder = ReportReaderBuilder::default()
             .with_report_type(report_type.to_rust())
             .with_chunk_size(chunk_size)
             .with_batch_size(batch_size)
-            .with_low_memory(low_memory)
-            .with_queue_len(queue_len);
+            .with_low_memory(low_memory);
 
         if let Some(fp) = fasta_path {
             builder = builder.with_fasta_path(Some(fp));

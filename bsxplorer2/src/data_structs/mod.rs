@@ -5,3 +5,6 @@ pub mod coords;
 pub mod enums;
 pub mod methstats;
 pub mod typedef;
+
+#[cfg(test)]
+mod tests;

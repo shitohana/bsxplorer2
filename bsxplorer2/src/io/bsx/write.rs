@@ -45,9 +45,8 @@ where
         };
 
         info!("Initializing writer with compression: {:?}", compression);
-        let chr_dtype = create_caregorical_dtype(
-            chr_names.into_iter().map(|s| Some(s)).collect_vec(),
-        );
+        let chr_dtype =
+            create_caregorical_dtype(chr_names.into_iter().map(Some).collect_vec());
         let mut schema = BsxColumns::schema();
         schema.set_dtype(BsxColumns::Chr.as_str(), chr_dtype);
 

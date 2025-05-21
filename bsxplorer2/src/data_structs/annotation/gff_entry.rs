@@ -1,6 +1,5 @@
 use std::fmt::{Debug, Write};
 use std::str::FromStr;
-use std::sync::Arc;
 use std::{f64, fmt};
 
 use anyhow::anyhow;
@@ -13,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::data_structs::coords::Contig;
 use crate::data_structs::enums::{IPCEncodedEnum, Strand};
 use crate::data_structs::typedef::BsxSmallStr;
-use crate::with_field_fn;
+use crate::{getter_fn, with_field_fn};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GffEntryAttributes {
@@ -21,7 +20,7 @@ pub struct GffEntryAttributes {
     pub name:          Option<Vec<BsxSmallStr>>,
     pub alias:         Option<Vec<BsxSmallStr>>,
     pub parent:        Option<Vec<BsxSmallStr>>,
-    pub target:        Option<Vec<Contig<Arc<str>, u32>>>,
+    pub target:        Option<Vec<Contig>>,
     pub gap:           Option<Vec<String>>,
     pub derives_from:  Option<Vec<String>>,
     pub note:          Option<Vec<String>>,
@@ -31,7 +30,7 @@ pub struct GffEntryAttributes {
 }
 
 impl GffEntryAttributes {
-    with_field_fn!(target, Option<Vec<Contig<Arc<str>, u32>>>);
+    with_field_fn!(target, Option<Vec<Contig>>);
 
     with_field_fn!(gap, Option<Vec<String>>);
 
@@ -45,7 +44,28 @@ impl GffEntryAttributes {
 
     with_field_fn!(other, HashMap<String, String>);
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn id(&self) -> Option<&BsxSmallStr> {
+        self.id.as_ref()
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn name(&self) -> Option<&Vec<BsxSmallStr>> {
+        self.name.as_ref()
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn alias(&self) -> Option<&Vec<BsxSmallStr>> {
+        self.alias.as_ref()
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn parent(&self) -> Option<&Vec<BsxSmallStr>> {
+        self.parent.as_ref()
+    }
+
     /// Sets the ID attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_id<S: Into<BsxSmallStr>>(
         mut self,
         id: Option<S>,
@@ -55,6 +75,7 @@ impl GffEntryAttributes {
     }
 
     /// Sets the Name attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_name<S: Into<BsxSmallStr>>(
         mut self,
         name: Option<Vec<S>>,
@@ -64,6 +85,7 @@ impl GffEntryAttributes {
     }
 
     /// Sets the Alias attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_alias<S: Into<BsxSmallStr>>(
         mut self,
         alias: Option<Vec<S>>,
@@ -73,6 +95,7 @@ impl GffEntryAttributes {
     }
 
     /// Sets the Parent attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_parent<S: Into<BsxSmallStr>>(
         mut self,
         parent: Option<Vec<S>>,
@@ -126,6 +149,7 @@ impl FromStr for GffEntryAttributes {
                 },
                 "Target" => {
                     // TODO
+                    eprintln!("Target attribute parsing is not currently implemented");
                     attributes.target = None; // Setting to None for now
                                               // because contig parsing
                                               // is unimplemented
@@ -232,7 +256,7 @@ impl Serialize for GffEntryAttributes {
         write_attr!(self.name, "Name");
         write_attr!(self.alias, "Alias");
         write_attr!(self.parent, "Parent");
-        write_attr!(self.target, "Target", |c: &Contig<Arc<str>, u32>| {
+        write_attr!(self.target, "Target", |c: &Contig| {
             format!("{} {} {}", c.seqname(), c.start(), c.end())
         });
         write_attr!(self.gap, "Gap");
@@ -305,7 +329,7 @@ pub struct RawGffEntry {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GffEntry {
-    pub contig:       Contig<ArcStr, u32>,
+    pub contig:       Contig,
     pub source:       ArcStr,
     pub feature_type: ArcStr,
     pub score:        Option<f64>,
@@ -316,7 +340,7 @@ pub struct GffEntry {
 
 impl From<bio::io::bed::Record> for GffEntry {
     fn from(value: bio::io::bed::Record) -> Self {
-        let contig = Contig::<ArcStr, u32>::from(value.clone());
+        let contig = Contig::from(value.clone());
         Self::new(
             contig,
             None,
@@ -329,8 +353,22 @@ impl From<bio::io::bed::Record> for GffEntry {
 }
 
 impl GffEntry {
+    getter_fn!(contig, Contig);
+
+    getter_fn!(source, ArcStr);
+
+    getter_fn!(feature_type, ArcStr);
+
+    getter_fn!(score, Option<f64>);
+
+    getter_fn!(phase, Option<u8>);
+
+    getter_fn!(attributes, GffEntryAttributes);
+
+    getter_fn!(id, BsxSmallStr);
+
     pub fn new(
-        contig: Contig<ArcStr, u32>,
+        contig: Contig,
         source: Option<ArcStr>,
         feature_type: Option<ArcStr>,
         score: Option<f64>,
@@ -359,7 +397,7 @@ impl TryFrom<RawGffEntry> for GffEntry {
     type Error = anyhow::Error;
 
     fn try_from(value: RawGffEntry) -> Result<Self, Self::Error> {
-        let seqid = ArcStr::from(value.seqid.as_str());
+        let seqid = value.seqid;
         let source = ArcStr::from(value.source.as_str());
         let strand =
             <Strand as IPCEncodedEnum>::from_str(value.strand.to_string().as_str());

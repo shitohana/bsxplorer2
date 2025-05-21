@@ -10,6 +10,8 @@ use crossbeam::channel::Receiver;
 use hashbrown::HashMap;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
+use rayon::prelude::*;
+use rayon::ThreadPool;
 
 use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
 use crate::data_structs::context_data::ContextData;
@@ -80,7 +82,6 @@ pub struct ReportReaderBuilder {
     batch_size:  usize,
     n_threads:   Option<usize>,
     low_memory:  bool,
-    queue_len:   usize,
     #[cfg(feature = "compression")]
     compression: Option<Compression>,
 }
@@ -95,7 +96,6 @@ impl Default for ReportReaderBuilder {
             batch_size: 100000,
             n_threads: None,
             low_memory: false,
-            queue_len: 1000,
             #[cfg(feature = "compression")]
             compression: None,
         }
@@ -116,8 +116,6 @@ impl ReportReaderBuilder {
     with_field_fn!(n_threads, Option<usize>);
 
     with_field_fn!(low_memory, bool);
-
-    with_field_fn!(queue_len, usize);
 
     #[cfg(feature = "compression")]
     with_field_fn!(compression, Option<Compression>);
@@ -206,20 +204,24 @@ impl ReportReaderBuilder {
         }
 
         let mut csv_reader = self.get_csv_reader(handle)?;
-        let (sender, receiver) = crossbeam::channel::bounded(self.queue_len);
+        let threads = self
+            .n_threads
+            .unwrap_or(rayon::current_num_threads().min(16));
+        let (sender, receiver) = crossbeam::channel::bounded(threads * 2);
 
         let join_handle = std::thread::spawn(move || {
-            while let Ok(Some(mut df)) = csv_reader.next_batches(1) {
-                if df.len() != 1 {
-                    panic!("Unexpected batch count {}", df.len());
-                }
-                sender.send(df.pop().unwrap()).expect("Failed to send data");
+            while let Ok(Some(mut df)) = csv_reader.next_batches(threads) {
+                df.drain(..)
+                    .for_each(|df| sender.send(df).expect("Failed to send data"));
             }
         });
 
         let reader = ReportReader {
             _join_handle: join_handle,
             data_receiver: receiver,
+            thread_pool: rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()?,
             report_type: self.report_type,
             cached_batch: BTreeMap::new(),
             seen_chr: HashMap::new(),
@@ -245,6 +247,7 @@ impl ReportReaderBuilder {
 pub struct ReportReader {
     _join_handle:  JoinHandle<()>,
     data_receiver: Receiver<DataFrame>,
+    thread_pool:   ThreadPool,
     report_type:   ReportType,
     cached_batch:  BTreeMap<usize, BsxBatch>,
     seen_chr:      HashMap<BsxSmallStr, usize>,
@@ -342,30 +345,72 @@ impl ReportReader {
 
     /// Fills the cache with more data.
     fn fill_cache(&mut self) -> anyhow::Result<()> {
-        // Try receive another batch
-        let new_batch = self.data_receiver.recv().map_err(|e| {
-            anyhow::anyhow!("Channel closed unexpectedly while reading a batch")
-                .context(e)
+        let n_threads = self.thread_pool.current_num_threads();
+        let mut new_batches = Vec::with_capacity(n_threads);
+        let mut stream_ended = false;
+
+        while !self.data_receiver.is_empty() && new_batches.len() < n_threads {
+            let new_batch = self.data_receiver.recv()?;
+            stream_ended =
+                self.data_receiver.is_empty() && self._join_handle.is_finished();
+
+            new_batches.push(new_batch);
+        }
+
+        let converted = self.thread_pool.install(|| {
+            new_batches
+                .into_par_iter()
+                .flat_map(|df| {
+                    df.partition_by_stable([self.report_type.chr_col()], true)
+                })
+                .flatten()
+                .filter(|df| !df.is_empty())
+                .map(|df| {
+                    BsxBatchBuilder::all_checks()
+                        .with_check_single_chr(false)
+                        .with_chr_dtype(self.chr_dtype.clone())
+                        .build_from_report(df, self.report_type)
+                })
+                .collect::<Result<Vec<_>, _>>()
         })?;
-        let last_one = self.data_receiver.is_empty() && self._join_handle.is_finished();
-        // Partition by chromosome
-        let partitioned = new_batch
-            .partition_by_stable([self.report_type.chr_col()], true)
-            .map_err(|e| anyhow::anyhow!("Failed to partition batch").context(e))?;
-        // 1 if single chromosome or > 1 if multiple
-        let n_partitioned = partitioned.len();
 
-        for (index, data) in partitioned.into_iter().enumerate() {
-            // Convert to BSX batch format
-            let mut bsx_batch = BsxBatchBuilder::all_checks()
-                .with_check_single_chr(false)
-                .with_chr_dtype(self.chr_dtype.clone())
-                .build_from_report(data, self.report_type)?;
+        let mut is_last = vec![false; converted.len()];
+        let mut prev_chr = self.cached_chr.as_ref().map(|v| v.0.clone());
+        let mut prev_end = 0;
+        for i in 0..converted.len() {
+            let batch_contig = converted[i].as_contig().unwrap();
 
+            if i == 0
+                && prev_chr.is_some()
+                && prev_chr.as_ref() != Some(batch_contig.seqname())
+            {
+                is_last[i] = true;
+            }
+            else if i > 0 && prev_chr.as_ref() != Some(batch_contig.seqname()) {
+                is_last[i - 1] = true;
+            }
+            else if i == converted.len() - 1 && stream_ended {
+                is_last[i] = true;
+            }
+
+            if prev_chr.as_ref() == Some(batch_contig.seqname())
+                && prev_end >= batch_contig.start()
+            {
+                return Err(anyhow::anyhow!(
+                    "Overlapping records found at position {}",
+                    batch_contig
+                ));
+            }
+
+            prev_chr = Some(batch_contig.seqname().clone());
+            prev_end = batch_contig.end();
+        }
+
+        for (mut bsx_batch, last_one) in converted.into_iter().zip(is_last.into_iter())
+        {
             // Align batch if required
             if self.report_type.need_align() {
-                let is_final = (index < n_partitioned - 1) || last_one;
-                bsx_batch = self.align_batch(bsx_batch, is_final)?;
+                bsx_batch = self.align_batch(bsx_batch, last_one)?;
             }
 
             // Add chromosome to seen and retrieve chr index
@@ -376,10 +421,14 @@ impl ReportReader {
             self.cached_batch
                 .entry(*chr_idx)
                 .and_modify(|b| {
-                    b.extend(&bsx_batch).expect("vstack failed");
+                    unsafe { b.extend_unchecked(&bsx_batch).expect("vstack failed") };
                 })
                 .or_insert(bsx_batch);
         }
+
+        self.cached_batch
+            .values_mut()
+            .for_each(|batch| batch.rechunk());
 
         Ok(())
     }

@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use bsxplorer2::data_structs::coords::GenomicPosition;
-use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use bsxplorer2::io::bsx::{BsxFileReader, BsxFileWriter};
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{ReportReaderBuilder, ReportType, ReportWriter};
@@ -150,8 +149,7 @@ impl ToBsxConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos: GenomicPosition<BsxSmallStr, u32> =
-                batch.last_genomic_pos().unwrap_or_default();
+            let cur_pos: GenomicPosition = batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 
@@ -175,7 +173,7 @@ pub struct FromBsxConvert {
     )]
     output: PathBuf,
 
-    #[clap(short='t', long = "from", required = true, value_enum, default_value_t = ReportType::Bismark)]
+    #[clap(short='t', long = "to", required = true, value_enum, default_value_t = ReportType::Bismark)]
     to_type: ReportType,
 
     #[clap(short='T', long = "to-compression", required = true, value_enum, default_value_t = Compression::None)]
@@ -240,7 +238,7 @@ pub struct R2RConvert {
     #[clap(short='F', long = "from-compression", required = true, value_enum, default_value_t = Compression::None)]
     from_compression: Compression,
 
-    #[clap(short='F', long = "to-compression", required = true, value_enum, default_value_t = Compression::None)]
+    #[clap(short='T', long = "to-compression", required = true, value_enum, default_value_t = Compression::None)]
     to_compression: Compression,
 
     #[clap(short='L', long = "level", required = false, value_enum, default_value = None)]
@@ -301,8 +299,7 @@ impl R2RConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos: GenomicPosition<_, _> =
-                batch.last_genomic_pos().unwrap_or_default();
+            let cur_pos: GenomicPosition = batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 

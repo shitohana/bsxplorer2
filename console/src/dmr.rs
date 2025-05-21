@@ -3,8 +3,8 @@ use std::iter::repeat_n;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
-use bsxplorer2::data_structs::typedef::{DensityType, PosType};
-use bsxplorer2::data_structs::{enums::Context, typedef::CountType};
+use bsxplorer2::data_structs::enums::Context;
+use bsxplorer2::data_structs::typedef::{CountType, DensityType, PosType};
 use bsxplorer2::tools::dmr::DMRegion;
 use clap::{Args, ValueEnum};
 use console::style;
@@ -20,6 +20,7 @@ pub(crate) struct DmrArgs {
         value_parser,
         short = 'A',
         long,
+        num_args=1..,
         required = true,
         help = "Paths to BSX files of the first sample group."
     )]
@@ -28,6 +29,7 @@ pub(crate) struct DmrArgs {
         value_parser,
         short = 'B',
         long,
+        num_args=1..,
         required = true,
         help = "Paths to BSX files of the second sample group."
     )]

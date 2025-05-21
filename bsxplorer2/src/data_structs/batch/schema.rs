@@ -91,10 +91,9 @@ impl BsxColumns {
                 value.downcast_ref::<bool>().map(|v| AnyValue::Boolean(*v))
             },
             BsxColumns::Context => {
-                value.downcast_ref::<Option<bool>>().map(|v| {
-                    v.map(|ctx| AnyValue::Boolean(ctx))
-                        .unwrap_or(AnyValue::Null)
-                })
+                value
+                    .downcast_ref::<Option<bool>>()
+                    .map(|v| v.map(AnyValue::Boolean).unwrap_or(AnyValue::Null))
             },
             BsxColumns::CountM => {
                 value.downcast_ref::<u16>().map(|v| AnyValue::UInt16(*v))

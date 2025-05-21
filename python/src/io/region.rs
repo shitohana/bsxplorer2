@@ -1,5 +1,4 @@
 use bsxplorer2::data_structs::batch::BsxBatch;
-use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -13,7 +12,7 @@ use crate::utils::{FileOrFileLike, ReadHandle};
 
 #[pyclass(unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
-    inner: RegionReader<Box<dyn ReadHandle>, BsxSmallStr, u32>,
+    inner: RegionReader<Box<dyn ReadHandle>>,
 }
 
 #[pymethods]
@@ -22,8 +21,7 @@ impl PyRegionReader {
     fn new(file: FileOrFileLike) -> PyResult<Self> {
         let file = file.get_reader()?;
         let mut bsx_reader: BsxFileReader<Box<_>> = BsxFileReader::new(file);
-        let index: BatchIndex<BsxSmallStr, u32> =
-            bsx_reader.index().map_err(PyErr::from)?.clone();
+        let index: BatchIndex = bsx_reader.index().map_err(PyErr::from)?.clone();
 
         Ok(Self {
             inner: RegionReader::new(bsx_reader, index, None),

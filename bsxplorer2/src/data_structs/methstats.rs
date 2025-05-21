@@ -1,18 +1,13 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use anyhow::Context as AnyhowContext;
 use hashbrown::HashMap;
-use itertools::Itertools;
-use log::{debug, info, trace};
 use serde::{Deserialize, Serialize, Serializer};
 
+use super::typedef::{CountType, DensityType};
 use crate::data_structs::enums::{Context, Strand};
 
-use super::typedef::{CountType, DensityType};
-
-/// Serializes a HashMap in a deterministic order based on keys.
-/// This is useful for consistent JSON outputs and testing.
+/// Serializes a HashMap in deterministic order.
 fn serialize_sorted_map<S, K: Ord + Serialize, V: Serialize>(
     map: &HashMap<K, V>,
     serializer: S,
@@ -23,187 +18,151 @@ where
     sorted_map.serialize(serializer)
 }
 
-/// Represents comprehensive methylation statistics for DNA sequencing
-/// data_structs.
-///
-/// Stores information about methylation levels, variance, coverage
-/// distribution, and context-specific (CG, CHG, CHH) and strand-specific
-/// methylation data_structs.
+/// Comprehensive methylation statistics.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MethylationStats {
-    /// Overall mean methylation level across all analyzed positions
-    mean_methylation: DensityType,
+    /// Overall mean methylation.
+    pub(super) mean_methylation: DensityType,
 
-    /// Variance of methylation levels across all analyzed positions
-    methylation_var: DensityType,
+    /// Variance of methylation levels.
+    pub(super) methylation_var: DensityType,
 
-    /// Maps coverage levels to their frequency
-    /// Key: coverage depth, Value: number of positions with that coverage
+    /// Maps coverage to frequency.
     #[serde(serialize_with = "serialize_sorted_map")]
-    coverage_distribution: HashMap<CountType, u32>,
+    pub(super) coverage_distribution: HashMap<CountType, u32>,
 
-    /// Methylation statistics per sequence context
-    /// Key: context (CG, CHG, CHH), Value: (sum of methylation levels, count
-    /// of positions)
+    /// Methylation statistics per context.
     #[serde(serialize_with = "serialize_sorted_map")]
-    context_methylation: HashMap<Context, (DensityType, u32)>,
+    pub(super) context_methylation: HashMap<Context, (DensityType, u32)>,
 
-    /// Methylation statistics per DNA strand
-    /// Key: strand (Forward, Reverse), Value: (sum of methylation levels,
-    /// count of positions)
+    /// Methylation statistics per strand.
     #[serde(serialize_with = "serialize_sorted_map")]
-    strand_methylation: HashMap<Strand, (DensityType, u32)>,
+    pub(super) strand_methylation: HashMap<Strand, (DensityType, u32)>,
 }
 
-/// A flattened representation of methylation statistics.
-///
-/// This structure provides direct access to key statistics without the need to
-/// query maps, making it suitable for summary outputs and reporting.
+/// Flattened representation of methylation statistics for reporting.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MethylationStatFlat {
-    /// Overall mean methylation level
+    /// Overall mean methylation.
     pub mean_methylation: DensityType,
 
-    /// Overall variance in methylation levels
+    /// Overall variance in methylation.
     pub methylation_var: DensityType,
 
-    /// Average coverage across all positions
+    /// Average coverage.
     pub mean_coverage: f64,
 
-    /// Mean methylation level in CG context
+    /// Mean methylation in CG context.
     pub cg_mean_methylation: DensityType,
 
-    /// Number of positions in CG context
+    /// Count of positions in CG context.
     pub cg_coverage: u32,
 
-    /// Mean methylation level in CHG context
+    /// Mean methylation in CHG context.
     pub chg_mean_methylation: DensityType,
 
-    /// Number of positions in CHG context
+    /// Count of positions in CHG context.
     pub chg_coverage: u32,
 
-    /// Mean methylation level in CHH context
+    /// Mean methylation in CHH context.
     pub chh_mean_methylation: DensityType,
 
-    /// Number of positions in CHH context
+    /// Count of positions in CHH context.
     pub chh_coverage: u32,
 
-    /// Mean methylation level on forward strand
+    /// Mean methylation on forward strand.
     pub fwd_mean_methylation: DensityType,
 
-    /// Number of positions on forward strand
+    /// Count of positions on forward strand.
     pub fwd_coverage: u32,
 
-    /// Mean methylation level on reverse strand
+    /// Mean methylation on reverse strand.
     pub rev_mean_methylation: DensityType,
 
-    /// Number of positions on reverse strand
+    /// Count of positions on reverse strand.
     pub rev_coverage: u32,
 }
 
 impl From<MethylationStats> for MethylationStatFlat {
-    /// Converts detailed methylation statistics into a flattened format
-    /// for easier reporting and analysis.
+    /// Converts detailed stats to flattened format.
     fn from(value: MethylationStats) -> Self {
-        trace!("Converting MethylationStats to MethylationStatFlat");
+        // Helper to get sum and count for a specific context.
+        // Returns (0.0, 0) if the context is not present.
+        let get_context_stats =
+            |stats: &MethylationStats, context: Context| -> (DensityType, u32) {
+                stats
+                    .context_methylation
+                    .get(&context)
+                    .copied()
+                    .unwrap_or((0.0, 0))
+            };
 
-        let mean_coverage = if !value.coverage_distribution.is_empty() {
-            value.total_coverage() as f64 / value.coverage_distribution.len() as f64
+        // Helper to get sum and count for a specific strand.
+        // Returns (0.0, 0) if the strand is not present.
+        let get_strand_stats =
+            |stats: &MethylationStats, strand: Strand| -> (DensityType, u32) {
+                stats
+                    .strand_methylation
+                    .get(&strand)
+                    .copied()
+                    .unwrap_or((0.0, 0))
+            };
+
+        // Helper to calculate mean from sum and count, avoiding division by zero.
+        let calculate_mean = |sum: DensityType, count: u32| -> DensityType {
+            if count > 0 {
+                sum / count as DensityType
+            }
+            else {
+                0.0
+            }
+        };
+
+        // Calculate the overall average coverage.
+        // This is the sum of (coverage * frequency) divided by the total number of
+        // sites (sum of frequencies).
+        let total_sites = value.total_coverage(); // total number of sites
+        let mean_coverage = if total_sites > 0 {
+            value.coverage_distribution.iter()
+                 // Calculate the total number of read bases covering all sites
+                 .map(|(&cov, &freq)| (cov as f64) * (freq as f64)) // Use f64 to avoid overflow for intermediate products
+                 .sum::<f64>()
+                / total_sites as f64 // Divide total read bases by total sites
         }
         else {
             0.0
         };
 
+        // Get context-specific sums and counts
+        let (cg_sum, cg_count) = get_context_stats(&value, Context::CG);
+        let (chg_sum, chg_count) = get_context_stats(&value, Context::CHG);
+        let (chh_sum, chh_count) = get_context_stats(&value, Context::CHH);
+
+        // Get strand-specific sums and counts
+        let (fwd_sum, fwd_count) = get_strand_stats(&value, Strand::Forward);
+        let (rev_sum, rev_count) = get_strand_stats(&value, Strand::Reverse);
+
         MethylationStatFlat {
             mean_methylation: value.mean_methylation,
             methylation_var: value.methylation_var,
-            mean_coverage,
-            cg_mean_methylation: value.context_methylation.get(&Context::CG).map_or(
-                0.0,
-                |(sum_m, count)| {
-                    if *count > 0 {
-                        sum_m / *count as f32
-                    }
-                    else {
-                        0.0
-                    }
-                },
-            ),
-            cg_coverage: value
-                .context_methylation
-                .get(&Context::CG)
-                .map_or(0, |(_, count)| *count),
-            chg_mean_methylation: value.context_methylation.get(&Context::CHG).map_or(
-                0.0,
-                |(sum_m, count)| {
-                    if *count > 0 {
-                        sum_m / *count as f32
-                    }
-                    else {
-                        0.0
-                    }
-                },
-            ),
-            chg_coverage: value
-                .context_methylation
-                .get(&Context::CHG)
-                .map_or(0, |(_, count)| *count),
-            chh_mean_methylation: value.context_methylation.get(&Context::CHH).map_or(
-                0.0,
-                |(sum_m, count)| {
-                    if *count > 0 {
-                        sum_m / *count as f32
-                    }
-                    else {
-                        0.0
-                    }
-                },
-            ),
-            chh_coverage: value
-                .context_methylation
-                .get(&Context::CHH)
-                .map_or(0, |(_, count)| *count),
-            fwd_mean_methylation: value
-                .strand_methylation
-                .get(&Strand::Forward)
-                .map_or(0.0, |(sum_m, count)| {
-                    if *count > 0 {
-                        sum_m / *count as f32
-                    }
-                    else {
-                        0.0
-                    }
-                }),
-            fwd_coverage: value
-                .strand_methylation
-                .get(&Strand::Forward)
-                .map_or(0, |(_, count)| *count),
-            rev_mean_methylation: value
-                .strand_methylation
-                .get(&Strand::Reverse) // Fixed: was using Forward before
-                .map_or(0.0, |(sum_m, count)| {
-                    if *count > 0 {
-                        sum_m / *count as f32
-                    } else {
-                        0.0
-                    }
-                }),
-            rev_coverage: value
-                .strand_methylation
-                .get(&Strand::Reverse)
-                .map_or(0, |(_, count)| *count),
+            mean_coverage, // Use the correctly calculated average coverage
+            cg_mean_methylation: calculate_mean(cg_sum, cg_count),
+            cg_coverage: cg_count,
+            chg_mean_methylation: calculate_mean(chg_sum, chg_count),
+            chg_coverage: chg_count,
+            chh_mean_methylation: calculate_mean(chh_sum, chh_count),
+            chh_coverage: chh_count,
+            fwd_mean_methylation: calculate_mean(fwd_sum, fwd_count),
+            fwd_coverage: fwd_count,
+            rev_mean_methylation: calculate_mean(rev_sum, rev_count),
+            rev_coverage: rev_count,
         }
     }
 }
 
 impl MethylationStats {
-    /// Creates an empty methylation statistics instance with all values
-    /// initialized to zero.
-    ///
-    /// This is useful as a starting point before aggregating data_structs from
-    /// multiple sources.
+    /// Creates an empty instance.
     pub fn new() -> Self {
-        debug!("Creating new empty MethylationStats");
         Self {
             mean_methylation:      0.0,
             methylation_var:       0.0,
@@ -213,23 +172,9 @@ impl MethylationStats {
         }
     }
 
-    /// Creates a MethylationStats instance from pre-calculated statistics.
+    /// Creates an instance from data.
     ///
-    /// # Arguments
-    ///
-    /// * `mean_methylation` - The overall mean methylation level
-    /// * `variance_methylation` - The variance in methylation levels
-    /// * `coverage_distribution` - HashMap mapping coverage depths to their
-    ///   frequencies
-    /// * `context_methylation` - HashMap mapping sequence contexts to their
-    ///   methylation statistics
-    /// * `strand_methylation` - HashMap mapping DNA strands to their
-    ///   methylation statistics
-    ///
-    /// # Returns
-    ///
-    /// A new MethylationStats instance with the provided data_structs, handling
-    /// NaN values gracefully.
+    /// Handles NaN values gracefully.
     pub fn from_data(
         mean_methylation: DensityType,
         variance_methylation: DensityType,
@@ -237,14 +182,8 @@ impl MethylationStats {
         context_methylation: HashMap<Context, (DensityType, u32)>,
         strand_methylation: HashMap<Strand, (DensityType, u32)>,
     ) -> MethylationStats {
-        debug!(
-            "Creating MethylationStats from data_structs with mean: {}, variance: {}",
-            mean_methylation, variance_methylation
-        );
-
         // Handle NaN values by replacing them with 0.0
         let mean_methylation = if mean_methylation.is_nan() {
-            debug!("Detected NaN in mean_methylation, replacing with 0.0");
             0.0
         }
         else {
@@ -252,7 +191,6 @@ impl MethylationStats {
         };
 
         let variance_methylation = if variance_methylation.is_nan() {
-            debug!("Detected NaN in variance_methylation, replacing with 0.0");
             0.0
         }
         else {
@@ -268,15 +206,8 @@ impl MethylationStats {
         }
     }
 
-    /// Merges another MethylationStats instance into this one.
-    ///
-    /// This performs a weighted merge of statistics, with weights based on
-    /// coverage. The method updates mean methylation, variance, coverage
-    /// distribution, and context/strand-specific statistics.
-    ///
-    /// # Arguments
-    ///
-    /// * `other` - The MethylationStats instance to merge into this one
+    /// Merges another instance into this one using weighted averages based on
+    /// coverage.
     pub fn merge(
         &mut self,
         other: &MethylationStats,
@@ -284,11 +215,6 @@ impl MethylationStats {
         let weight_self = self.total_coverage() as DensityType;
         let weight_other = other.total_coverage() as DensityType;
         let total_weight = weight_self + weight_other;
-
-        debug!(
-            "Merging MethylationStats (self weight: {}, other weight: {})",
-            weight_self, weight_other
-        );
 
         // Weighted mean methylation calculation
         if total_weight > 0.0 {
@@ -302,15 +228,6 @@ impl MethylationStats {
                 + weight_other * other.methylation_var)
                 + (weight_self * weight_other / total_weight) * (delta * delta))
                 / total_weight;
-
-            trace!(
-                "Updated mean methylation: {}, variance: {}",
-                self.mean_methylation,
-                self.methylation_var
-            );
-        }
-        else {
-            debug!("Skipping mean/variance calculations due to zero total weight");
         }
 
         // Merge coverage distribution
@@ -323,12 +240,6 @@ impl MethylationStats {
             let entry = self.context_methylation.entry(*context).or_insert((0.0, 0));
             entry.0 += sum_methylation;
             entry.1 += count;
-            trace!(
-                "Updated context {:?} to (sum: {}, count: {})",
-                context,
-                entry.0,
-                entry.1
-            );
         }
 
         // Merge strand methylation
@@ -336,196 +247,97 @@ impl MethylationStats {
             let entry = self.strand_methylation.entry(*strand).or_insert((0.0, 0));
             entry.0 += sum_methylation;
             entry.1 += count;
-            trace!(
-                "Updated strand {:?} to (sum: {}, count: {})",
-                strand,
-                entry.0,
-                entry.1
-            );
         }
     }
 
-    /// Finalizes methylation statistics by converting accumulated sums to mean
-    /// values.
-    ///
-    /// This should be called after all merging operations are complete and
-    /// before retrieving final statistics.
+    /// Finalizes statistics by converting sums to means.
     pub fn finalize_methylation(&mut self) {
-        debug!("Finalizing methylation statistics");
-
-        for (context, (sum_methylation, count)) in &mut self.context_methylation {
+        for (_, (sum_methylation, count)) in &mut self.context_methylation {
             if *count > 0 {
                 *sum_methylation /= *count as DensityType;
-            }
-            else {
-                debug!(
-                    "No data_structs for context {:?}, keeping sum at {}",
-                    context, sum_methylation
-                );
             }
         }
 
-        for (strand, (sum_methylation, count)) in &mut self.strand_methylation {
+        for (_, (sum_methylation, count)) in &mut self.strand_methylation {
             if *count > 0 {
                 *sum_methylation /= *count as DensityType;
-                trace!(
-                    "Finalized {:?} strand methylation to {}",
-                    strand,
-                    *sum_methylation
-                );
-            }
-            else {
-                debug!(
-                    "No data_structs for strand {:?}, keeping sum at {}",
-                    strand, *sum_methylation
-                );
             }
         }
     }
 
-    /// Computes the total sequencing coverage across all positions.
-    ///
-    /// # Returns
-    ///
-    /// The sum of all frequency values in the coverage distribution.
+    /// Computes the total sequencing coverage.
     pub fn total_coverage(&self) -> u32 {
-        let total = self
-            .coverage_distribution
-            .iter()
-            .map(|(_, &freq)| freq)
-            .filter(|&freq| freq > 0)
-            .sum();
-
-        trace!("Calculated total coverage: {}", total);
-        total
+        self.coverage_distribution.values().sum()
     }
 
-    /// Computes the genome-wide mean methylation level.
-    ///
-    /// # Returns
-    ///
-    /// The mean methylation level, or 0.0 if no coverage data_structs is
-    /// available.
+    /// Computes the genome-wide mean methylation.
     pub fn mean_methylation(&self) -> DensityType {
         if self.total_coverage() == 0 {
-            debug!("No coverage data_structs, returning 0.0 for mean methylation");
             0.0
         }
         else {
-            trace!(
-                "Returning calculated mean methylation: {}",
-                self.mean_methylation
-            );
             self.mean_methylation
         }
     }
 
-    /// Merges multiple MethylationStats instances to create a genome-wide
-    /// summary.
-    ///
-    /// # Arguments
-    ///
-    /// * `stats_list` - A slice of MethylationStats instances to merge
-    ///
-    /// # Returns
-    ///
-    /// A new MethylationStats instance containing the merged data_structs.
+    /// Merges multiple instances.
     pub fn merge_multiple(stats_list: &[MethylationStats]) -> Self {
-        info!("Merging {} MethylationStats instances", stats_list.len());
-
         let mut genome_stats = MethylationStats::new();
-        for (idx, stats) in stats_list.iter().enumerate() {
-            debug!(
-                "Merging MethylationStats instance {}/{}",
-                idx + 1,
-                stats_list.len()
-            );
+        for stats in stats_list.iter() {
             genome_stats.merge(stats);
         }
 
-        debug!("Finalizing merged genome-wide methylation statistics");
         genome_stats.finalize_methylation();
-
-        info!(
-            "Genome-wide methylation: mean={:.6}, var={:.6}, total_coverage={}",
-            genome_stats.mean_methylation,
-            genome_stats.methylation_var,
-            genome_stats.total_coverage()
-        );
 
         genome_stats
     }
 
-    /// Generates a detailed text representation of the methylation statistics.
-    ///
-    /// This method finalizes methylation calculations before generating the
-    /// output.
-    ///
-    /// # Returns
-    ///
-    /// A formatted string containing detailed methylation statistics.
+    /// Generates a detailed text representation.
     pub fn display_long(&mut self) -> anyhow::Result<String> {
-        debug!("Generating detailed text representation of methylation statistics");
+        use std::collections::BTreeMap; // Ensure BTreeMap is in scope
+
+        use itertools::Itertools; // Ensure Itertools is in scope
 
         let mut buf = String::new();
         self.finalize_methylation();
 
-        writeln!(&mut buf, "Methylation mean: {:.6}", self.mean_methylation)
-            .context("Failed to write mean methylation")?;
+        // Overall stats
+        writeln!(buf, "Methylation mean: {:.6}", self.mean_methylation)?;
+        writeln!(buf, "Methylation variance: {:.6}", self.methylation_var)?;
+        writeln!(buf)?; // Blank line
 
-        writeln!(
-            &mut buf,
-            "Methylation variance: {:.6}",
-            self.methylation_var
-        )
-        .context("Failed to write methylation variance")?;
-
-        writeln!(&mut buf).context("Failed to write newline")?;
-
-        writeln!(&mut buf, "Cytosine coverage distribution: ")
-            .context("Failed to write coverage distribution header")?;
-
-        writeln!(&mut buf, "coverage\tcount")
-            .context("Failed to write coverage distribution column headers")?;
-
+        // Coverage distribution
+        writeln!(buf, "Cytosine coverage distribution:")?;
+        writeln!(buf, "coverage\tcount")?;
+        // Sort coverage distribution by coverage level
         for (key, value) in self
             .coverage_distribution
             .iter()
             .sorted_by_key(|(k, _)| **k)
         {
-            writeln!(&mut buf, "{}\t{}", key, value)
-                .context(format!("Failed to write coverage entry for key {}", key))?;
+            writeln!(buf, "{}\t{}", key, value)?;
+        }
+        writeln!(buf)?; // Blank line
+
+        // Methylation per context
+        writeln!(buf, "Methylation per context:")?;
+        writeln!(buf, "context\tmean\tcount")?; // Corrected header from "coverage"
+                                                // Sort context methylation by context type
+        let sorted_contexts: BTreeMap<_, _> = self.context_methylation.iter().collect();
+        for (key, (mean, count)) in sorted_contexts {
+            writeln!(buf, "{}\t{:.6}\t{}", key, mean, count)?;
+        }
+        writeln!(buf)?; // Blank line
+
+        // Methylation per strand
+        writeln!(buf, "Methylation per strand:")?;
+        writeln!(buf, "strand\tmean\tcount")?;
+        // Sort strand methylation by strand type
+        let sorted_strands: BTreeMap<_, _> = self.strand_methylation.iter().collect();
+        for (key, (mean, count)) in sorted_strands {
+            writeln!(buf, "{}\t{:.6}\t{}", key, mean, count)?;
         }
 
-        writeln!(&mut buf)
-            .context("Failed to write newline after coverage distribution")?;
-
-        writeln!(&mut buf, "Methylation per context: ")
-            .context("Failed to write context methylation header")?;
-
-        writeln!(&mut buf, "coverage\tmean\tcount")
-            .context("Failed to write context methylation column headers")?;
-
-        for (key, (mean, count)) in self.context_methylation.iter() {
-            writeln!(&mut buf, "{}\t{:.6}\t{}", key, mean, count)
-                .context(format!("Failed to write context entry for {:?}", key))?;
-        }
-
-        writeln!(&mut buf)
-            .context("Failed to write newline after context methylation")?;
-
-        writeln!(&mut buf, "Methylation per strand")
-            .context("Failed to write strand methylation header")?;
-
-        writeln!(&mut buf, "strand\tmean\tcount")
-            .context("Failed to write strand methylation column headers")?;
-
-        for (key, (mean, count)) in self.strand_methylation.iter() {
-            writeln!(&mut buf, "{}\t{:.6}\t{}", key, mean, count)
-                .context(format!("Failed to write strand entry for {:?}", key))?;
-        }
-
-        trace!("Successfully generated detailed methylation statistics text");
         Ok(buf)
     }
 

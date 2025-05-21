@@ -9,43 +9,38 @@ use polars::prelude::SearchSortedSide;
 use super::BsxFileReader;
 use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
 use crate::data_structs::coords::Contig;
-use crate::data_structs::typedef::{BsxSmallStr, SeqNameStr, SeqPosNum};
 use crate::io::bsx::BatchIndex;
 
 /// RegionReader is a reader for BSX files that operates on a specific region of
 /// the genome.
-pub struct RegionReader<R, S, P>
+pub struct RegionReader<R>
 where
-    R: Read + Seek,
-    S: SeqNameStr,
-    P: SeqPosNum, {
+    R: Read + Seek, {
     /// Cache of encoded BSX batches.
     cache:         BTreeMap<usize, BsxBatch>,
     /// Inner reader for the BSX file.
     inner:         BsxFileReader<R>,
     /// Index of the BSX file.
-    index:         BatchIndex<S, P>,
+    index:         BatchIndex,
     /// Preprocessing function to be applied to each batch before it is cached.
     preprocess_fn: Option<Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
 }
 
 // PRIVATE METHODS
-impl<R, S, P> RegionReader<R, S, P>
+impl<R> RegionReader<R>
 where
     R: Read + Seek,
-    S: SeqNameStr,
-    P: SeqPosNum,
 {
     /// Finds the batches that overlap the given contig.
     fn find(
         &self,
-        contig: &Contig<S, P>,
+        contig: &Contig,
     ) -> Option<Vec<usize>> {
         let required_batches = self.index().find(&contig.clone());
 
         let batches_found = required_batches
             .as_ref()
-            .map(|v| v.len() > 0)
+            .map(|v| !v.is_empty())
             .unwrap_or(false);
 
         if batches_found {
@@ -100,7 +95,7 @@ where
     /// Gets the batches for the given contig from the cache.
     fn get_batches_for_contig(
         &self,
-        contig: &Contig<S, P>,
+        contig: &Contig,
     ) -> anyhow::Result<Vec<&BsxBatch>> {
         self.index()
             .find(&contig.clone())
@@ -118,7 +113,7 @@ where
     /// batches are present.
     fn assemble_region(
         &self,
-        contig: &Contig<S, P>,
+        contig: &Contig,
         batches: Vec<&BsxBatch>,
     ) -> anyhow::Result<Option<BsxBatch>> {
         let batches_total = batches.len();
@@ -130,7 +125,7 @@ where
             let slice_start = if is_first {
                 binary_search_ca(
                     batch.position(),
-                    [Some(contig.start().to_u32().unwrap())].into_iter(),
+                    [Some(contig.start())].into_iter(),
                     SearchSortedSide::Left,
                     false,
                 )[0]
@@ -142,7 +137,7 @@ where
             let slice_end = if is_last {
                 binary_search_ca(
                     batch.position(),
-                    [Some(contig.end().to_u32().unwrap())].into_iter(),
+                    [Some(contig.end())].into_iter(),
                     SearchSortedSide::Left,
                     false,
                 )[0]
@@ -173,7 +168,7 @@ where
     /// contig.
     fn determine_intersection(
         &mut self,
-        contig: &Contig<S, P>,
+        contig: &Contig,
     ) -> anyhow::Result<IntersectionKind> {
         let min_cached_pos = self
             .cache
@@ -194,12 +189,12 @@ where
             if let Some((min_pos, max_pos)) = min_cached_pos.zip(max_cached_pos) {
                 assert_eq!(min_pos.seqname(), max_pos.seqname());
                 let seqname = min_pos.seqname();
-                let min_pos_val = P::from(min_pos.position()).unwrap();
-                let max_pos_val = P::from(max_pos.position()).unwrap();
+                let min_pos_val = min_pos.position();
+                let max_pos_val = max_pos.position();
 
                 // |-------------<cache>------------|
                 //        |------<contig>----|
-                if seqname == contig.seqname().as_ref()
+                if seqname == contig.seqname()
                     && contig.start() >= min_pos_val
                     && contig.end() <= max_pos_val
                 {
@@ -211,7 +206,7 @@ where
                 // is not a partial intersection
                 //        |-------------<cache>------------|
                 // tig>-|
-                else if min_pos.seqname() == contig.seqname().as_ref()
+                else if min_pos.seqname() == contig.seqname()
                     && contig.start() <= min_pos_val
                     && contig.end() <= max_pos_val
                 {
@@ -219,7 +214,7 @@ where
                 }
                 // |-------------<cache>------------|
                 //                  |----<region>------|
-                else if min_pos.seqname() == contig.seqname().as_ref()
+                else if min_pos.seqname() == contig.seqname()
                     && contig.start() > min_pos_val
                     && contig.start() < max_pos_val
                     && contig.end() >= max_pos_val
@@ -241,7 +236,7 @@ where
 }
 
 // PUBLIC METHODS
-impl<R> RegionReader<R, BsxSmallStr, u32>
+impl<R> RegionReader<R>
 where
     R: Read + Seek,
 {
@@ -250,14 +245,7 @@ where
         let index = reader.index()?.clone();
         Ok(Self::new(reader, index, None))
     }
-}
 
-impl<R, S, P> RegionReader<R, S, P>
-where
-    R: Read + Seek,
-    S: SeqNameStr,
-    P: SeqPosNum,
-{
     /// Sets the preprocessing function.
     pub fn set_preprocess_fn(
         &mut self,
@@ -269,7 +257,7 @@ where
     /// Creates a new RegionReader.
     pub fn new(
         inner: BsxFileReader<R>,
-        index: BatchIndex<S, P>,
+        index: BatchIndex,
         preprocess_fn: Option<fn(BsxBatch) -> anyhow::Result<BsxBatch>>,
     ) -> Self {
         Self {
@@ -283,7 +271,7 @@ where
     }
 
     /// Returns the index of the BSX file.
-    pub fn index(&self) -> &BatchIndex<S, P> {
+    pub fn index(&self) -> &BatchIndex {
         &self.index
     }
 
@@ -295,7 +283,7 @@ where
     /// Queries the BSX file for the given contig.
     pub fn query(
         &mut self,
-        contig: Contig<S, P>,
+        contig: Contig,
         postprocess_fn: Option<Box<fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
     ) -> anyhow::Result<Option<BsxBatch>> {
         const MAX_ITERATION_LIMIT: usize = 10;

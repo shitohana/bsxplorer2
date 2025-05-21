@@ -56,12 +56,12 @@ impl LazyBsxBatch {
         self.filter(BsxCol::Position.col().gt(lit(value)))
     }
 
-    /// Filters entries with coverage less than the specified value.
-    pub fn filter_coverage_lt<N: Literal>(
+    /// Filters entries with coverage greater than the specified value.
+    pub fn filter_coverage_gt<N: Literal>(
         self,
         value: N,
     ) -> Self {
-        self.filter(BsxCol::CountTotal.col().lt(lit(value)))
+        self.filter(BsxCol::CountTotal.col().gt(lit(value)))
     }
 
     /// Filters entries by strand value.

@@ -256,13 +256,7 @@ impl PyGffEntry {
         id: Option<String>,
     ) -> PyResult<Self> {
         // Convert PyContig to Contig<ArcStr, u32>
-        let rust_contig: Contig<String, u32> = contig.into();
-        let arc_contig = Contig::new(
-            rust_contig.seqname().into(),
-            rust_contig.start(),
-            rust_contig.end(),
-            rust_contig.strand(),
-        );
+        let rust_contig: Contig = contig.clone().into();
 
         // Create attributes with optional ID
         let mut attributes = GffEntryAttributes::default();
@@ -276,7 +270,7 @@ impl PyGffEntry {
 
         // Create GffEntry
         let entry = GffEntry::new(
-            arc_contig,
+            rust_contig,
             arc_source,
             arc_feature_type,
             score,

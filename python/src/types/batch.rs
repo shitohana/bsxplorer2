@@ -164,14 +164,6 @@ impl PyBsxBatch {
         Ok(PySeries(self.inner.density().clone().into_series()))
     }
 
-    // General column accessor
-    pub fn column(
-        &self,
-        name: &str,
-    ) -> Option<PySeries> {
-        self.inner.column(name).map(|s| PySeries(s.clone()))
-    }
-
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -259,7 +251,9 @@ impl PyBsxBatch {
         Ok(self.inner.get_coverage_dist().into_iter().collect())
     }
 
-    pub fn get_context_stats(&self) -> PyResult<HashMap<PyContext, (DensityType, u32)>> {
+    pub fn get_context_stats(
+        &self
+    ) -> PyResult<HashMap<PyContext, (DensityType, u32)>> {
         let rust_stats = self.inner.get_context_stats();
         let py_stats = rust_stats.into_iter().map(|(k, v)| (k.into(), v)).collect();
         Ok(py_stats)

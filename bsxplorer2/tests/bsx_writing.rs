@@ -2,7 +2,7 @@
 // use std::collections::BTreeMap;
 // use std::io::Cursor;
 
-// use bsxplorer2::data_structs::batch::{BsxBatchBuilder, BsxBatchMethods};
+// use bsxplorer2::data_structs::batch::BsxBatchBuilder;
 // use bsxplorer2::io::bsx::BsxFileReader;
 // use common::DemoReportBuilder;
 // use itertools::{izip, Itertools};
@@ -29,19 +29,17 @@
 //     let orig_batches = report_builder
 //         .write_bsx(Cursor::new(&mut sink_buffer), num_chrs, batch_size)?
 //         .into_iter()
-//         .map(|batch| (batch.chr_val().to_owned(), batch))
-//         .collect::<BTreeMap<_, _>>();
+//         .map(|batch| (batch.seqname().unwrap_or_default().to_string(),
+// batch))         .collect::<BTreeMap<_, _>>();
 
 //     // Reading
 //     let reader = BsxFileReader::new(Cursor::new(&mut sink_buffer));
 //     let read_batches = reader
 //         .into_iter()
 //         .flatten()
-//         .map(|batch| BsxBatchBuilder::decode_batch(batch))
-//         .flatten()
-//         .into_group_map_by(|batch| batch.chr_val().to_string());
-//     let read_batches: BTreeMap<_, _> = read_batches
-//         .into_iter()
+//         .into_group_map_by(|batch|
+// batch.seqname().unwrap_or_default().to_string());     let read_batches:
+// BTreeMap<_, _> = read_batches         .into_iter()
 //         .map(|(k, v)| (k, BsxBatchBuilder::concat(v).unwrap()))
 //         .collect();
 

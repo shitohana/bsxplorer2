@@ -3,7 +3,6 @@ use std::io::{BufReader, BufWriter};
 
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::enums::Strand;
-use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use bsxplorer2::io::bsx::BatchIndex;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -14,23 +13,23 @@ use super::coords::PyContig;
 #[pyclass(name = "BatchIndex")]
 #[derive(Debug, Clone)]
 pub struct PyBatchIndex {
-    inner: BatchIndex<BsxSmallStr, u32>,
+    inner: BatchIndex,
 }
 
-impl From<BatchIndex<BsxSmallStr, u32>> for PyBatchIndex {
-    fn from(index: BatchIndex<BsxSmallStr, u32>) -> Self {
+impl From<BatchIndex> for PyBatchIndex {
+    fn from(index: BatchIndex) -> Self {
         PyBatchIndex { inner: index }
     }
 }
 
-impl From<PyBatchIndex> for BatchIndex<BsxSmallStr, u32> {
+impl From<PyBatchIndex> for BatchIndex {
     fn from(py_index: PyBatchIndex) -> Self {
         py_index.inner
     }
 }
 
 impl PyBatchIndex {
-    pub fn inner(&self) -> &BatchIndex<BsxSmallStr, u32> {
+    pub fn inner(&self) -> &BatchIndex {
         &self.inner
     }
 }
@@ -114,7 +113,7 @@ impl PyBatchIndex {
         let file =
             File::open(filename).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let mut reader = BufReader::new(file);
-        let inner = BatchIndex::<BsxSmallStr, u32>::from_file(&mut reader)
+        let inner = BatchIndex::from_file(&mut reader)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyBatchIndex { inner })
     }

@@ -1,7 +1,6 @@
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::io::bsx::{BsxFileReader as RsBsxFileReader,
                           BsxFileWriter as RsBsxIpcWriter};
 use polars::prelude::IpcCompression;

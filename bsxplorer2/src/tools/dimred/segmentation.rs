@@ -2,8 +2,9 @@ use core::f64;
 
 use crate::data_structs::typedef::CountType;
 
-/// Trait defining the interface for data structures used in segmentation algorithms.
-trait SegmentationData {
+/// Trait defining the interface for data structures used in segmentation
+/// algorithms.
+pub trait SegmentationData {
     /// Calculates the cost of a segment from index r to t (inclusive).
     fn cost_function(
         &self,
@@ -15,11 +16,11 @@ trait SegmentationData {
 }
 
 /// Data structure for binomial data segmentation, storing cumulative sums.
-struct MethDataBinom {
+pub struct MethDataBinom {
     /// Cumulative sum of methylated counts.
-    count_m_cumsum:     Vec<CountType>,
+    count_m_cumsum:     Vec<u32>,
     /// Cumulative sum of total counts.
-    count_total_cumsum: Vec<CountType>,
+    count_total_cumsum: Vec<u32>,
 }
 
 impl MethDataBinom {
@@ -34,13 +35,13 @@ impl MethDataBinom {
         );
         // Calculate cumulative sum of methylated counts.
         let count_m_cumsum = count_m.iter().fold(vec![0], |mut acc, new| {
-            acc.push(acc.last().unwrap() + *new);
+            acc.push(acc.last().unwrap() + *new as u32);
             acc
         });
 
         // Calculate cumulative sum of total counts.
         let count_total_cumsum = count_total.iter().fold(vec![0], |mut acc, new| {
-            acc.push(acc.last().unwrap() + *new);
+            acc.push(acc.last().unwrap() + *new as u32);
             acc
         });
 
@@ -94,7 +95,7 @@ impl SegmentationData for MethDataBinom {
 /// # Returns
 ///
 /// A vector of change points
-fn pelt<T: SegmentationData>(
+pub fn pelt<T: SegmentationData>(
     data: &T,
     beta: f64,
     min_size: usize,
@@ -104,7 +105,8 @@ fn pelt<T: SegmentationData>(
     #[allow(non_snake_case)]
     // F[i] stores the minimum cost to segment data up to index i-1.
     let mut F = vec![f64::INFINITY; n + 1];
-    // prev[i] stores the index of the last changepoint before i-1 in the optimal segmentation.
+    // prev[i] stores the index of the last changepoint before i-1 in the optimal
+    // segmentation.
     let mut prev = vec![-1; n + 1];
     // candidate_set stores potential previous changepoints due to pruning.
     let mut candidate_set = vec![0]; // Start with a virtual changepoint at index 0.
@@ -112,7 +114,8 @@ fn pelt<T: SegmentationData>(
     // Base case: cost to segment an empty set before index 0.
     F[0] = -beta; // Subtract beta for consistency with the recursive definition.
 
-    // Iterate through all possible end points 't' (0 to n-1). F[t+1] corresponds to data up to index t.
+    // Iterate through all possible end points 't' (0 to n-1). F[t+1] corresponds to
+    // data up to index t.
     for t in 0..n {
         let mut best_cost = f64::INFINITY;
         let mut best_r = -1;
@@ -131,22 +134,27 @@ fn pelt<T: SegmentationData>(
             }
         }
 
-        // Store the minimum cost and the corresponding previous changepoint for index t+1.
+        // Store the minimum cost and the corresponding previous changepoint for index
+        // t+1.
         F[t + 1] = best_cost;
         prev[t + 1] = best_r;
 
-        // Pruning step: Remove candidates 'r' that cannot be the optimal previous changepoint
-        // for any future end point t' >= t, based on the pruning condition.
+        // Pruning step: Remove candidates 'r' that cannot be the optimal previous
+        // changepoint for any future end point t' >= t, based on the pruning
+        // condition.
         candidate_set.retain(|r| {
-            // F[r] + cost(r, t) <= F[t + 1] - This is a simplified version of the pruning inequality
-            // as implemented here. The full PELT condition involves costs for future points.
+            // F[r] + cost(r, t) <= F[t + 1] - This is a simplified version of the
+            // pruning inequality as implemented here. The full PELT
+            // condition involves costs for future points.
             // This implementation uses the efficient form F[r] + cost(r,t) <= F[t+1].
-            // More robust pruning requires comparing F[r] + cost(r, t_prime) vs F[s] + cost(s, t_prime).
-            // This specific condition prunes candidates that are worse than the current optimum ending at t+1.
-             F[*r] + data.cost_function(*r, t) <= F[t + 1]
+            // More robust pruning requires comparing F[r] + cost(r, t_prime) vs F[s] +
+            // cost(s, t_prime). This specific condition prunes candidates
+            // that are worse than the current optimum ending at t+1.
+            F[*r] + data.cost_function(*r, t) <= F[t + 1]
         });
         // Add the current index 't' as a potential candidate for future iterations.
-        candidate_set.push(t + 1); // The candidate represents a possible split point *after* index t.
+        candidate_set.push(t + 1); // The candidate represents a possible split
+                                   // point *after* index t.
     }
 
     // Traceback to find the changepoints.
@@ -163,12 +171,20 @@ fn pelt<T: SegmentationData>(
         t = r; // Move to the previous changepoint.
     }
 
-    // Sort changepoints in ascending order. Remove the initial 0 if it's added by the loop logic.
-    // The initial candidate_set = vec![0] can lead to 0 being added to cps if prev[n] traces back to 0.
-    // Filter out 0 if it is added as a changepoint when it's just the start boundary.
+    // Sort changepoints in ascending order. Remove the initial 0 if it's added by
+    // the loop logic. The initial candidate_set = vec![0] can lead to 0 being
+    // added to cps if prev[n] traces back to 0. Filter out 0 if it is added as
+    // a changepoint when it's just the start boundary.
     cps.retain(|&x| x > 0); // Retain only indices > 0 as actual changepoints.
 
     cps.sort();
-    // Return the sorted changepoints and the minimum cost for the full segmentation.
+    // Return the sorted changepoints and the minimum cost for the full
+    // segmentation.
     (cps, F[n])
+}
+
+pub enum SegmentAlgorithm {
+    /// Pelt algorithm with params beta and minimum segment size.
+    /// If beta is None it is set to BIC: ln(len(data))
+    Pelt(Option<f64>, usize),
 }

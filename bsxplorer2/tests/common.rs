@@ -6,7 +6,10 @@ use std::ops::BitOr;
 
 use anyhow::bail;
 use bio::io::fasta::Record;
-use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchBuilder, BsxColumns};
+use bsxplorer2::data_structs::batch::{create_caregorical_dtype,
+                                      BsxBatch,
+                                      BsxBatchBuilder,
+                                      BsxColumns};
 use bsxplorer2::data_structs::context_data::ContextData;
 use bsxplorer2::io::bsx::BsxFileWriter;
 use bsxplorer2::io::report::ReportType;
@@ -85,11 +88,18 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         }
 
         let chr_list = chr_batches.keys().cloned().collect::<Vec<_>>();
+        let chr_dtype = create_caregorical_dtype(
+            chr_list.iter().cloned().map(|v| Some(v)).collect_vec(),
+        );
         let mut writer = BsxFileWriter::try_new(sink, chr_list.clone(), None, None)?;
 
         for chr in chr_list {
             let batches = chr_batches.remove(&chr).unwrap();
             for batch in batches {
+                let df = BsxBatchBuilder::no_checks()
+                    .with_chr_dtype(Some(chr_dtype.clone()))
+                    .cast_only(batch.into_inner())?;
+                let batch = unsafe { BsxBatch::new_unchecked(df) };
                 writer.write_batch(batch)?;
             }
         }

@@ -53,10 +53,10 @@ impl ReportType {
             Self::Bismark => {
                 &[
                     DataType::String, // chr
-                    DataType::UInt64, // position
+                    DataType::UInt32, // position
                     DataType::String, // strand
-                    DataType::UInt32, // count_m
-                    DataType::UInt32, // count_um
+                    DataType::UInt16, // count_m
+                    DataType::UInt16, // count_um
                     DataType::String, // context
                     DataType::String, // trinuc
                 ]
@@ -65,30 +65,30 @@ impl ReportType {
                 &[
                     DataType::String,  // chr
                     DataType::String,  // nuc
-                    DataType::UInt64,  // position
+                    DataType::UInt32,  // position
                     DataType::String,  // context
                     DataType::String,  // dinuc
-                    DataType::Float64, // density
-                    DataType::UInt32,  // count_m
-                    DataType::UInt32,  // count_total
+                    DataType::Float32, // density
+                    DataType::UInt16,  // count_m
+                    DataType::UInt16,  // count_total
                 ]
             },
             Self::BedGraph => {
                 &[
                     DataType::String,  // chr
-                    DataType::UInt64,  // start
-                    DataType::UInt64,  // end
-                    DataType::Float64, // density
+                    DataType::UInt32,  // start
+                    DataType::UInt32,  // end
+                    DataType::Float32, // density
                 ]
             },
             Self::Coverage => {
                 &[
                     DataType::String,  // chr
-                    DataType::UInt64,  // start
-                    DataType::UInt64,  // end
-                    DataType::Float64, // density
-                    DataType::UInt32,  // count_m
-                    DataType::UInt32,  // count_um
+                    DataType::UInt32,  // start
+                    DataType::UInt32,  // end
+                    DataType::Float32, // density
+                    DataType::UInt16,  // count_m
+                    DataType::UInt16,  // count_um
                 ]
             },
         }

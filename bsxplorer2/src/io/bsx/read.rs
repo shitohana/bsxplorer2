@@ -10,12 +10,11 @@ use super::ipc::IpcFileReader;
 use super::BatchIndex;
 use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
 use crate::data_structs::coords::Contig;
-use crate::data_structs::typedef::BsxSmallStr;
 
 /// Reader for BSX files
 pub struct BsxFileReader<R: Read + Seek> {
     ipc_reader: IpcFileReader<R>,
-    index:      Option<BatchIndex<BsxSmallStr, u32>>,
+    index:      Option<BatchIndex>,
 }
 
 impl<R: Read + Seek> BsxFileReader<R> {
@@ -38,7 +37,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
     }
 
     /// Indexes the BSX file and returns the index.
-    pub fn index(&mut self) -> anyhow::Result<&BatchIndex<BsxSmallStr, u32>> {
+    pub fn index(&mut self) -> anyhow::Result<&BatchIndex> {
         let initialized = self.index.is_some();
         if initialized {
             Ok(self.index.as_ref().unwrap())
@@ -67,7 +66,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
     /// Queries the BSX file for a given contig.
     pub fn query(
         &mut self,
-        contig: &Contig<BsxSmallStr, u32>,
+        contig: &Contig,
     ) -> anyhow::Result<Option<BsxBatch>> {
         let batch_indices = self
             .index()?
@@ -128,7 +127,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
         let res = next.map(|res| self.process_record_batch(res));
 
         if let Some(Ok(data)) = res.as_ref() {
-            if data.len() == 0 {
+            if data.is_empty() {
                 return None;
             }
         }
@@ -143,7 +142,7 @@ impl<R: Read + Seek> BsxFileReader<R> {
 
     pub fn set_index(
         &mut self,
-        index: Option<BatchIndex<BsxSmallStr, u32>>,
+        index: Option<BatchIndex>,
     ) {
         self.index = index;
     }

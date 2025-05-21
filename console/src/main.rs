@@ -1,10 +1,12 @@
 pub mod convert;
 pub mod dmr;
 pub mod utils;
+mod validate;
 
 use clap::{Parser, Subcommand};
 use convert::{FromBsxConvert, R2RConvert, ToBsxConvert};
 use utils::UtilsArgs;
+use validate::ValidateArgs;
 use wild::ArgsOs;
 
 #[derive(Parser, Debug)]
@@ -29,18 +31,25 @@ enum MainMenu {
         #[clap(flatten)]
         args:  dmr::DmrArgs,
     },
+
+    Validate {
+        #[clap(flatten)]
+        utils: UtilsArgs,
+        #[clap(flatten)]
+        args:  ValidateArgs,
+    },
 }
 
 #[derive(Subcommand, Debug)]
 enum ConvertMenu {
-    #[command(name = "to-bsx")]
+    #[command(name = "tobsx")]
     ToBsx {
         #[clap(flatten)]
         utils: UtilsArgs,
         #[clap(flatten)]
         args:  ToBsxConvert,
     },
-    #[command(name = "from-bsx")]
+    #[command(name = "fbsx")]
     FromBsx {
         #[clap(flatten)]
         utils: UtilsArgs,
@@ -76,6 +85,10 @@ fn main() -> anyhow::Result<()> {
         MainMenu::Dmr { utils, args } => {
             utils.setup()?;
             args.run(&utils)?;
+        },
+        MainMenu::Validate { utils, args } => {
+            utils.setup()?;
+            args.run(&utils)?
         },
     }
     Ok(())
