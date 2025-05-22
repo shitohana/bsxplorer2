@@ -47,7 +47,7 @@ mod batch_tests {
     }
 
     #[fixture]
-    fn test_batch() -> BsxBatch {
+    pub fn test_batch() -> BsxBatch {
         BsxBatch::try_from_columns(
             "chr1",
             Some(create_caregorical_dtype(vec!["chr1".into()])),
@@ -1551,7 +1551,7 @@ mod lazybatch_tests {
 
     #[fixture]
     fn test_lazybatch() -> LazyBsxBatch {
-        BsxBatch::create_test_df().into()
+        batch_tests::test_batch().into()
     }
 
     #[rstest]

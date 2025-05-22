@@ -70,7 +70,7 @@ impl ValidateArgs {
                 .cloned()
                 .unwrap();
 
-            eprintln!("Detected {}", style("inconcistency in batch number").red());
+            eprintln!("Detected {}", style("inconsistency in batch number").red());
             eprintln!("Most files have {} batches", style(max_batch_num).green());
             for (k, v) in batch_num.iter() {
                 if *k == max_batch_num {
@@ -137,7 +137,7 @@ impl ValidateArgs {
                     .unwrap();
                 eprintln!(
                     "Detected {}. Batch №{}",
-                    style("inconcistency in batch size").red(),
+                    style("inconsistency in batch size").red(),
                     batch_count
                 );
                 eprintln!("Most files have {} rows", style(max_size).green());
@@ -168,7 +168,7 @@ impl ValidateArgs {
                     .unwrap();
                 eprintln!(
                     "Detected {}. Batch №{}",
-                    style("inconcistency in batch values range").red(),
+                    style("inconsistency in batch values range").red(),
                     batch_count
                 );
                 eprintln!("Most files cover {} region", style(common_contig).green());

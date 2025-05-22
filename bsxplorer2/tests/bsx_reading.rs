@@ -20,6 +20,16 @@ fn test_bsxreader() -> BsxFileReader<File> {
     reader
 }
 
+#[rstest]
+fn test_iter(mut test_bsxreader: BsxFileReader<File>) {
+    let mut batch_count = 0;
+    for batch in test_bsxreader.iter() {
+        assert!(batch.is_ok());
+        batch_count += 1;
+    }
+    assert_eq!(batch_count, test_bsxreader.blocks_total());
+}
+
 #[fixture]
 fn test_gffreader() -> GffReader<File> {
     GffReader::from_file(

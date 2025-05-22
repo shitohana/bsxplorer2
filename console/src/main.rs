@@ -2,9 +2,11 @@ pub mod convert;
 pub mod dmr;
 pub mod utils;
 mod validate;
+mod sort;
 
 use clap::{Parser, Subcommand};
 use convert::{FromBsxConvert, R2RConvert, ToBsxConvert};
+use sort::SortArgs;
 use utils::UtilsArgs;
 use validate::ValidateArgs;
 use wild::ArgsOs;
@@ -38,6 +40,13 @@ enum MainMenu {
         #[clap(flatten)]
         args:  ValidateArgs,
     },
+
+    Sort {
+        #[clap(flatten)]
+        args: SortArgs,
+        #[clap(flatten)]
+        utils: UtilsArgs
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -87,6 +96,10 @@ fn main() -> anyhow::Result<()> {
             args.run(&utils)?;
         },
         MainMenu::Validate { utils, args } => {
+            utils.setup()?;
+            args.run(&utils)?
+        },
+        MainMenu::Sort { args, utils } => {
             utils.setup()?;
             args.run(&utils)?
         },

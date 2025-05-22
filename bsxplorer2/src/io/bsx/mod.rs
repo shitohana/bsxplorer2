@@ -1,6 +1,7 @@
 mod index;
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod ipc;
+mod ipc_parallel;
 mod read;
 mod region;
 mod write;

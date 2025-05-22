@@ -36,7 +36,7 @@ use polars::export::arrow::io::ipc::read::{read_batch,
 use polars::export::arrow::record_batch::RecordBatchT;
 use polars::prelude::{ArrowSchema, DataFrame, PlHashMap, PolarsError, PolarsResult};
 
-fn apply_projection(
+pub fn apply_projection(
     chunk: RecordBatchT<Box<dyn Array>>,
     map: &PlHashMap<usize, usize>,
 ) -> RecordBatchT<Box<dyn Array>> {

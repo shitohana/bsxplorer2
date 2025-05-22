@@ -4,6 +4,7 @@
 .git
 .idea
 .zed
+.helix
 .vscode
 .venv
 .pytest_cache

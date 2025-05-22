@@ -124,6 +124,7 @@ impl BsxBatch {
         &self.data
     }
 
+    #[inline(always)]
     pub fn into_inner(self) -> DataFrame {
         self.data
     }
@@ -143,27 +144,12 @@ impl BsxBatch {
             .as_materialized_series()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
-        self.data().is_empty()
+        self.data.is_empty()
     }
 
     // OPERATIONS
-    #[cfg(test)]
-    pub fn create_test_df() -> Self {
-        use super::create_caregorical_dtype;
-
-        BsxBatch::try_from_columns(
-            "chr1",
-            Some(create_caregorical_dtype(vec!["chr1".into()])),
-            vec![3, 5, 9, 12, 15],
-            vec![true, false, true, true, false],
-            vec![Some(true), Some(false), Some(true), None, None],
-            vec![5, 10, 15, 10, 5],
-            vec![10, 30, 20, 10, 10],
-        )
-        .unwrap()
-    }
-
     pub fn split_at(
         &self,
         index: usize,
@@ -179,6 +165,9 @@ impl BsxBatch {
         self.data.rechunk_mut();
     }
 
+    /// This method modifies the batch in-place. Additional checks for
+    /// duplicated positions and the correct positions order are
+    /// performed.
     pub fn extend(
         &mut self,
         other: &Self,
@@ -188,6 +177,7 @@ impl BsxBatch {
         BsxBatchBuilder::no_checks()
             .with_check_duplicates(true)
             .with_check_sorted(true)
+            .with_check_single_chr(true)
             .checks_only(&new)?;
         self.data = new;
         Ok(())
