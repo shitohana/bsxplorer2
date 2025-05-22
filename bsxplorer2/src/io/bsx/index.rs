@@ -5,16 +5,29 @@ use bio::data_structures::interval_tree::IntervalTree;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
+use polars::error::PolarsResult;
 use serde::{Deserialize, Serialize};
 
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::typedef::BsxSmallStr;
+
+use super::BsxFileReader;
 
 /// Index for batches in a BSX file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchIndex {
     map:       HashMap<BsxSmallStr, IntervalTree<GenomicPosition, usize>>,
     chr_order: IndexSet<BsxSmallStr>,
+}
+
+impl FromIterator<(Contig, usize)> for BatchIndex {
+    fn from_iter<I: IntoIterator<Item = (Contig, usize)>>(iter: I) -> Self {
+        let mut index = Self::new();
+        for (contig, batch_idx) in iter {
+            index.insert(contig, batch_idx);
+        }
+        index
+    }
 }
 
 impl BatchIndex {
@@ -26,14 +39,19 @@ impl BatchIndex {
         bincode::serde::encode_into_std_write(self, writer, config)?;
         Ok(())
     }
-}
 
-impl BatchIndex {
     pub fn from_file<R: Read>(
         reader: &mut R
     ) -> Result<Self, bincode::error::DecodeError> {
         let config = bincode::config::standard();
         bincode::serde::decode_from_std_read(reader, config)
+    }
+
+    pub fn from_reader(reader: &mut BsxFileReader) -> PolarsResult<Self> {
+        let contigs = reader.iter().enumerate()
+            .map(|(batch_idx, batch)| batch.map(|b| (b.as_contig().unwrap(), batch_idx)))
+            .collect::<PolarsResult<Vec<_>>>()?;
+        Ok(Self::from_iter(contigs.into_iter()))
     }
 }
 

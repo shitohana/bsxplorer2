@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
@@ -9,18 +10,17 @@ use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 
 use crate::types::batch::PyBsxBatch;
-use crate::types::coords::PyContig;
-use crate::types::index::PyBatchIndex;
-use crate::utils::{FileOrFileLike, ReadHandle, SinkHandle};
+use crate::utils::{FileOrFileLike, SinkHandle};
 
 
 #[pyclass(name = "BsxFileReader", unsendable)]
 pub struct PyBsxFileReader {
-    reader: RsBsxFileReader<Box<dyn ReadHandle>>,
+    reader: RsBsxFileReader,
+    current_batch_idx: usize,
 }
 
 impl PyBsxFileReader {
-    pub(crate) fn into_inner(self) -> RsBsxFileReader<Box<dyn ReadHandle>> {
+    pub(crate) fn into_inner(self) -> RsBsxFileReader {
         self.reader
     }
 }
@@ -29,20 +29,12 @@ impl PyBsxFileReader {
 impl PyBsxFileReader {
     #[new]
     pub fn new(file: FileOrFileLike) -> PyResult<Self> {
-        let file = file.get_reader()?;
-        let reader = RsBsxFileReader::new(file);
-        Ok(Self { reader })
-    }
-
-    #[staticmethod]
-    pub fn from_file_and_index(
-        file: FileOrFileLike,
-        index: FileOrFileLike,
-    ) -> PyResult<Self> {
-        let file = file.get_reader()?;
-        let mut index = index.get_reader()?;
-        let inner = RsBsxFileReader::from_file_and_index(file, &mut index)?;
-        Ok(Self { reader: inner })
+        let reader = match file {
+            FileOrFileLike::File(path) => RsBsxFileReader::try_new(File::open(path)?)?,
+            FileOrFileLike::ROnlyFileLike(handle) => RsBsxFileReader::try_new(handle)?,
+            FileOrFileLike::RWFileLike(handle) => RsBsxFileReader::try_new(handle)?,
+        };
+        Ok(Self { reader, current_batch_idx: 0 })
     }
 
     pub fn get_batch(
@@ -56,41 +48,60 @@ impl PyBsxFileReader {
         }
     }
 
-    pub fn index(&mut self) -> PyResult<PyBatchIndex> {
-        self.reader
-            .index()
-            .cloned()
-            .map(PyBatchIndex::from)
-            .map_err(|e| e.into())
-    }
+    // pub fn index(&mut self) -> PyResult<PyBatchIndex> {
+    //     self.reader
+    //         .index()
+    //         .cloned()
+    //         .map(PyBatchIndex::from)
+    //         .map_err(|e| e.into())
+    // }
 
-    pub fn set_index(
-        &mut self,
-        index: PyBatchIndex,
-    ) -> () {
-        self.reader.set_index(Some(index.into()))
-    }
+    // pub fn set_index(
+    //     &mut self,
+    //     index: PyBatchIndex,
+    // ) -> () {
+    //     self.reader.set_index(Some(index.into()))
+    // }
 
-    pub fn query(
-        &mut self,
-        query: PyContig,
-    ) -> PyResult<Option<PyBsxBatch>> {
-        Ok(self.reader.query(&query.into())?.map(PyBsxBatch::from))
-    }
+    // pub fn query(
+    //     &mut self,
+    //     query: PyContig,
+    // ) -> PyResult<Option<PyBsxBatch>> {
+    //     Ok(self.reader.query(&query.into())?.map(PyBsxBatch::from))
+    // }
 
     pub fn blocks_total(&self) -> usize {
         self.reader.blocks_total()
     }
 
-    pub fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+    pub fn __iter__(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+        // Reset index on starting iteration
+        // This assumes the PyBsxFileReader struct has a `current_batch_index: usize` field
+        // which needs to be initialized in the `new` method as well.
+        slf.current_batch_idx = 0;
         slf
     }
 
-    pub fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyResult<PyBsxBatch>> {
-        slf.reader.next().map(|res| {
-            res.map(PyBsxBatch::from)
-                .map_err(|e| PyPolarsErr::Polars(e).into())
-        })
+    pub fn __next__(&mut self) -> Option<PyResult<PyBsxBatch>> {
+        if let Some(batch) = self.reader.get_cache_mut().pop_front() {
+            self.current_batch_idx += 1;
+            Some(Ok(batch.into()))
+        }
+        else if self.current_batch_idx < self.reader.blocks_total() {
+            let to_read = (self.current_batch_idx
+                ..(self.current_batch_idx + self.reader.n_threads()))
+                .collect::<Vec<_>>();
+            let cache_res = self.reader.cache_batches(&to_read);
+            if cache_res.is_ok() {
+                self.__next__()
+            }
+            else {
+                Some(Err(PyPolarsErr::Polars(cache_res.unwrap_err()).into()))
+            }
+        }
+        else {
+            None
+        }
     }
 }
 

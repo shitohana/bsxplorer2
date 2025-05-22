@@ -1,13 +1,12 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::io::{Read, Seek};
+use std::os::unix::prelude::AsRawFd;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use bio::bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
-use polars::io::mmap::MmapBytesReader;
 
 use crate::data_structs::batch::BsxBatch;
 use crate::data_structs::enums::Context;
@@ -47,7 +46,7 @@ impl DmrConfig {
         readers: Vec<(R, F)>,
     ) -> anyhow::Result<DmrIterator>
     where
-        F: Read + Seek + Send + Sync + MmapBytesReader + 'static,
+        F: AsRawFd + 'static + Sync + Send,
         R: Display
             + Eq
             + Hash
@@ -165,14 +164,15 @@ impl Default for DmrConfig {
     }
 }
 
-fn init_bsx_readers<F: Read + Seek + 'static>(
+fn init_bsx_readers<F: AsRawFd + 'static>(
     handles: Vec<F>
 ) -> (usize, Vec<Box<dyn Iterator<Item = BsxBatch>>>) {
     assert!(!handles.is_empty(), "No readers supplied");
     let bsx_readers = handles
         .into_iter()
-        .map(|reader| BsxFileReader::new(reader))
-        .collect_vec();
+        .map(|reader| BsxFileReader::try_new(reader))
+        .collect::<anyhow::Result<Vec<_>>>()
+        .expect("Failed to initialize readers");
     assert!(
         bsx_readers.iter().map(|r| r.blocks_total()).all_equal(),
         "Number of blocks not equal in files"
@@ -181,8 +181,12 @@ fn init_bsx_readers<F: Read + Seek + 'static>(
     let n_batches = unsafe { bsx_readers.get_unchecked(0).blocks_total() };
     let iterators = bsx_readers
         .into_iter()
-        .map(|reader| reader.map(|batch_res| batch_res.expect("could not read batch")))
-        .map(|reader| Box::new(reader) as Box<dyn Iterator<Item = BsxBatch>>)
+        .map(|reader| {
+            Box::new(
+                reader.into_iter()
+                    .map(|batch_res| batch_res.expect("could not read batch"))
+            ) as Box<dyn Iterator<Item = BsxBatch>>
+        })
         .collect_vec();
     (n_batches, iterators)
 }

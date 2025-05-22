@@ -4,7 +4,7 @@ use std::process::exit;
 
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::enums::Strand;
-use bsxplorer2::io::bsx::{BsxFileReader, BsxFileWriter};
+use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, BsxFileWriter};
 use clap::Args;
 use console::style;
 use indicatif::ProgressBar;
@@ -52,9 +52,9 @@ impl SortArgs {
             exit(-1)
         }
 
-        let mut reader = BsxFileReader::new(File::open(self.file.clone())?);
+        let mut reader = BsxFileReader::try_new(File::open(self.file.clone())?)?;
 
-        let index = reader.index()?.clone();
+        let index = BatchIndex::from_reader(&mut reader)?;
         let chr_order = self.order.clone().unwrap_or(
             index
                 .get_chr_order()
@@ -71,7 +71,7 @@ impl SortArgs {
             None,
         )?;
 
-        
+
         let progress_bar = if utils.progress {
             let progress_bar =
                 init_pbar(reader.blocks_total()).expect("Failed to initialize progress bar");

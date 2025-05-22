@@ -362,51 +362,6 @@ class BsxFileReader:
         """
         pass
 
-    def index(self) -> BatchIndex:
-        """Get the index of the BSX file.
-
-        Returns
-        -------
-        BatchIndex
-            The index of the BSX file
-
-        Raises
-        ------
-        RuntimeError
-            If there's an error reading the index.
-        """
-        pass
-
-    def set_index(self, index: BatchIndex) -> None:
-        """Set the index of the BSX file.
-
-        Parameters
-        ----------
-        index : BatchIndex
-            The index to set.
-        """
-        pass
-
-    def query(self, query: Contig) -> Optional[BsxBatch]:
-        """Query the BSX file for data within a specific genomic region.
-
-        Parameters
-        ----------
-        query : Contig
-            The genomic region to query.
-
-        Returns
-        -------
-        Optional[BsxBatch]
-            The batch data for the specified region, or None if not found.
-
-        Raises
-        ------
-        RuntimeError
-            If there's an error during the query.
-        """
-        pass
-
     def __iter__(self) -> "BsxFileReader":
         pass
 

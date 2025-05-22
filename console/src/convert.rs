@@ -189,7 +189,7 @@ impl FromBsxConvert {
         utils_args: &UtilsArgs,
     ) -> anyhow::Result<()> {
         let input_handle = File::open(self.input.clone())?;
-        let mut bsx_reader = BsxFileReader::new(input_handle);
+        let bsx_reader = BsxFileReader::try_new(input_handle)?;
 
         let output_handle = File::create(self.output.clone())?;
         let mut writer = ReportWriter::try_new(
@@ -207,7 +207,7 @@ impl FromBsxConvert {
             init_hidden()?
         };
 
-        for batch in bsx_reader.iter() {
+        for batch in bsx_reader.into_iter() {
             writer.write_batch(batch?)?;
             pbar.inc(1);
         }

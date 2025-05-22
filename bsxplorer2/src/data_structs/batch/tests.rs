@@ -27,13 +27,13 @@ mod batch_tests {
 
         use crate::io::bsx::BsxFileReader;
 
-        let mut reader = BsxFileReader::new(
+        let reader = BsxFileReader::try_new(
             File::open(
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
             )
             .unwrap(),
-        );
-        reader.next().unwrap().unwrap()
+        ).unwrap();
+        reader.into_iter().next().unwrap().unwrap()
     }
 
     #[fixture]
@@ -642,11 +642,11 @@ mod batch_tests {
 
         use crate::io::bsx::BsxFileReader;
 
-        let reader = BsxFileReader::new(File::open(
+        let reader: BsxFileReader = BsxFileReader::try_new(File::open(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
-        )?);
+        )?)?;
 
-        for batch_res in reader.take(20) {
+        for batch_res in reader.into_iter().take(20) {
             let batch = batch_res?;
             let filtered = batch
                 .lazy()

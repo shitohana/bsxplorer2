@@ -1,30 +1,36 @@
+use std::fs::File;
+
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
-use pyo3_polars::PyDataFrame;
+use pyo3_polars::{PyDataFrame};
+use pyo3_polars::error::PyPolarsErr;
 
 use crate::types::batch::PyBsxBatch;
 use crate::types::coords::PyContig;
 use crate::types::index::PyBatchIndex;
-use crate::utils::{FileOrFileLike, ReadHandle};
+use crate::utils::FileOrFileLike;
 
 #[pyclass(unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
-    inner: RegionReader<Box<dyn ReadHandle>>,
+    inner: RegionReader,
 }
 
 #[pymethods]
 impl PyRegionReader {
     #[new]
     fn new(file: FileOrFileLike) -> PyResult<Self> {
-        let file = file.get_reader()?;
-        let mut bsx_reader: BsxFileReader<Box<_>> = BsxFileReader::new(file);
-        let index: BatchIndex = bsx_reader.index().map_err(PyErr::from)?.clone();
+        let mut reader = match file {
+            FileOrFileLike::File(path) => BsxFileReader::try_new(File::open(path)?)?,
+            FileOrFileLike::ROnlyFileLike(handle) => BsxFileReader::try_new(handle)?,
+            FileOrFileLike::RWFileLike(handle) => BsxFileReader::try_new(handle)?,
+        };
+        let index: BatchIndex = BatchIndex::from_reader(&mut reader).map_err(|e| PyPolarsErr::Polars(e))?;
 
         Ok(Self {
-            inner: RegionReader::new(bsx_reader, index, None),
+            inner: RegionReader::new(reader, index, None),
         })
     }
 

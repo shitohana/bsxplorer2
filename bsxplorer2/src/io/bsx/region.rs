@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{Read, Seek};
 
 use anyhow::{anyhow, bail};
 use itertools::Itertools;
@@ -13,13 +12,11 @@ use crate::io::bsx::BatchIndex;
 
 /// RegionReader is a reader for BSX files that operates on a specific region of
 /// the genome.
-pub struct RegionReader<R>
-where
-    R: Read + Seek, {
+pub struct RegionReader{
     /// Cache of encoded BSX batches.
     cache:         BTreeMap<usize, BsxBatch>,
     /// Inner reader for the BSX file.
-    inner:         BsxFileReader<R>,
+    inner:         BsxFileReader,
     /// Index of the BSX file.
     index:         BatchIndex,
     /// Preprocessing function to be applied to each batch before it is cached.
@@ -27,10 +24,7 @@ where
 }
 
 // PRIVATE METHODS
-impl<R> RegionReader<R>
-where
-    R: Read + Seek,
-{
+impl RegionReader {
     /// Finds the batches that overlap the given contig.
     fn find(
         &self,
@@ -236,13 +230,10 @@ where
 }
 
 // PUBLIC METHODS
-impl<R> RegionReader<R>
-where
-    R: Read + Seek,
-{
-    pub fn from_reader(reader: BsxFileReader<R>) -> anyhow::Result<Self> {
+impl RegionReader {
+    pub fn from_reader(reader: BsxFileReader) -> anyhow::Result<Self> {
         let mut reader = reader;
-        let index = reader.index()?.clone();
+        let index = BatchIndex::from_reader(&mut reader)?;
         Ok(Self::new(reader, index, None))
     }
 
@@ -256,7 +247,7 @@ where
 
     /// Creates a new RegionReader.
     pub fn new(
-        inner: BsxFileReader<R>,
+        inner: BsxFileReader,
         index: BatchIndex,
         preprocess_fn: Option<fn(BsxBatch) -> anyhow::Result<BsxBatch>>,
     ) -> Self {

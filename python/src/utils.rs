@@ -1,12 +1,13 @@
 use std::fs::File;
 use std::io::{Read, Seek, Write};
+use std::os::fd::AsRawFd;
 
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3_file::PyFileLikeObject;
 
-pub trait ReadHandle: Read + Seek {}
-impl<T: Read + Seek> ReadHandle for T {}
+pub trait ReadHandle: Read + Seek + AsRawFd {}
+impl<T: Read + Seek + AsRawFd> ReadHandle for T {}
 
 pub trait SinkHandle: Write + Seek + 'static {}
 impl<T: Write + Seek + 'static> SinkHandle for T {}

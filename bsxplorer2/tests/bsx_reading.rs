@@ -10,24 +10,14 @@ use bsxplorer2::io::bsx::{BsxFileReader, RegionReader};
 use rstest::{fixture, rstest};
 
 #[fixture]
-fn test_bsxreader() -> BsxFileReader<File> {
-    let reader = BsxFileReader::new(
+fn test_bsxreader() -> BsxFileReader {
+    let reader = BsxFileReader::try_new(
         File::open(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
         )
         .expect("Error opening test report file"),
-    );
+    ).expect("Failed to create reader");
     reader
-}
-
-#[rstest]
-fn test_iter(mut test_bsxreader: BsxFileReader<File>) {
-    let mut batch_count = 0;
-    for batch in test_bsxreader.iter() {
-        assert!(batch.is_ok());
-        batch_count += 1;
-    }
-    assert_eq!(batch_count, test_bsxreader.blocks_total());
 }
 
 #[fixture]
@@ -40,7 +30,7 @@ fn test_gffreader() -> GffReader<File> {
 }
 
 #[fixture]
-fn test_regionreader(test_bsxreader: BsxFileReader<File>) -> RegionReader<File> {
+fn test_regionreader(test_bsxreader: BsxFileReader) -> RegionReader {
     RegionReader::from_reader(test_bsxreader).unwrap()
 }
 
@@ -48,7 +38,7 @@ fn test_regionreader(test_bsxreader: BsxFileReader<File>) -> RegionReader<File> 
 /// processed.
 #[rstest]
 #[should_panic]
-fn unsorted_pos(mut test_regionreader: RegionReader<File>) {
+fn unsorted_pos(mut test_regionreader: RegionReader) {
     let _ = test_regionreader
         .query(
             Contig::new("NC_003070.9".into(), 50_000, 50_899, Strand::None),
@@ -66,7 +56,7 @@ fn unsorted_pos(mut test_regionreader: RegionReader<File>) {
 /// Test that the reader will return error, if such chr does not exist
 #[rstest]
 #[should_panic]
-fn unexistent_chr(mut test_regionreader: RegionReader<File>) {
+fn unexistent_chr(mut test_regionreader: RegionReader) {
     let _ = test_regionreader
         .query(
             Contig::new("NC_123456.9".into(), 50_000, 50_899, Strand::None),
@@ -76,7 +66,7 @@ fn unexistent_chr(mut test_regionreader: RegionReader<File>) {
 }
 
 #[rstest]
-fn basic_reading(mut test_regionreader: RegionReader<File>) -> anyhow::Result<()> {
+fn basic_reading(mut test_regionreader: RegionReader) -> anyhow::Result<()> {
     let test_contigs = [
         Contig::new("NC_003070.9".into(), 50_000, 51_000, Strand::None),
         Contig::new("NC_003070.9".into(), 52_000, 53_000, Strand::None),
@@ -112,7 +102,7 @@ fn basic_reading(mut test_regionreader: RegionReader<File>) -> anyhow::Result<()
 }
 
 #[rstest]
-fn sorted_reading(mut test_regionreader: RegionReader<File>) -> anyhow::Result<()> {
+fn sorted_reading(mut test_regionreader: RegionReader) -> anyhow::Result<()> {
     let test_contigs = [
         Contig::new("NC_003070.9".into(), 52_000, 53_000, Strand::None),
         Contig::new("NC_003070.9".into(), 50_000, 51_000, Strand::None),
@@ -157,7 +147,7 @@ fn sorted_reading(mut test_regionreader: RegionReader<File>) -> anyhow::Result<(
 
 #[rstest]
 fn different_chr_reading(
-    mut test_regionreader: RegionReader<File>
+    mut test_regionreader: RegionReader
 ) -> anyhow::Result<()> {
     let test_contigs = [
         Contig::new("NC_003074.8".into(), 52_000, 53_000, Strand::None),
