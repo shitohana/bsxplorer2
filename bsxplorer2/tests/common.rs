@@ -234,7 +234,11 @@ pub fn compare_batches(
     };
 
     if !original_df.equals_missing(&read_df) {
-        let mut colnames = original_df.schema().iter_names_cloned().filter(|v| v != BsxColumns::Density.as_str()).collect_vec();
+        let mut colnames = original_df
+            .schema()
+            .iter_names_cloned()
+            .filter(|v| v != BsxColumns::Density.as_str())
+            .collect_vec();
 
         let diff_mask = colnames
             .iter()
@@ -252,7 +256,9 @@ pub fn compare_batches(
             .reduce(|acc, new| acc.bitor(new))
             .unwrap();
 
-        if !diff_mask.any() { return Ok(()) }
+        if !diff_mask.any() {
+            return Ok(());
+        }
 
         let orig_diff = original_df.filter(&diff_mask)?;
         let read_diff = read_df.filter(&diff_mask)?;

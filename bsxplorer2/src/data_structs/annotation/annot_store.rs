@@ -18,9 +18,11 @@ use crate::data_structs::typedef::BsxSmallStr;
 ///
 /// It uses multiple internal structures for efficient lookup:
 /// - A `HashMap` for ID-based lookup of `GffEntry`.
-/// - An `id_tree::Tree` to represent parent-child relationships between entries.
-/// - A `HashMap` mapping sequence names to `bio::data_structures::interval_tree::IntervalTree`
-///   for genomic range queries.
+/// - An `id_tree::Tree` to represent parent-child relationships between
+///   entries.
+/// - A `HashMap` mapping sequence names to
+///   `bio::data_structures::interval_tree::IntervalTree` for genomic range
+///   queries.
 #[derive(Clone, Debug)]
 pub struct HcAnnotStore {
     ids:          Vec<ArcStr>,
@@ -127,7 +129,8 @@ impl HcAnnotStore {
     ///
     /// # Arguments
     ///
-    /// * `capacity` - The estimated number of entries to pre-allocate space for.
+    /// * `capacity` - The estimated number of entries to pre-allocate space
+    ///   for.
     pub fn with_capacity(capacity: usize) -> Self {
         let mut tree = TreeBuilder::new().with_node_capacity(capacity).build();
         let root_id = tree
@@ -146,8 +149,8 @@ impl HcAnnotStore {
 
     /// Inserts a `GffEntry` into the store.
     ///
-    /// The entry is added to the internal HashMap, IntervalTree, and the id_tree
-    /// based on its ID and parent information.
+    /// The entry is added to the internal HashMap, IntervalTree, and the
+    /// id_tree based on its ID and parent information.
     ///
     /// # Arguments
     ///
@@ -157,12 +160,14 @@ impl HcAnnotStore {
     /// Name "BSX_ROOT_NODE" is reserved. An error will be returned if an entry
     /// uses this ID or specifies this as a parent.
     /// Multiple parent IDs are currently not fully supported; only the first
-    /// parent is used for tree structure, and a warning is logged for multiple parents.
+    /// parent is used for tree structure, and a warning is logged for multiple
+    /// parents.
     ///
     /// # Errors
     ///
     /// Returns an error if the entry's ID is the reserved "BSX_ROOT_NODE",
-    /// if a parent ID is the reserved "BSX_ROOT_NODE", or if tree insertion fails.
+    /// if a parent ID is the reserved "BSX_ROOT_NODE", or if tree insertion
+    /// fails.
     pub fn insert(
         &mut self,
         entry: GffEntry,
@@ -188,12 +193,19 @@ impl HcAnnotStore {
                     return Err("Name \"BSX_ROOT_NODE\" is reserved".into());
                 }
 
-                let parent_node_id = if let Some(parent_node_id) = self.tree_ids.get(&ArcStr::from(parent.as_str())) {
+                let parent_node_id = if let Some(parent_node_id) =
+                    self.tree_ids.get(&ArcStr::from(parent.as_str()))
+                {
                     parent_node_id.clone()
-                } else {
+                }
+                else {
                     let new_node = Node::new(parent.as_str().into());
-                    let new_node_id = self.tree.insert(new_node, InsertBehavior::UnderNode(&self.tree_root_id))?;
-                    self.tree_ids.insert(parent.as_str().into(), new_node_id.clone());
+                    let new_node_id = self.tree.insert(
+                        new_node,
+                        InsertBehavior::UnderNode(&self.tree_root_id),
+                    )?;
+                    self.tree_ids
+                        .insert(parent.as_str().into(), new_node_id.clone());
                     new_node_id
                 };
                 let new_node_id = self.tree.insert(
@@ -216,12 +228,14 @@ impl HcAnnotStore {
                 )?;
                 self.tree_ids.insert(id.clone(), new_node_id);
             }
-        } else { // No parent specified, insert under the root node
-             let new_node_id = self.tree.insert(
-                 Node::new(id.clone()),
-                 InsertBehavior::UnderNode(&self.tree_root_id),
-             )?;
-             self.tree_ids.insert(id.clone(), new_node_id);
+        }
+        else {
+            // No parent specified, insert under the root node
+            let new_node_id = self.tree.insert(
+                Node::new(id.clone()),
+                InsertBehavior::UnderNode(&self.tree_root_id),
+            )?;
+            self.tree_ids.insert(id.clone(), new_node_id);
         }
 
 
@@ -237,9 +251,13 @@ impl HcAnnotStore {
     ///
     /// # Parameters
     ///
-    /// * `selector` - A function that takes a reference to a `GffEntry` and returns `true` if the entry should have flanking regions added.
-    /// * `flank` - The length of the flank regions to be added. A positive value adds the flank downstream (after the end), a negative value adds the flank upstream (before the start).
-    /// * `prefix` - A string prefix to add to the feature type of the newly created flanking entries.
+    /// * `selector` - A function that takes a reference to a `GffEntry` and
+    ///   returns `true` if the entry should have flanking regions added.
+    /// * `flank` - The length of the flank regions to be added. A positive
+    ///   value adds the flank downstream (after the end), a negative value adds
+    ///   the flank upstream (before the start).
+    /// * `prefix` - A string prefix to add to the feature type of the newly
+    ///   created flanking entries.
     pub fn add_flank<F>(
         &mut self,
         selector: F,
@@ -271,7 +289,12 @@ impl HcAnnotStore {
             };
 
             // Ensure start <= end for the range
-            let (start, end) = if start <= end { (start, end) } else { (end, start) };
+            let (start, end) = if start <= end {
+                (start, end)
+            }
+            else {
+                (end, start)
+            };
 
 
             let mut feature_type = prefix.to_string();
@@ -282,21 +305,24 @@ impl HcAnnotStore {
             let flank_id: ArcStr = flank_id_str.into(); // Convert to ArcStr
 
             let flank_entry = GffEntry::new(
-                (start..end).into(), // Assuming Range<GenomicPosition> converts to Contig
-                None, // No source
+                (start..end).into(), /* Assuming Range<GenomicPosition> converts to
+                                      * Contig */
+                None,                      // No source
                 Some(feature_type.into()), // New feature type
-                None, // No score
-                None, // No strand
-                Some( // Attributes
+                None,                      // No score
+                None,                      // No strand
+                Some(
+                    // Attributes
                     GffEntryAttributes::default()
                         .with_id(flank_id.as_str().into()) // Set the unique ID for the flank
-                        .with_parent(Some(vec![BsxSmallStr::from_str(id.as_str())])), // Set parent to the original entry
+                        .with_parent(Some(vec![BsxSmallStr::from_str(id.as_str())])), /* Set parent to the original entry */
                 ),
             );
 
             // Use insert which handles adding to all internal structures
             // Propagate the error if insertion fails
-            self.insert(flank_entry).expect("Failed to insert flank entry");
+            self.insert(flank_entry)
+                .expect("Failed to insert flank entry");
         }
     }
 
@@ -304,12 +330,14 @@ impl HcAnnotStore {
     ///
     /// # Arguments
     ///
-    /// * `contig` - The genomic contig (including start and end positions) to query.
+    /// * `contig` - The genomic contig (including start and end positions) to
+    ///   query.
     ///
     /// # Returns
     ///
-    /// An optional vector of `ArcStr` IDs for the entries that overlap the given `contig`.
-    /// Returns `None` if the sequence name is not found in the store.
+    /// An optional vector of `ArcStr` IDs for the entries that overlap the
+    /// given `contig`. Returns `None` if the sequence name is not found in
+    /// the store.
     pub fn genomic_query(
         &self,
         contig: &Contig,
@@ -346,7 +374,8 @@ impl HcAnnotStore {
         self.entries.get(id)
     }
 
-    /// Retrieves a vector of references to `GffEntry` objects whose IDs match a regex pattern.
+    /// Retrieves a vector of references to `GffEntry` objects whose IDs match a
+    /// regex pattern.
     ///
     /// # Arguments
     ///
@@ -381,7 +410,8 @@ impl HcAnnotStore {
             .and_then(|node_id| self.tree.get(node_id).ok())
     }
 
-    /// Retrieves the IDs of the direct children of a given entry in the tree structure.
+    /// Retrieves the IDs of the direct children of a given entry in the tree
+    /// structure.
     ///
     /// # Arguments
     ///
@@ -403,7 +433,8 @@ impl HcAnnotStore {
         })
     }
 
-    /// Retrieves the ID of the direct parent of a given entry in the tree structure.
+    /// Retrieves the ID of the direct parent of a given entry in the tree
+    /// structure.
     ///
     /// # Arguments
     ///
@@ -411,8 +442,8 @@ impl HcAnnotStore {
     ///
     /// # Returns
     ///
-    /// An optional `ArcStr` ID representing the parent. Returns `None` if the given ID
-    /// is not found, or if the found node is the root node.
+    /// An optional `ArcStr` ID representing the parent. Returns `None` if the
+    /// given ID is not found, or if the found node is the root node.
     pub fn get_parent(
         &self,
         id: &ArcStr,
@@ -425,7 +456,8 @@ impl HcAnnotStore {
             .flatten()
     }
 
-    /// Sorts the children of each node in the internal tree based on the start position of the corresponding `GffEntry`.
+    /// Sorts the children of each node in the internal tree based on the start
+    /// position of the corresponding `GffEntry`.
     ///
     /// This can help in traversing the tree in genomic order.
     ///
@@ -435,14 +467,18 @@ impl HcAnnotStore {
     pub fn sort_self(&mut self) -> Result<(), Box<dyn Error>> {
         let ids_list = self.tree_ids.values().cloned().collect_vec();
         for node_id in ids_list.iter() {
-            // The id_tree root node does not have an associated GffEntry, skip sorting children for it?
-            // Or handle the case where entries.get() returns None. The current implementation defaults to 0.
-            // This might sort the children of the root node, which could be top-level entries.
+            // The id_tree root node does not have an associated GffEntry, skip sorting
+            // children for it? Or handle the case where entries.get()
+            // returns None. The current implementation defaults to 0.
+            // This might sort the children of the root node, which could be top-level
+            // entries.
             self.tree.sort_children_by_key(node_id, |node| {
                 self.entries
                     .get(node.data())
                     .map(|entry| entry.contig().start())
-                    .unwrap_or(0) // Default to 0 if entry not found (e.g., for the root node's direct children if root data is not an entry ID)
+                    .unwrap_or(0) // Default to 0 if entry not found (e.g., for
+                                  // the root node's direct children if root
+                                  // data is not an entry ID)
             })?;
         }
         Ok(())
@@ -455,6 +491,7 @@ impl HcAnnotStore {
 
     /// Returns `true` if the store contains no entries.
     pub fn is_empty(&self) -> bool {
-        self.ids.is_empty() // Assuming self.ids is equivalent to self.entries.is_empty()
+        self.ids.is_empty() // Assuming self.ids is equivalent to
+                            // self.entries.is_empty()
     }
 }

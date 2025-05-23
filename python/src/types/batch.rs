@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchBuilder, BsxColumns};
-use bsxplorer2::data_structs::ContextData;
 use bsxplorer2::data_structs::typedef::DensityType;
+use bsxplorer2::data_structs::ContextData;
 use bsxplorer2::utils::get_categorical_dtype;
 use polars::prelude::{DataFrame, IntoSeries};
 use pyo3::prelude::*;

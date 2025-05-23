@@ -16,7 +16,8 @@ fn test_bsxreader() -> BsxFileReader {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
         )
         .expect("Error opening test report file"),
-    ).expect("Failed to create reader");
+    )
+    .expect("Failed to create reader");
     reader
 }
 
@@ -146,9 +147,7 @@ fn sorted_reading(mut test_regionreader: RegionReader) -> anyhow::Result<()> {
 }
 
 #[rstest]
-fn different_chr_reading(
-    mut test_regionreader: RegionReader
-) -> anyhow::Result<()> {
+fn different_chr_reading(mut test_regionreader: RegionReader) -> anyhow::Result<()> {
     let test_contigs = [
         Contig::new("NC_003074.8".into(), 52_000, 53_000, Strand::None),
         Contig::new("NC_003071.7".into(), 50_000, 51_000, Strand::None),

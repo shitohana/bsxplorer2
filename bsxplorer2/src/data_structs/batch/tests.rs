@@ -32,7 +32,8 @@ mod batch_tests {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
             )
             .unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         reader.into_iter().next().unwrap().unwrap()
     }
 

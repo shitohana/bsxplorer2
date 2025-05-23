@@ -315,25 +315,29 @@ impl<'de> serde::Deserialize<'de> for GffEntryAttributes {
 }
 fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
-    D: serde::Deserializer<'de>,
-{
+    D: serde::Deserializer<'de>, {
     let s = String::deserialize(deserializer)?;
     if s == "." {
         Ok(None)
-    } else {
-        s.parse::<f64>().map(Some).map_err(|e| serde::de::Error::custom(format!("Failed to parse f64: {}", e)))
+    }
+    else {
+        s.parse::<f64>().map(Some).map_err(|e| {
+            serde::de::Error::custom(format!("Failed to parse f64: {}", e))
+        })
     }
 }
 
 fn deserialize_optional_u8<'de, D>(deserializer: D) -> Result<Option<u8>, D::Error>
 where
-    D: serde::Deserializer<'de>,
-{
+    D: serde::Deserializer<'de>, {
     let s = String::deserialize(deserializer)?;
     if s == "." {
         Ok(None)
-    } else {
-        s.parse::<u8>().map(Some).map_err(|e| serde::de::Error::custom(format!("Failed to parse u8: {}", e)))
+    }
+    else {
+        s.parse::<u8>()
+            .map(Some)
+            .map_err(|e| serde::de::Error::custom(format!("Failed to parse u8: {}", e)))
     }
 }
 

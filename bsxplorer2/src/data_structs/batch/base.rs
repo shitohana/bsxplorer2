@@ -26,6 +26,12 @@ use crate::plsmallstr;
 #[cfg(feature = "tools")]
 use crate::tools::dimred::*;
 
+/// Represents a batch of methylation data as a Polars DataFrame.
+///
+/// This struct wraps a Polars DataFrame with specific columns expected for
+/// methylation data (chromosome, position, strand, context, counts, density).
+/// It provides methods for accessing columns, manipulating data, and performing
+/// specific methylation-related operations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BsxBatch {
     data: DataFrame,
@@ -48,13 +54,21 @@ impl BsxBatch {
     get_col_fn!(density, BsxCol::Density.as_str(), f32, Float32Chunked);
 
     // CONSTRUCTORS
+    /// Creates a new `BsxBatch` from a `DataFrame` without validation.
+    ///
     /// # Safety
-    /// The caller must ensure that the DataFrame is valid.
+    /// The caller must ensure that the DataFrame is valid, containing the
+    /// expected columns with correct data types and adhering to internal
+    /// invariants (e.g., sorted positions, single chromosome).
     #[inline(always)]
     pub unsafe fn new_unchecked(df: DataFrame) -> Self {
         BsxBatch { data: df }
     }
 
+    /// Tries to create a `BsxBatch` from individual column vectors.
+    ///
+    /// Validates that all input vectors have the same length and calculates the
+    /// density. Creates a DataFrame and wraps it in a `BsxBatch`.
     pub fn try_from_columns(
         chr: &str,
         chr_dtype: Option<DataType>,
@@ -102,6 +116,9 @@ impl BsxBatch {
         Ok(unsafe { BsxBatch::new_unchecked(df) })
     }
 
+    /// Creates an empty `BsxBatch` with the correct schema.
+    ///
+    /// Allows specifying the dtype for the chromosome column.
     pub fn empty(chr_dtype: Option<&DataType>) -> Self {
         let df = DataFrame::from_iter([
             Series::new_empty(
@@ -119,21 +136,25 @@ impl BsxBatch {
     }
 
     // CONVERSION
+    /// Returns a reference to the underlying Polars DataFrame.
     #[inline(always)]
     pub fn data(&self) -> &DataFrame {
         &self.data
     }
 
+    /// Consumes the `BsxBatch` and returns the underlying Polars DataFrame.
     #[inline(always)]
     pub fn into_inner(self) -> DataFrame {
         self.data
     }
 
+    /// Converts the `BsxBatch` into a `LazyBsxBatch`.
     #[inline(always)]
     pub fn lazy(self) -> LazyBsxBatch {
         self.into()
     }
 
+    /// Gets a specific column by its enum identifier.
     pub fn column(
         &self,
         name: BsxCol,
@@ -144,12 +165,14 @@ impl BsxBatch {
             .as_materialized_series()
     }
 
+    /// Checks if the `BsxBatch` is empty (contains no rows).
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     // OPERATIONS
+    /// Splits the `BsxBatch` into two `BsxBatch`es at the given index.
     pub fn split_at(
         &self,
         index: usize,
@@ -161,13 +184,16 @@ impl BsxBatch {
         }
     }
 
+    /// Rechunks the underlying DataFrame in place.
     pub fn rechunk(&mut self) {
         self.data.rechunk_mut();
     }
 
+    /// Appends another `BsxBatch` to this one, performing validation.
+    ///
     /// This method modifies the batch in-place. Additional checks for
-    /// duplicated positions and the correct positions order are
-    /// performed.
+    /// duplicated positions, correct positions order, and single chromosome
+    /// are performed after extension.
     pub fn extend(
         &mut self,
         other: &Self,
@@ -183,6 +209,11 @@ impl BsxBatch {
         Ok(())
     }
 
+    /// Appends another `BsxBatch` to this one without performing validation.
+    ///
+    /// # Safety
+    /// The caller must ensure that appending `other` results in a valid
+    /// `BsxBatch`.
     pub unsafe fn extend_unchecked(
         &mut self,
         other: &Self,
@@ -190,6 +221,11 @@ impl BsxBatch {
         self.data.extend(other.data())
     }
 
+    /// Adds context data (strand and context) to the `BsxBatch`.
+    ///
+    /// Performs a left join with the context data based on position.
+    /// Fills nulls for count_m, count_total, and density for positions
+    /// present in context_data but not in the original batch.
     pub fn add_context_data(
         self,
         context_data: ContextData,
@@ -230,6 +266,7 @@ impl BsxBatch {
         Ok(unsafe { Self::new_unchecked(res) })
     }
 
+    /// Creates a slice of the `BsxBatch`.
     #[allow(unsafe_code)]
     pub fn slice(
         &self,
@@ -240,6 +277,8 @@ impl BsxBatch {
         unsafe { Self::new_unchecked(slice) }
     }
 
+    /// Converts the `BsxBatch` into a DataFrame formatted according to the
+    /// specified `ReportType`.
     pub fn into_report(
         self,
         report_type: ReportType,
@@ -274,6 +313,7 @@ impl BsxBatch {
         }
     }
 
+    /// Calculates and returns various methylation statistics for the batch.
     pub fn get_methylation_stats(&self) -> MethylationStats {
         let nonull = self.density().drop_nulls();
         let mean = nonull
@@ -292,6 +332,10 @@ impl BsxBatch {
         )
     }
 
+    /// Gets the distribution of coverage counts across the batch.
+    ///
+    /// Returns a HashMap where keys are coverage counts and values are
+    /// the number of sites with that coverage.
     pub fn get_coverage_dist(&self) -> HashMap<CountType, u32> {
         self.count_total()
             .into_iter()
@@ -302,7 +346,10 @@ impl BsxBatch {
             .collect()
     }
 
-    /// Returns context -> (sum methylation ratios, total counts)
+    /// Gets methylation statistics grouped by context (CG/CHG/CHH).
+    ///
+    /// Returns a HashMap where keys are `Context` and values are tuples
+    /// `(sum of methylation ratios, total number of sites)`.
     pub fn get_context_stats(&self) -> HashMap<Context, (DensityType, u32)> {
         izip!(self.context(), self.density())
             .filter_map(|(k, v)| {
@@ -314,7 +361,10 @@ impl BsxBatch {
             .collect()
     }
 
-    /// Returns strand -> (sum methylation ratios, total counts)
+    /// Gets methylation statistics grouped by strand (+/-).
+    ///
+    /// Returns a HashMap where keys are `Strand` and values are tuples
+    /// `(sum of methylation ratios, total number of sites)`.
     pub fn get_strand_stats(&self) -> HashMap<Strand, (DensityType, u32)> {
         izip!(self.strand(), self.density())
             .filter_map(|(k, v)| {
@@ -326,6 +376,14 @@ impl BsxBatch {
             .collect()
     }
 
+    /// Filters sites based on a binomial test p-value and replaces counts and
+    /// density.
+    ///
+    /// Keeps sites where the methylation p-value is less than or equal to the
+    /// given `pvalue`. Sites failing the test have counts set to (0, 0) and
+    /// density to NaN. Sites passing the test have counts set to (1, 1) and
+    /// density to 1.0. Sites with 0 total reads initially have density NaN
+    /// and counts (0, 0).
     pub fn as_binom(
         self,
         mean: f64,
@@ -401,6 +459,8 @@ impl BsxBatch {
         Ok(unsafe { Self::new_unchecked(new_data) })
     }
 
+    /// Segments the methylation data using a specified algorithm and aggregates
+    /// densities.
     #[cfg(feature = "tools")]
     pub fn shrink(
         &self,
@@ -438,6 +498,12 @@ impl BsxBatch {
         self.partition(segment_boundaries, AggMethod::Mean.get_fn())
     }
 
+    /// Discretises the batch into a fixed number of fragments based on genomic
+    /// position and aggregates densities.
+    ///
+    /// Divides the genomic range covered by the batch into `n_fragments`
+    /// roughly equal-sized bins and calculates an aggregate density for
+    /// sites falling into each bin.
     pub fn discretise(
         &self,
         n_fragments: usize,
@@ -504,6 +570,14 @@ impl BsxBatch {
         self.partition(breakpoints, agg_fn.get_fn())
     }
 
+    /// Partitions the batch based on the provided breakpoints and aggregates
+    /// densities within each partition.
+    ///
+    /// Breakpoints are indices into the sorted list of positions. The function
+    /// aggregates the density values within each segment defined by
+    /// consecutive breakpoints (and the start/end of the batch).
+    /// Returns a tuple of vectors: relative genomic positions (0.0 to 1.0) of
+    /// the segment ends, and the aggregated density for each segment.
     pub fn partition(
         &self,
         mut breakpoints: Vec<usize>,
@@ -558,6 +632,7 @@ impl BsxBatch {
     }
 
     // POSITION
+    /// Gets the position of the first site in the batch.
     #[inline]
     pub fn first_pos(&self) -> Option<u32> {
         if self.data.is_empty() {
@@ -566,6 +641,7 @@ impl BsxBatch {
         self.position().first()
     }
 
+    /// Gets the position of the last site in the batch.
     #[inline]
     pub fn last_pos(&self) -> Option<u32> {
         if self.data.is_empty() {
@@ -574,6 +650,9 @@ impl BsxBatch {
         self.position().last()
     }
 
+    /// Gets the sequence name (chromosome) for the batch.
+    ///
+    /// Assumes all sites in the batch are on the same sequence.
     pub fn seqname(&self) -> Option<&str> {
         if self.data.is_empty() {
             return None;
@@ -581,23 +660,32 @@ impl BsxBatch {
         self.chr().iter_str().next().flatten()
     }
 
+    /// Gets the number of rows (sites) in the batch.
     #[inline]
     pub fn len(&self) -> usize {
         self.data().height()
     }
 
+    /// Gets the genomic position of the first site in the batch as a
+    /// `GenomicPosition`.
     pub fn first_genomic_pos(&self) -> Option<GenomicPosition> {
         let seqname = self.seqname().map(BsxSmallStr::from);
         let pos = self.first_pos();
         seqname.and_then(|seqname| pos.map(|pos| GenomicPosition::new(seqname, pos)))
     }
 
+    /// Gets the genomic position of the last site in the batch as a
+    /// `GenomicPosition`.
     pub fn last_genomic_pos(&self) -> Option<GenomicPosition> {
         let seqname = self.seqname().map(BsxSmallStr::from);
         let pos = self.last_pos();
         seqname.and_then(|seqname| pos.map(|pos| GenomicPosition::new(seqname, pos)))
     }
 
+    /// Represents the batch as a `Contig` if possible.
+    ///
+    /// Returns a `Contig` if the batch is not empty and has a defined
+    /// sequence name, first position, and last position.
     pub fn as_contig(&self) -> Option<Contig> {
         let seqname = self.seqname().map(BsxSmallStr::from);
         let first = self.first_pos();
@@ -614,6 +702,8 @@ impl BsxBatch {
 mod report_type_conversion {
     use super::*;
 
+    /// Converts a lazy DataFrame representation of BsxBatch data to BedGraph
+    /// format.
     pub fn bedgraph(lf: LazyFrame) -> LazyFrame {
         lf.select([
             // chr
@@ -626,6 +716,8 @@ mod report_type_conversion {
         .cast(ReportType::BedGraph.hashmap(), true)
     }
 
+    /// Converts a lazy DataFrame representation of BsxBatch data to Coverage
+    /// format.
     pub fn coverage(lf: LazyFrame) -> LazyFrame {
         lf.select([
             BsxCol::Chr.col().cast(DataType::String).alias("chr"),
@@ -639,6 +731,8 @@ mod report_type_conversion {
         .cast(ReportType::Coverage.hashmap(), true)
     }
 
+    /// Converts a lazy DataFrame representation of BsxBatch data to Bismark
+    /// format.
     pub fn bismark(lf: LazyFrame) -> LazyFrame {
         lf.with_column(
             when(BsxCol::Context.col().is_null())
@@ -668,6 +762,8 @@ mod report_type_conversion {
         ])
     }
 
+    /// Converts a lazy DataFrame representation of BsxBatch data to CGmap
+    /// format.
     pub fn cgmap(lf: LazyFrame) -> LazyFrame {
         lf.with_column(
             when(BsxCol::Context.col().is_null())
@@ -705,6 +801,7 @@ mod report_type_conversion {
     }
 }
 
+/// Enumerates different aggregation methods for methylation density values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AggMethod {
     Mean,
@@ -715,6 +812,7 @@ pub enum AggMethod {
 }
 
 impl AggMethod {
+    /// Returns a boxed closure for the selected aggregation method.
     pub(crate) fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64> {
         use statrs::statistics::*;
 
@@ -728,14 +826,24 @@ impl AggMethod {
             AggMethod::GeometricMean => {
                 |arr: &[f32]| {
                     let len = arr.len();
-                    (arr.iter().map(|v| (*v as f64).ln()).sum::<f64>() / len as f64)
-                        .exp()
+                    if arr.is_empty() {
+                        f64::NAN
+                    }
+                    else {
+                        (arr.iter().map(|v| (*v as f64).ln()).sum::<f64>() / len as f64)
+                            .exp()
+                    }
                 }
             },
             AggMethod::Median => {
                 |arr: &[f32]| {
-                    Data::new(arr.iter().map(|v| *v as f64).collect_vec())
-                        .percentile(50)
+                    if arr.is_empty() {
+                        f64::NAN
+                    }
+                    else {
+                        Data::new(arr.iter().map(|v| *v as f64).collect_vec())
+                            .percentile(50)
+                    }
                 }
             },
             AggMethod::Max => {

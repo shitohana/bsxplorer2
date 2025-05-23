@@ -15,7 +15,7 @@ use crate::utils::{FileOrFileLike, SinkHandle};
 
 #[pyclass(name = "BsxFileReader", unsendable)]
 pub struct PyBsxFileReader {
-    reader: RsBsxFileReader,
+    reader:            RsBsxFileReader,
     current_batch_idx: usize,
 }
 
@@ -34,7 +34,10 @@ impl PyBsxFileReader {
             FileOrFileLike::ROnlyFileLike(handle) => RsBsxFileReader::try_new(handle)?,
             FileOrFileLike::RWFileLike(handle) => RsBsxFileReader::try_new(handle)?,
         };
-        Ok(Self { reader, current_batch_idx: 0 })
+        Ok(Self {
+            reader,
+            current_batch_idx: 0,
+        })
     }
 
     pub fn get_batch(
@@ -76,8 +79,8 @@ impl PyBsxFileReader {
 
     pub fn __iter__(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
         // Reset index on starting iteration
-        // This assumes the PyBsxFileReader struct has a `current_batch_index: usize` field
-        // which needs to be initialized in the `new` method as well.
+        // This assumes the PyBsxFileReader struct has a `current_batch_index: usize`
+        // field which needs to be initialized in the `new` method as well.
         slf.current_batch_idx = 0;
         slf
     }

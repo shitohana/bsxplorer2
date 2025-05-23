@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use itertools::{izip, Itertools};
 
-use crate::data_structs::Context;
 use crate::data_structs::typedef::{CountType, DensityType, PosType};
+use crate::data_structs::Context;
 use crate::tools::dmr::data_structs::SegmentView;
 use crate::tools::dmr::tv1d_clone::condat;
 use crate::utils::mann_whitney_u;

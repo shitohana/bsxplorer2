@@ -1,8 +1,8 @@
 use std::ops::{Add, Sub};
 
 use bsxplorer2::data_structs::coords::{Contig, GenomicPosition};
-use bsxplorer2::data_structs::Strand as RsStrand;
 use bsxplorer2::data_structs::typedef::BsxSmallStr;
+use bsxplorer2::data_structs::Strand as RsStrand;
 use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use pyo3::prelude::*;
 

@@ -1,4 +1,5 @@
 use polars::prelude::*;
+
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Supported methylation report file formats.

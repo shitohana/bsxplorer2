@@ -95,11 +95,14 @@ fn test_report_reading_with_alignment(
         .with_report_type(report_type);
 
     if do_alignment {
-        report_reader_builder = report_reader_builder.with_fasta_path(Some(sequence_file.path().to_path_buf()));
-    } else {
+        report_reader_builder = report_reader_builder
+            .with_fasta_path(Some(sequence_file.path().to_path_buf()));
+    }
+    else {
         let index = noodles::fasta::index(sequence_file.path())?;
         noodles::fasta::fai::Writer::new(fai_file.reopen()?).write_index(&index)?;
-        report_reader_builder = report_reader_builder.with_fai_path(Some(fai_file.path().to_path_buf()))
+        report_reader_builder =
+            report_reader_builder.with_fai_path(Some(fai_file.path().to_path_buf()))
     }
 
     // Build the report reader and create an iterator
@@ -162,10 +165,7 @@ fn test_report_reading_with_alignment(
     assert_eq!(combined_read_batches.len(), original_batches.len());
 
     // Compare each chromosome's data
-    for (original, read) in original_batches
-        .iter()
-        .zip(combined_read_batches.iter())
-    {
+    for (original, read) in original_batches.iter().zip(combined_read_batches.iter()) {
         // Compare key columns - this may need adjustment based on what's
         // preserved in the report format
         compare_batches(original, read, &report_type)?;

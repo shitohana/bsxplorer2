@@ -5,6 +5,22 @@ use polars::prelude::*;
 use super::{BsxBatch, BsxColumns};
 use crate::plsmallstr;
 
+/// Merges multiple `BsxBatch` replicates into a single batch.
+///
+/// Assumes all input batches have the same length and identical 'chr', 'pos',
+/// 'strand', and 'context' columns.
+///
+/// # Arguments
+///
+/// * `batches` - A vector of `BsxBatch` instances to merge.
+/// * `count_agg` - A function that takes a vector of `Column` references (for
+///   CountM or CountTotal) and returns a single aggregated `Column`.
+/// * `density_agg` - A function that takes a vector of `Column` references (for
+///   Density) and returns a single aggregated `Column`.
+///
+/// # Returns
+///
+/// A `Result` containing the merged `BsxBatch` or an `anyhow::Error`.
 pub fn merge_replicates(
     mut batches: Vec<BsxBatch>,
     count_agg: fn(Vec<&Column>) -> Column,
@@ -72,6 +88,12 @@ pub fn merge_replicates(
     }
 }
 
+/// Creates a Polars Categorical `DataType` from a list of chromosome values.
+///
+/// # Arguments
+///
+/// * `chr_values` - A reference to a slice of optional string-like values
+///   representing chromosomes.
 pub fn create_caregorical_dtype<S, P>(chr_values: P) -> DataType
 where
     S: AsRef<str>,
@@ -82,6 +104,7 @@ where
     DataType::Categorical(Some(rev_mapping), CategoricalOrdering::Physical)
 }
 
+/// Creates an empty Polars Categorical `DataType`.
 pub const fn create_empty_categorical_dtype() -> DataType {
     DataType::Categorical(None, CategoricalOrdering::Physical)
 }

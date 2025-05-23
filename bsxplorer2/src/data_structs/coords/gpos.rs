@@ -61,10 +61,14 @@ impl GenomicPosition {
         self.position == PosType::default() && self.seqname == BsxSmallStr::default()
     }
 
-    pub fn shift(mut self, shift: isize) -> GenomicPosition {
+    pub fn shift(
+        mut self,
+        shift: isize,
+    ) -> GenomicPosition {
         if shift > 0 {
             self.position += shift.abs() as PosType
-        } else {
+        }
+        else {
             self.position -= shift.abs() as PosType
         };
         self

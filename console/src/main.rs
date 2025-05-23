@@ -1,8 +1,8 @@
 pub mod convert;
 pub mod dmr;
+mod sort;
 pub mod utils;
 mod validate;
-mod sort;
 
 use clap::{Parser, Subcommand};
 use convert::{FromBsxConvert, R2RConvert, ToBsxConvert};
@@ -43,10 +43,10 @@ enum MainMenu {
 
     Sort {
         #[clap(flatten)]
-        args: SortArgs,
+        args:  SortArgs,
         #[clap(flatten)]
-        utils: UtilsArgs
-    }
+        utils: UtilsArgs,
+    },
 }
 
 #[derive(Subcommand, Debug)]

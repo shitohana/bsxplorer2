@@ -64,7 +64,7 @@ fn test_reader_basic(
     contigs: &[Contig],
 ) {
     let mut count = 0;
-    for batch in reader.iter_contigs(contigs, None) {
+    for batch in reader.iter_contigs(contigs) {
         assert!(batch.is_ok());
         count += 1;
     }
@@ -91,34 +91,7 @@ fn test_reader_preprocess(
             .collect()
             .map_err(|e| anyhow::anyhow!(e))
     })));
-    for batch in reader.iter_contigs(contigs, None) {
-        assert!(batch.is_ok());
-        count += 1;
-    }
-    let seqnames = reader.index().get_chr_order();
-    assert_eq!(
-        count,
-        contigs
-            .iter()
-            .filter(|c| seqnames.contains(c.seqname()))
-            .count()
-    );
-}
-
-#[rstest]
-fn test_reader_postprocess(
-    mut reader: RegionReader,
-    contigs: &[Contig],
-) {
-    let mut count = 0;
-    let postprocess_fn = Box::new(|batch: BsxBatch, contig: &Contig| {
-        batch
-            .lazy()
-            .filter_strand(contig.strand())
-            .collect()
-            .map_err(|e| anyhow::anyhow!(e))
-    });
-    for batch in reader.iter_contigs(contigs, Some(postprocess_fn)) {
+    for batch in reader.iter_contigs(contigs) {
         assert!(batch.is_ok());
         count += 1;
     }

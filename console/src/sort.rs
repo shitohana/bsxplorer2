@@ -73,8 +73,8 @@ impl SortArgs {
 
 
         let progress_bar = if utils.progress {
-            let progress_bar =
-                init_pbar(reader.blocks_total()).expect("Failed to initialize progress bar");
+            let progress_bar = init_pbar(reader.blocks_total())
+                .expect("Failed to initialize progress bar");
             progress_bar
         }
         else {

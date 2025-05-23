@@ -4,6 +4,6 @@
 
 pub mod data_structs;
 pub mod io;
-pub mod utils;
 #[cfg(feature = "tools")]
 pub mod tools;
+pub mod utils;

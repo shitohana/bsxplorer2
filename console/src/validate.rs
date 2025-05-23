@@ -53,7 +53,9 @@ impl ValidateArgs {
                 panic!("Error when opening files: {}", style(e.to_string()).red())
             })
             .into_iter()
-            .map(|(path, file)| BsxFileReader::try_new(file).map(|reader| (path, reader)))
+            .map(|(path, file)| {
+                BsxFileReader::try_new(file).map(|reader| (path, reader))
+            })
             .collect::<anyhow::Result<HashMap<_, _>>>()?;
 
         let batch_num = readers

@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::annotation::{GffEntry, GffEntryAttributes, HcAnnotStore, RawGffEntry};
+use bsxplorer2::data_structs::annotation::{GffEntry,
+                                           GffEntryAttributes,
+                                           HcAnnotStore,
+                                           RawGffEntry};
 use bsxplorer2::data_structs::coords::Contig;
 use pyo3::exceptions::{PyFileNotFoundError, PyIOError, PyValueError};
 use pyo3::prelude::*;

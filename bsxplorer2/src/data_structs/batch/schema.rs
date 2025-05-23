@@ -5,6 +5,7 @@ use polars::prelude::*;
 use super::{create_empty_categorical_dtype, name_dtype_tuple};
 use crate::plsmallstr;
 
+/// Represents the columns expected in BSX data.
 pub enum BsxColumns {
     Chr,
     Position,
@@ -17,6 +18,7 @@ pub enum BsxColumns {
 
 
 impl BsxColumns {
+    /// Returns the Polars Schema for the BSX columns.
     pub fn schema() -> Schema {
         Schema::from_iter([
             name_dtype_tuple!(BsxColumns::Chr),
@@ -29,6 +31,7 @@ impl BsxColumns {
         ])
     }
 
+    /// Returns the string representation of the column name.
     pub const fn as_str(&self) -> &'static str {
         match self {
             BsxColumns::Chr => "chr",
@@ -41,6 +44,7 @@ impl BsxColumns {
         }
     }
 
+    /// Returns the Polars DataType for the column.
     pub const fn dtype(&self) -> DataType {
         match self {
             BsxColumns::Chr => create_empty_categorical_dtype(),
@@ -53,6 +57,7 @@ impl BsxColumns {
         }
     }
 
+    /// Returns an array containing all BSX column names as strings.
     pub const fn colnames() -> [&'static str; 7] {
         [
             BsxColumns::Chr.as_str(),
@@ -65,15 +70,29 @@ impl BsxColumns {
         ]
     }
 
+    /// Checks if the given string matches any of the BSX column names.
     pub fn has_name(name: &str) -> bool {
         Self::colnames().contains(&name)
     }
 
+    /// Creates a Polars expression (Expr) referencing this column.
     #[inline(always)]
     pub fn col(&self) -> Expr {
         col(self.as_str())
     }
 
+    /// Attempts to create a Polars AnyValue from a boxed value based on the
+    /// column's expected type.
+    ///
+    /// # Arguments
+    ///
+    /// * `value`: A boxed value that is expected to match the column's
+    ///   DataType.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(AnyValue)` if the value can be downcast to the expected
+    /// type, otherwise returns `None`.
     pub fn create_anyvalue(
         &self,
         value: Box<dyn Any>,
@@ -107,6 +126,22 @@ impl BsxColumns {
         }
     }
 
+    /// Creates a Polars Series from a vector of values, attempting to cast them
+    /// to the column's expected type.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T`: The type of the elements in the input vector. Must be `Sized` and
+    ///   have `'static` lifetime.
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: A vector of values to be converted into a Series.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `PolarsResult<Series>` containing the created Series or an
+    /// error if the conversion fails (e.g., due to incorrect type).
     pub fn create_series<T>(
         &self,
         data: Vec<T>,

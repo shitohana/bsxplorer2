@@ -14,8 +14,8 @@ use rayon::prelude::*;
 use rayon::ThreadPool;
 
 use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
-use crate::data_structs::ContextData;
 use crate::data_structs::typedef::BsxSmallStr;
+use crate::data_structs::ContextData;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::read_chrom;

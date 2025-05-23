@@ -15,7 +15,8 @@ fn test_bsxreader() -> BsxFileReader {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
         )
         .expect("Error opening test report file"),
-    ).expect("Failed to create reader");
+    )
+    .expect("Failed to create reader");
     reader
 }
 
@@ -25,9 +26,13 @@ fn write_bsx(mut test_bsxreader: BsxFileReader) -> anyhow::Result<()> {
     let sink_tempfile = NamedTempFile::new()?;
     let mut writer = BsxFileWriter::try_new(
         sink_tempfile.reopen()?,
-        index.get_chr_order().into_iter().map(BsxSmallStr::to_string).collect_vec(),
+        index
+            .get_chr_order()
+            .into_iter()
+            .map(BsxSmallStr::to_string)
+            .collect_vec(),
         None,
-        None
+        None,
     )?;
 
     for batch in test_bsxreader.iter() {

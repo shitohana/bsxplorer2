@@ -13,7 +13,7 @@ use crate::io::bsx::BatchIndex;
 
 /// RegionReader is a reader for BSX files that operates on a specific region of
 /// the genome.
-pub struct RegionReader{
+pub struct RegionReader {
     /// Cache of encoded BSX batches.
     cache:         BTreeMap<usize, BsxBatch>,
     /// Inner reader for the BSX file.
@@ -70,7 +70,11 @@ impl RegionReader {
             self.cache.remove(&idx);
         }
 
-        let batches = self.inner.get_batches(&to_read).into_iter().collect::<Option<PolarsResult<Vec<_>>>>();
+        let batches = self
+            .inner
+            .get_batches(&to_read)
+            .into_iter()
+            .collect::<Option<PolarsResult<Vec<_>>>>();
         if batches.is_none() {
             return Err(anyhow!("Some batches not found in file"));
         }
@@ -228,6 +232,9 @@ impl RegionReader {
 
 // PUBLIC METHODS
 impl RegionReader {
+    /// Creates a new RegionReader from an existing BsxFileReader.
+    ///
+    /// Reads the index from the reader during initialization.
     pub fn from_reader(reader: BsxFileReader) -> anyhow::Result<Self> {
         let mut reader = reader;
         let index = BatchIndex::from_reader(&mut reader)?;
@@ -242,7 +249,14 @@ impl RegionReader {
         self.preprocess_fn = preprocess_fn;
     }
 
-    /// Creates a new RegionReader.
+    /// Creates a new RegionReader instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `inner`: The inner BsxFileReader.
+    /// * `index`: The BatchIndex for the BSX file.
+    /// * `preprocess_fn`: An optional function to apply to each batch after
+    ///   reading but before caching.
     pub fn new(
         inner: BsxFileReader,
         index: BatchIndex,
@@ -268,16 +282,32 @@ impl RegionReader {
         self.cache.clear();
     }
 
-    pub fn iter_contigs(&mut self, contigs: &[Contig], postprocess_fn: Option<Box<dyn Fn(BsxBatch, &Contig) -> anyhow::Result<BsxBatch>>>) -> RegionReaderIterator {
+    /// Creates an iterator over a list of contigs.
+    ///
+    /// # Arguments
+    ///
+    /// * `contigs`: A slice of Contig regions to iterate over.
+    pub fn iter_contigs(
+        &mut self,
+        contigs: &[Contig],
+    ) -> RegionReaderIterator {
         RegionReaderIterator {
-            reader: self,
+            reader:          self,
             pending_contigs: VecDeque::from(contigs.to_vec()),
-            cached_contigs: VecDeque::new(),
-            postprocess_fn,
+            cached_contigs:  VecDeque::new(),
         }
     }
 
-    /// Queries the BSX file for the given contig.
+    /// Queries the BSX file for the given contig region.
+    ///
+    /// Attempts to retrieve the data for the specified contig, potentially
+    /// reading batches from the file and caching them.
+    ///
+    /// # Arguments
+    ///
+    /// * `contig`: The Contig region to query.
+    /// * `postprocess_fn`: An optional function to apply to the assembled batch
+    ///   after querying.
     pub fn query(
         &mut self,
         contig: Contig,
@@ -332,11 +362,11 @@ impl RegionReader {
     }
 }
 
+/// Iterator for reading BSX data for multiple contigs using a RegionReader.
 pub struct RegionReaderIterator<'a> {
-    reader: &'a mut RegionReader,
+    reader:          &'a mut RegionReader,
     pending_contigs: VecDeque<Contig>,
-    cached_contigs: VecDeque<Contig>,
-    postprocess_fn: Option<Box<dyn Fn(BsxBatch, &Contig) -> anyhow::Result<BsxBatch>>>,
+    cached_contigs:  VecDeque<Contig>,
 }
 
 impl<'a> Iterator for RegionReaderIterator<'a> {
@@ -345,13 +375,16 @@ impl<'a> Iterator for RegionReaderIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(contig) = self.cached_contigs.pop_front() {
             self.reader.query(contig, None).transpose()
-        } else {
+        }
+        else {
             let fill_cache_res = self.fill_cache();
             if let Some(Ok(_)) = fill_cache_res {
                 self.next()
-            } else if let Some(Err(e)) = fill_cache_res {
+            }
+            else if let Some(Err(e)) = fill_cache_res {
                 Some(Err(e))
-            } else {
+            }
+            else {
                 None
             }
         }
@@ -369,22 +402,27 @@ impl<'a> RegionReaderIterator<'a> {
             if cur_chr.is_some() && cur_chr.as_ref() != Some(contig.seqname()) {
                 self.pending_contigs.push_front(contig);
                 break;
-            } else {
+            }
+            else {
                 cur_chr = Some(contig.seqname().clone());
             }
 
             if let Some(mut batches) = self.reader.find(&contig) {
                 required_batches.append(&mut BTreeSet::from_iter(batches));
                 self.cached_contigs.push_back(contig);
-            } else {
+            }
+            else {
                 continue;
             };
         }
 
         if required_batches.is_empty() {
             return None;
-        } else {
-            let res = self.reader.update_cache(&required_batches.into_iter().collect_vec());
+        }
+        else {
+            let res = self
+                .reader
+                .update_cache(&required_batches.into_iter().collect_vec());
             Some(res)
         }
     }

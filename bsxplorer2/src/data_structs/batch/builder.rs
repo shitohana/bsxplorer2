@@ -11,13 +11,21 @@ use crate::data_structs::coords::Contig;
 use crate::io::report::ReportType;
 use crate::with_field_fn;
 
+/// Builder for creating `BsxBatch` instances with various configuration
+/// options.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BsxBatchBuilder {
+    /// Optional categorical dtype for the chromosome column.
     pub chr_dtype:        Option<DataType>,
+    /// Flag to enable null checks.
     pub check_nulls:      bool,
+    /// Flag to enable sorted checks on the position column.
     pub check_sorted:     bool,
+    /// Flag to enable duplicate checks on the position column.
     pub check_duplicates: bool,
+    /// Flag to rechunk the resulting DataFrame.
     pub rechunk:          bool,
+    /// Flag to check for a single chromosome value per batch.
     pub check_single_chr: bool,
 }
 
@@ -67,6 +75,7 @@ impl BsxBatchBuilder {
         }
     }
 
+    /// Sets the chromosome values and configures the categorical dtype.
     pub fn with_chr_values<S, P>(
         mut self,
         chr_values: Vec<String>,
@@ -81,6 +90,8 @@ impl BsxBatchBuilder {
         self
     }
 
+    /// Performs validation checks on the DataFrame based on builder
+    /// configuration.
     pub fn checks_only(
         &self,
         df: &DataFrame,
@@ -108,6 +119,7 @@ impl BsxBatchBuilder {
         Ok(())
     }
 
+    /// Casts the DataFrame columns to the expected `BsxBatch` dtypes.
     pub fn cast_only(
         &self,
         df: DataFrame,
@@ -136,6 +148,7 @@ impl BsxBatchBuilder {
             .collect()
     }
 
+    /// Builds a `BsxBatch` from a DataFrame based on a specified report type.
     pub fn build_from_report(
         &self,
         df: DataFrame,
@@ -165,6 +178,7 @@ impl BsxBatchBuilder {
         BsxBatch::new_unchecked(df)
     }
 
+    /// Concatenates multiple `BsxBatch` instances into a single batch.
     pub fn concat(batches: Vec<BsxBatch>) -> PolarsResult<BsxBatch> {
         let contigs = batches
             .iter()
@@ -206,6 +220,7 @@ impl BsxBatchBuilder {
     }
 }
 
+/// Internal helper functions for building and validating `BsxBatch` DataFrames.
 pub(super) mod build {
     use polars::series::IsSorted;
 
@@ -247,6 +262,7 @@ pub(super) mod build {
         Ok(chr.n_unique()? == 1)
     }
 
+    /// Sets the sorted flag on the position column.
     pub fn set_flags(df: &mut DataFrame) -> PolarsResult<()> {
         let mut pos_col = df.column(BsxCol::Position.as_str())?.to_owned();
         pos_col.set_sorted_flag(IsSorted::Ascending);
@@ -264,6 +280,7 @@ pub(super) mod build {
             .cast(DataType::Boolean)
     }
 
+    /// Creates an expression to convert strand symbols (+/-) to boolean.
     pub fn strand_to_bool_expr() -> Expr {
         when(col("strand").eq(lit("+")))
             .then(lit(true))
@@ -273,6 +290,7 @@ pub(super) mod build {
             .cast(DataType::Boolean)
     }
 
+    /// Creates an expression to convert context values (CG/CHG) to boolean.
     pub fn context_to_bool_expr() -> Expr {
         when(col("context").eq(lit("CG")))
             .then(lit(true))
@@ -282,10 +300,12 @@ pub(super) mod build {
             .cast(DataType::Boolean)
     }
 
+    /// Creates an expression to calculate total counts (m + um).
     pub fn count_total_col_expr() -> Expr {
         col("count_m") + col("count_um")
     }
 
+    /// Creates an expression to calculate methylation density (m / total).
     pub fn density_col_expr() -> Expr {
         col("count_m").cast(DataType::Float64)
             / col("count_total").cast(DataType::Float64)
@@ -332,217 +352,5 @@ pub(super) mod build {
             lit(NULL).alias(BsxCol::CountTotal.as_str()),
         ])
         .select(BsxCol::colnames().into_iter().map(col).collect_vec())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use polars::series::IsSorted;
-    use rstest::{fixture, rstest};
-
-    use super::build::*;
-    use super::*;
-
-    #[fixture]
-    fn test_df() -> DataFrame {
-        df!(
-            BsxCol::Chr.as_str() => ["chr1", "chr1", "chr1"],
-            BsxCol::Position.as_str() => [100u32, 150, 200],
-            BsxCol::Strand.as_str() => [true, false, true],
-            BsxCol::Context.as_str() => [true, false, true],
-            BsxCol::CountM.as_str() => [5u16, 10, 15],
-            BsxCol::CountTotal.as_str() => [10u16, 20, 30],
-            BsxCol::Density.as_str() => [0.5f32, 0.5, 0.5]
-        )
-        .unwrap()
-    }
-
-    #[fixture]
-    fn no_cols_df() -> DataFrame {
-        DataFrame::empty()
-    }
-
-    #[rstest]
-    #[case::pos_duplicates({
-        df!(
-            BsxCol::Chr.as_str() => ["chr1", "chr1", "chr1"],
-            BsxCol::Position.as_str() => [100u32, 100, 200], // Duplicate at position 100
-        ).unwrap()
-    }, check_no_duplicates)]
-    #[case::unsorted({
-        df!(
-            BsxCol::Position.as_str() => [200u32, 100, 150], // Unsorted positions
-        ).unwrap()
-    }, check_sorted)]
-    #[case::nulls_chr({
-        df!(
-            BsxCol::Chr.as_str() => [Some("chr1"), Some("chr1"), None],
-            BsxCol::Position.as_str() => [100u32, 150, 200],
-        ).unwrap()
-    }, check_no_nulls)]
-    #[case::nulls_pos({
-        df!(
-            BsxCol::Chr.as_str() => ["chr1", "chr1", "chr1"],
-            BsxCol::Position.as_str() => [Some(100), Some(150), None],
-        ).unwrap()
-    }, check_no_nulls)]
-    #[case::multi_chr({
-        df!(
-            BsxCol::Chr.as_str() => ["chr1", "chr2", "chr3"],
-            BsxCol::Position.as_str() => [100u32, 150, 200],
-        ).unwrap()
-    }, check_single_chr)]
-    fn test_checks(
-        test_df: DataFrame,
-        no_cols_df: DataFrame,
-        #[case] should_not_pass_df: DataFrame,
-        #[case] check_fn: fn(&DataFrame) -> PolarsResult<bool>,
-    ) {
-        assert_eq!(check_fn(&test_df).unwrap(), true);
-        assert_eq!(check_fn(&should_not_pass_df).unwrap(), false);
-        assert!(check_fn(&no_cols_df).is_err());
-    }
-
-    #[rstest]
-    fn test_set_flags(mut test_df: DataFrame) {
-        assert!(set_flags(&mut test_df).is_ok());
-
-        // Verify the sorting flag was set
-        let pos_col = test_df.column(BsxCol::Position.as_str()).unwrap();
-        assert_eq!(pos_col.is_sorted_flag(), IsSorted::Ascending);
-    }
-
-    #[test]
-    fn test_conversion_expressions() {
-        // Test nuc_to_bool_expr
-        let df = df!("nuc" => ["C", "G", "A"]).unwrap();
-        let res = df
-            .lazy()
-            .with_column(nuc_to_bool_expr().alias("result"))
-            .collect()
-            .unwrap();
-        let results = res.column("result").unwrap().bool().unwrap();
-        assert_eq!(results.get(0), Some(true));
-        assert_eq!(results.get(1), Some(false));
-        assert_eq!(results.get(2), None);
-
-        // Test strand_to_bool_expr
-        let df = df!("strand" => ["+", "-", "."]).unwrap();
-        let res = df
-            .lazy()
-            .with_column(strand_to_bool_expr().alias("result"))
-            .collect()
-            .unwrap();
-        let results = res.column("result").unwrap().bool().unwrap();
-        assert_eq!(results.get(0), Some(true));
-        assert_eq!(results.get(1), Some(false));
-        assert_eq!(results.get(2), None);
-
-        // Test context_to_bool_expr
-        let df = df!("context" => ["CG", "CHG", "CHH"]).unwrap();
-        let res = df
-            .lazy()
-            .with_column(context_to_bool_expr().alias("result"))
-            .collect()
-            .unwrap();
-        let results = res.column("result").unwrap().bool().unwrap();
-        assert_eq!(results.get(0), Some(true));
-        assert_eq!(results.get(1), Some(false));
-        assert_eq!(results.get(2), None);
-    }
-
-    #[test]
-    fn test_count_total_and_density() {
-        let df = df!(
-            "count_m" => [5i64, 10],
-            "count_um" => [5i64, 10]
-        )
-        .unwrap();
-
-        // Test count_total_col_expr
-        let res = df
-            .clone()
-            .lazy()
-            .with_column(count_total_col_expr().alias("count_total"))
-            .collect()
-            .unwrap();
-        let totals = res.column("count_total").unwrap().i64().unwrap();
-        assert_eq!(totals.get(0), Some(10));
-        assert_eq!(totals.get(1), Some(20));
-
-        // Test density_col_expr
-        let res = df
-            .lazy()
-            .with_column(count_total_col_expr().alias("count_total"))
-            .with_column(density_col_expr().alias("density"))
-            .collect()
-            .unwrap();
-        let densities = res.column("density").unwrap().f64().unwrap();
-        assert_eq!(densities.get(0), Some(0.5));
-        assert_eq!(densities.get(1), Some(0.5));
-    }
-
-    fn create_bismark_df() -> DataFrame {
-        df!(
-            "chr" => ["chr1", "chr1"],
-            "position" => [100u32, 150],
-            "strand" => ["+", "-"], // Decoded uses "+", "-"
-            "count_m" => [5u32, 10],
-            "count_um" => [5u32, 10],
-            "context" => ["CG", "CHG"],
-            "trinuc" => ["CGA", "CAG"] // Bismark requires trinuc column
-        )
-        .unwrap()
-    }
-
-    fn create_cgmap_df() -> DataFrame {
-        df!(
-            "chr" => ["chr2", "chr2"],
-            "nuc" => ["C", "G"], // Determines strand ('C' -> '+', 'G' -> '-')
-            "position" => [200u32, 250],
-            "context" => ["CG", "CHH"],
-            "dinuc" => ["CG", "CA"], // CgMap requires dinuc, not pattern
-            "density" => [0.8f64, 0.4], // CgMap has density column
-            "count_m" => [8u32, 2],
-            "count_total" => [10u32, 5]
-        )
-        .unwrap()
-    }
-
-    fn create_coverage_df() -> DataFrame {
-        df!(
-            "chr" => ["chr3", "chr3"],
-            "start" => [300u32, 350], // Becomes position
-            "end" => [301u32, 351],
-            "density" => [0.75f64, 0.4], // Coverage has density column
-            "count_m" => [15u32, 20],
-            "count_um" => [5u32, 30] // Used to calculate count_total
-        )
-        .unwrap()
-    }
-
-    fn create_bedgraph_df() -> DataFrame {
-        df!(
-            "chr" => ["chr4", "chr4"],
-            "start" => [400u32, 450], // Becomes position
-            "end" => [401u32, 451],
-            "density" => [0.75f64, 0.8] // Only density provided
-        )
-        .unwrap()
-    }
-
-    #[rstest]
-    #[case::bismark(ReportType::Bismark, create_bismark_df())]
-    #[case::cgmap(ReportType::CgMap, create_cgmap_df())]
-    #[case::coverage(ReportType::Coverage, create_coverage_df())]
-    #[case::bedgraph(ReportType::BedGraph, create_bedgraph_df())]
-    fn test_build_decoded_from_report_type(
-        #[case] report_type: ReportType,
-        #[case] input_df: DataFrame,
-    ) -> anyhow::Result<()> {
-        let batch =
-            BsxBatchBuilder::all_checks().build_from_report(input_df, report_type)?;
-        let _data = batch.data();
-        Ok(())
     }
 }

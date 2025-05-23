@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use bsxplorer2::data_structs::{Context, Strand};
-use bsxplorer2::data_structs::MethylationStats;
 use bsxplorer2::data_structs::typedef::DensityType;
+use bsxplorer2::data_structs::{Context, MethylationStats, Strand};
 use itertools::Itertools;
 use pyo3::prelude::*;
 use pyo3::types::PyList;

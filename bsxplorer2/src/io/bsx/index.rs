@@ -8,13 +8,17 @@ use itertools::Itertools;
 use polars::error::PolarsResult;
 use serde::{Deserialize, Serialize};
 
+use super::BsxFileReader;
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::typedef::BsxSmallStr;
 
-use super::BsxFileReader;
-
 /// Index for batches in a BSX file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Index for batches in a BSX file.
+///
+/// This index maps genomic regions (represented as `Contig` objects) to the
+/// batch indices within the file where data for those regions can be found.
+/// It also maintains an ordered list of chromosome names.
 pub struct BatchIndex {
     map:       HashMap<BsxSmallStr, IntervalTree<GenomicPosition, usize>>,
     chr_order: IndexSet<BsxSmallStr>,
@@ -31,6 +35,16 @@ impl FromIterator<(Contig, usize)> for BatchIndex {
 }
 
 impl BatchIndex {
+    /// Serializes the `BatchIndex` to a writer using bincode.
+    ///
+    /// # Arguments
+    ///
+    /// * `writer`: The writer to serialize the index to.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `bincode::error::EncodeError` on
+    /// failure.
     pub fn to_file<W: Write>(
         self,
         writer: &mut W,
@@ -40,6 +54,16 @@ impl BatchIndex {
         Ok(())
     }
 
+    /// Deserializes a `BatchIndex` from a reader using bincode.
+    ///
+    /// # Arguments
+    ///
+    /// * `reader`: The reader to deserialize the index from.
+    ///
+    /// # Returns
+    ///
+    /// Returns the deserialized `BatchIndex` on success, or a
+    /// `bincode::error::DecodeError` on failure.
     pub fn from_file<R: Read>(
         reader: &mut R
     ) -> Result<Self, bincode::error::DecodeError> {
@@ -47,9 +71,26 @@ impl BatchIndex {
         bincode::serde::decode_from_std_read(reader, config)
     }
 
+    /// Builds a `BatchIndex` by iterating through batches in a `BsxFileReader`.
+    ///
+    /// This method reads the contig information from each batch header and
+    /// builds the interval tree and chromosome order.
+    ///
+    /// # Arguments
+    ///
+    /// * `reader`: The `BsxFileReader` to build the index from.
+    ///
+    /// # Returns
+    ///
+    /// Returns the built `BatchIndex` on success, or a `PolarsResult` error on
+    /// failure.
     pub fn from_reader(reader: &mut BsxFileReader) -> PolarsResult<Self> {
-        let contigs = reader.iter().enumerate()
-            .map(|(batch_idx, batch)| batch.map(|b| (b.as_contig().unwrap(), batch_idx)))
+        let contigs = reader
+            .iter()
+            .enumerate()
+            .map(|(batch_idx, batch)| {
+                batch.map(|b| (b.as_contig().unwrap(), batch_idx))
+            })
             .collect::<PolarsResult<Vec<_>>>()?;
         Ok(Self::from_iter(contigs.into_iter()))
     }
@@ -62,6 +103,7 @@ impl Default for BatchIndex {
 }
 
 impl BatchIndex {
+    /// Creates a new empty `BatchIndex`.
     pub fn new() -> Self {
         Self {
             map:       HashMap::new(),
@@ -69,7 +111,16 @@ impl BatchIndex {
         }
     }
 
-    /// Insert a contig and its corresponding batch index.
+    /// Inserts a contig and its corresponding batch index into the index.
+    ///
+    /// The contig's chromosome name is added to the chromosome order if not
+    /// already present. The contig's interval is inserted into the interval
+    /// tree for its chromosome.
+    ///
+    /// # Arguments
+    ///
+    /// * `contig`: The genomic contig to insert.
+    /// * `batch_idx`: The index of the batch containing this contig.
     pub fn insert(
         &mut self,
         contig: Contig,
@@ -89,8 +140,20 @@ impl BatchIndex {
             });
     }
 
-    /// Sort a set of contigs according to the chromosome order and start
-    /// position.
+    /// Sorts a set of contigs according to the internal chromosome order and
+    /// start position.
+    ///
+    /// Contigs on chromosomes not present in the `chr_order` will be placed
+    /// first in an arbitrary order relative to each other, then sorted by
+    /// start.
+    ///
+    /// # Arguments
+    ///
+    /// * `contigs`: An iterator over the contigs to sort.
+    ///
+    /// # Returns
+    ///
+    /// An iterator yielding the sorted contigs.
     pub fn sort<I>(
         &self,
         contigs: I,
@@ -101,6 +164,7 @@ impl BatchIndex {
             .into_iter()
             .map(|contig| {
                 (
+                    // Use 0 for chromosomes not found, effectively putting them first
                     self.chr_order.get_index_of(contig.seqname()).unwrap_or(0),
                     contig,
                 )
@@ -113,7 +177,20 @@ impl BatchIndex {
             .map(|(_, contig)| contig)
     }
 
-    /// Find the batch indices that overlap with a given contig.
+    /// Finds the batch indices that overlap with a given contig (query region).
+    ///
+    /// Searches the interval tree for the chromosome matching the query
+    /// contig's sequence name to find overlapping intervals and returns
+    /// their associated batch indices.
+    ///
+    /// # Arguments
+    ///
+    /// * `contig`: The query contig representing the genomic region to search.
+    ///
+    /// # Returns
+    ///
+    /// An `Option` containing a `Vec` of batch indices if overlapping intervals
+    /// are found for the specified chromosome, otherwise `None`.
     pub fn find(
         &self,
         contig: &Contig,
@@ -135,11 +212,24 @@ impl BatchIndex {
         }
     }
 
-    /// Returns the chromosome order.
+    /// Returns the chromosome order stored in the index.
+    ///
+    /// This order reflects the sequence in which chromosomes were encountered
+    /// or explicitly inserted.
     pub fn get_chr_order(&self) -> &IndexSet<BsxSmallStr> {
         &self.chr_order
     }
 
+    /// Gets the index of a chromosome name within the stored chromosome order.
+    ///
+    /// # Arguments
+    ///
+    /// * `chr`: The chromosome name to look up.
+    ///
+    /// # Returns
+    ///
+    /// An `Option` containing the zero-based index of the chromosome name
+    /// in the order, or `None` if the chromosome name is not found.
     pub fn get_chr_index(
         &self,
         chr: &BsxSmallStr,
@@ -147,7 +237,8 @@ impl BatchIndex {
         self.chr_order.get_index_of(chr)
     }
 
-    /// Returns the underlying map.
+    /// Returns a reference to the underlying map storing the interval trees
+    /// per chromosome.
     pub fn map(&self) -> &HashMap<BsxSmallStr, IntervalTree<GenomicPosition, usize>> {
         &self.map
     }

@@ -74,11 +74,9 @@ pub fn create_test_entry(
     start: u32,
     end: u32,
 ) -> GffEntry {
-    let contig =
-        Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
+    let contig = Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
 
-    let attrs =
-        GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
+    let attrs = GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
 
     GffEntry::new(
         contig,
@@ -101,16 +99,14 @@ pub fn create_test_entry_with_parent(
     end: u32,
     parent: Option<Vec<&str>>,
 ) -> GffEntry {
-    let contig =
-        Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
+    let contig = Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
 
     let mut attrs =
         GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
 
     if let Some(parents) = parent {
-        attrs = attrs.with_parent(Some(
-            parents.into_iter().map(BsxSmallStr::from).collect(),
-        ));
+        attrs = attrs
+            .with_parent(Some(parents.into_iter().map(BsxSmallStr::from).collect()));
     }
 
     GffEntry::new(
@@ -143,6 +139,7 @@ fn create_mock_index() -> BatchIndex {
 use id_tree::InsertBehavior::*;
 use id_tree::{Node, NodeId, Tree, TreeBuilder};
 use itertools::Itertools;
+
 use crate::data_structs::coords::Contig;
 use crate::data_structs::enums::Strand;
 use crate::io::bsx::BatchIndex;

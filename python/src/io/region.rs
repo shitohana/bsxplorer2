@@ -5,8 +5,8 @@ use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
-use pyo3_polars::{PyDataFrame};
 use pyo3_polars::error::PyPolarsErr;
+use pyo3_polars::PyDataFrame;
 
 use crate::types::batch::PyBsxBatch;
 use crate::types::coords::PyContig;
@@ -27,7 +27,8 @@ impl PyRegionReader {
             FileOrFileLike::ROnlyFileLike(handle) => BsxFileReader::try_new(handle)?,
             FileOrFileLike::RWFileLike(handle) => BsxFileReader::try_new(handle)?,
         };
-        let index: BatchIndex = BatchIndex::from_reader(&mut reader).map_err(|e| PyPolarsErr::Polars(e))?;
+        let index: BatchIndex =
+            BatchIndex::from_reader(&mut reader).map_err(|e| PyPolarsErr::Polars(e))?;
 
         Ok(Self {
             inner: RegionReader::new(reader, index, None),

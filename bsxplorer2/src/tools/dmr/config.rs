@@ -9,8 +9,8 @@ use bio::bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 
 use crate::data_structs::batch::BsxBatch;
-use crate::data_structs::Context;
 use crate::data_structs::typedef::{CountType, DensityType, PosType};
+use crate::data_structs::Context;
 use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
@@ -183,8 +183,9 @@ fn init_bsx_readers<F: AsRawFd + 'static>(
         .into_iter()
         .map(|reader| {
             Box::new(
-                reader.into_iter()
-                    .map(|batch_res| batch_res.expect("could not read batch"))
+                reader
+                    .into_iter()
+                    .map(|batch_res| batch_res.expect("could not read batch")),
             ) as Box<dyn Iterator<Item = BsxBatch>>
         })
         .collect_vec();
