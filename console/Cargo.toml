@@ -29,7 +29,7 @@ polars.workspace = true
 itertools.workspace = true
 
 [dependencies.bsxplorer2]
-path = "../bsxplorer2"
+version = "0.2.0"
 default-features = false
 features = ["console", "performant", "compression", "tools"]
 
