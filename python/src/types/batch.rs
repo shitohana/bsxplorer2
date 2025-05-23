@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchBuilder, BsxColumns};
-use bsxplorer2::data_structs::context_data::ContextData;
+use bsxplorer2::data_structs::ContextData;
 use bsxplorer2::data_structs::typedef::DensityType;
 use bsxplorer2::utils::get_categorical_dtype;
 use polars::prelude::{DataFrame, IntoSeries};
@@ -13,6 +13,7 @@ use super::context_data::PyContextData;
 use super::coords::{PyContig, PyGenomicPosition};
 use super::lazy::PyLazyBsxBatch;
 use super::report_schema::PyReportTypeSchema;
+use super::stats::PyMethylationStats;
 use super::utils::{PyContext, PyStrand};
 
 
@@ -118,6 +119,7 @@ impl PyBsxBatch {
         Ok(PySchema(Arc::new(BsxColumns::schema())))
     }
 
+    #[allow(deprecated)]
     #[staticmethod]
     pub fn empty(chr_dtype: Option<PyDataType>) -> PyResult<Self> {
         let chr_dtype_option = chr_dtype.map(|s| s.0);
@@ -242,10 +244,11 @@ impl PyBsxBatch {
         self.inner.as_contig().map(|contig| contig.into())
     }
 
-    // Stats methods
-    // Skipping get_methylation_stats for now as it needs a wrapper type
-    // PyMethylationStats pub fn get_methylation_stats(&self) ->
-    // PyResult<PyMethylationStats> { ... }
+    pub fn get_methylation_stats(&self) -> PyResult<PyMethylationStats> {
+        let rust_stats = self.inner.get_methylation_stats();
+        let py_stats = rust_stats.into();
+        Ok(py_stats)
+    }
 
     pub fn get_coverage_dist(&self) -> PyResult<HashMap<u16, u32>> {
         Ok(self.inner.get_coverage_dist().into_iter().collect())

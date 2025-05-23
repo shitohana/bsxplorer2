@@ -1,5 +1,5 @@
 use crate::data_structs::batch::BsxBatch;
-use crate::data_structs::methstats::MethylationStats;
+use crate::data_structs::MethylationStats;
 
 struct GenomeWideStats {
     stat: MethylationStats,

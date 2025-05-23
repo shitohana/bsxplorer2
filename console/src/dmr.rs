@@ -3,7 +3,7 @@ use std::iter::repeat_n;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
-use bsxplorer2::data_structs::enums::Context;
+use bsxplorer2::data_structs::Context;
 use bsxplorer2::data_structs::typedef::{CountType, DensityType, PosType};
 use bsxplorer2::tools::dmr::DMRegion;
 use clap::{Args, ValueEnum};

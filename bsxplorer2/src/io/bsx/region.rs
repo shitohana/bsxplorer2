@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use anyhow::{anyhow, bail};
 use itertools::Itertools;
+use polars::error::PolarsResult;
 use polars::prelude::search_sorted::binary_search_ca;
 use polars::prelude::SearchSortedSide;
 
@@ -69,20 +70,16 @@ impl RegionReader {
             self.cache.remove(&idx);
         }
 
-        for idx in to_read {
-            let mut data = self.inner.get_batch(idx).transpose()?.ok_or_else(|| {
-                anyhow!(
-                    "Batch index {} reported by find() but not found by get_batch()",
-                    idx
-                )
-            })?;
-
-            if let Some(postprocess_fn) = self.preprocess_fn.as_ref() {
-                data = postprocess_fn(data)?;
-            }
-
-            self.cache.insert(idx, data);
+        let batches = self.inner.get_batches(&to_read).into_iter().collect::<Option<PolarsResult<Vec<_>>>>();
+        if batches.is_none() {
+            return Err(anyhow!("Some batches not found in file"));
         }
+        let batches = batches.unwrap()?;
+
+        for (idx, batch) in to_read.into_iter().zip(batches.into_iter()) {
+            self.cache.insert(idx, batch);
+        }
+
         Ok(())
     }
 
@@ -271,6 +268,15 @@ impl RegionReader {
         self.cache.clear();
     }
 
+    pub fn iter_contigs(&mut self, contigs: &[Contig], postprocess_fn: Option<Box<dyn Fn(BsxBatch, &Contig) -> anyhow::Result<BsxBatch>>>) -> RegionReaderIterator {
+        RegionReaderIterator {
+            reader: self,
+            pending_contigs: VecDeque::from(contigs.to_vec()),
+            cached_contigs: VecDeque::new(),
+            postprocess_fn,
+        }
+    }
+
     /// Queries the BSX file for the given contig.
     pub fn query(
         &mut self,
@@ -322,6 +328,64 @@ impl RegionReader {
                     }
                 },
             }
+        }
+    }
+}
+
+pub struct RegionReaderIterator<'a> {
+    reader: &'a mut RegionReader,
+    pending_contigs: VecDeque<Contig>,
+    cached_contigs: VecDeque<Contig>,
+    postprocess_fn: Option<Box<dyn Fn(BsxBatch, &Contig) -> anyhow::Result<BsxBatch>>>,
+}
+
+impl<'a> Iterator for RegionReaderIterator<'a> {
+    type Item = anyhow::Result<BsxBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(contig) = self.cached_contigs.pop_front() {
+            self.reader.query(contig, None).transpose()
+        } else {
+            let fill_cache_res = self.fill_cache();
+            if let Some(Ok(_)) = fill_cache_res {
+                self.next()
+            } else if let Some(Err(e)) = fill_cache_res {
+                Some(Err(e))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+impl<'a> RegionReaderIterator<'a> {
+    fn fill_cache(&mut self) -> Option<anyhow::Result<()>> {
+        let mut required_batches = BTreeSet::new();
+        let n_threads = self.reader.inner.n_threads();
+        let mut cur_chr = None;
+
+        while required_batches.len() < n_threads && !self.pending_contigs.is_empty() {
+            let contig = self.pending_contigs.pop_front().unwrap();
+            if cur_chr.is_some() && cur_chr.as_ref() != Some(contig.seqname()) {
+                self.pending_contigs.push_front(contig);
+                break;
+            } else {
+                cur_chr = Some(contig.seqname().clone());
+            }
+
+            if let Some(mut batches) = self.reader.find(&contig) {
+                required_batches.append(&mut BTreeSet::from_iter(batches));
+                self.cached_contigs.push_back(contig);
+            } else {
+                continue;
+            };
+        }
+
+        if required_batches.is_empty() {
+            return None;
+        } else {
+            let res = self.reader.update_cache(&required_batches.into_iter().collect_vec());
+            Some(res)
         }
     }
 }

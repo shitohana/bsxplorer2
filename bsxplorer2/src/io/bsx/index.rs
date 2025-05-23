@@ -157,7 +157,7 @@ impl BatchIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_structs::enums::Strand;
+    use crate::data_structs::Strand;
 
     #[test]
     fn test_insert_and_find() {

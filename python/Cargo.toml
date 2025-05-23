@@ -18,7 +18,7 @@ name = "_native"
 nightly = ["bsxplorer2/performant_nightly"]
 
 [dependencies]
-bsxplorer2 = { path = "../bsxplorer2", features = ["compression", "performant"] }
+bsxplorer2 = { path = "../bsxplorer2", features = ["compression", "performant", "tools"] }
 pyo3 = { version = "=0.22.4", features = ["extension-module", "anyhow", "either"] }
 # We need to use the same version of polars as in the Rust code
 pyo3-polars = "=0.19.0"

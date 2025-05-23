@@ -1,29 +1,24 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::annotation::{AnnotStore,
-                                           GffEntry,
-                                           GffEntryAttributes,
-                                           RawGffEntry};
+use bsxplorer2::data_structs::annotation::{GffEntry, GffEntryAttributes, HcAnnotStore, RawGffEntry};
 use bsxplorer2::data_structs::coords::Contig;
 use pyo3::exceptions::{PyFileNotFoundError, PyIOError, PyValueError};
 use pyo3::prelude::*;
 
-use super::index::PyBatchIndex;
 use crate::types::coords::PyContig;
 
 #[pyclass(name = "AnnotStore")]
 pub struct PyAnnotStore {
-    inner: AnnotStore,
+    inner: HcAnnotStore,
 }
 
-impl From<AnnotStore> for PyAnnotStore {
-    fn from(inner: AnnotStore) -> Self {
+impl From<HcAnnotStore> for PyAnnotStore {
+    fn from(inner: HcAnnotStore) -> Self {
         Self { inner }
     }
 }
 
-impl From<PyAnnotStore> for AnnotStore {
+impl From<PyAnnotStore> for HcAnnotStore {
     fn from(py_annot_store: PyAnnotStore) -> Self {
         py_annot_store.inner
     }
@@ -34,7 +29,7 @@ impl PyAnnotStore {
     #[new]
     pub fn new() -> Self {
         Self {
-            inner: AnnotStore::new(),
+            inner: HcAnnotStore::new(),
         }
     }
 
@@ -57,7 +52,7 @@ impl PyAnnotStore {
             entries.push(GffEntry::try_from(entry)?);
         }
 
-        let annot = AnnotStore::from_iter(entries);
+        let annot = HcAnnotStore::from_iter(entries);
         Ok(Self { inner: annot })
     }
 
@@ -71,7 +66,7 @@ impl PyAnnotStore {
 
         use bio::io::bed;
         let mut reader = bed::Reader::new(file);
-        let mut annot_store = AnnotStore::new();
+        let mut annot_store = HcAnnotStore::new();
 
         for record in reader.records() {
             let record = record.map_err(|e| {
@@ -101,15 +96,6 @@ impl PyAnnotStore {
         Ok(())
     }
 
-    pub fn remove(
-        &mut self,
-        id: String,
-    ) -> Option<PyGffEntry> {
-        self.inner
-            .remove(&id.into())
-            .map(|entry| PyGffEntry::from(entry))
-    }
-
     pub fn get_children(
         &self,
         id: String,
@@ -123,98 +109,7 @@ impl PyAnnotStore {
         &self,
         id: String,
     ) -> Option<Vec<String>> {
-        self.inner
-            .get_parents(&id.into())
-            .map(|entry| entry.into_iter().map(|parent| parent.to_string()).collect())
-    }
-
-    pub fn id_map(&self) -> HashMap<String, PyGffEntry> {
-        self.inner
-            .id_map()
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v.clone().into()))
-            .collect()
-    }
-
-    pub fn parent_map(&self) -> HashMap<String, Vec<String>> {
-        self.inner
-            .parent_map()
-            .iter_all()
-            .map(|(k, v)| {
-                (
-                    k.to_string(),
-                    v.into_iter().map(|parent| parent.to_string()).collect(),
-                )
-            })
-            .collect()
-    }
-
-    pub fn children_map(&self) -> HashMap<String, Vec<String>> {
-        self.inner
-            .children_map()
-            .iter_all()
-            .map(|(k, v)| {
-                (
-                    k.to_string(),
-                    v.into_iter().map(|child| child.to_string()).collect(),
-                )
-            })
-            .collect()
-    }
-
-    pub fn add_upstream(
-        &mut self,
-        length: u32,
-    ) -> PyResult<()> {
-        self.inner.add_upstream(|_| true, length);
-        Ok(())
-    }
-
-    pub fn add_downstream(
-        &mut self,
-        length: u32,
-    ) -> PyResult<()> {
-        self.inner.add_downstream(|_| true, length);
-        Ok(())
-    }
-
-    pub fn add_flanks(
-        &mut self,
-        length: u32,
-    ) -> PyResult<()> {
-        self.inner.add_flanks(|_| true, length);
-        Ok(())
-    }
-
-    pub fn iter_sorted(
-        &self,
-        index: &PyBatchIndex,
-    ) -> PyResult<Vec<PyContig>> {
-        let batch_index = &index.inner();
-        let results: Vec<PyContig> = self
-            .inner
-            .iter_sorted(batch_index)
-            .map(|(_, entry)| {
-                let contig = entry.contig.clone();
-                PyContig::new(
-                    contig.seqname().to_string(),
-                    contig.start(),
-                    contig.end(),
-                    contig.strand().to_string().as_str(),
-                )
-                .unwrap()
-            })
-            .collect();
-
-        Ok(results)
-    }
-
-    pub fn get_entry_ids(&self) -> Vec<String> {
-        self.inner
-            .id_map()
-            .keys()
-            .map(|id| id.to_string())
-            .collect()
+        todo!()
     }
 
     pub fn __len__(&self) -> usize {

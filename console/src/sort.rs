@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::data_structs::enums::Strand;
+use bsxplorer2::data_structs::Strand;
 use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, BsxFileWriter};
 use clap::Args;
 use console::style;

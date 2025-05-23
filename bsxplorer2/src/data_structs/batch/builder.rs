@@ -306,7 +306,7 @@ pub(super) mod build {
     pub fn cgmap_expr(lf: LazyFrame) -> LazyFrame {
         lf.with_columns([
             nuc_to_bool_expr().alias(BsxCol::Strand.as_str()),
-            nuc_to_bool_expr().alias(BsxCol::Context.as_str()),
+            context_to_bool_expr().alias(BsxCol::Context.as_str()),
         ])
         .select(BsxCol::colnames().into_iter().map(col).collect_vec())
     }

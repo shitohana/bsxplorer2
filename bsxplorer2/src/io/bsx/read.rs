@@ -19,7 +19,7 @@ use crate::data_structs::batch::BsxBatch;
 // ThreadLocalHandle no longer needs a lifetime parameter as it holds its own
 // Arc<Mmap>
 struct ThreadLocalHandle {
-    mmap:            Arc<Mmap>, // Hold a clone of the shared Mmap Arc
+    _mmap:            Arc<Mmap>, // Hold a clone of the shared Mmap Arc
     handle:          Cursor<&'static [u8]>, /* Cursor borrowing from the Mmap inside
                                  * the Arc */
     data_scratch:    Vec<u8>,
@@ -34,7 +34,7 @@ impl ThreadLocalHandle {
         let handle = Cursor::new(static_slice);
 
         Self {
-            mmap,   // Store the Arc clone, ensuring the Mmap lives long enough
+            _mmap: mmap,   // Store the Arc clone, ensuring the Mmap lives long enough
             handle, // Store the cursor borrowing from the 'static transmuted slice
             data_scratch: Vec::new(),
             message_scratch: Vec::new(),
@@ -78,7 +78,6 @@ pub struct BsxFileReader {
     metadata:             Arc<FileMetadata>,
     dictionaries:         Arc<Dictionaries>,
     blocks_total:         usize,
-    current_block:        usize,
     _mmap:                Arc<Mmap>, /* Still need to hold the original Arc to keep
                                       * the Mmap alive */
 }
@@ -117,7 +116,6 @@ impl BsxFileReader {
             metadata: Arc::new(metadata),
             dictionaries: Arc::new(dictionaries),
             blocks_total,
-            current_block: 0,
             _mmap: mmap, // Store the original Arc in the reader
         })
     }
@@ -143,11 +141,11 @@ impl BsxFileReader {
     pub fn get_batches(
         &mut self,
         batch_indices: &[usize],
-    ) -> Vec<PolarsResult<BsxBatch>> {
+    ) -> Vec<Option<PolarsResult<BsxBatch>>> {
         self.iter_batches(batch_indices.iter().cloned()).collect_vec()
     }
 
-    pub fn iter_batches<'a, I: IntoIterator<Item = usize> + 'a>(&'a mut self, batch_indices: I) -> impl Iterator<Item = PolarsResult<BsxBatch>> + 'a {
+    pub fn iter_batches<'a, I: IntoIterator<Item = usize> + 'a>(&'a mut self, batch_indices: I) -> impl Iterator<Item = Option<PolarsResult<BsxBatch>>> + 'a {
         let chunks_to_read = batch_indices.into_iter()
             .chunks(self.n_threads())
             .into_iter()
@@ -161,19 +159,19 @@ impl BsxFileReader {
                     self.thread_local_handles
                         .par_iter_mut()
                         .zip(tasks_chunk.par_iter())
-                        .filter_map(|(handle, idx)| {
+                        .map(|(handle, idx)| {
                             handle.read_batch(*idx, &self.dictionaries, &self.metadata)
                         })
                         .collect::<Vec<_>>()
                 })
                 .flatten()
-                .map(|df_res| df_res.map(|df| unsafe { BsxBatch::new_unchecked(df) }))
+                .map(|df_res| df_res.map(|df_res| df_res.map(|df| unsafe { BsxBatch::new_unchecked(df) })))
         });
         iter
     }
 
     pub fn iter<'a>(&'a mut self) -> impl Iterator<Item = PolarsResult<BsxBatch>> + 'a {
-        self.iter_batches(0..self.blocks_total())
+        self.iter_batches(0..self.blocks_total()).map(|i| i.unwrap())
     }
 
     pub fn blocks_total(&self) -> usize {
@@ -187,6 +185,7 @@ impl BsxFileReader {
         let mut new_batches = self
             .get_batches(batch_indices)
             .into_iter()
+            .flatten()
             .collect::<PolarsResult<VecDeque<_>>>()?;
         self.cache.append(&mut new_batches);
         Ok(())

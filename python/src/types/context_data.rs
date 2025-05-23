@@ -1,4 +1,4 @@
-use bsxplorer2::data_structs::context_data::ContextData as RustContextData;
+use bsxplorer2::data_structs::ContextData as RustContextData;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 

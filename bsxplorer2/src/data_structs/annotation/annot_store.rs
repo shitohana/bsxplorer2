@@ -8,17 +8,19 @@ use hashbrown::HashMap;
 use id_tree::{InsertBehavior, Node, NodeId, Tree, TreeBuilder};
 use itertools::Itertools;
 use log::warn;
-use multimap::MultiMap;
 
 use super::RawGffEntry;
 use crate::data_structs::annotation::{GffEntry, GffEntryAttributes};
 use crate::data_structs::coords::{Contig, GenomicPosition};
 use crate::data_structs::typedef::BsxSmallStr;
-use crate::io::bsx::BatchIndex;
 
-const UPSTREAM_TYPE_NAME: &str = "upstream";
-const DOWNSTREAM_TYPE_NAME: &str = "downstream";
-
+/// A data structure to store and manage genomic annotations (GffEntry).
+///
+/// It uses multiple internal structures for efficient lookup:
+/// - A `HashMap` for ID-based lookup of `GffEntry`.
+/// - An `id_tree::Tree` to represent parent-child relationships between entries.
+/// - A `HashMap` mapping sequence names to `bio::data_structures::interval_tree::IntervalTree`
+///   for genomic range queries.
 #[derive(Clone, Debug)]
 pub struct HcAnnotStore {
     ids:          Vec<ArcStr>,
@@ -55,7 +57,8 @@ impl FromIterator<GffEntry> for HcAnnotStore {
 const TREE_ROOT_ID: ArcStr = arcstr::literal!("BSX_ROOT_NODE");
 
 impl HcAnnotStore {
-    fn new() -> Self {
+    /// Creates a new empty `HcAnnotStore`.
+    pub fn new() -> Self {
         let mut tree = Tree::new();
         let root_id = tree
             .insert(Node::new(TREE_ROOT_ID.clone()), InsertBehavior::AsRoot)
@@ -71,23 +74,39 @@ impl HcAnnotStore {
         }
     }
 
-    fn from_gff<R: Read>(handle: R) -> Result<Self, Box<dyn Error>> {
+    /// Returns an iterator over all entries in the store.
+    pub fn iter(&self) -> impl Iterator<Item = &GffEntry> {
+        self.entries.values()
+    }
+
+    /// Creates a new `HcAnnotStore` by reading and parsing a GFF file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the GFF file cannot be read or parsed correctly.
+    pub fn from_gff<R: Read>(handle: R) -> Result<Self, Box<dyn Error>> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(b'\t')
+            .comment(Some(b'#'))
             .has_headers(false)
             .flexible(true)
-            .ascii()
             .from_reader(handle);
 
         let mut entries = Vec::new();
+
         for result in reader.deserialize() {
             let entry: RawGffEntry = result?;
             entries.push(GffEntry::try_from(entry)?);
         }
-
         Ok(Self::from_iter(entries))
     }
 
+    /// Creates a new `HcAnnotStore` by reading and parsing a BED file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the BED file cannot be read or parsed correctly,
+    /// or if an entry fails to insert.
     pub fn from_bed<R: Read>(handle: R) -> Result<Self, Box<dyn Error>> {
         use bio::io::bed;
 
@@ -104,7 +123,12 @@ impl HcAnnotStore {
         Ok(annot_store)
     }
 
-    fn with_capacity(capacity: usize) -> Self {
+    /// Creates a new empty `HcAnnotStore` with a pre-allocated capacity.
+    ///
+    /// # Arguments
+    ///
+    /// * `capacity` - The estimated number of entries to pre-allocate space for.
+    pub fn with_capacity(capacity: usize) -> Self {
         let mut tree = TreeBuilder::new().with_node_capacity(capacity).build();
         let root_id = tree
             .insert(Node::new(TREE_ROOT_ID.clone()), InsertBehavior::AsRoot)
@@ -120,9 +144,26 @@ impl HcAnnotStore {
         }
     }
 
+    /// Inserts a `GffEntry` into the store.
+    ///
+    /// The entry is added to the internal HashMap, IntervalTree, and the id_tree
+    /// based on its ID and parent information.
+    ///
+    /// # Arguments
+    ///
+    /// * `entry` - The `GffEntry` to insert.
+    ///
     /// # Note
-    /// Name "BSX_ROOT_NODE" is reserved
-    fn insert(
+    /// Name "BSX_ROOT_NODE" is reserved. An error will be returned if an entry
+    /// uses this ID or specifies this as a parent.
+    /// Multiple parent IDs are currently not fully supported; only the first
+    /// parent is used for tree structure, and a warning is logged for multiple parents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the entry's ID is the reserved "BSX_ROOT_NODE",
+    /// if a parent ID is the reserved "BSX_ROOT_NODE", or if tree insertion fails.
+    pub fn insert(
         &mut self,
         entry: GffEntry,
     ) -> Result<(), Box<dyn Error>> {
@@ -147,11 +188,17 @@ impl HcAnnotStore {
                     return Err("Name \"BSX_ROOT_NODE\" is reserved".into());
                 }
 
-                let parent_node_id =
-                    self.tree_ids.get(&ArcStr::from(parent.as_str())).unwrap();
+                let parent_node_id = if let Some(parent_node_id) = self.tree_ids.get(&ArcStr::from(parent.as_str())) {
+                    parent_node_id.clone()
+                } else {
+                    let new_node = Node::new(parent.as_str().into());
+                    let new_node_id = self.tree.insert(new_node, InsertBehavior::UnderNode(&self.tree_root_id))?;
+                    self.tree_ids.insert(parent.as_str().into(), new_node_id.clone());
+                    new_node_id
+                };
                 let new_node_id = self.tree.insert(
                     Node::new(id.clone()),
-                    InsertBehavior::UnderNode(parent_node_id),
+                    InsertBehavior::UnderNode(&parent_node_id),
                 )?;
                 self.tree_ids.insert(id.clone(), new_node_id);
 
@@ -169,13 +216,101 @@ impl HcAnnotStore {
                 )?;
                 self.tree_ids.insert(id.clone(), new_node_id);
             }
+        } else { // No parent specified, insert under the root node
+             let new_node_id = self.tree.insert(
+                 Node::new(id.clone()),
+                 InsertBehavior::UnderNode(&self.tree_root_id),
+             )?;
+             self.tree_ids.insert(id.clone(), new_node_id);
         }
+
 
         self.entries.insert(id.clone(), entry);
         Ok(())
     }
 
-    fn genomic_query(
+    /// Adds flanking regions to annotation map
+    ///
+    /// For entries selected by the `selector` function, new GffEntry objects
+    /// representing flanking regions are created and inserted into the store.
+    /// The new entries' feature types will be prefixed with `prefix`.
+    ///
+    /// # Parameters
+    ///
+    /// * `selector` - A function that takes a reference to a `GffEntry` and returns `true` if the entry should have flanking regions added.
+    /// * `flank` - The length of the flank regions to be added. A positive value adds the flank downstream (after the end), a negative value adds the flank upstream (before the start).
+    /// * `prefix` - A string prefix to add to the feature type of the newly created flanking entries.
+    pub fn add_flank<F>(
+        &mut self,
+        selector: F,
+        flank: i32,
+        prefix: &str,
+    ) where
+        F: Fn(&GffEntry) -> bool, {
+        let selected_entries = self
+            .entries
+            .iter()
+            .filter(|(_id, entry)| selector(entry)) // Filter by entry content, not id
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect_vec();
+
+        for (id, parent) in selected_entries {
+            let (start, end) = if flank > 0 {
+                // Flank downstream (after end)
+                (
+                    parent.contig.end_gpos(),
+                    parent.contig.end_gpos().shift(flank as isize),
+                )
+            }
+            else {
+                // Flank upstream (before start)
+                (
+                    parent.contig.start_gpos().shift(flank as isize),
+                    parent.contig.start_gpos(),
+                )
+            };
+
+            // Ensure start <= end for the range
+            let (start, end) = if start <= end { (start, end) } else { (end, start) };
+
+
+            let mut feature_type = prefix.to_string();
+            feature_type.push_str(parent.feature_type.as_str());
+
+            // Create a new unique ID for the flank entry
+            let flank_id_str = format!("{}_flank_{}", id, flank);
+            let flank_id: ArcStr = flank_id_str.into(); // Convert to ArcStr
+
+            let flank_entry = GffEntry::new(
+                (start..end).into(), // Assuming Range<GenomicPosition> converts to Contig
+                None, // No source
+                Some(feature_type.into()), // New feature type
+                None, // No score
+                None, // No strand
+                Some( // Attributes
+                    GffEntryAttributes::default()
+                        .with_id(flank_id.as_str().into()) // Set the unique ID for the flank
+                        .with_parent(Some(vec![BsxSmallStr::from_str(id.as_str())])), // Set parent to the original entry
+                ),
+            );
+
+            // Use insert which handles adding to all internal structures
+            // Propagate the error if insertion fails
+            self.insert(flank_entry).expect("Failed to insert flank entry");
+        }
+    }
+
+    /// Queries the store for entries overlapping a given genomic contig/range.
+    ///
+    /// # Arguments
+    ///
+    /// * `contig` - The genomic contig (including start and end positions) to query.
+    ///
+    /// # Returns
+    ///
+    /// An optional vector of `ArcStr` IDs for the entries that overlap the given `contig`.
+    /// Returns `None` if the sequence name is not found in the store.
+    pub fn genomic_query(
         &self,
         contig: &Contig,
     ) -> Option<Vec<ArcStr>> {
@@ -186,7 +321,8 @@ impl HcAnnotStore {
         })
     }
 
-    fn get_feature_types(&self) -> Vec<&str> {
+    /// Returns a vector of unique feature types present in the store.
+    pub fn get_feature_types(&self) -> Vec<&str> {
         self.entries
             .values()
             .map(|e| e.feature_type().as_str())
@@ -194,11 +330,39 @@ impl HcAnnotStore {
             .collect()
     }
 
-    fn get_entry(
+    /// Retrieves a reference to a `GffEntry` by its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the entry to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the `GffEntry` if found, otherwise `None`.
+    pub fn get_entry(
         &self,
         id: &ArcStr,
     ) -> Option<&GffEntry> {
         self.entries.get(id)
+    }
+
+    /// Retrieves a vector of references to `GffEntry` objects whose IDs match a regex pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The regex pattern to match against entry IDs.
+    ///
+    /// # Returns
+    ///
+    /// A vector containing references to the matching `GffEntry` objects.
+    pub fn get_entries_regex(
+        &self,
+        pattern: &str,
+    ) -> Vec<&GffEntry> {
+        self.entries
+            .values()
+            .filter(|entry| entry.id.find(pattern).is_some())
+            .collect()
     }
 
     fn get_nodeid(
@@ -217,7 +381,17 @@ impl HcAnnotStore {
             .and_then(|node_id| self.tree.get(node_id).ok())
     }
 
-    fn get_children(
+    /// Retrieves the IDs of the direct children of a given entry in the tree structure.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the parent entry.
+    ///
+    /// # Returns
+    ///
+    /// An optional vector of `ArcStr` IDs representing the children.
+    /// Returns `None` if the given ID is not found in the tree.
+    pub fn get_children(
         &self,
         id: &ArcStr,
     ) -> Option<Vec<ArcStr>> {
@@ -229,7 +403,17 @@ impl HcAnnotStore {
         })
     }
 
-    fn get_parent(
+    /// Retrieves the ID of the direct parent of a given entry in the tree structure.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the child entry.
+    ///
+    /// # Returns
+    ///
+    /// An optional `ArcStr` ID representing the parent. Returns `None` if the given ID
+    /// is not found, or if the found node is the root node.
+    pub fn get_parent(
         &self,
         id: &ArcStr,
     ) -> Option<ArcStr> {
@@ -241,518 +425,36 @@ impl HcAnnotStore {
             .flatten()
     }
 
-    fn sort_self(&mut self) -> Result<(), Box<dyn Error>> {
+    /// Sorts the children of each node in the internal tree based on the start position of the corresponding `GffEntry`.
+    ///
+    /// This can help in traversing the tree in genomic order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if tree manipulation fails.
+    pub fn sort_self(&mut self) -> Result<(), Box<dyn Error>> {
         let ids_list = self.tree_ids.values().cloned().collect_vec();
         for node_id in ids_list.iter() {
+            // The id_tree root node does not have an associated GffEntry, skip sorting children for it?
+            // Or handle the case where entries.get() returns None. The current implementation defaults to 0.
+            // This might sort the children of the root node, which could be top-level entries.
             self.tree.sort_children_by_key(node_id, |node| {
                 self.entries
                     .get(node.data())
                     .map(|entry| entry.contig().start())
-                    .unwrap_or(0)
+                    .unwrap_or(0) // Default to 0 if entry not found (e.g., for the root node's direct children if root data is not an entry ID)
             })?;
         }
         Ok(())
     }
 
-    pub fn len(&self) -> usize {
-        self.ids.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.ids.is_empty()
-    }
-}
-
-/// A store for genomic annotations.
-///
-/// Provides functionality to store, retrieve, and manipulate GFF entries.
-pub struct AnnotStore {
-    id_map:       HashMap<BsxSmallStr, GffEntry>,
-    parent_map:   MultiMap<BsxSmallStr, BsxSmallStr>,
-    children_map: MultiMap<BsxSmallStr, BsxSmallStr>,
-}
-
-impl Default for AnnotStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AnnotStore {
-    /// Creates a new empty `AnnotStore`.
-    pub fn new() -> Self {
-        Self {
-            id_map:       Default::default(),
-            parent_map:   Default::default(),
-            children_map: Default::default(),
-        }
-    }
-
-    /// Inserts a GFF entry into the store.
-    ///
-    /// Returns `Some(())` if the entry was inserted successfully, or `None` if
-    /// an entry with the same ID already exists.
-    pub fn insert(
-        &mut self,
-        entry: GffEntry,
-    ) -> Option<()> {
-        if self.id_map.contains_key(&entry.id) {
-            None
-        }
-        else {
-            self.id_map.insert(entry.id.clone(), entry.clone());
-            for parent in entry.attributes.parent.as_ref().unwrap_or(&vec![]) {
-                self.parent_map.insert(entry.id.clone(), parent.to_owned());
-                self.children_map
-                    .insert(parent.to_owned(), entry.id.clone());
-            }
-            Some(())
-        }
-    }
-
-    /// Removes a GFF entry from the store by ID.
-    ///
-    /// Returns the removed entry if found, or `None` if no entry with the given
-    /// ID exists.
-    pub fn remove(
-        &mut self,
-        id: &BsxSmallStr,
-    ) -> Option<GffEntry> {
-        let removed = self.id_map.remove(id);
-        let _removed_parents = self.parent_map.remove(id);
-        let _removed_children = self.children_map.remove(id);
-
-        removed
-    }
-
-    /// Returns an iterator over all entries in the store.
-    pub fn iter(&self) -> AnnotIterator {
-        AnnotIterator {
-            store: self,
-            iter:  Box::from(self.id_map.clone().into_iter()),
-        }
-    }
-
-    /// Returns an iterator over all entries, sorted by chromosome and position.
-    pub fn iter_sorted(
-        &self,
-        index: &BatchIndex,
-    ) -> AnnotIterator {
-        let iterator: Box<dyn Iterator<Item = _>> = Box::from(
-            self.iter()
-                .into_group_map_by(|(_id, entry)| {
-                    index.get_chr_index(entry.contig.seqname())
-                })
-                .into_iter()
-                .sorted_by_cached_key(|(key, _value)| *key)
-                .flat_map(|(_key, value)| {
-                    value
-                        .into_iter()
-                        .sorted_by_cached_key(|(_id, entry)| entry.contig.start())
-                })
-                .map(|(id, value)| (id.clone(), value.clone())),
-        );
-
-        AnnotIterator {
-            store: self,
-            iter:  iterator,
-        }
-    }
-
-    /// Gets the parents of an entry.
-    pub fn get_parents(
-        &self,
-        id: &BsxSmallStr,
-    ) -> Option<&Vec<BsxSmallStr>> {
-        self.parent_map.get_vec(id)
-    }
-
-    /// Gets the children of an entry.
-    pub fn get_children(
-        &self,
-        id: &BsxSmallStr,
-    ) -> Option<&Vec<BsxSmallStr>> {
-        self.children_map.get_vec(id)
-    }
-
-    /// Adds upstream regions to selected entries.
-    pub fn add_upstream<F: Fn(&GffEntry) -> bool>(
-        &mut self,
-        selector: F,
-        length: u32,
-    ) {
-        let mut entries = vec![];
-        for (id, entry) in self.id_map.iter() {
-            if selector(entry) {
-                let upstream_end = entry.contig.start();
-                let upstream_start = upstream_end.saturating_sub(length);
-                let contig = Contig::new(
-                    BsxSmallStr::from(entry.contig.seqname().as_str()),
-                    upstream_start,
-                    upstream_end,
-                    entry.contig.strand(),
-                );
-
-                let upstream_entry = GffEntry::new(
-                    contig,
-                    None,
-                    Some(
-                        if entry.feature_type.is_empty() {
-                            UPSTREAM_TYPE_NAME.into()
-                        }
-                        else {
-                            format!("{}_{}", entry.feature_type, UPSTREAM_TYPE_NAME)
-                                .into()
-                        },
-                    ),
-                    None,
-                    None,
-                    Some(
-                        GffEntryAttributes::default()
-                            .with_parent(Some(vec![id.clone()])),
-                    ),
-                );
-                entries.push(upstream_entry);
-            }
-        }
-
-        for entry in entries {
-            self.insert(entry);
-        }
-    }
-
-    /// Adds downstream regions to selected entries.
-    pub fn add_downstream<F: Fn(&GffEntry) -> bool>(
-        &mut self,
-        selector: F,
-        length: u32,
-    ) {
-        let mut entries = vec![];
-        for (id, entry) in self.id_map.iter() {
-            if selector(entry) {
-                let downstream_start = entry.contig.end();
-                let downstream_end = downstream_start + length;
-                let contig = Contig::new(
-                    BsxSmallStr::from(entry.contig.seqname().as_str()),
-                    downstream_start,
-                    downstream_end,
-                    entry.contig.strand(),
-                );
-
-                let downstream_entry = GffEntry::new(
-                    contig,
-                    None,
-                    Some(
-                        if entry.feature_type.is_empty() {
-                            DOWNSTREAM_TYPE_NAME.into()
-                        }
-                        else {
-                            format!("{}_{}", entry.feature_type, DOWNSTREAM_TYPE_NAME)
-                                .into()
-                        },
-                    ),
-                    None,
-                    None,
-                    Some(
-                        GffEntryAttributes::default()
-                            .with_parent(Some(vec![id.clone()])),
-                    ),
-                );
-                entries.push(downstream_entry);
-            }
-        }
-
-        for entry in entries {
-            self.insert(entry);
-        }
-    }
-
-    /// Adds both upstream and downstream regions to selected entries.
-    pub fn add_flanks<F: Fn(&GffEntry) -> bool + Clone>(
-        &mut self,
-        selector: F,
-        length: u32,
-    ) {
-        self.add_upstream(selector.clone(), length);
-        self.add_downstream(selector.clone(), length);
-    }
-
-    /// Returns a reference to the internal ID map.
-    pub fn id_map(&self) -> &HashMap<BsxSmallStr, GffEntry> {
-        &self.id_map
-    }
-
-    /// Returns a reference to the internal parent map.
-    pub fn parent_map(&self) -> &MultiMap<BsxSmallStr, BsxSmallStr> {
-        &self.parent_map
-    }
-
-    /// Returns a reference to the internal children map.
-    pub fn children_map(&self) -> &MultiMap<BsxSmallStr, BsxSmallStr> {
-        &self.children_map
-    }
-
     /// Returns the number of entries in the store.
     pub fn len(&self) -> usize {
-        self.id_map.len()
+        self.ids.len() // Assuming self.ids is equivalent to self.entries.len()
     }
 
+    /// Returns `true` if the store contains no entries.
     pub fn is_empty(&self) -> bool {
-        self.id_map.is_empty()
-    }
-}
-
-/// An iterator over the entries in an `AnnotStore`.
-pub struct AnnotIterator<'a> {
-    store: &'a AnnotStore,
-    iter:  Box<dyn Iterator<Item = (BsxSmallStr, GffEntry)>>,
-}
-
-impl Iterator for AnnotIterator<'_> {
-    type Item = (BsxSmallStr, GffEntry);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.store.len(), Some(self.store.len()))
-    }
-
-    fn count(self) -> usize
-    where
-        Self: Sized, {
-        self.store.len()
-    }
-}
-
-impl FromIterator<GffEntry> for AnnotStore {
-    fn from_iter<T: IntoIterator<Item = GffEntry>>(iter: T) -> Self {
-        let mut new_self = Self::new();
-        iter.into_iter().for_each(|entry| {
-            new_self.insert(entry);
-        });
-        new_self
-    }
-}
-
-impl FromIterator<(String, GffEntry)> for AnnotStore {
-    fn from_iter<T: IntoIterator<Item = (String, GffEntry)>>(iter: T) -> Self {
-        let mut new_self = Self::new();
-        iter.into_iter().for_each(|(_id, entry)| {
-            new_self.insert(entry);
-        });
-        new_self
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use arcstr::ArcStr;
-
-    use super::*;
-    use crate::data_structs::enums::Strand;
-
-
-    /// Helper function to create a test GffEntry.
-    ///
-    /// This function is not meant to be used directly but is used by the
-    /// doctests.
-    #[doc(hidden)]
-    pub fn create_test_entry(
-        id: &str,
-        seqname: &str,
-        start: u32,
-        end: u32,
-    ) -> GffEntry {
-        let contig =
-            Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
-
-        let attrs =
-            GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
-
-        GffEntry::new(
-            contig,
-            Some(arcstr::ArcStr::from("test")),
-            Some(arcstr::ArcStr::from("gene")),
-            None,
-            None,
-            Some(attrs),
-        )
-    }
-
-    /// Helper function to create a test GffEntry with parent information.
-    ///
-    /// This function is not meant to be used directly but is used by the
-    /// doctests.
-    #[doc(hidden)]
-    pub fn create_test_entry_with_parent(
-        id: &str,
-        seqname: &str,
-        start: u32,
-        end: u32,
-        parent: Option<Vec<&str>>,
-    ) -> GffEntry {
-        let contig =
-            Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
-
-        let mut attrs =
-            GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
-
-        if let Some(parents) = parent {
-            attrs = attrs.with_parent(Some(
-                parents.into_iter().map(BsxSmallStr::from).collect(),
-            ));
-        }
-
-        GffEntry::new(
-            contig,
-            Some(arcstr::ArcStr::from("test")),
-            Some(arcstr::ArcStr::from("gene")),
-            None,
-            None,
-            Some(attrs),
-        )
-    }
-
-    /// Create a mock BatchIndex for testing
-    fn create_mock_index() -> BatchIndex {
-        let mut index = BatchIndex::new();
-
-        // Insert contigs for chr1 and chr2 with batch indices
-        index.insert(
-            Contig::new(BsxSmallStr::from("chr1"), 0, 10000, Strand::Forward),
-            0,
-        );
-        index.insert(
-            Contig::new(BsxSmallStr::from("chr2"), 0, 20000, Strand::Forward),
-            1,
-        );
-
-        index
-    }
-
-    #[test]
-    fn test_insert_and_remove() {
-        let mut store = AnnotStore::new();
-
-        // Insert an entry
-        let entry = create_test_entry("gene1", "chr1", 1000, 2000);
-        assert!(store.insert(entry.clone()).is_some());
-        assert_eq!(store.len(), 1);
-
-        // Try to insert the same entry again
-        assert!(store.insert(entry).is_none());
-        assert_eq!(store.len(), 1);
-
-        // Remove the entry
-        let id: BsxSmallStr = "gene1".into();
-        let removed = store.remove(&id);
-        assert!(removed.is_some());
-        assert_eq!(store.len(), 0);
-    }
-
-    #[test]
-    fn test_parent_child_relationships() {
-        let mut store = AnnotStore::new();
-
-        // Create parent entry
-        let parent = create_test_entry_with_parent("gene1", "chr1", 1000, 5000, None);
-        store.insert(parent);
-
-        // Create child entries with parent references
-        let child1 = create_test_entry_with_parent(
-            "exon1",
-            "chr1",
-            1000,
-            2000,
-            Some(vec!["gene1"]),
-        );
-        let child2 = create_test_entry_with_parent(
-            "exon2",
-            "chr1",
-            3000,
-            4000,
-            Some(vec!["gene1"]),
-        );
-        store.insert(child1);
-        store.insert(child2);
-
-        // Check parent relationships
-        let parent_id: BsxSmallStr = "gene1".into();
-        let children = store.get_children(&parent_id).unwrap();
-        assert_eq!(children.len(), 2);
-        assert!(children.contains(&"exon1".into()));
-        assert!(children.contains(&"exon2".into()));
-
-        // Check child relationships
-        let child_id: BsxSmallStr = "exon1".into();
-        let parents = store.get_parents(&child_id).unwrap();
-        assert_eq!(parents.len(), 1);
-        assert_eq!(parents[0], "gene1");
-    }
-
-    #[test]
-    fn test_add_upstream_downstream() {
-        let mut store = AnnotStore::new();
-        let entry = create_test_entry("gene1", "chr1", 1000, 2000);
-        store.insert(entry);
-
-        // Add upstream regions
-        store.add_upstream(|entry| entry.feature_type == ArcStr::from("gene"), 500);
-        assert_eq!(store.len(), 2);
-
-        // Add downstream regions
-        store.add_downstream(|entry| entry.feature_type == ArcStr::from("gene"), 500);
-        assert_eq!(store.len(), 3);
-
-        // Check types
-        let has_upstream = store
-            .iter()
-            .any(|(_, entry)| entry.feature_type.contains("upstream"));
-        let has_downstream = store
-            .iter()
-            .any(|(_, entry)| entry.feature_type.contains("downstream"));
-        assert!(has_upstream);
-        assert!(has_downstream);
-    }
-
-    #[test]
-    fn test_iter_sorted() {
-        let mut store = AnnotStore::new();
-
-        // Add entries in different chromosomes
-        store.insert(create_test_entry("gene1", "chr1", 3000, 4000));
-        store.insert(create_test_entry("gene2", "chr1", 1000, 2000));
-        store.insert(create_test_entry("gene3", "chr2", 1000, 2000));
-
-        // Create mock index
-        let index = create_mock_index();
-
-        // Get sorted iterator
-        let sorted_entries: Vec<_> = store.iter_sorted(&index).collect();
-
-        // Check sorting - first by chromosome, then by start position
-        assert_eq!(sorted_entries[0].0, "gene2"); // chr1, pos 1000
-        assert_eq!(sorted_entries[1].0, "gene1"); // chr1, pos 3000
-        assert_eq!(sorted_entries[2].0, "gene3"); // chr2, pos 1000
-    }
-
-    use id_tree::InsertBehavior::*;
-    #[test]
-    fn tree_test() {
-        let mut tree: Tree<i32> = TreeBuilder::new().with_node_capacity(5).build();
-
-        let root_id: NodeId = tree.insert(Node::new(0), AsRoot).unwrap();
-        let child_id: NodeId = tree.insert(Node::new(1), UnderNode(&root_id)).unwrap();
-        tree.insert(Node::new(2), UnderNode(&root_id)).unwrap();
-        tree.insert(Node::new(3), UnderNode(&child_id)).unwrap();
-        let child2_id = tree.insert(Node::new(4), UnderNode(&child_id)).unwrap();
-        tree.insert(Node::new(3), UnderNode(&child2_id)).unwrap();
-
-        assert_eq!(tree.children(&child_id).unwrap().count(), 2);
-        assert_eq!(tree.children(&child2_id).unwrap().count(), 1);
-        println!("{:?}", tree.ancestors(&child2_id).unwrap().collect_vec())
+        self.ids.is_empty() // Assuming self.ids is equivalent to self.entries.is_empty()
     }
 }

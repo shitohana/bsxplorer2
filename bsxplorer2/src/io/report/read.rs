@@ -14,7 +14,7 @@ use rayon::prelude::*;
 use rayon::ThreadPool;
 
 use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
-use crate::data_structs::context_data::ContextData;
+use crate::data_structs::ContextData;
 use crate::data_structs::typedef::BsxSmallStr;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
@@ -312,7 +312,7 @@ impl ReportReader {
                 }
                 else {
                     let drained =
-                        cached_data.drain_until(batch.first_pos().unwrap_or(0));
+                        cached_data.drain_until(batch.last_pos().unwrap_or(0));
                     (drained, Some((chr, cached_data)))
                 };
                 // Update cache (leftover if not final else None)

@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -15,7 +14,7 @@ pub trait IPCEncodedEnum {
 
 pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum Context {
     /// CG context.
@@ -27,6 +26,7 @@ pub enum Context {
 }
 
 impl Display for Context {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
@@ -67,35 +67,6 @@ impl<'de> Deserialize<'de> for Context {
     }
 }
 
-impl PartialOrd<Self> for Context {
-    fn partial_cmp(
-        &self,
-        other: &Self,
-    ) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Context {
-    fn cmp(
-        &self,
-        other: &Self,
-    ) -> Ordering {
-        // Define an explicit order
-        let self_val = match self {
-            Context::CG => 2,
-            Context::CHG => 1,
-            Context::CHH => 0,
-        };
-        let other_val = match other {
-            Context::CG => 2,
-            Context::CHG => 1,
-            Context::CHH => 0,
-        };
-        self_val.cmp(&other_val)
-    }
-}
-
 impl IPCEncodedEnum for Context {
     fn from_bool(value: Option<bool>) -> Context {
         match value {
@@ -123,7 +94,7 @@ impl IPCEncodedEnum for Context {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum Strand {
     /// Forward strand.
@@ -202,35 +173,6 @@ impl<'de> Deserialize<'de> for Strand {
         D: serde::Deserializer<'de>, {
         let s = String::deserialize(deserializer)?;
         std::str::FromStr::from_str(&s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl PartialOrd<Self> for Strand {
-    fn partial_cmp(
-        &self,
-        other: &Self,
-    ) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Strand {
-    fn cmp(
-        &self,
-        other: &Self,
-    ) -> Ordering {
-        // Define an explicit order
-        let self_val = match self {
-            Strand::Forward => 2,
-            Strand::Reverse => 1,
-            Strand::None => 0,
-        };
-        let other_val = match other {
-            Strand::Forward => 2,
-            Strand::Reverse => 1,
-            Strand::None => 0,
-        };
-        self_val.cmp(&other_val)
     }
 }
 

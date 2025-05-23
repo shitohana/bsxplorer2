@@ -9,7 +9,7 @@ use bio::bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 
 use crate::data_structs::batch::BsxBatch;
-use crate::data_structs::enums::Context;
+use crate::data_structs::Context;
 use crate::data_structs::typedef::{CountType, DensityType, PosType};
 use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;

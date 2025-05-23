@@ -10,7 +10,7 @@ use bsxplorer2::data_structs::batch::{create_caregorical_dtype,
                                       BsxBatch,
                                       BsxBatchBuilder,
                                       BsxColumns};
-use bsxplorer2::data_structs::context_data::ContextData;
+use bsxplorer2::data_structs::ContextData;
 use bsxplorer2::io::bsx::BsxFileWriter;
 use bsxplorer2::io::report::ReportType;
 use itertools::Itertools;
@@ -18,7 +18,6 @@ use polars::prelude::{AnyValue, Column, DataType, Scalar};
 use polars::series::ChunkCompareEq;
 use rand::{random, Rng, RngCore, SeedableRng};
 use rand_distr::{Binomial, Distribution, Normal};
-use smallstr::SmallString;
 
 pub struct DemoReportBuilder<R: SeedableRng + RngCore> {
     chr_len:       usize,
@@ -57,54 +56,6 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
             mean_density: mean_methylation,
             rng,
         }
-    }
-
-    pub fn write_bsx<W: Write>(
-        mut self,
-        sink: W,
-        n_chr: usize,
-        chunk_size: usize,
-    ) -> anyhow::Result<Vec<BsxBatch>> {
-        let mut orig_batches = Vec::<BsxBatch>::new();
-        let mut chr_batches = BTreeMap::new();
-
-        for (_record, mut full_batch) in self.into_iter().take(n_chr) {
-            let chr = full_batch.seqname().unwrap().to_owned();
-            orig_batches.push(full_batch.clone());
-            let mut partitioned = Vec::new();
-
-            loop {
-                let (left, right) = full_batch.split_at(chunk_size);
-                partitioned.push(left);
-                if right.is_empty() {
-                    break;
-                }
-                else {
-                    let _ = std::mem::replace(&mut full_batch, right);
-                }
-            }
-
-            chr_batches.insert(chr, partitioned);
-        }
-
-        let chr_list = chr_batches.keys().cloned().collect::<Vec<_>>();
-        let chr_dtype = create_caregorical_dtype(
-            chr_list.iter().cloned().map(|v| Some(v)).collect_vec(),
-        );
-        let mut writer = BsxFileWriter::try_new(sink, chr_list.clone(), None, None)?;
-
-        for chr in chr_list {
-            let batches = chr_batches.remove(&chr).unwrap();
-            for batch in batches {
-                let df = BsxBatchBuilder::no_checks()
-                    .with_chr_dtype(Some(chr_dtype.clone()))
-                    .cast_only(batch.into_inner())?;
-                let batch = unsafe { BsxBatch::new_unchecked(df) };
-                writer.write_batch(batch)?;
-            }
-        }
-
-        Ok(orig_batches)
     }
 
     pub fn set_chr_length(
@@ -255,19 +206,7 @@ pub fn compare_batches(
             read.data()
         );
     }
-    let (original_df, read_df) = if matches!(report_type, ReportType::BedGraph) {
-        // TODO: Find out, why first row density equal to NaN when testing
-        return Ok(());
-
-        // (
-        //     original
-        //         .data()
-        //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME,
-        // STRAND_NAME]),     read.data()
-        //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME,
-        // STRAND_NAME]), )
-    }
-    else {
+    let (original_df, read_df) = {
         // Cast the "chr" column to string in both dataframes
         let mut original_df = original.data().clone();
         let mut read_df = read.data().clone();
@@ -284,11 +223,18 @@ pub fn compare_batches(
                 .unwrap();
         }
 
+        if matches!(report_type, ReportType::BedGraph) {
+            original_df = original_df.drop(BsxColumns::CountM.as_str())?;
+            original_df = original_df.drop(BsxColumns::CountTotal.as_str())?;
+            read_df = read_df.drop(BsxColumns::CountM.as_str())?;
+            read_df = read_df.drop(BsxColumns::CountTotal.as_str())?;
+        }
+
         (original_df, read_df)
     };
-    if !original_df.equals_missing(&read_df) {
-        let colnames = original_df.schema().iter_names_cloned().collect_vec();
 
+    if !original_df.equals_missing(&read_df) {
+        let mut colnames = original_df.schema().iter_names_cloned().filter(|v| v != BsxColumns::Density.as_str()).collect_vec();
 
         let diff_mask = colnames
             .iter()
@@ -305,6 +251,9 @@ pub fn compare_batches(
             })
             .reduce(|acc, new| acc.bitor(new))
             .unwrap();
+
+        if !diff_mask.any() { return Ok(()) }
+
         let orig_diff = original_df.filter(&diff_mask)?;
         let read_diff = read_df.filter(&diff_mask)?;
         bail!(

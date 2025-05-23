@@ -1,12 +1,9 @@
 use std::str::FromStr;
 
 use arcstr::ArcStr;
-use hashbrown::HashMap;
 
 use super::*;
 use crate::data_structs::annotation::gff_entry::RawGffEntry;
-use crate::data_structs::coords::Contig;
-use crate::data_structs::enums::Strand;
 use crate::data_structs::typedef::BsxSmallStr;
 
 #[test]
@@ -67,94 +64,101 @@ fn test_raw_gff_entry_conversion() {
     assert_eq!(gff_entry.attributes.id, Some("gene123".into()));
 }
 
-#[test]
-fn test_annot_store_insert_and_retrieve() {
-    let mut store = AnnotStore::new();
+/// Helper function to create a test GffEntry.
+///
+/// This function is not meant to be used directly but is used by the
+/// doctests.
+pub fn create_test_entry(
+    id: &str,
+    seqname: &str,
+    start: u32,
+    end: u32,
+) -> GffEntry {
+    let contig =
+        Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
 
-    let contig = Contig::new("chr1".into(), 1, 100, Strand::Forward);
-    let attributes = GffEntryAttributes {
-        id:            Some("gene1".into()),
-        name:          Some(vec!["my_gene".into()]),
-        alias:         None,
-        parent:        None,
-        target:        None,
-        gap:           None,
-        derives_from:  None,
-        note:          None,
-        dbxref:        None,
-        ontology_term: None,
-        other:         HashMap::new(),
-    };
-    let entry = GffEntry::new(
+    let attrs =
+        GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
+
+    GffEntry::new(
         contig,
-        Some(ArcStr::from("test_source")),
-        Some(ArcStr::from("gene")),
-        Some(0.5),
-        Some(1),
-        Some(attributes),
-    );
-
-    store.insert(entry.clone());
-    let retrieved_entry = store.id_map().get("gene1").unwrap();
-    assert_eq!(retrieved_entry, &entry);
+        Some(arcstr::ArcStr::from("test")),
+        Some(arcstr::ArcStr::from("gene")),
+        None,
+        None,
+        Some(attrs),
+    )
 }
 
+/// Helper function to create a test GffEntry with parent information.
+///
+/// This function is not meant to be used directly but is used by the
+/// doctests.
+pub fn create_test_entry_with_parent(
+    id: &str,
+    seqname: &str,
+    start: u32,
+    end: u32,
+    parent: Option<Vec<&str>>,
+) -> GffEntry {
+    let contig =
+        Contig::new(BsxSmallStr::from(seqname), start, end, Strand::Forward);
+
+    let mut attrs =
+        GffEntryAttributes::default().with_id::<BsxSmallStr>(Some(id.into()));
+
+    if let Some(parents) = parent {
+        attrs = attrs.with_parent(Some(
+            parents.into_iter().map(BsxSmallStr::from).collect(),
+        ));
+    }
+
+    GffEntry::new(
+        contig,
+        Some(arcstr::ArcStr::from("test")),
+        Some(arcstr::ArcStr::from("gene")),
+        None,
+        None,
+        Some(attrs),
+    )
+}
+
+/// Create a mock BatchIndex for testing
+fn create_mock_index() -> BatchIndex {
+    let mut index = BatchIndex::new();
+
+    // Insert contigs for chr1 and chr2 with batch indices
+    index.insert(
+        Contig::new(BsxSmallStr::from("chr1"), 0, 10000, Strand::Forward),
+        0,
+    );
+    index.insert(
+        Contig::new(BsxSmallStr::from("chr2"), 0, 20000, Strand::Forward),
+        1,
+    );
+
+    index
+}
+
+use id_tree::InsertBehavior::*;
+use id_tree::{Node, NodeId, Tree, TreeBuilder};
+use itertools::Itertools;
+use crate::data_structs::coords::Contig;
+use crate::data_structs::enums::Strand;
+use crate::io::bsx::BatchIndex;
+
 #[test]
-fn test_annot_store_parent_child_relationships() {
-    let mut store = AnnotStore::new();
+fn tree_test() {
+    let mut tree: Tree<i32> = TreeBuilder::new().with_node_capacity(5).build();
 
-    let contig1 = Contig::new("chr1".into(), 1, 100, Strand::Forward);
-    let attributes1 = GffEntryAttributes {
-        id:            Some("gene1".into()),
-        name:          None,
-        alias:         None,
-        parent:        None,
-        target:        None,
-        gap:           None,
-        derives_from:  None,
-        note:          None,
-        dbxref:        None,
-        ontology_term: None,
-        other:         HashMap::new(),
-    };
-    let entry1 = GffEntry::new(
-        contig1,
-        Some(ArcStr::from("test_source")),
-        Some(ArcStr::from("gene")),
-        Some(0.5),
-        Some(1),
-        Some(attributes1),
-    );
+    let root_id: NodeId = tree.insert(Node::new(0), AsRoot).unwrap();
+    let child_id: NodeId = tree.insert(Node::new(1), UnderNode(&root_id)).unwrap();
+    tree.insert(Node::new(2), UnderNode(&root_id)).unwrap();
+    tree.insert(Node::new(3), UnderNode(&child_id)).unwrap();
+    let child2_id = tree.insert(Node::new(4), UnderNode(&child_id)).unwrap();
+    tree.insert(Node::new(3), UnderNode(&child2_id)).unwrap();
 
-    let contig2 = Contig::new("chr1".into(), 10, 50, Strand::Forward);
-    let attributes2 = GffEntryAttributes {
-        id:            Some("exon1".into()),
-        name:          None,
-        alias:         None,
-        parent:        Some(vec!["gene1".into()]),
-        target:        None,
-        gap:           None,
-        derives_from:  None,
-        note:          None,
-        dbxref:        None,
-        ontology_term: None,
-        other:         HashMap::new(),
-    };
-    let entry2 = GffEntry::new(
-        contig2,
-        Some(ArcStr::from("test_source")),
-        Some(ArcStr::from("exon")),
-        Some(0.7),
-        Some(2),
-        Some(attributes2),
-    );
-
-    store.insert(entry1);
-    store.insert(entry2);
-
-    let parents = store.get_parents(&"exon1".into()).unwrap();
-    assert_eq!(parents, &vec!["gene1".to_string()]);
-
-    let children = store.get_children(&"gene1".into()).unwrap();
-    assert_eq!(children, &vec!["exon1".to_string()]);
+    assert_eq!(tree.children(&child_id).unwrap().count(), 2);
+    assert_eq!(tree.children(&child2_id).unwrap().count(), 1);
+    println!("{:?}", tree.ancestors(&child2_id).unwrap().collect_vec())
 }

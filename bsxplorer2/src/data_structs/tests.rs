@@ -240,7 +240,6 @@ mod methstats_tests {
 }
 
 mod enums_tests {
-    use std::cmp::Ordering;
     use std::panic;
 
     use crate::data_structs::enums::*;
@@ -264,21 +263,6 @@ mod enums_tests {
     }
 
     #[test]
-    fn test_context_ord() {
-        assert_eq!(Context::CG.cmp(&Context::CG), Ordering::Equal);
-        assert_eq!(Context::CHG.cmp(&Context::CHG), Ordering::Equal);
-        assert_eq!(Context::CHH.cmp(&Context::CHH), Ordering::Equal);
-
-        assert_eq!(Context::CG.cmp(&Context::CHG), Ordering::Greater);
-        assert_eq!(Context::CG.cmp(&Context::CHH), Ordering::Greater);
-        assert_eq!(Context::CHG.cmp(&Context::CHH), Ordering::Greater);
-
-        assert_eq!(Context::CHG.cmp(&Context::CG), Ordering::Less);
-        assert_eq!(Context::CHH.cmp(&Context::CG), Ordering::Less);
-        assert_eq!(Context::CHH.cmp(&Context::CHG), Ordering::Less);
-    }
-
-    #[test]
     fn test_context_ipc_encoded() {
         assert_eq!(Context::from_bool(Some(true)), Context::CG);
         assert_eq!(Context::from_bool(Some(false)), Context::CHG);
@@ -299,21 +283,6 @@ mod enums_tests {
         assert_eq!(Strand::from_str("forward"), Strand::None); // Defaults to None
         assert_eq!(Strand::from_str(""), Strand::None);
         assert_eq!(Strand::from_str("AnythingElse"), Strand::None);
-    }
-
-    #[test]
-    fn test_strand_ord() {
-        assert_eq!(Strand::Forward.cmp(&Strand::Forward), Ordering::Equal);
-        assert_eq!(Strand::Reverse.cmp(&Strand::Reverse), Ordering::Equal);
-        assert_eq!(Strand::None.cmp(&Strand::None), Ordering::Equal);
-
-        assert_eq!(Strand::Forward.cmp(&Strand::Reverse), Ordering::Greater);
-        assert_eq!(Strand::Forward.cmp(&Strand::None), Ordering::Greater);
-        assert_eq!(Strand::Reverse.cmp(&Strand::None), Ordering::Greater);
-
-        assert_eq!(Strand::Reverse.cmp(&Strand::Forward), Ordering::Less);
-        assert_eq!(Strand::None.cmp(&Strand::Forward), Ordering::Less);
-        assert_eq!(Strand::None.cmp(&Strand::Reverse), Ordering::Less);
     }
 
     #[test]

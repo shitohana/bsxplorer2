@@ -35,11 +35,6 @@ impl LazyBsxBatch {
         }
     }
 
-    /// Creates a LazyBsxBatch from an existing LazyFrame.
-    fn from_lazy(lazy: LazyFrame) -> Self {
-        Self { data: lazy }
-    }
-
     /// Filters positions less than the specified value.
     pub fn filter_pos_lt<N: Literal>(
         self,

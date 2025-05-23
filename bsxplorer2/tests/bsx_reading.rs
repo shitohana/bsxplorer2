@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use bio::io::gff::Reader as GffReader;
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::data_structs::enums::Strand;
+use bsxplorer2::data_structs::Strand;
 use bsxplorer2::io::bsx::{BsxFileReader, RegionReader};
 use rstest::{fixture, rstest};
 

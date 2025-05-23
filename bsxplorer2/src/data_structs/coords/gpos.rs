@@ -60,6 +60,15 @@ impl GenomicPosition {
     pub fn is_zero(&self) -> bool {
         self.position == PosType::default() && self.seqname == BsxSmallStr::default()
     }
+
+    pub fn shift(mut self, shift: isize) -> GenomicPosition {
+        if shift > 0 {
+            self.position += shift.abs() as PosType
+        } else {
+            self.position -= shift.abs() as PosType
+        };
+        self
+    }
 }
 
 impl From<bio::bio_types::annot::pos::SeqPosUnstranded> for GenomicPosition {
