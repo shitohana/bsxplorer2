@@ -1,28 +1,21 @@
+//! This module provides comprehensive functionality for handling file input
+//! and output within the bsxplorer2 crate. It focuses on reading and
+//! writing genomic data, particularly in the custom `.bsx` format based on
+//! Apache Arrow IPC, and various common methylation report formats.
+//!
+//! Key submodules include:
+//!
+//! - [`bsx`]: Manages the reading and writing of `.bsx` files, offering
+//!   optimized sequential and regional access through structures like
+//!   [`BsxFileReader`], [`BsxFileWriter`], [`BatchIndex`], and [`RegionReader`].
+//! - [`compression`]: Provides utilities for handling compressed data streams,
+//!   used in conjunction with file readers and writers (feature-gated).
+//! - [`report`]: Handles the parsing and writing of different methylation
+//!   report formats (e.g., Bismark, BedGraph, Coverage), including features
+//!   for aligning report data with reference genome contexts using FASTA/FAI.
+
+
 pub mod bsx;
 #[cfg(feature = "compression")]
 pub mod compression;
 pub mod report;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::Path;
-
-use noodles::fasta::fai::io::Reader as FaiReader;
-use noodles::fasta::fai::Record;
-use noodles::fasta::fs::index as index_fasta;
-
-pub(crate) fn read_chrom<P: AsRef<Path>>(
-    path: P,
-    is_index: bool,
-) -> anyhow::Result<Vec<String>> {
-    let index = if is_index {
-        FaiReader::new(BufReader::new(File::open(path)?)).read_index()?
-    }
-    else {
-        index_fasta(path)?
-    };
-    let records: Vec<Record> = index.into();
-    Ok(records
-        .into_iter()
-        .map(|r| String::from_utf8_lossy(r.name()).to_string())
-        .collect())
-}

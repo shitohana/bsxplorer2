@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread::JoinHandle;
 
 use anyhow::bail;
 use bio::io::fasta::{Reader as FastaReader, Record as FastaRecord};
 use crossbeam::channel::Receiver;
 use hashbrown::HashMap;
+use noodles::fasta::fai::{Reader as FaiReader, Record};
+use noodles::fasta::{index as index_fasta};
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use rayon::prelude::*;
@@ -18,10 +20,26 @@ use crate::data_structs::typedef::BsxSmallStr;
 use crate::data_structs::ContextData;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
-use crate::io::read_chrom;
 use crate::io::report::schema::ReportType;
 use crate::utils::get_categorical_dtype;
 use crate::with_field_fn;
+
+pub(crate) fn read_chrom<P: AsRef<Path>>(
+    path: P,
+    is_index: bool,
+) -> anyhow::Result<Vec<String>> {
+    let index = if is_index {
+        FaiReader::new(BufReader::new(File::open(path)?)).read_index()?
+    }
+    else {
+        index_fasta(path)?
+    };
+    let records: Vec<Record> = index.into();
+    Ok(records
+        .into_iter()
+        .map(|r| String::from_utf8_lossy(r.name()).to_string())
+        .collect())
+}
 
 /// A wrapper around BatchedCsvReader that manages ownership of the reader
 pub struct OwnedBatchedCsvReader<F>

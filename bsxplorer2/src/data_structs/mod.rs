@@ -18,11 +18,11 @@
 //!   and lazy evaluation wrappers.
 //! - [`coords`]: Basic structures for representing genomic locations:
 //!   [`GenomicPosition`] for single points and [`Contig`] for genomic regions.
-//! - [`context_data`]: Provides [`ContextData`], which stores genomic context
+//! - [`ContextData`], which stores genomic context
 //!   (like CG, CHG, CHH sites) derived from sequence information.
-//! - [`enums`]: Common enumerations used across the application, such as
+//! - Common enumerations used across the application, such as
 //!   [`Context`] for methylation context and [`Strand`] for genomic strand.
-//! - [`methstats`]: Structures ([`MethylationStats`], [`MethylationStatFlat`])
+//! - Structures ([`MethylationStats`], [`MethylationStatFlat`])
 //!   for holding and summarizing methylation statistics for genomic regions or
 //!   entire samples.
 //! - [`typedef`]: Defines type aliases for common data types used for

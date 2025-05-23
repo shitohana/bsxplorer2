@@ -1,3 +1,21 @@
+//! This module contains various utility functions and helper macros used throughout
+//! the bsxplorer2 crate.
+//!
+//! It provides common functionalities that are not specific to a particular
+//! module but are required by multiple components, promoting code reuse
+//! and maintainability.
+//!
+//! Key functionalities include:
+//!
+//! - Statistical functions, such as Pearson correlation and Mann-Whitney U test.
+//! - Handling of Polars data types, including creation of categorical types
+//!   from chromosome lists and schema/hashmap generation from arrays.
+//! - Macros for common struct operations (e.g., getter functions, builder-style
+//!   `with_*` methods).
+//! - Reading chromosome names from FASTA (`.fa`) and FASTA index (`.fai`) files.
+//! - Utility functions for converting between float and integer representations
+//!   of methylation density values.
+
 use std::io::{BufReader, Read};
 use std::sync::Arc;
 

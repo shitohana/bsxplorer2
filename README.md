@@ -1,20 +1,25 @@
+# BSXplorer2: Accelerating DNA Methylation Analysis
 
-# BSXplorer
+[![Documentation](https://docs.rs/bsxplorer2/badge.svg)](https://docs.rs/bsxplorer2)
+[![Version](https://img.shields.io/crates/v/bsxplorer2)](https://crates.io/crates/bsxplorer2)
+[![codecov](https://codecov.io/github/shitohana/bsxplorer2/graph/badge.svg)](https://codecov.io/github/shitohana/bsxplorer2)
 
-A high-performance, Rust-based library for bisulfite sequencing data analysis and DNA methylation research.
+![License](https://img.shields.io/crates/l/bsxplorer2)
+![Downloads](https://img.shields.io/crates/dr/bsxplorer2)
 
-![License](https://img.shields.io/badge/license-Prosperity-blue)
-![Version](https://img.shields.io/badge/version-0.1.0-green)
+A cutting-edge, high-performance toolkit built in Rust for bisulfite sequencing data analysis and DNA methylation research.
 
 
 <!-- mtoc-start -->
 
 * [Overview](#overview)
 * [Features](#features)
+* [Components](#components)
+  * [Core Rust Library](#core-rust-library)
+  * [Python Wrapper (bsx2)](#python-wrapper-bsx2)
+  * [Console Application (bsxplorer)](#console-application-bsxplorer)
 * [Installation](#installation)
-* [Usage](#usage)
-* [Console Application](#console-application)
-* [BSX Format (IPC File Format)](#bsx-format-ipc-file-format)
+* [BSX Format (Arrow IPC File Format)](#bsx-format-arrow-ipc-file-format)
   * [Performance Benefits](#performance-benefits)
   * [Compression Capabilities](#compression-capabilities)
   * [Data Organization](#data-organization)
@@ -27,125 +32,140 @@ A high-performance, Rust-based library for bisulfite sequencing data analysis an
 
 ## Overview
 
-BSXplorer is a comprehensive toolkit for analyzing bisulfite sequencing data, focusing on efficient processing,
-statistical analysis, and identification of differentially methylated regions (DMRs). Built with performance in mind,
-it leverages Rust's memory safety and concurrency features to handle large-scale methylation datasets effectively.
+BSXplorer2 is designed from the ground up for speed and efficiency, enabling researchers and developers to process and analyze large-scale bisulfite sequencing datasets with unprecedented performance. By leveraging Rust's powerful features and integrating with modern data processing libraries like Polars and Arrow, BSXplorer2 provides a robust and scalable solution for identifying differentially methylated regions (DMRs), calculating methylation statistics, and handling various report formats.
+
+Whether you prefer command-line tools for quick analyses or a programmatic interface for complex pipelines, BSXplorer2 offers flexible access through its console binary and Python bindings.
 
 ## Features
 
-- **Efficient Data Structures**
-    - Optimized storage and processing of methylation data using Polars DataFrames
-    - Memory-efficient encoding of methylation contexts and strand information
-    - Support for batch processing of large datasets
+✨ **Core Capabilities for High-Impact Research**
 
-- **Versatile I/O Support**
-    - Custom BSX file (Apache IPC File) format for efficient methylation data storage
-    - Support for popular methylation report formats:
-        - Bismark methylation extractor output
-        - CG methylation map (CgMap)
-        - BedGraph methylation density format
-        - Coverage reports with methylated/unmethylated counts
-    - FASTA sequence integration for genomic context analysis
+-   **Blazing Fast Data Handling:** Process massive datasets efficiently using memory-optimized data structures and native parallelization.
+-   **Comprehensive Report Support:** Seamlessly work with Bismark, CGmap, BedGraph, and Coverage formats, plus our high-performance BSX format.
+-   **Context-Aware Analysis:** Drill down into CG, CHG, and CHH methylation patterns.
+-   **Advanced DMR Detection:** Pinpoint differentially methylated regions using cutting-edge segmentation and statistical methods.
+-   **Robust Statistics:** Calculate detailed methylation statistics, coverage distributions, and apply sophisticated statistical tests.
 
-- **Methylation Analysis Tools**
-    - Context-specific methylation analysis (CG, CHG, CHH)
-    - Strand-specific methylation patterns
-    - Comprehensive methylation statistics calculation
-    - Coverage distribution analysis
+⚡ **Engineered for Performance**
 
-- **Differentially Methylated Region (DMR) Detection**
-    - Advanced total variation segmentation algorithm
-    - Mann-Whitney U statistical testing for DMR validation
-    - Configurable DMR parameters (minimum coverage, p-value thresholds, etc.)
-    - Region filtering and merging capabilities
+-   **Rust Native Speed:** Built on Rust for maximum performance and reliability.
+-   **Polars & Arrow Integration:** Leverage column-oriented processing for speed and memory efficiency.
+-   **Parallel Execution:** Utilize multi-core processors effectively with Rayon.
 
-- **Statistical Methods**
-    - Beta-binomial distribution modeling for methylation data
-    - Method of Moments (MoM) estimation for distribution parameters
-    - Kolmogorov-Smirnov and Mann-Whitney U non-parametric tests
-    - Dimensionality reduction techniques for methylation patterns
+🤝 **User-Friendly & Accessible**
 
-- **Performance Optimizations**
-    - Parallel processing with Rayon for CPU-intensive operations
-    - Memory-efficient data representations
-    - Batch processing for large datasets
-    - Optimized algorithms for DMR detection
+-   **Intuitive Console App:** Perform common tasks easily with the `bsxplorer` command-line tool.
+-   **Flexible Python API:** Build custom analysis workflows using the `bsx2` Python library.
+-   **Detailed Documentation:** Get started quickly with clear guides and examples.
+
+## Components
+
+BSXplorer2 is composed of three main parts:
+
+### Core Rust Library
+The heart of BSXplorer2, containing all the core data structures, algorithms, and file format implementations. Designed for high performance and low-level control.
+Explore the Rust source code: [@src](@file:bsxplorer2_dev/bsxplorer2)
+
+### Python Wrapper (bsx2)
+Provides idiomatic Python bindings to the core Rust library using PyO3. Enables seamless integration with the Python data science ecosystem (Polars, NumPy, SciPy, Matplotlib, Plotly, Pydantic). Ideal for building complex analysis pipelines and interactive data exploration in Jupyter notebooks.
+Find the Python package here: [@python](@file:bsxplorer2_dev/python)
+
+### Console Application (bsxplorer)
+A standalone command-line tool built on the Rust library. Offers convenient commands for file format conversion, DMR calling, validation, and more. Perfect for scripting and integrating into existing bioinformatics workflows without writing Rust or Python code.
+Check out the console source and commands: [@console](@file:bsxplorer2_dev/console)
 
 ## Installation
 
-Add BSXplorer to your Rust project by including it in your `Cargo.toml`:
+### For the Console Application (`bsxplorer`)
+Install the console binary directly using Cargo:
 
-```toml
-[dependencies]
-bsxplorer = "0.1.0"
+```bash
+cargo install --locked bsxplorer-ci
 ```
 
-Documentation is available at [docs.rs](https://docs.rs/bsxplorer2)
+Ensure your Cargo bin directory is in your system's PATH.
+
+### For the Python Library (`bsx2`)
+Install the Python package using Poetry (recommended) or Pip:
+
+```bash
+# Using Poetry
+poetry add bsx2 --source bsx2
+```
+*(Requires adding the local bsx2 package source, see python/README.md)*
+
+```bash
+# Using Pip (requires Maturin and Rust toolchain)
+pip install maturin
+pip install -e ./python # From the bsxplorer2_dev directory
+```
+*(More detailed installation instructions for Python can be found in the python/README.md)*
 
 ## Usage
 
-## Console Application
-BSXplorer includes a powerful command-line interface for direct interaction with methylation data. The console
-application provides convenient access to the library's core functionality without requiring Rust programming knowledge.
+Dive into analyzing your methylation data using the `bsxplorer` console application or the `bsx2` Python library.
 
-[Detailed command descriptions](console/README.md).
+*   **Console Usage:** Get detailed help and command examples in the [Console Application README](console/README.md).
+*   **Python Usage:** Explore the `bsx2` package documentation (coming soon!) and examples within the [@python](@file:bsxplorer2_dev/python) directory to use the Python API.
 
-## BSX Format (IPC File Format)
-BSXplorer utilizes Arrow's Interprocess Communication (IPC) file format as the foundation for its custom BSX format,
-delivering significant advantages for methylation data processing:
+## BSX Format (Arrow IPC File Format)
+
+BSXplorer2 introduces the BSX file format, leveraging the power of Apache Arrow's Interprocess Communication (IPC) format. This isn't just another file type; it's a foundation for highly efficient methylation data processing:
 
 ### Performance Benefits
 
-- Memory Efficiency: Column-oriented storage dramatically reduces memory footprint compared to traditional formats
-- Zero-Copy Reading: Data can be accessed without redundant copying between memory regions
-- Parallel Processing: Format supports concurrent access patterns for multi-threaded operations
-- Vectorized Operations: Enables CPU-optimized SIMD instructions for faster data processing
+-   **Memory Efficiency:** Column-oriented storage significantly reduces memory footprint compared to row-based formats.
+-   **Zero-Copy Reading:** Data can be accessed in memory without expensive copying, boosting speed.
+-   **Parallel Processing:** Designed for concurrent access, perfectly complementing multi-threaded operations.
+-   **Vectorized Operations:** Enables leveraging modern CPU instructions (SIMD) for faster calculations.
 
 ### Compression Capabilities
 
-- Multiple Compression Options: Supports both LZ4 (faster) and ZSTD (better compression ratio)
-- Column-Level Compression: Each column is compressed independently, optimizing for data characteristics
-- Minimal Decompression Overhead: Selective decompression of only required columns
+-   **Flexible Compression:** Supports LZ4 (optimized for speed) and ZSTD (optimized for compression ratio).
+-   **Column-Specific:** Compression is applied per column, adapting to different data types.
+-   **Efficient Decompression:** Only necessary columns are decompressed, minimizing overhead.
 
 ### Data Organization
 
-- Efficient Categorical Encoding: Methylation contexts and strands are stored as enumerated values, not strings
-- Batched Storage: Data is organized in batches for efficient in-memory processing
-- Type-Aware Storage: Numeric types are stored in their binary representation, not as text
+-   **Efficient Categorical Encoding:** Methylation contexts (CG, CHG, CHH) and strands are stored as efficient categorical types, not verbose strings.
+-   **Batched Storage:** Data is chunked into logical batches for efficient processing in memory.
+-   **Type-Aware:** Data types (integers, floats, booleans) are stored in optimized binary representations.
 
 ### Integration Advantages
 
-- Cross-Platform Compatibility: Works consistently across operating systems
-- Language Interoperability: Can be read by any language with Arrow bindings (Python, R, etc.)
-- Schema Enforcement: Strong typing prevents data corruption and format inconsistencies
-- Metadata Support: Embedded metadata for tracking experimental conditions and processing steps
+-   **Cross-Platform:** Works consistently across various operating systems.
+-   **Language Interoperability:** Accessible from any language with robust Arrow bindings (Python, R, Java, etc.).
+-   **Schema Enforcement:** Strict schema ensures data integrity and prevents format ambiguities.
+-   **Rich Metadata:** Supports embedding custom metadata for better data tracking and provenance.
 
-The BSX format combines these advantages into a specialized format optimized for methylation data, ensuring the best
-possible performance for complex analytical tasks.
+The BSX format is purpose-built for methylation data, providing the optimal storage solution for BSXplorer2's high-performance analytical tasks.
 
 ## Roadmap
 
-BSXplorer is under active development. Future plans include:
+BSXplorer2 is under active development. Future plans include:
 
-- Enhanced visualization capabilities for methylation patterns
-- Integration with genome browser formats (BigWig, BigBed)
-- Support for single-cell bisulfite sequencing analysis
-- Integration with genomic annotation data (genes, regulatory elements)
-- Machine learning models for methylation pattern prediction
-- Web interface for interactive analysis
-- Additional statistical methods for differential methylation analysis
+-   [x] High-performance file format support (BSX, Bismark, CGmap, BedGraph, Coverage) including reading, writing, conversion, validation, and sorting.
+-   [x] Efficient indexing and region-based querying for BSX files.
+-   [x] Core DMR identification algorithm implementation.
+-   [x] Basic methylation statistics calculation.
+-   [ ] Enhanced visualization tools within the Python library.
+-   [ ] Tighter integration and utilities for genomic annotation data (genes, regulatory elements).
+-   [ ] Exploration of a web-based interactive analysis interface.
+-   [ ] Expansion of statistical methods for sophisticated differential methylation analysis.
+-   [ ] Implement Metagene profile generation.
+
+Contributions and feature requests are welcome!
 
 ## License
 
-This project is licensed under the Prosperity Public License 3.0.0 - see the [LICENSE](LICENSE.md) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
 
 ## Acknowledgements
 
-- The total variation segmentation algorithm is based on work by Laurent Condat
-- Statistical methods draw from established techniques in bioinformatics literature
-- Parts of the codebase leverage community-developed libraries including bio-types, polars, and rayon
+-   The foundational work for the total variation segmentation algorithm is inspired by Laurent Condat.
+-   Statistical implementations draw upon established techniques from bioinformatics literature.
+-   We gratefully acknowledge the contributions of community-developed libraries, including `bio-types`, `polars`, `pyo3`, and `rayon`, which are integral to BSXplorer2.
 
 ---
 
-Created by [shitohana](https://github.com/shitohana) - Empowering methylation analysis through efficient computational
-methods.
+Created by [shitohana](https://github.com/shitohana) - Empowering your DNA methylation research with speed and precision.
