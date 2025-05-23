@@ -1,3 +1,3 @@
 pub mod dimred;
 pub mod dmr;
-pub mod stats;
+mod stat_gather;

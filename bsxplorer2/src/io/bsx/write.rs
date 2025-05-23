@@ -6,26 +6,21 @@ use anyhow::{Context, Result};
 use itertools::Itertools;
 use log::{debug, info, warn};
 use polars::datatypes::DataType;
-use polars::error::{PolarsError, PolarsResult};
+use polars::error::PolarsResult;
 use polars::export::arrow::datatypes::Metadata;
 use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
 
-use crate::data_structs::batch::{colnames,
-                                 BsxBatch,
-                                 BsxBatchBuilder,
-                                 BsxBatchMethods,
-                                 EncodedBsxBatch};
-use crate::utils::get_categorical_dtype;
+use crate::data_structs::batch::{create_caregorical_dtype, BsxBatch, BsxColumns};
 
 /// Writer for BSX data in Arrow IPC format with optional compression.
-pub struct BsxIpcWriter<W>
+pub struct BsxFileWriter<W>
 where
     W: Write, {
     writer: polars::io::ipc::BatchedWriter<W>,
     schema: Schema,
 }
 
-impl<W> BsxIpcWriter<W>
+impl<W> BsxFileWriter<W>
 where
     W: Write,
 {
@@ -35,7 +30,7 @@ where
         chr_names: Vec<String>,
         compression: Option<IpcCompression>,
         custom_metadata: Option<Arc<Metadata>>,
-    ) -> Result<BsxIpcWriter<W>> {
+    ) -> Result<BsxFileWriter<W>> {
         debug!(
             "Creating new BsxIpcWriter with {} chromosome names",
             chr_names.len()
@@ -50,9 +45,10 @@ where
         };
 
         info!("Initializing writer with compression: {:?}", compression);
-        let chr_dtype = get_categorical_dtype(chr_names);
-        let mut schema = EncodedBsxBatch::schema();
-        schema.set_dtype(colnames::CHR_NAME, chr_dtype);
+        let chr_dtype =
+            create_caregorical_dtype(chr_names.into_iter().map(Some).collect_vec());
+        let mut schema = BsxColumns::schema();
+        schema.set_dtype(BsxColumns::Chr.as_str(), chr_dtype);
 
         let mut writer = opts.to_writer(sink);
         if let Some(metadata) = custom_metadata {
@@ -81,10 +77,9 @@ where
             fai_path
         );
 
-        let index =
-            bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
-                format!("Failed to read FASTA index from {:?}", fai_path)
-            })?;
+        let index = bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
+            format!("Failed to read FASTA index from {:?}", fai_path)
+        })?;
 
         let chr_names = index
             .sequences()
@@ -92,13 +87,9 @@ where
             .map(|seq| seq.name)
             .collect_vec();
 
-        Self::try_new(sink, chr_names, compression, custom_metadata)
-            .with_context(|| {
-                format!(
-                    "Failed to create writer from FASTA index at {:?}",
-                    fai_path
-                )
-            })
+        Self::try_new(sink, chr_names, compression, custom_metadata).with_context(
+            || format!("Failed to create writer from FASTA index at {:?}", fai_path),
+        )
     }
 
     /// Creates a writer from a sink and FASTA file.
@@ -111,9 +102,8 @@ where
         info!("Creating BsxIpcWriter from FASTA file: {:?}", fasta_path);
 
         // Create index if it doesn't exist
-        noodles::fasta::fs::index(fasta_path.clone()).with_context(|| {
-            format!("Failed to index FASTA file {:?}", fasta_path)
-        })?;
+        noodles::fasta::fs::index(fasta_path.clone())
+            .with_context(|| format!("Failed to index FASTA file {:?}", fasta_path))?;
 
         let index_path = format!("{}.fai", fasta_path.to_str().unwrap());
         Self::try_from_sink_and_fai(
@@ -128,30 +118,11 @@ where
     }
 
     /// Writes an encoded BSX batch.
-    pub fn write_encoded_batch(
-        &mut self,
-        batch: EncodedBsxBatch,
-    ) -> PolarsResult<()> {
-        self.writer.write_batch(batch.data())
-    }
-
-    /// Encodes and writes a BSX batch.
     pub fn write_batch(
         &mut self,
         batch: BsxBatch,
     ) -> PolarsResult<()> {
-        let encoded = match BsxBatchBuilder::encode_batch(
-            batch,
-            self.get_chr_dtype().clone(),
-        ) {
-            Ok(encoded) => encoded,
-            Err(_) => {
-                return Err(PolarsError::ComputeError(
-                    "failed to encode batch".into(),
-                ));
-            },
-        };
-        self.write_encoded_batch(encoded)
+        self.writer.write_batch(batch.data())
     }
 
     /// Finalizes the IPC file and closes the writer.
@@ -167,7 +138,7 @@ where
     }
 }
 
-impl<W: Write> Drop for BsxIpcWriter<W> {
+impl<W: Write> Drop for BsxFileWriter<W> {
     /// Ensures resources are properly cleaned up when dropped.
     fn drop(&mut self) {
         if let Err(e) = self.close() {

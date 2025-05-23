@@ -2,9 +2,9 @@ use std::fs::File;
 use std::iter::repeat_n;
 use std::path::PathBuf;
 
-use bsxplorer2::data_structs::enums::Context;
-use bsxplorer2::exports::anyhow;
-use bsxplorer2::exports::anyhow::anyhow;
+use anyhow::anyhow;
+use bsxplorer2::data_structs::typedef::{CountType, DensityType, PosType};
+use bsxplorer2::data_structs::Context;
 use bsxplorer2::tools::dmr::DMRegion;
 use clap::{Args, ValueEnum};
 use console::style;
@@ -20,6 +20,7 @@ pub(crate) struct DmrArgs {
         value_parser,
         short = 'A',
         long,
+        num_args=1..,
         required = true,
         help = "Paths to BSX files of the first sample group."
     )]
@@ -28,6 +29,7 @@ pub(crate) struct DmrArgs {
         value_parser,
         short = 'B',
         long,
+        num_args=1..,
         required = true,
         help = "Paths to BSX files of the second sample group."
     )]
@@ -63,8 +65,8 @@ pub(crate) struct DmrArgs {
         long,
         default_value_t = 0,
         help_heading = "FILTER ARGS",
-        help = "Set missing values threshold. Cytosines with no data_structs \
-                in more than specified number of samples will be discarded."
+        help = "Set missing values threshold. Cytosines with no data_structs in more \
+                than specified number of samples will be discarded."
     )]
     pub n_missing: usize,
 
@@ -73,18 +75,18 @@ pub(crate) struct DmrArgs {
         long,
         default_value_t = 5,
         help_heading = "FILTER ARGS",
-        help = "Set coverage threshold. Cytosines with coverage below this \
-                value in any of the samples will be discarded."
+        help = "Set coverage threshold. Cytosines with coverage below this value in \
+                any of the samples will be discarded."
     )]
-    pub min_coverage: i16,
+    pub min_coverage: CountType,
 
     #[arg(
         short,
         long,
         default_value_t = 10,
         help_heading = "FILTER ARGS",
-        help = "Set minimum number of cytosines threshold. DMRs with cytosine \
-                count below this value will be discarded."
+        help = "Set minimum number of cytosines threshold. DMRs with cytosine count \
+                below this value will be discarded."
     )]
     pub min_cytosines: usize,
 
@@ -93,30 +95,29 @@ pub(crate) struct DmrArgs {
         long,
         default_value_t = 0.05,
         help_heading = "FILTER ARGS",
-        help = "Set minimum difference threshold. DMRs with an absolute \
-                difference in methylation proportion between the two groups \
-                smaller than this value will be discarded."
+        help = "Set minimum difference threshold. DMRs with an absolute difference in \
+                methylation proportion between the two groups smaller than this value \
+                will be discarded."
     )]
-    pub diff_threshold: f32,
+    pub diff_threshold: DensityType,
 
     #[arg(
         short = 'D',
         long,
         default_value_t = 100,
         help_heading = "SEGMENTATION ARGS",
-        help = "Maximum distance between adjacent cytosines in a segment.  \
-                Cytosines further apart than this distance will be in \
-                separate segments."
+        help = "Maximum distance between adjacent cytosines in a segment.  Cytosines \
+                further apart than this distance will be in separate segments."
     )]
-    max_dist: u32,
+    max_dist: PosType,
 
     #[arg(
         short = 'L',
         long,
         default_value_t = 2.0,
         help_heading = "SEGMENTATION ARGS",
-        help = "Initial regularization parameter for the Condat algorithm.  \
-                Larger values result in stronger smoothing."
+        help = "Initial regularization parameter for the Condat algorithm.  Larger \
+                values result in stronger smoothing."
     )]
     initial_l: f64,
 
@@ -125,9 +126,9 @@ pub(crate) struct DmrArgs {
         long,
         default_value_t = 1e-3,
         help_heading = "SEGMENTATION ARGS",
-        help = "Minimum value for the regularization parameter.  The \
-                regularization parameter is decreased during segmentation \
-                until it is smaller than this value."
+        help = "Minimum value for the regularization parameter.  The regularization \
+                parameter is decreased during segmentation until it is smaller than \
+                this value."
     )]
     l_min: f64,
 
@@ -135,9 +136,9 @@ pub(crate) struct DmrArgs {
         long = "coef",
         default_value_t = 1.5,
         help_heading = "SEGMENTATION ARGS",
-        help = "Coefficient by which `initial_l` is divided in each iteration \
-                of the segmentation algorithm. Smaller values perform more \
-                segmentation iterations."
+        help = "Coefficient by which `initial_l` is divided in each iteration of the \
+                segmentation algorithm. Smaller values perform more segmentation \
+                iterations."
     )]
     l_coef: f64,
 
@@ -145,20 +146,20 @@ pub(crate) struct DmrArgs {
         long,
         default_value_t = 1e-6,
         help_heading = "SEGMENTATION ARGS",
-        help = "Tolerance for merging adjacent segments after the Total \
-                Variation denoising step (Condat's algorithm).  Smaller \
-                values result in more segments being merged. Should be very \
-                small to avoid over-segmentation after denoising."
+        help = "Tolerance for merging adjacent segments after the Total Variation \
+                denoising step (Condat's algorithm).  Smaller values result in more \
+                segments being merged. Should be very small to avoid \
+                over-segmentation after denoising."
     )]
-    tolerance: f32,
+    tolerance: DensityType,
 
     #[arg(
         long,
         default_value_t = 1e-2,
         help_heading = "SEGMENTATION ARGS",
-        help = "Mann-Whitney U-test P-value threshold for merging adjacent \
-                segments during recursive segmentation. Smaller p-values \
-                result in more iterations and fewer falsely merged segments."
+        help = "Mann-Whitney U-test P-value threshold for merging adjacent segments \
+                during recursive segmentation. Smaller p-values result in more \
+                iterations and fewer falsely merged segments."
     )]
     merge_p: f64,
 
@@ -168,8 +169,8 @@ pub(crate) struct DmrArgs {
         default_value_t = 0.05,
         help_heading = "FILTER ARGS",
         help = "Adjusted P-value threshold for DMR identification using \
-                2D-Kolmogorov-Smirnov test. Segments with a p-value smaller \
-                than specified will be reported as DMRs."
+                2D-Kolmogorov-Smirnov test. Segments with a p-value smaller than \
+                specified will be reported as DMRs."
     )]
     padj: f64,
 
@@ -224,16 +225,10 @@ impl DmrArgs {
 
         for path in a_paths.iter().chain(b_paths.iter()) {
             if !path.exists() {
-                eprintln!(
-                    "Path {} does not exist.",
-                    style(path.display()).red()
-                );
+                eprintln!("Path {} does not exist.", style(path.display()).red());
             }
             if !path.is_file() {
-                eprintln!(
-                    "Path {} is not a file.",
-                    style(path.display()).red()
-                );
+                eprintln!("Path {} is not a file.", style(path.display()).red());
             }
         }
 
@@ -263,7 +258,7 @@ impl DmrArgs {
             min_coverage:   self.min_coverage,
             diff_threshold: self.diff_threshold,
             min_cpgs:       self.min_cytosines,
-            max_dist:       self.max_dist as u64,
+            max_dist:       self.max_dist,
             initial_l:      self.initial_l,
             l_min:          self.l_min,
             l_coef:         self.l_coef,
@@ -273,13 +268,9 @@ impl DmrArgs {
         };
 
         let files = sample_paths.iter().map(|path| {
-            File::open(path)
-                .expect(format!("Could not open file {}", path).as_str())
+            File::open(path).expect(format!("Could not open file {}", path).as_str())
         });
-        let labeled = sample_labels
-            .into_iter()
-            .zip(files)
-            .collect::<Vec<_>>();
+        let labeled = sample_labels.into_iter().zip(files).collect::<Vec<_>>();
 
         let dmr_iterator = run_config
             .try_finish(labeled)
@@ -330,9 +321,7 @@ impl DmrArgs {
             }
         }
 
-        csv_writer
-            .flush()
-            .expect("Failed to write DMRs to file");
+        csv_writer.flush().expect("Failed to write DMRs to file");
 
         progress_bar.finish();
 
@@ -345,13 +334,9 @@ impl DmrArgs {
             .collect::<Result<Vec<_>, _>>()
             .expect("Failed to deserialize DMR segments file");
 
-        use bsxplorer2::exports::adjustp;
         let padj = if !matches!(self.pmethod, PadjMethod::None) {
             adjustp::adjust(
-                &all_segments
-                    .iter()
-                    .map(|s| s.p_value)
-                    .collect::<Vec<_>>(),
+                &all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>(),
                 match self.pmethod {
                     PadjMethod::BH => adjustp::Procedure::BenjaminiHochberg,
                     PadjMethod::Bonf => adjustp::Procedure::Bonferroni,
@@ -361,10 +346,7 @@ impl DmrArgs {
             )
         }
         else {
-            all_segments
-                .iter()
-                .map(|s| s.p_value)
-                .collect::<Vec<_>>()
+            all_segments.iter().map(|s| s.p_value).collect::<Vec<_>>()
         };
 
         let filtered = all_segments
@@ -393,15 +375,11 @@ impl DmrArgs {
             .iter()
             .for_each(|dmr| csv_writer.serialize(dmr).unwrap());
 
-        csv_writer
-            .flush()
-            .expect("Failed to write DMRs to file");
+        csv_writer.flush().expect("Failed to write DMRs to file");
 
         println!(
             "{}",
-            style(format!("Found {} DMRs.", dmr_count))
-                .green()
-                .bold()
+            style(format!("Found {} DMRs.", dmr_count)).green().bold()
         );
 
         Ok(())

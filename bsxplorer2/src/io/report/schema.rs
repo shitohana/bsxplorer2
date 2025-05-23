@@ -1,12 +1,11 @@
 use polars::prelude::*;
-use serde::Deserialize;
 
 use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Supported methylation report file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
-pub enum ReportTypeSchema {
+pub enum ReportType {
     /// Bismark methylation extractor output format
     Bismark,
     /// CG methylation map format
@@ -17,14 +16,14 @@ pub enum ReportTypeSchema {
     Coverage,
 }
 
-impl ReportTypeSchema {
+impl ReportType {
     /// Returns column names for this report format.
     pub const fn col_names(&self) -> &[&'static str] {
         match self {
             Self::Bismark => {
                 &[
-                    "chr", "position", "strand", "count_m", "count_um",
-                    "context", "trinuc",
+                    "chr", "position", "strand", "count_m", "count_um", "context",
+                    "trinuc",
                 ]
             },
             Self::Coverage => {
@@ -48,15 +47,15 @@ impl ReportTypeSchema {
 
     /// Returns data types for each column.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    const fn col_types(&self) -> &[DataType] {
+    pub const fn col_types(&self) -> &[DataType] {
         match self {
             Self::Bismark => {
                 &[
                     DataType::String, // chr
-                    DataType::UInt64, // position
+                    DataType::UInt32, // position
                     DataType::String, // strand
-                    DataType::UInt32, // count_m
-                    DataType::UInt32, // count_um
+                    DataType::UInt16, // count_m
+                    DataType::UInt16, // count_um
                     DataType::String, // context
                     DataType::String, // trinuc
                 ]
@@ -65,30 +64,30 @@ impl ReportTypeSchema {
                 &[
                     DataType::String,  // chr
                     DataType::String,  // nuc
-                    DataType::UInt64,  // position
+                    DataType::UInt32,  // position
                     DataType::String,  // context
                     DataType::String,  // dinuc
-                    DataType::Float64, // density
-                    DataType::UInt32,  // count_m
-                    DataType::UInt32,  // count_total
+                    DataType::Float32, // density
+                    DataType::UInt16,  // count_m
+                    DataType::UInt16,  // count_total
                 ]
             },
             Self::BedGraph => {
                 &[
                     DataType::String,  // chr
-                    DataType::UInt64,  // start
-                    DataType::UInt64,  // end
-                    DataType::Float64, // density
+                    DataType::UInt32,  // start
+                    DataType::UInt32,  // end
+                    DataType::Float32, // density
                 ]
             },
             Self::Coverage => {
                 &[
                     DataType::String,  // chr
-                    DataType::UInt64,  // start
-                    DataType::UInt64,  // end
-                    DataType::Float64, // density
-                    DataType::UInt32,  // count_m
-                    DataType::UInt32,  // count_um
+                    DataType::UInt32,  // start
+                    DataType::UInt32,  // end
+                    DataType::Float32, // density
+                    DataType::UInt16,  // count_m
+                    DataType::UInt16,  // count_um
                 ]
             },
         }
@@ -98,9 +97,7 @@ impl ReportTypeSchema {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn chr_col(&self) -> &'static str {
         match self {
-            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => {
-                "chr"
-            },
+            Self::Bismark | Self::BedGraph | Self::Coverage | Self::CgMap => "chr",
         }
     }
 
@@ -169,83 +166,4 @@ impl ReportTypeSchema {
 
         read_options
     }
-
-    /// Returns a `csv::StringRecord` with the column names for this format.
-    pub(crate) fn header_record(&self) -> csv::StringRecord {
-        let mut record = csv::StringRecord::new();
-        for name in self.col_names() {
-            record.push_field(name);
-        }
-        record
-    }
-}
-
-pub(crate) trait ReportRow<'a>: Deserialize<'a> {
-    fn get_chr(&self) -> String;
-    fn get_pos(&self) -> usize;
-}
-
-#[derive(Deserialize, Debug)]
-pub(crate) struct BismarkRow {
-    chr:      String,
-    position: usize,
-    strand:   String,
-    count_m:  u32,
-    count_um: u32,
-    context:  String,
-    trinuc:   String,
-}
-
-impl ReportRow<'_> for BismarkRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
-
-    fn get_pos(&self) -> usize { self.position }
-}
-
-#[derive(Deserialize, Debug)]
-pub(crate) struct CgMapRow {
-    chr:         String,
-    nuc:         String,
-    position:    usize,
-    context:     String,
-    dinuc:       String,
-    density:     f64,
-    count_m:     u32,
-    count_total: u32,
-}
-
-impl ReportRow<'_> for CgMapRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
-
-    fn get_pos(&self) -> usize { self.position }
-}
-
-#[derive(Deserialize, Debug)]
-pub(crate) struct BedGraphRow {
-    chr:     String,
-    start:   usize,
-    end:     usize,
-    density: f64,
-}
-
-impl ReportRow<'_> for BedGraphRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
-
-    fn get_pos(&self) -> usize { self.start }
-}
-
-#[derive(Deserialize, Debug)]
-pub(crate) struct CoverageRow {
-    chr:      String,
-    start:    usize,
-    end:      usize,
-    density:  f64,
-    count_m:  u32,
-    count_um: u32,
-}
-
-impl ReportRow<'_> for CoverageRow {
-    fn get_chr(&self) -> String { self.chr.clone() }
-
-    fn get_pos(&self) -> usize { self.start }
 }

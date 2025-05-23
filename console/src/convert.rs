@@ -2,15 +2,10 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::process::exit;
 
-use bsxplorer2::data_structs::batch::{BsxBatch,
-                                      BsxBatchBuilder,
-                                      BsxBatchMethods};
-use bsxplorer2::exports::anyhow;
-use bsxplorer2::io::bsx::{BsxFileReader, BsxIpcWriter};
+use bsxplorer2::data_structs::coords::GenomicPosition;
+use bsxplorer2::io::bsx::{BsxFileReader, BsxFileWriter};
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{ReportReaderBuilder,
-                             ReportTypeSchema,
-                             ReportWriter};
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportType, ReportWriter};
 use clap::{Args, ValueEnum};
 use console::style;
 
@@ -42,8 +37,8 @@ pub struct ToBsxConvert {
     )]
     output: PathBuf,
 
-    #[clap(short='f', long = "from", required = true, value_enum, default_value_t = ReportTypeSchema::Bismark)]
-    from_type: ReportTypeSchema,
+    #[clap(short='f', long = "from", required = true, value_enum, default_value_t = ReportType::Bismark)]
+    from_type: ReportType,
 
     #[clap(short='F', long = "from-compression", required = true, value_enum, default_value_t = Compression::None)]
     from_compression: Compression,
@@ -91,10 +86,8 @@ impl ToBsxConvert {
         &self,
         utils_args: &UtilsArgs,
     ) -> anyhow::Result<()> {
-        if matches!(
-            self.from_type,
-            ReportTypeSchema::BedGraph | ReportTypeSchema::Coverage
-        ) && !(self.fasta_path.is_some() && self.fai_path.is_some())
+        if matches!(self.from_type, ReportType::BedGraph | ReportType::Coverage)
+            && !(self.fasta_path.is_some() && self.fai_path.is_some())
         {
             eprintln!(
                 "For {:?} report type conversion, both {}",
@@ -110,29 +103,28 @@ impl ToBsxConvert {
             init_hidden()?
         };
 
-        let mut report_reader_builder =
-            ReportReaderBuilder::<BsxBatch>::default()
-                .with_n_threads(utils_args.threads)
-                .with_batch_size(self.batch_size)
-                .with_chunk_size(self.chunk_size)
-                .with_low_memory(self.low_memory)
-                .with_report_type(self.from_type)
-                .with_compression(self.from_compression);
+        let mut report_reader_builder = ReportReaderBuilder::default()
+            .with_n_threads(Some(utils_args.threads))
+            .with_batch_size(self.batch_size)
+            .with_chunk_size(self.chunk_size)
+            .with_low_memory(self.low_memory)
+            .with_report_type(self.from_type)
+            .with_compression(Some(self.from_compression));
 
         if let Some(fasta_path) = &self.fasta_path {
             report_reader_builder =
-                report_reader_builder.with_fasta_path(fasta_path.clone());
+                report_reader_builder.with_fasta_path(Some(fasta_path.clone()));
         }
         if let Some(fai_path) = &self.fai_path {
             report_reader_builder =
-                report_reader_builder.with_fai_path(fai_path.clone());
+                report_reader_builder.with_fai_path(Some(fai_path.clone()));
         }
 
         let report_reader = report_reader_builder.build(self.input.clone())?;
 
         let sink = File::create(self.output.clone())?;
         let mut bsx_writer = if let Some(fai_path) = &self.fai_path {
-            BsxIpcWriter::try_from_sink_and_fai(
+            BsxFileWriter::try_from_sink_and_fai(
                 sink,
                 fai_path.clone(),
                 self.to_compression.into(),
@@ -140,7 +132,7 @@ impl ToBsxConvert {
             )?
         }
         else if let Some(fasta_path) = &self.fasta_path {
-            BsxIpcWriter::try_from_sink_and_fasta(
+            BsxFileWriter::try_from_sink_and_fasta(
                 sink,
                 fasta_path.clone(),
                 self.to_compression.into(),
@@ -157,7 +149,7 @@ impl ToBsxConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos = batch.end_gpos()?;
+            let cur_pos: GenomicPosition = batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 
@@ -181,8 +173,8 @@ pub struct FromBsxConvert {
     )]
     output: PathBuf,
 
-    #[clap(short='t', long = "from", required = true, value_enum, default_value_t = ReportTypeSchema::Bismark)]
-    to_type: ReportTypeSchema,
+    #[clap(short='t', long = "to", required = true, value_enum, default_value_t = ReportType::Bismark)]
+    to_type: ReportType,
 
     #[clap(short='T', long = "to-compression", required = true, value_enum, default_value_t = Compression::None)]
     to_compression: Compression,
@@ -197,7 +189,7 @@ impl FromBsxConvert {
         utils_args: &UtilsArgs,
     ) -> anyhow::Result<()> {
         let input_handle = File::open(self.input.clone())?;
-        let mut bsx_reader = BsxFileReader::new(input_handle);
+        let bsx_reader = BsxFileReader::try_new(input_handle)?;
 
         let output_handle = File::create(self.output.clone())?;
         let mut writer = ReportWriter::try_new(
@@ -215,9 +207,8 @@ impl FromBsxConvert {
             init_hidden()?
         };
 
-        for batch in bsx_reader.iter() {
-            let batch = BsxBatchBuilder::decode_batch(batch?)?;
-            writer.write_batch(batch)?;
+        for batch in bsx_reader.into_iter() {
+            writer.write_batch(batch?)?;
             pbar.inc(1);
         }
         writer.finish()?;
@@ -238,16 +229,16 @@ pub struct R2RConvert {
     )]
     output: PathBuf,
 
-    #[clap(short='f', long = "from", required = true, value_enum, default_value_t = ReportTypeSchema::Bismark)]
-    from_type: ReportTypeSchema,
+    #[clap(short='f', long = "from", required = true, value_enum, default_value_t = ReportType::Bismark)]
+    from_type: ReportType,
 
-    #[clap(short='t', long = "to", required = true, value_enum, default_value_t = ReportTypeSchema::Bismark)]
-    to_type: ReportTypeSchema,
+    #[clap(short='t', long = "to", required = true, value_enum, default_value_t = ReportType::Bismark)]
+    to_type: ReportType,
 
     #[clap(short='F', long = "from-compression", required = true, value_enum, default_value_t = Compression::None)]
     from_compression: Compression,
 
-    #[clap(short='F', long = "to-compression", required = true, value_enum, default_value_t = Compression::None)]
+    #[clap(short='T', long = "to-compression", required = true, value_enum, default_value_t = Compression::None)]
     to_compression: Compression,
 
     #[clap(short='L', long = "level", required = false, value_enum, default_value = None)]
@@ -284,17 +275,16 @@ impl R2RConvert {
             init_hidden()?
         };
 
-        let mut report_reader_builder =
-            ReportReaderBuilder::<BsxBatch>::default()
-                .with_n_threads(utils_args.threads)
-                .with_batch_size(self.batch_size)
-                .with_low_memory(self.low_memory)
-                .with_report_type(self.from_type)
-                .with_compression(self.from_compression);
+        let mut report_reader_builder = ReportReaderBuilder::default()
+            .with_n_threads(Some(utils_args.threads))
+            .with_batch_size(self.batch_size)
+            .with_low_memory(self.low_memory)
+            .with_report_type(self.from_type)
+            .with_compression(Some(self.from_compression));
 
         if let Some(fasta_path) = &self.fasta_path {
             report_reader_builder =
-                report_reader_builder.with_fasta_path(fasta_path.clone());
+                report_reader_builder.with_fasta_path(Some(fasta_path.clone()));
         }
         let report_reader = report_reader_builder.build(self.input.clone())?;
 
@@ -309,7 +299,7 @@ impl R2RConvert {
 
         for batch in report_reader {
             let batch = batch?;
-            let cur_pos = batch.end_gpos()?;
+            let cur_pos: GenomicPosition = batch.last_genomic_pos().unwrap_or_default();
             pbar.set_message(format!("Reading: {}", cur_pos));
             pbar.inc(1);
 

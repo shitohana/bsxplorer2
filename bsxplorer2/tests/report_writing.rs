@@ -2,12 +2,10 @@
 use std::io::Write;
 
 use bio::io::fasta::Writer as FastaWriter;
-use bsxplorer2::data_structs::batch::{BsxBatch, BsxBatchMethods};
+use bsxplorer2::data_structs::batch::BsxBatch;
 #[cfg(feature = "compression")]
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{ReportReaderBuilder,
-                             ReportTypeSchema,
-                             ReportWriter};
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportType, ReportWriter};
 use polars::prelude::*;
 use rand::rngs::StdRng;
 use rstest::{fixture, rstest};
@@ -23,13 +21,13 @@ const N_CHR: usize = 3;
 const CHUNK_SIZE: usize = 10000;
 
 #[rstest]
-#[case::bismark_batched(ReportTypeSchema::Bismark, true)]
-#[case::bismark(ReportTypeSchema::Bismark, false)]
-#[case::cgmap(ReportTypeSchema::CgMap, false)]
-#[case::bedgraph(ReportTypeSchema::BedGraph, false)]
-#[case::coverage(ReportTypeSchema::Coverage, false)]
+#[case::bismark_batched(ReportType::Bismark, true)]
+#[case::bismark(ReportType::Bismark, false)]
+#[case::cgmap(ReportType::CgMap, false)]
+#[case::bedgraph(ReportType::BedGraph, false)]
+#[case::coverage(ReportType::Coverage, false)]
 fn test_report_writing_reading_roundtrip(
-    #[case] report_type: ReportTypeSchema,
+    #[case] report_type: ReportType,
     #[case] write_batch: bool,
     mut report_data: DemoReportBuilder<StdRng>,
 ) -> anyhow::Result<()> {
@@ -53,8 +51,7 @@ fn test_report_writing_reading_roundtrip(
         original_batches.push(original_batch.clone());
 
         // Generate report format DF from the batch
-        let lazy_batch = LazyBsxBatch::from(original_batch);
-        let report_df = lazy_batch.into_report(&report_type)?;
+        let report_df = original_batch.into_report(report_type)?;
         original_dfs_in_report_format.push(report_df);
 
         // Write sequence for alignment
@@ -67,7 +64,7 @@ fn test_report_writing_reading_roundtrip(
     let buffer = NamedTempFile::new()?;
 
     // Handle BedGraph header manually for writing test if needed
-    if report_type == ReportTypeSchema::BedGraph {
+    if report_type == ReportType::BedGraph {
         writeln!(buffer.reopen()?, "track type=bedGraph")?;
     }
 
@@ -81,7 +78,6 @@ fn test_report_writing_reading_roundtrip(
         Compression::None,
         None,
     )?;
-
 
     if !write_batch {
         for df in &original_dfs_in_report_format {
@@ -98,15 +94,15 @@ fn test_report_writing_reading_roundtrip(
 
     // 3. Read data back from buffer
 
-    let mut report_reader_builder: ReportReaderBuilder<BsxBatch> =
-        ReportReaderBuilder::default()
+    let mut report_reader_builder: ReportReaderBuilder = ReportReaderBuilder::default()
+        .with_fasta_path(Some(sequence_file.path().to_path_buf()))
         .with_chunk_size(CHUNK_SIZE) // Use same chunk size as reading test
         .with_report_type(report_type);
 
     // Add fasta path if alignment is needed by the reader for this report type
     if report_type.need_align() {
         report_reader_builder = report_reader_builder
-            .with_fasta_path(sequence_file.path().to_path_buf());
+            .with_fasta_path(Some(sequence_file.path().to_path_buf()));
     }
     // Note: We are reading into `BsxBatch` (decoded), which doesn't require
     // chr_dtype from fasta for non-aligning types. The builder handles this.
@@ -115,9 +111,8 @@ fn test_report_writing_reading_roundtrip(
         report_reader_builder.build_from_handle(Box::new(buffer.reopen()?))?;
 
     // 4. Collect read batches
-    let read_batches: Vec<BsxBatch> = report_reader
-        .into_iter()
-        .collect::<Result<_, _>>()?;
+    let read_batches: Vec<BsxBatch> =
+        report_reader.into_iter().collect::<Result<_, _>>()?;
 
     // 5. Combine original and read batches by chromosome (as reader outputs one
     //    batch per chr after final chunk)
@@ -129,7 +124,7 @@ fn test_report_writing_reading_roundtrip(
 
     // Original batches are ordered by generation, which is per chromosome
     for batch in original_batches {
-        let batch_chr = batch.chr_val().to_string();
+        let batch_chr = batch.seqname().unwrap_or_default().to_string();
         if batch_chr != current_original_chr {
             if let Some(completed_batch) = current_original_batch.take() {
                 combined_original_batches.push(completed_batch);
@@ -160,7 +155,7 @@ fn test_report_writing_reading_roundtrip(
     let mut current_read_batch = None;
 
     for batch in read_batches {
-        let batch_chr = batch.chr_val().to_string();
+        let batch_chr = batch.seqname().unwrap_or_default().to_string();
 
         if batch_chr != current_read_chr {
             // New chromosome encountered
@@ -197,8 +192,6 @@ fn test_report_writing_reading_roundtrip(
         .iter()
         .zip(combined_read_batches.iter())
     {
-        println!("{read:?}");
-        println!("{original:?}");
         compare_batches(original, read, &report_type)?;
     }
 

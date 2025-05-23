@@ -1,189 +1,342 @@
-use std::io::{Read, Seek};
+use std::collections::VecDeque;
+use std::io::Cursor;
+use std::os::fd::AsRawFd;
+use std::sync::Arc;
 
-use anyhow::anyhow;
-use polars::error::PolarsResult;
-use polars::export::arrow::array::Array;
-use polars::export::arrow::record_batch::RecordBatchT;
-use polars::frame::DataFrame;
+use itertools::Itertools;
+use memmap2::{Mmap, MmapOptions};
+use polars::prelude::*;
+use polars_arrow::io::ipc::read::{read_batch,
+                                  read_file_dictionaries,
+                                  read_file_metadata,
+                                  Dictionaries,
+                                  FileMetadata};
+use rayon::prelude::*;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use super::ipc::IpcFileReader;
-use super::BatchIndex;
-use crate::data_structs::batch::{BsxBatchBuilder,
-                                 BsxBatchMethods,
-                                 EncodedBsxBatch};
-use crate::data_structs::coords::Contig;
+use crate::data_structs::batch::BsxBatch;
 
-
-/// Reader for BSX files
-pub struct BsxFileReader<R: Read + Seek> {
-    ipc_reader: IpcFileReader<R>,
-    index:      Option<BatchIndex<String, u32>>,
+// ThreadLocalHandle no longer needs a lifetime parameter as it holds its own
+// Arc<Mmap>
+struct ThreadLocalHandle {
+    _mmap:           Arc<Mmap>, // Hold a clone of the shared Mmap Arc
+    handle:          Cursor<&'static [u8]>, /* Cursor borrowing from the Mmap inside
+                                 * the Arc */
+    data_scratch:    Vec<u8>,
+    message_scratch: Vec<u8>,
 }
 
-impl<R: Read + Seek> BsxFileReader<R> {
-    /// Creates a new BSX file reader
-    pub fn new(handle: R) -> Self {
+impl ThreadLocalHandle {
+    // Create a new handle from a clone of the shared mmap Arc
+    pub fn new(mmap: Arc<Mmap>) -> Self {
+        let slice: &[u8] = mmap.as_ref();
+        let static_slice: &'static [u8] = unsafe { std::mem::transmute(slice) };
+        let handle = Cursor::new(static_slice);
+
         Self {
-            ipc_reader: IpcFileReader::new(handle, None, None),
-            index:      None,
+            _mmap: mmap, // Store the Arc clone, ensuring the Mmap lives long enough
+            handle,      // Store the cursor borrowing from the 'static transmuted slice
+            data_scratch: Vec::new(),
+            message_scratch: Vec::new(),
         }
     }
 
-    /// Indexes the BSX file and returns the index.
-    pub fn index(&mut self) -> anyhow::Result<&BatchIndex<String, u32>> {
-        let initialized = self.index.is_some();
-        if initialized {
-            Ok(self.index.as_ref().unwrap())
+    pub fn read_batch(
+        &mut self,
+        index: usize,
+        dictionaries: &Dictionaries,
+        metadata: &FileMetadata,
+    ) -> Option<PolarsResult<DataFrame>> {
+        if index >= metadata.blocks.len() {
+            return None;
+        }
+        let chunk = read_batch(
+            &mut self.handle,
+            dictionaries,
+            metadata,
+            None,
+            None,
+            index,
+            &mut self.message_scratch,
+            &mut self.data_scratch,
+        );
+        if chunk.is_err() {
+            Some(Err(chunk.unwrap_err()))
         }
         else {
-            let mut new_index = BatchIndex::new();
-
-            for batch_idx in 0..self.ipc_reader.blocks_total() {
-                let batch = self
-                    .get_batch(batch_idx)
-                    .expect("Batch index out of bounds")?;
-                // We unwrap as we expect that there is NO empty batches in bsx
-                // file
-                let contig = batch.as_contig()?.unwrap();
-
-                new_index.insert(contig, batch_idx);
-            }
-            self.index = Some(new_index);
-
-            Ok(self.index.as_ref().unwrap())
+            let chunk = chunk.unwrap();
+            let result = DataFrame::try_from((chunk, metadata.schema.as_ref()));
+            Some(result)
         }
     }
+}
 
-    /// Queries the BSX file for a given contig.
-    pub fn query(
-        &mut self,
-        contig: &Contig<String, u32>,
-    ) -> anyhow::Result<Option<EncodedBsxBatch>> {
-        let batch_indices = self
-            .index()?
-            .find(contig)
-            .ok_or(anyhow!("No batches found for contig: {}", contig))?;
-        if batch_indices.is_empty() {
-            return Ok(None);
-        }
+/// A reader for .bsx files based on Apache Arrow IPC format, optimized for
+/// reading batches in parallel.
+pub struct BsxFileReader {
+    thread_pool:          ThreadPool,
+    thread_local_handles: Vec<ThreadLocalHandle>, // Holds the new struct
+    cache:                VecDeque<BsxBatch>,
+    metadata:             Arc<FileMetadata>,
+    dictionaries:         Arc<Dictionaries>,
+    blocks_total:         usize,
+    _mmap:                Arc<Mmap>, /* Still need to hold the original Arc to keep
+                                      * the Mmap alive */
+}
 
-        let mut batches = batch_indices
-            .into_iter()
-            .map(|idx| {
-                self.get_batch(idx)
-                    .ok_or(anyhow!("Batch with index {} not found", idx))
-            })
-            .collect::<anyhow::Result<PolarsResult<Vec<_>>>>()??;
-        batches.sort_by_key(|b| b.start_pos());
+impl BsxFileReader {
+    /// Creates a new `BsxFileReader` from a file handle.
+    ///
+    /// This will memory map the file and read its metadata and dictionaries.
+    /// It also initializes a thread pool and thread-local handles for parallel
+    /// reading.
+    pub fn try_new<R: AsRawFd + 'static>(handle: R) -> anyhow::Result<Self> {
+        // 1. Create the shared Arc<Mmap>
+        let mmap = Arc::new(unsafe { MmapOptions::new().map(&handle)? });
+        let thread_pool = ThreadPoolBuilder::new()
+            .num_threads(0) // 0 means default number of threads
+            .build()?;
 
-        let res = BsxBatchBuilder::concat(batches)?
-            .lazy()
-            .filter_pos_gt(contig.start() - 1)
-            .filter_pos_lt(contig.end())
-            .collect()?;
-        Ok(Some(res))
+        // Create a temporary reader to read metadata and dictionaries
+        // This reader borrows directly from the shared mmap Arc
+        let mut reader = Cursor::new(mmap.as_ref());
+        let metadata = read_file_metadata(&mut reader)?;
+        let dictionaries = read_file_dictionaries(
+            &mut reader,
+            &metadata,
+            &mut Vec::new(), // Use a new scratch vector for this part
+        )?;
+
+        let blocks_total = metadata.blocks.len();
+        let n_threads = thread_pool.current_num_threads();
+
+        // 2. Create thread-local handles, each with a clone of the Arc<Mmap>
+        let thread_local_handles: Vec<ThreadLocalHandle> = (0..n_threads)
+            .map(|_| ThreadLocalHandle::new(mmap.clone())) // Pass a clone of the Arc to each handle
+            .collect_vec();
+
+
+        Ok(Self {
+            thread_pool,
+            thread_local_handles,
+            cache: VecDeque::new(),
+            metadata: Arc::new(metadata),
+            dictionaries: Arc::new(dictionaries),
+            blocks_total,
+            _mmap: mmap, // Store the original Arc in the reader
+        })
     }
 
-    /// Processes a record batch into an EncodedBsxBatch
-    fn process_record_batch(
-        &self,
-        batch: PolarsResult<RecordBatchT<Box<dyn Array>>>,
-    ) -> PolarsResult<EncodedBsxBatch> {
-        batch
-            .map(|batch| {
-                DataFrame::try_from((
-                    batch,
-                    self.ipc_reader
-                        .metadata()
-                        .schema
-                        .as_ref(),
-                ))
-                .expect(
-                    "Failed to create DataFrame from batch - schema mismatch",
-                )
-            })
-            .map(|df| unsafe { EncodedBsxBatch::new_unchecked(df) })
-    }
-
-    /// Retrieves a specific batch by index
+    /// Reads a single batch from the file at the given index.
     pub fn get_batch(
         &mut self,
         batch_idx: usize,
-    ) -> Option<PolarsResult<EncodedBsxBatch>> {
-        self.ipc_reader
-            .read_at(batch_idx)
-            .map(|res| self.process_record_batch(res))
+    ) -> Option<Result<BsxBatch, PolarsError>> {
+        let handle = &mut self.thread_local_handles[0];
+        let df = handle.read_batch(
+            batch_idx,
+            self.dictionaries.as_ref(),
+            self.metadata.as_ref(),
+        );
+        if let Some(Ok(df)) = df {
+            Some(Ok(unsafe { BsxBatch::new_unchecked(df) }))
+        }
+        else {
+            df.map(|e| Err(e.unwrap_err()))
+        }
     }
 
-    /// Returns the total number of blocks in the file
-    pub fn blocks_total(&self) -> usize { self.ipc_reader.blocks_total() }
+    /// Reads multiple batches from the file at the given indices in parallel.
+    pub fn get_batches(
+        &mut self,
+        batch_indices: &[usize],
+    ) -> Vec<Option<PolarsResult<BsxBatch>>> {
+        self.iter_batches(batch_indices.iter().cloned())
+            .collect_vec()
+    }
 
-    /// Retrieves the next batch
-    fn _next(&mut self) -> Option<PolarsResult<EncodedBsxBatch>> {
-        let next = self.ipc_reader.next();
-        let res = next.map(|res| self.process_record_batch(res));
+    /// Returns an iterator that reads batches from the file at the given
+    /// indices in parallel.
+    pub fn iter_batches<'a, I: IntoIterator<Item = usize> + 'a>(
+        &'a mut self,
+        batch_indices: I,
+    ) -> impl Iterator<Item = Option<PolarsResult<BsxBatch>>> + 'a {
+        let chunks_to_read = batch_indices
+            .into_iter()
+            .chunks(self.n_threads())
+            .into_iter()
+            .map(|c| c.collect_vec())
+            .collect_vec();
 
-        if let Some(Ok(data)) = res.as_ref() {
-            if data.height() == 0 {
-                return None;
+        let iter = self.thread_pool.install(|| {
+            chunks_to_read
+                .into_iter()
+                .map(|tasks_chunk| {
+                    // Number of tasks in chunk is <= number of threads
+                    self.thread_local_handles
+                        .par_iter_mut()
+                        .zip(tasks_chunk.par_iter())
+                        .map(|(handle, idx)| {
+                            handle.read_batch(*idx, &self.dictionaries, &self.metadata)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .flatten()
+                .map(|df_res| {
+                    df_res.map(|df_res| {
+                        df_res.map(|df| unsafe { BsxBatch::new_unchecked(df) })
+                    })
+                })
+        });
+        iter
+    }
+
+    /// Returns an iterator that reads all batches from the file sequentially.
+    pub fn iter<'a>(&'a mut self) -> impl Iterator<Item = PolarsResult<BsxBatch>> + 'a {
+        self.iter_batches(0..self.blocks_total())
+            .map(|i| i.unwrap())
+    }
+
+    /// Returns the total number of data batches (blocks) in the file.
+    pub fn blocks_total(&self) -> usize {
+        self.blocks_total
+    }
+
+    /// Reads multiple batches from the file at the given indices in parallel
+    /// and adds them to the internal cache.
+    pub fn cache_batches(
+        &mut self,
+        batch_indices: &[usize],
+    ) -> PolarsResult<()> {
+        let mut new_batches = self
+            .get_batches(batch_indices)
+            .into_iter()
+            .flatten()
+            .collect::<PolarsResult<VecDeque<_>>>()?;
+        self.cache.append(&mut new_batches);
+        Ok(())
+    }
+
+    /// Returns a mutable reference to the internal batch cache.
+    pub fn get_cache_mut(&mut self) -> &mut VecDeque<BsxBatch> {
+        &mut self.cache
+    }
+
+    /// Returns the number of threads used by the internal thread pool.
+    pub fn n_threads(&self) -> usize {
+        self.thread_local_handles.len()
+    }
+}
+
+impl IntoIterator for BsxFileReader {
+    type IntoIter = BsxFileIterator;
+    type Item = PolarsResult<BsxBatch>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        BsxFileIterator {
+            reader:        self,
+            current_batch: 0,
+        }
+    }
+}
+
+/// An iterator over the batches in a `BsxFileReader`.
+pub struct BsxFileIterator {
+    reader:        BsxFileReader,
+    current_batch: usize,
+}
+
+impl Iterator for BsxFileIterator {
+    type Item = PolarsResult<BsxBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(batch) = self.reader.get_cache_mut().pop_front() {
+            self.current_batch += 1;
+            Some(Ok(batch))
+        }
+        else if self.current_batch < self.reader.blocks_total() {
+            let to_read = (self.current_batch
+                ..(self.current_batch + self.reader.n_threads()))
+                .collect_vec();
+            let cache_res = self.reader.cache_batches(&to_read);
+            if cache_res.is_ok() {
+                self.next()
+            }
+            else {
+                Some(Err(cache_res.unwrap_err()))
             }
         }
-
-        res
-    }
-
-    /// Creates an iterator for the BSX file.
-    pub fn iter(&mut self) -> BsxFileIterator<R> {
-        BsxFileIterator { reader: self }
-    }
-}
-
-impl<R: Read + Seek> Iterator for BsxFileReader<R> {
-    type Item = PolarsResult<EncodedBsxBatch>;
-
-    /// Returns the next batch or None when finished
-    fn next(&mut self) -> Option<Self::Item> { self._next() }
-}
-
-/// Iterator for BSX files.
-pub struct BsxFileIterator<'a, R: Read + Seek> {
-    reader: &'a mut BsxFileReader<R>,
-}
-
-impl<R: Read + Seek> Iterator for BsxFileIterator<'_, R> {
-    type Item = PolarsResult<EncodedBsxBatch>;
-
-    /// Returns the next batch or None when finished
-    fn next(&mut self) -> Option<Self::Item> { self.reader._next() }
-
-    fn nth(
-        &mut self,
-        n: usize,
-    ) -> Option<Self::Item> {
-        self.reader
-            .ipc_reader
-            .set_current_block(self.reader.ipc_reader.current_block() + n);
-        self.reader._next()
+        else {
+            None
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (
-            self.reader.ipc_reader.blocks_total(),
-            Some(self.reader.ipc_reader.blocks_total()),
-        )
+        let blocks = self.reader.blocks_total();
+        (blocks, Some(blocks))
     }
 
     fn count(self) -> usize
     where
         Self: Sized, {
-        self.reader.ipc_reader.blocks_total()
-            - self.reader.ipc_reader.current_block()
+        self.reader.blocks_total() - self.current_batch
     }
 
     fn last(self) -> Option<Self::Item>
     where
         Self: Sized, {
-        self.reader
-            .get_batch(self.reader.blocks_total() - 1)
+        let mut reader = self.reader;
+        reader.get_batch(reader.blocks_total() - 1)
+    }
+
+    fn nth(
+        &mut self,
+        n: usize,
+    ) -> Option<Self::Item> {
+        self.current_batch = n;
+        self.reader.get_cache_mut().clear();
+        self.reader.get_batch(n)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::path::PathBuf;
+
+    use rstest::{fixture, rstest};
+
+    use super::*;
+
+    #[fixture]
+    fn reader() -> BsxFileReader {
+        BsxFileReader::try_new(
+            File::open(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
+            )
+            .expect("Error opening test report file"),
+        )
+        .unwrap()
+    }
+
+    #[rstest]
+    fn create_reader(_reader: BsxFileReader) {}
+
+    #[rstest]
+    fn test_reading(mut _reader: BsxFileReader) -> anyhow::Result<()> {
+        _reader.cache_batches(&[1, 2, 3, 4, 5, 6])?;
+        assert!(!_reader.get_cache_mut().pop_front().unwrap().is_empty());
+        Ok(())
+    }
+
+    #[rstest]
+    fn test_iter(reader: BsxFileReader) {
+        let mut batch_count = 0;
+        let blocks_total = reader.blocks_total();
+        for batch in reader.into_iter() {
+            assert!(batch.is_ok());
+            batch_count += 1;
+        }
+        assert_eq!(batch_count, blocks_total)
     }
 }

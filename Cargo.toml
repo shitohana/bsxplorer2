@@ -21,6 +21,10 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [workspace.dependencies]
 adjustp = "0.1.6"
 anyhow = "1.0.91"
@@ -33,6 +37,9 @@ serde = "1.0.217"
 serde_json = "1"
 statrs = "0.18.0"
 tempfile = "3.15.0"
+once_cell = "1.21.3"
+hashbrown = { version = "0.15.3", features = ["serde"] }
+paste = "1.0.15"
 
 [workspace.dependencies.polars]
 version = "=0.45.0"
@@ -43,6 +50,8 @@ features = [
     "dtype-u16",
     "dtype-categorical",
     "dtype-struct",
+    "strings",
+    "cum_agg",
     # Lazy
     "lazy",
     # IO
@@ -50,13 +59,9 @@ features = [
     "ipc",
     # DataFrame operations
     "partition_by",
-    "polars-ops",
     # Expressions
-    "strings",
     "is_in",
     "round_series",
-    "concat_str",
-    "rank",
     "fmt"
 ]
 

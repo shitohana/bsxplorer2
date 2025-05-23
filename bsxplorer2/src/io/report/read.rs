@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
@@ -11,19 +10,18 @@ use crossbeam::channel::Receiver;
 use hashbrown::HashMap;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
+use rayon::prelude::*;
+use rayon::ThreadPool;
 
-use crate::data_structs::batch::{BatchType,
-                                 BsxBatchBuilder,
-                                 BsxBatchMethods,
-                                 BsxTypeTag,
-                                 LazyBsxBatch};
-use crate::data_structs::context_data::ContextData;
+use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
 use crate::data_structs::typedef::BsxSmallStr;
+use crate::data_structs::ContextData;
 #[cfg(feature = "compression")]
 use crate::io::compression::Compression;
 use crate::io::read_chrom;
-use crate::io::report::schema::ReportTypeSchema;
+use crate::io::report::schema::ReportType;
 use crate::utils::get_categorical_dtype;
+use crate::with_field_fn;
 
 /// A wrapper around BatchedCsvReader that manages ownership of the reader
 pub struct OwnedBatchedCsvReader<F>
@@ -76,132 +74,54 @@ where
 }
 
 /// Builder for `ReportReader` to configure its behavior.
-pub struct ReportReaderBuilder<B: BsxBatchMethods + BsxTypeTag> {
-    report_type: ReportTypeSchema,
+pub struct ReportReaderBuilder {
+    report_type: ReportType,
     chunk_size:  usize,
     fasta_path:  Option<PathBuf>,
     fai_path:    Option<PathBuf>,
     batch_size:  usize,
     n_threads:   Option<usize>,
     low_memory:  bool,
-    queue_len:   usize,
     #[cfg(feature = "compression")]
     compression: Option<Compression>,
-    _batch_type: PhantomData<B>,
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> Default for ReportReaderBuilder<B> {
+impl Default for ReportReaderBuilder {
     fn default() -> Self {
         Self {
-            report_type: ReportTypeSchema::Bismark,
+            report_type: ReportType::Bismark,
             chunk_size: 10000,
             fasta_path: None,
             fai_path: None,
             batch_size: 100000,
             n_threads: None,
             low_memory: false,
-            queue_len: 1000,
             #[cfg(feature = "compression")]
             compression: None,
-            _batch_type: PhantomData,
         }
     }
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
-    /// Sets the report type schema.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_report_type(
-        mut self,
-        report_type: ReportTypeSchema,
-    ) -> Self {
-        self.report_type = report_type;
-        self
-    }
+impl ReportReaderBuilder {
+    with_field_fn!(report_type, ReportType);
 
-    /// Sets the chunk size.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_chunk_size(
-        mut self,
-        chunk_size: usize,
-    ) -> Self {
-        self.chunk_size = chunk_size;
-        self
-    }
+    with_field_fn!(chunk_size, usize);
 
-    /// Sets the path to the FASTA file.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_fasta_path(
-        mut self,
-        fasta_path: PathBuf,
-    ) -> Self {
-        self.fasta_path = Some(fasta_path);
-        self
-    }
+    with_field_fn!(fasta_path, Option<PathBuf>);
 
-    /// Sets the path to the FASTA index file.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_fai_path(
-        mut self,
-        fai_path: PathBuf,
-    ) -> Self {
-        self.fai_path = Some(fai_path);
-        self
-    }
+    with_field_fn!(fai_path, Option<PathBuf>);
 
-    /// Sets the batch size.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_batch_size(
-        mut self,
-        batch_size: usize,
-    ) -> Self {
-        self.batch_size = batch_size;
-        self
-    }
+    with_field_fn!(batch_size, usize);
 
-    /// Sets the number of threads to use.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_n_threads(
-        mut self,
-        n_threads: usize,
-    ) -> Self {
-        self.n_threads = Some(n_threads);
-        self
-    }
+    with_field_fn!(n_threads, Option<usize>);
 
-    /// Sets the low memory flag.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_low_memory(
-        mut self,
-        low_memory: bool,
-    ) -> Self {
-        self.low_memory = low_memory;
-        self
-    }
+    with_field_fn!(low_memory, bool);
 
-    /// Sets the queue length.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_queue_len(
-        mut self,
-        queue_len: usize,
-    ) -> Self {
-        self.queue_len = queue_len;
-        self
-    }
-
-    /// Sets the compression type.
     #[cfg(feature = "compression")]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_compression(
-        mut self,
-        compression: Compression,
-    ) -> Self {
-        self.compression = Some(compression);
-        self
-    }
+    with_field_fn!(compression, Option<Compression>);
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
+impl ReportReaderBuilder {
     /// Determines the data type of the chromosome column based on FASTA/FAI.
     fn get_chr_dtype(&self) -> anyhow::Result<Option<DataType>> {
         let chroms = match (self.fasta_path.as_ref(), self.fai_path.as_ref()) {
@@ -219,14 +139,10 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
         &self
     ) -> anyhow::Result<Option<Box<dyn Iterator<Item = FastaRecord>>>> {
         if let Some(fasta_path) = self.fasta_path.as_ref() {
-            let reader =
-                FastaReader::new(BufReader::new(File::open(fasta_path)?));
+            let reader = FastaReader::new(BufReader::new(File::open(fasta_path)?));
             let iterator = Some(Box::new(
-                reader
-                    .records()
-                    .map(|r| r.expect("Failed to read record")),
-            )
-                as Box<dyn Iterator<Item = FastaRecord>>);
+                reader.records().map(|r| r.expect("Failed to read record")),
+            ) as Box<dyn Iterator<Item = FastaRecord>>);
             Ok(iterator)
         }
         else {
@@ -264,10 +180,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
             .with_chunk_size(self.batch_size)
             .into_reader_with_file_handle(handle);
 
-        let owned_batched = OwnedBatchedCsvReader::new(
-            csv_reader,
-            self.report_type.schema().into(),
-        );
+        let owned_batched =
+            OwnedBatchedCsvReader::new(csv_reader, self.report_type.schema().into());
         Ok(owned_batched)
     }
 
@@ -275,42 +189,39 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     pub fn build_from_handle(
         self,
         handle: Box<dyn MmapBytesReader>,
-    ) -> anyhow::Result<ReportReader<B>> {
-        use ReportTypeSchema as RS;
+    ) -> anyhow::Result<ReportReader> {
+        use ReportType as RS;
 
         let chr_dtype = self.get_chr_dtype()?;
-        if matches!(B::type_enum(), BatchType::Encoded) && chr_dtype.is_none() {
-            bail!(
-                "Either Fasta path or Fai path must be specified for Encoded \
-                 reading"
-            )
+        if chr_dtype.is_none() {
+            bail!("Either Fasta path or Fai path must be specified")
         }
         let fasta_reader = self.get_fasta_iterator()?;
         if matches!(self.report_type, RS::Coverage | RS::BedGraph)
             && fasta_reader.is_none()
         {
-            bail!(
-                "Fasta path must be specified for Bedgraph or Coverage reading"
-            )
+            bail!("Fasta path must be specified for Bedgraph or Coverage reading")
         }
 
         let mut csv_reader = self.get_csv_reader(handle)?;
-        let (sender, receiver) = crossbeam::channel::bounded(self.queue_len);
+        let threads = self
+            .n_threads
+            .unwrap_or(rayon::current_num_threads().min(16));
+        let (sender, receiver) = crossbeam::channel::bounded(threads * 2);
 
         let join_handle = std::thread::spawn(move || {
-            while let Ok(Some(mut df)) = csv_reader.next_batches(1) {
-                if df.len() != 1 {
-                    panic!("Unexpected batch count {}", df.len());
-                }
-                sender
-                    .send(df.pop().unwrap())
-                    .expect("Failed to send data");
+            while let Ok(Some(mut df)) = csv_reader.next_batches(threads) {
+                df.drain(..)
+                    .for_each(|df| sender.send(df).expect("Failed to send data"));
             }
         });
 
         let reader = ReportReader {
             _join_handle: join_handle,
             data_receiver: receiver,
+            thread_pool: rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()?,
             report_type: self.report_type,
             cached_batch: BTreeMap::new(),
             seen_chr: HashMap::new(),
@@ -326,18 +237,19 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReaderBuilder<B> {
     pub fn build(
         self,
         path: PathBuf,
-    ) -> anyhow::Result<ReportReader<B>> {
+    ) -> anyhow::Result<ReportReader> {
         let handle = self.get_file_handle(path)?;
         self.build_from_handle(handle)
     }
 }
 
 /// Reads report data and yields batches.
-pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
+pub struct ReportReader {
     _join_handle:  JoinHandle<()>,
     data_receiver: Receiver<DataFrame>,
-    report_type:   ReportTypeSchema,
-    cached_batch:  BTreeMap<usize, B>,
+    thread_pool:   ThreadPool,
+    report_type:   ReportType,
+    cached_batch:  BTreeMap<usize, BsxBatch>,
     seen_chr:      HashMap<BsxSmallStr, usize>,
     chunk_size:    usize,
 
@@ -346,12 +258,12 @@ pub struct ReportReader<B: BsxBatchMethods + BsxTypeTag> {
     chr_dtype:    Option<DataType>,
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
+impl ReportReader {
     /// Tries to take a cached batch.
     fn take_cached(
         &mut self,
         force: bool,
-    ) -> Option<B> {
+    ) -> Option<BsxBatch> {
         // No cache at all
         if self.cached_batch.is_empty() {
             return None;
@@ -382,14 +294,13 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
     /// Aligns a batch with context data.
     fn align_batch(
         &mut self,
-        batch: B,
+        batch: BsxBatch,
         is_final: bool,
-    ) -> anyhow::Result<B> {
+    ) -> anyhow::Result<BsxBatch> {
         // If some cached chr data
-        if let Some((chr, mut cached_data)) = Option::take(&mut self.cached_chr)
-        {
+        if let Some((chr, mut cached_data)) = Option::take(&mut self.cached_chr) {
             // If cached different chromosome raise
-            if batch.chr_val() != chr.as_str() {
+            if batch.seqname().unwrap_or_default() != chr.as_str() {
                 bail!("Chromosome mismatch")
             // Else align
             }
@@ -400,33 +311,26 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
                 // If not final, take till end of batch
                 }
                 else {
-                    let drained = cached_data.drain_until(batch.end_pos());
+                    let drained =
+                        cached_data.drain_until(batch.last_pos().unwrap_or(0));
                     (drained, Some((chr, cached_data)))
                 };
                 // Update cache (leftover if not final else None)
                 self.cached_chr = new_cache;
-                let chr_val = batch.chr_val().to_string();
+                let _chr_val = batch.seqname().unwrap_or_default().to_string();
                 // Align batch
-                let aligned = LazyBsxBatch::from(batch)
-                    .align_with_contexts(context_data, &chr_val)
-                    .collect()?;
+                let aligned = batch.add_context_data(context_data)?;
                 Ok(aligned)
             }
         // If cache is empty read next chromosome
         }
         else {
             // Try read
-            if let Some(new_sequence) = self
-                .fasta_reader
-                .as_mut()
-                .unwrap()
-                .next()
-            {
+            if let Some(new_sequence) = self.fasta_reader.as_mut().unwrap().next() {
                 // Process sequence
                 let mut new_context_data = ContextData::empty();
                 new_context_data.read_sequence(new_sequence.seq(), 1);
-                self.cached_chr =
-                    Some((new_sequence.id().into(), new_context_data));
+                self.cached_chr = Some((new_sequence.id().into(), new_context_data));
                 // Try aligning again
                 Ok(self
                     .align_batch(batch, is_final)
@@ -441,52 +345,90 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
 
     /// Fills the cache with more data.
     fn fill_cache(&mut self) -> anyhow::Result<()> {
-        // Try receive another batch
-        let new_batch = self.data_receiver.recv().map_err(|e| {
-            anyhow::anyhow!("Channel closed unexpectedly while reading a batch")
-                .context(e)
+        let n_threads = self.thread_pool.current_num_threads();
+        let mut new_batches = Vec::with_capacity(n_threads);
+        let mut stream_ended = false;
+
+        while !self.data_receiver.is_empty() && new_batches.len() < n_threads {
+            let new_batch = self.data_receiver.recv()?;
+            stream_ended =
+                self.data_receiver.is_empty() && self._join_handle.is_finished();
+
+            new_batches.push(new_batch);
+        }
+
+        let converted = self.thread_pool.install(|| {
+            new_batches
+                .into_par_iter()
+                .flat_map(|df| {
+                    df.partition_by_stable([self.report_type.chr_col()], true)
+                })
+                .flatten()
+                .filter(|df| !df.is_empty())
+                .map(|df| {
+                    BsxBatchBuilder::all_checks()
+                        .with_check_single_chr(false)
+                        .with_chr_dtype(self.chr_dtype.clone())
+                        .build_from_report(df, self.report_type)
+                })
+                .collect::<Result<Vec<_>, _>>()
         })?;
-        let last_one =
-            self.data_receiver.is_empty() && self._join_handle.is_finished();
-        // Partition by chromosome
-        let partitioned = new_batch
-            .partition_by_stable([self.report_type.chr_col()], true)
-            .map_err(|e| {
-                anyhow::anyhow!("Failed to partition batch").context(e)
-            })?;
-        // 1 if single chromosome or > 1 if multiple
-        let n_partitioned = partitioned.len();
 
-        for (index, data) in partitioned.into_iter().enumerate() {
-            // Convert to BSX batch format
-            let mut bsx_batch = BsxBatchBuilder::all_checks()
-                .with_report_type(self.report_type)
-                .with_check_single_chr(false)
-                .with_chr_dtype(self.chr_dtype.clone()) // Will raise if not specified
-                .build::<B>(data)?;
+        let mut is_last = vec![false; converted.len()];
+        let mut prev_chr = self.cached_chr.as_ref().map(|v| v.0.clone());
+        let mut prev_end = 0;
+        for i in 0..converted.len() {
+            let batch_contig = converted[i].as_contig().unwrap();
 
+            if i == 0
+                && prev_chr.is_some()
+                && prev_chr.as_ref() != Some(batch_contig.seqname())
+            {
+                is_last[i] = true;
+            }
+            else if i > 0 && prev_chr.as_ref() != Some(batch_contig.seqname()) {
+                is_last[i - 1] = true;
+            }
+            else if i == converted.len() - 1 && stream_ended {
+                is_last[i] = true;
+            }
+
+            if prev_chr.as_ref() == Some(batch_contig.seqname())
+                && prev_end >= batch_contig.start()
+            {
+                return Err(anyhow::anyhow!(
+                    "Overlapping records found at position {}",
+                    batch_contig
+                ));
+            }
+
+            prev_chr = Some(batch_contig.seqname().clone());
+            prev_end = batch_contig.end();
+        }
+
+        for (mut bsx_batch, last_one) in converted.into_iter().zip(is_last.into_iter())
+        {
             // Align batch if required
             if self.report_type.need_align() {
-                let is_final = (index < n_partitioned - 1) || last_one;
-                bsx_batch = self.align_batch(bsx_batch, is_final)?;
+                bsx_batch = self.align_batch(bsx_batch, last_one)?;
             }
 
             // Add chromosome to seen and retrieve chr index
-            let batch_chr = bsx_batch.chr_val().to_owned();
+            let batch_chr = bsx_batch.seqname().unwrap_or_default().into();
             let seen_chr_len = self.seen_chr.len();
-            let chr_idx = self
-                .seen_chr
-                .entry(batch_chr)
-                .or_insert(seen_chr_len);
+            let chr_idx = self.seen_chr.entry(batch_chr).or_insert(seen_chr_len);
             // Update cached batch
             self.cached_batch
                 .entry(*chr_idx)
                 .and_modify(|b| {
-                    b.extend(&bsx_batch)
-                        .expect("vstack failed");
+                    unsafe { b.extend_unchecked(&bsx_batch).expect("vstack failed") };
                 })
                 .or_insert(bsx_batch);
         }
+
+        self.cached_batch
+            .values_mut()
+            .for_each(|batch| batch.rechunk());
 
         Ok(())
     }
@@ -500,8 +442,8 @@ impl<B: BsxBatchMethods + BsxTypeTag> ReportReader<B> {
     }
 }
 
-impl<B: BsxBatchMethods + BsxTypeTag> Iterator for ReportReader<B> {
-    type Item = anyhow::Result<B>;
+impl Iterator for ReportReader {
+    type Item = anyhow::Result<BsxBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -510,9 +452,7 @@ impl<B: BsxBatchMethods + BsxTypeTag> Iterator for ReportReader<B> {
                 return Some(Ok(batch));
             }
             // If the reader thread is still alive or we can expect more data
-            if !self._join_handle.is_finished()
-                || !self.data_receiver.is_empty()
-            {
+            if !self._join_handle.is_finished() || !self.data_receiver.is_empty() {
                 if let Err(e) = self.fill_cache() {
                     return Some(Err(e));
                 }

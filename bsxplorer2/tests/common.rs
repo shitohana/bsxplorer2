@@ -6,16 +6,13 @@ use std::ops::BitOr;
 
 use anyhow::bail;
 use bio::io::fasta::Record;
-use bsxplorer2::data_structs::batch::colnames::{CONTEXT_NAME,
-                                                COUNT_M_NAME,
-                                                COUNT_TOTAL_NAME,
-                                                STRAND_NAME};
-use bsxplorer2::data_structs::batch::{BsxBatch,
+use bsxplorer2::data_structs::batch::{create_caregorical_dtype,
+                                      BsxBatch,
                                       BsxBatchBuilder,
-                                      BsxBatchMethods};
-use bsxplorer2::data_structs::context_data::ContextData;
-use bsxplorer2::io::bsx::BsxIpcWriter;
-use bsxplorer2::io::report::ReportTypeSchema;
+                                      BsxColumns};
+use bsxplorer2::data_structs::ContextData;
+use bsxplorer2::io::bsx::BsxFileWriter;
+use bsxplorer2::io::report::ReportType;
 use itertools::Itertools;
 use polars::prelude::{AnyValue, Column, DataType, Scalar};
 use polars::series::ChunkCompareEq;
@@ -31,7 +28,9 @@ pub struct DemoReportBuilder<R: SeedableRng + RngCore> {
 }
 
 impl<R: SeedableRng + RngCore> Default for DemoReportBuilder<R> {
-    fn default() -> Self { Self::new(100_000, 30, 10.0, 0.4, None) }
+    fn default() -> Self {
+        Self::new(100_000, 30, 10.0, 0.4, None)
+    }
 }
 
 impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
@@ -57,58 +56,6 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
             mean_density: mean_methylation,
             rng,
         }
-    }
-
-    pub fn write_bsx<W: Write>(
-        mut self,
-        sink: W,
-        n_chr: usize,
-        chunk_size: usize,
-    ) -> anyhow::Result<Vec<BsxBatch>> {
-        let mut orig_batches = Vec::<BsxBatch>::new();
-        let mut chr_batches = BTreeMap::new();
-
-        for (_record, mut full_batch) in self.into_iter().take(n_chr) {
-            let chr = full_batch.chr_val().to_owned();
-            orig_batches.push(full_batch.clone());
-            let mut partitioned = Vec::new();
-
-            loop {
-                let (left, right) = full_batch.split_at(chunk_size);
-                partitioned.push(left);
-                if right.is_empty() {
-                    break;
-                }
-                else {
-                    let _ = std::mem::replace(&mut full_batch, right);
-                }
-            }
-
-            chr_batches.insert(chr, partitioned);
-        }
-
-        let chr_list = chr_batches
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>();
-        let mut writer = BsxIpcWriter::try_new(
-            sink,
-            chr_list
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            None,
-            None,
-        )?;
-
-        for chr in chr_list {
-            let batches = chr_batches.remove(&chr).unwrap();
-            for batch in batches {
-                writer.write_batch(batch)?;
-            }
-        }
-
-        Ok(orig_batches)
     }
 
     pub fn set_chr_length(
@@ -139,7 +86,9 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         self.std_coverage = std_coverage;
     }
 
-    pub fn rng_mut(&mut self) -> &mut R { &mut self.rng }
+    pub fn rng_mut(&mut self) -> &mut R {
+        &mut self.rng
+    }
 }
 
 impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
@@ -172,8 +121,7 @@ impl<R: SeedableRng + RngCore> DemoReportBuilder<R> {
         context_data: &ContextData,
     ) -> (Vec<u32>, Vec<u32>) {
         let coverage_dist =
-            Normal::new(self.mean_coverage as f64, self.std_coverage as f64)
-                .unwrap();
+            Normal::new(self.mean_coverage as f64, self.std_coverage as f64).unwrap();
         let count_total = coverage_dist
             .sample_iter(&mut self.rng)
             .map(|x| x.abs() as u32)
@@ -197,17 +145,13 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
     type Item = (Record, BsxBatch);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let chr_name = self
-            .rng
-            .gen_range(0..1000000)
-            .to_string();
+        let chr_name = self.rng.gen_range(0..1000000).to_string();
         let record = self.generate_record(self.chr_len, chr_name.clone());
         let context_data = self.generate_context_data(&record);
         let target_length = context_data.len();
-        let (count_total, count_methylated) =
-            self.generate_methylation(&context_data);
+        let (count_total, count_methylated) = self.generate_methylation(&context_data);
 
-        let mut context_df = context_data.to_df::<BsxBatch>();
+        let mut context_df = context_data.to_df();
         context_df
             .with_column(Column::new("count_total".into(), count_total))
             .unwrap();
@@ -217,10 +161,7 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
         context_df
             .with_column(Column::new_scalar(
                 "chr".into(),
-                Scalar::new(
-                    DataType::String,
-                    AnyValue::StringOwned(chr_name.into()),
-                ),
+                Scalar::new(DataType::String, AnyValue::StringOwned(chr_name.into())),
                 target_length,
             ))
             .unwrap();
@@ -241,55 +182,84 @@ impl<R: SeedableRng + RngCore> Iterator for DemoReportBuilder<R> {
             )
             .unwrap();
 
-        let batch = BsxBatchBuilder::all_checks()
-            .build(context_df)
-            .unwrap();
-        Some((record, batch))
+        let batch = BsxBatchBuilder::all_checks().cast_only(context_df).unwrap();
+        Some((record, unsafe { BsxBatchBuilder::build_unchecked(batch) }))
     }
 }
 
 pub fn compare_batches(
     original: &BsxBatch,
     read: &BsxBatch,
-    report_type: &ReportTypeSchema,
+    report_type: &ReportType,
 ) -> anyhow::Result<()> {
-    if original.chr_val() != read.chr_val() {
+    if original.seqname() != read.seqname() {
         bail!(
             "Chromosomes differ for original: {}\nread: {}",
             original.data(),
             read.data()
         );
     }
-    if original.height() != read.height() {
+    if original.len() != read.len() {
         bail!(
             "Heights differ for original: {}\nread: {}",
             original.data(),
             read.data()
         );
     }
-    let (original_df, read_df) =
-        if matches!(report_type, ReportTypeSchema::BedGraph) {
-            // TODO: Find out, why first row density equal to NaN when testing
-            return Ok(());
+    let (original_df, read_df) = {
+        // Cast the "chr" column to string in both dataframes
+        let mut original_df = original.data().clone();
+        let mut read_df = read.data().clone();
 
-            // (
-            //     original
-            //         .data()
-            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME,
-            // STRAND_NAME]),     read.data()
-            //         .drop_many([COUNT_M_NAME, COUNT_TOTAL_NAME, CONTEXT_NAME,
-            // STRAND_NAME]), )
+        if let Ok(chr_col) = original_df.column("chr") {
+            original_df
+                .with_column(chr_col.cast(&DataType::String).unwrap())
+                .unwrap();
         }
-        else {
-            (original.data().clone(), read.data().clone())
-        };
+
+        if let Ok(chr_col) = read_df.column("chr") {
+            read_df
+                .with_column(chr_col.cast(&DataType::String).unwrap())
+                .unwrap();
+        }
+
+        if matches!(report_type, ReportType::BedGraph) {
+            original_df = original_df.drop(BsxColumns::CountM.as_str())?;
+            original_df = original_df.drop(BsxColumns::CountTotal.as_str())?;
+            read_df = read_df.drop(BsxColumns::CountM.as_str())?;
+            read_df = read_df.drop(BsxColumns::CountTotal.as_str())?;
+        }
+
+        (original_df, read_df)
+    };
+
     if !original_df.equals_missing(&read_df) {
-        let diff_mask = original_df
-            .materialized_column_iter()
-            .zip(read_df.materialized_column_iter())
-            .map(|(orig, read)| !orig.equal(read).unwrap())
+        let mut colnames = original_df
+            .schema()
+            .iter_names_cloned()
+            .filter(|v| v != BsxColumns::Density.as_str())
+            .collect_vec();
+
+        let diff_mask = colnames
+            .iter()
+            .map(|name| {
+                (
+                    original_df.column(name).unwrap().as_materialized_series(),
+                    read_df.column(name).unwrap().as_materialized_series(),
+                )
+            })
+            .map(|(orig, read)| {
+                !orig.equal(read).expect(
+                    format!("Equality check failed for {}, {}", orig, read).as_str(),
+                )
+            })
             .reduce(|acc, new| acc.bitor(new))
             .unwrap();
+
+        if !diff_mask.any() {
+            return Ok(());
+        }
+
         let orig_diff = original_df.filter(&diff_mask)?;
         let read_diff = read_df.filter(&diff_mask)?;
         bail!(

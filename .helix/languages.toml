@@ -1,0 +1,7 @@
+[language-server.rust-analyzer.config]
+cargo.features = "all"
+cachePriming.enable = true
+diagnostics.experimental.enable = false
+diagnostics.styleLints.enable = true
+imports.preferPrelude = true
+

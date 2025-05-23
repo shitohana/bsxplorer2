@@ -1,74 +1,125 @@
 use std::fs::File;
 
-use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::data_structs::enums::Strand;
+use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
+use pyo3_polars::error::PyPolarsErr;
 use pyo3_polars::PyDataFrame;
 
-/// RegionReader is a reader for BSX files that operates on a specific region of
-/// the genome. (Python wrapper)
-#[pyclass(unsendable, name = "RegionReader")] // Mark as unsendable as it holds File/Reader which is not Sync/Send
+use crate::types::batch::PyBsxBatch;
+use crate::types::coords::PyContig;
+use crate::types::index::PyBatchIndex;
+use crate::utils::FileOrFileLike;
+
+#[pyclass(unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
-    reader: RegionReader<File, String, u32>,
+    inner: RegionReader,
 }
 
 #[pymethods]
 impl PyRegionReader {
     #[new]
-    fn new(path: String) -> PyResult<Self> {
-        let file = File::open(path).map_err(PyErr::from)?;
-        // The BsxFileReader needs Read + Seek. std::fs::File provides this.
-        let mut bsx_reader: BsxFileReader<File> = BsxFileReader::new(file);
-        // Indexing requires Read + Seek. The index() method consumes &mut self,
-        // so we need the reader to be mutable.
-        let index: BatchIndex<String, u32> = bsx_reader
-            .index()
-            .map_err(PyErr::from)?
-            .clone();
+    fn new(file: FileOrFileLike) -> PyResult<Self> {
+        let mut reader = match file {
+            FileOrFileLike::File(path) => BsxFileReader::try_new(File::open(path)?)?,
+            FileOrFileLike::ROnlyFileLike(handle) => BsxFileReader::try_new(handle)?,
+            FileOrFileLike::RWFileLike(handle) => BsxFileReader::try_new(handle)?,
+        };
+        let index: BatchIndex =
+            BatchIndex::from_reader(&mut reader).map_err(|e| PyPolarsErr::Polars(e))?;
 
         Ok(Self {
-            // The RegionReader also needs Read + Seek. We pass the
-            // BsxFileReader itself. Since BsxFileReader wraps the
-            // File, it fulfills the requirement. The generic
-            // parameters S and P are fixed to String and u32.
-            reader: RegionReader::new(bsx_reader, index, None),
+            inner: RegionReader::new(reader, index, None),
         })
     }
 
     fn query(
         &mut self,
-        seqname: String,
-        start: u32,
-        end: u32,
+        contig: PyContig,
+        postprocess_fn: Py<PyAny>,
     ) -> PyResult<Option<PyDataFrame>> {
-        let contig = Contig::new(seqname, start, end, Strand::None);
+        Python::with_gil(|py| {
+            if !postprocess_fn.clone_ref(py).into_bound(py).is_callable() {
+                return Err(PyValueError::new_err(
+                    "Preprocess function must be callable",
+                ));
+            }
+            Ok(())
+        })?;
 
-        // The Rust query method takes an optional postprocess_fn (a fn
-        // pointer). We omit this from the Python interface for
-        // simplicity.
-        let result = self.reader.query(contig, None);
+        // Create a Box<dyn Fn> to match the expected function type
+        let rust_postprocess =
+            Box::new(move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
+                let py_batch_res = Python::with_gil(|py| -> PyResult<PyBsxBatch> {
+                    let py_batch = PyBsxBatch::from(entry);
+                    let args = PyTuple::new_bound(py, &[py_batch.into_py(py)]);
+                    let result = postprocess_fn.call1(py, args)?;
+                    let py_batch = result.extract::<PyBsxBatch>(py)?;
+                    Ok(py_batch)
+                });
+                py_batch_res
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+                    .map(|batch| batch.into())
+            });
+
+        let result = self.inner.query(contig.into(), None);
 
         match result {
-            Ok(Some(batch)) => {
-                // EncodedBsxBatch wraps a DataFrame. Convert it to PyDataFrame.
-                Ok(Some(PyDataFrame(batch.into())))
-            },
+            Ok(Some(batch)) => Ok(Some(PyDataFrame(batch.into_inner()))),
             Ok(None) => Ok(None),
             Err(e) => Err(PyErr::from(e)),
         }
     }
 
-    /// Resets the cache.
-    fn reset(&mut self) { self.reader.reset(); }
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
 
-    /// Returns the chromosome order as a list of strings.
     fn chr_order(&self) -> Vec<String> {
-        self.reader
+        self.inner
             .index()
-            .chr_order()
+            .get_chr_order()
             .iter()
             .cloned()
+            .map(|chr| chr.to_string())
             .collect()
+    }
+
+    fn set_preprocess_fn(
+        &mut self,
+        preprocess_fn: Py<PyAny>,
+    ) -> PyResult<()> {
+        Python::with_gil(|py| {
+            if !preprocess_fn.clone_ref(py).into_bound(py).is_callable() {
+                return Err(PyValueError::new_err(
+                    "Preprocess function must be callable",
+                ));
+            }
+            Ok(())
+        })?;
+
+        // Create a Box<dyn Fn> to match the expected function type
+        let rust_preprocess_fn =
+            Box::new(move |entry: BsxBatch| -> anyhow::Result<BsxBatch> {
+                let py_batch_res = Python::with_gil(|py| -> PyResult<PyBsxBatch> {
+                    let py_batch = PyBsxBatch::from(entry);
+                    let args = PyTuple::new_bound(py, &[py_batch.into_py(py)]);
+                    let result = preprocess_fn.call1(py, args)?;
+                    let py_batch = result.extract::<PyBsxBatch>(py)?;
+                    Ok(py_batch)
+                });
+                py_batch_res
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+                    .map(|batch| batch.into())
+            });
+
+        self.inner.set_preprocess_fn(Some(rust_preprocess_fn));
+        Ok(())
+    }
+
+    fn index(&self) -> PyBatchIndex {
+        self.inner.index().clone().into()
     }
 }

@@ -1,107 +1,104 @@
-use bsxplorer2::data_structs::enums::{Context as RsContext,
-                                      Strand as RsStrand};
+use bsxplorer2::data_structs::{Context as RsContext, Strand as RsStrand};
 use pyo3::prelude::*;
 
-/// Represents DNA strand information.
-///
-/// Attributes
-/// ----------
-/// Forward
-///     Represents the forward strand (+).
-/// Reverse
-///     Represents the reverse strand (-).
-/// None
-///     Represents unknown or N/A strand (.).
-#[pyclass(eq, eq_int)]
-#[derive(PartialEq, Debug, Clone, Copy)]
-pub enum Strand {
-    /// Forward strand (+).
+#[pyclass(name = "Strand", eq, eq_int, hash, frozen)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Eq)]
+pub enum PyStrand {
     Forward,
-    /// Reverse strand (-).
     Reverse,
-    /// Unknown or N/A strand (.).
-    None,
+    Null,
 }
 
-impl Strand {
+impl PyStrand {
     fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "forward" => Some(Strand::Forward),
-            "reverse" => Some(Strand::Reverse),
-            "none" => Some(Strand::None),
+            "forward" => Some(PyStrand::Forward),
+            "reverse" => Some(PyStrand::Reverse),
+            "null" => Some(PyStrand::Null),
             _ => None,
         }
     }
 }
 
-impl From<RsStrand> for Strand {
+#[pymethods]
+impl PyStrand {
+    #[getter]
+    fn name(&self) -> &str {
+        match self {
+            PyStrand::Forward => "Forward",
+            PyStrand::Reverse => "Reverse",
+            PyStrand::Null => "Null",
+        }
+    }
+}
+
+impl From<RsStrand> for PyStrand {
     fn from(s: RsStrand) -> Self {
         match s {
-            RsStrand::Forward => Strand::Forward,
-            RsStrand::Reverse => Strand::Reverse,
-            RsStrand::None => Strand::None,
+            RsStrand::Forward => PyStrand::Forward,
+            RsStrand::Reverse => PyStrand::Reverse,
+            RsStrand::None => PyStrand::Null,
         }
     }
 }
 
-impl From<Strand> for RsStrand {
-    fn from(s: Strand) -> Self {
+impl From<PyStrand> for RsStrand {
+    fn from(s: PyStrand) -> Self {
         match s {
-            Strand::Forward => RsStrand::Forward,
-            Strand::Reverse => RsStrand::Reverse,
-            Strand::None => RsStrand::None,
+            PyStrand::Forward => RsStrand::Forward,
+            PyStrand::Reverse => RsStrand::Reverse,
+            PyStrand::Null => RsStrand::None,
         }
     }
 }
 
-/// Represents methylation context (sequence context).
-///
-/// Attributes
-/// ----------
-/// CG
-///     CpG context.
-/// CHG
-///     CHG context (H = A, C, or T).
-/// CHH
-///     CHH context (H = A, C, or T).
-#[pyclass(eq, eq_int)]
-#[derive(PartialEq)]
-pub enum Context {
-    /// CpG context.
+#[pyclass(name = "Context", eq, eq_int, hash, frozen)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Eq)]
+pub enum PyContext {
     CG,
-    /// CHG context (H = A, C, or T).
     CHG,
-    /// CHH context (H = A, C, or T).
     CHH,
 }
 
-impl Context {
+impl PyContext {
     fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "cg" => Some(Context::CG),
-            "chg" => Some(Context::CHG),
-            "chh" => Some(Context::CHH),
+            "cg" => Some(PyContext::CG),
+            "chg" => Some(PyContext::CHG),
+            "chh" => Some(PyContext::CHH),
             _ => None,
         }
     }
 }
 
-impl From<RsContext> for Context {
-    fn from(s: RsContext) -> Self {
-        match s {
-            RsContext::CG => Context::CG,
-            RsContext::CHG => Context::CHG,
-            RsContext::CHH => Context::CHH,
+#[pymethods]
+impl PyContext {
+    #[getter]
+    fn name(&self) -> &str {
+        match self {
+            PyContext::CG => "CG",
+            PyContext::CHG => "CHG",
+            PyContext::CHH => "CHH",
         }
     }
 }
 
-impl From<Context> for RsContext {
-    fn from(s: Context) -> Self {
+impl From<RsContext> for PyContext {
+    fn from(s: RsContext) -> Self {
         match s {
-            Context::CG => RsContext::CG,
-            Context::CHG => RsContext::CHG,
-            Context::CHH => RsContext::CHH,
+            RsContext::CG => PyContext::CG,
+            RsContext::CHG => PyContext::CHG,
+            RsContext::CHH => PyContext::CHH,
+        }
+    }
+}
+
+impl From<PyContext> for RsContext {
+    fn from(s: PyContext) -> Self {
+        match s {
+            PyContext::CG => RsContext::CG,
+            PyContext::CHG => RsContext::CHG,
+            PyContext::CHH => RsContext::CHH,
         }
     }
 }

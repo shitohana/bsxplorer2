@@ -6,10 +6,11 @@ use bio::bio_types::annot::refids::RefIDSet;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
 use log::error;
-use polars::prelude::{Column, DataType};
+use polars::prelude::Column;
 use rayon::prelude::*;
 
-use crate::data_structs::batch::{colnames, merge_replicates, BsxBatchMethods};
+use crate::data_structs::batch::{merge_replicates, BsxBatch};
+use crate::data_structs::typedef::{DensityType, PosType};
 use crate::tools::dmr::config::DmrConfig;
 use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
 use crate::tools::dmr::segmentation::tv_recurse_segment;
@@ -33,75 +34,53 @@ fn merge_density(columns: Vec<&Column>) -> Column {
     Rc::unwrap_or_clone(agg).div(length)
 }
 
-pub(crate) fn segment_reading<I, B>(
+pub(crate) fn segment_reading<I>(
     mut left_readers: Vec<I>,
     mut right_readers: Vec<I>,
     sender: Sender<(String, SegmentOwned)>,
 ) where
-    I: Iterator<Item = B>,
-    B: BsxBatchMethods, {
+    I: Iterator<Item = BsxBatch>, {
     loop {
         match (
             left_readers
                 .iter_mut()
                 .map(|x| x.next())
-                .collect::<Option<Vec<B>>>(),
+                .collect::<Option<Vec<_>>>(),
             right_readers
                 .iter_mut()
                 .map(|x| x.next())
-                .collect::<Option<Vec<B>>>(),
+                .collect::<Option<Vec<_>>>(),
         ) {
             (Some(left), Some(right)) => {
-                let left_merged =
-                    merge_replicates(left, merge_counts, merge_density)
-                        .expect("Failed to merge replicates");
-                let right_merged =
-                    merge_replicates(right, merge_counts, merge_density)
-                        .expect("Failed to merge replicates");
+                let left_merged = merge_replicates(left, merge_counts, merge_density)
+                    .expect("Failed to merge replicates");
+                let right_merged = merge_replicates(right, merge_counts, merge_density)
+                    .expect("Failed to merge replicates");
 
-                let chr = left_merged.chr_val().to_string();
+                let chr = left_merged.seqname().unwrap_or_default();
                 // TODO add filtering
                 // TODO change segment position datatype to u32
                 let positions = left_merged
-                    .data()
-                    .column(colnames::POS_NAME)
-                    .unwrap()
-                    .cast(&DataType::UInt64)
-                    .unwrap()
-                    .u64()
-                    .unwrap()
-                    .to_vec_null_aware()
-                    .left()
-                    .expect("Unexpected nulls");
-
-                let left_density: Vec<f32> = left_merged
-                    .data()
-                    .column(colnames::DENSITY_NAME)
-                    .unwrap()
-                    .cast(&DataType::Float32)
-                    .unwrap()
-                    .f32()
-                    .unwrap()
-                    .into_iter()
-                    .map(|v| v.unwrap_or(f32::NAN))
-                    .collect_vec();
-                let right_density: Vec<f32> = right_merged
-                    .data()
-                    .column(colnames::DENSITY_NAME)
-                    .unwrap()
-                    .cast(&DataType::Float32)
-                    .unwrap()
-                    .f32()
-                    .unwrap()
-                    .into_iter()
-                    .map(|v| v.unwrap_or(f32::NAN))
+                    .position()
+                    .into_no_null_iter()
+                    .map(|v| v as PosType)
                     .collect_vec();
 
-                let segment =
-                    SegmentOwned::new(positions, left_density, right_density);
+                let left_density: Vec<DensityType> = left_merged
+                    .density()
+                    .into_iter()
+                    .map(|v| v.unwrap_or(DensityType::NAN))
+                    .collect_vec();
+                let right_density: Vec<DensityType> = right_merged
+                    .density()
+                    .into_iter()
+                    .map(|v| v.unwrap_or(DensityType::NAN))
+                    .collect_vec();
+
+                let segment = SegmentOwned::new(positions, left_density, right_density);
 
                 sender
-                    .send((chr, segment))
+                    .send((chr.to_string(), segment))
                     .expect("Failed to send segment");
             },
             (None, Some(_)) => panic!("Unexpected end of input (left readers)"),
@@ -135,13 +114,19 @@ pub struct DmrIterator {
 
 impl DmrIterator {
     /// Returns the total number of blocks processed.
-    pub fn blocks_total(&self) -> usize { self.reader_stat.blocks_total }
+    pub fn blocks_total(&self) -> usize {
+        self.reader_stat.blocks_total
+    }
 
     /// Returns the current block being processed.
-    fn current_block(&self) -> usize { self.reader_stat.current_block }
+    fn current_block(&self) -> usize {
+        self.reader_stat.current_block
+    }
 
     /// Returns the last chromosome processed.
-    fn last_chr(&self) -> Arc<String> { self.last_chr.clone() }
+    fn last_chr(&self) -> Arc<String> {
+        self.last_chr.clone()
+    }
 
     /// Compares a segment with the last chromosome processed.
     #[allow(clippy::mutable_key_type)]
@@ -186,8 +171,7 @@ impl DmrIterator {
                 preseg = leftover.concat(preseg);
             }
         }
-        initial_segments
-            .append(&mut preseg.split_by_dist(self.config.max_dist));
+        initial_segments.append(&mut preseg.split_by_dist(self.config.max_dist));
 
         self.last_chr = chr.clone();
         self.leftover = Some(initial_segments.pop().unwrap());
@@ -198,8 +182,7 @@ impl DmrIterator {
             .flatten()
             .collect::<Vec<_>>();
 
-        self.regions_cache
-            .append(&mut new_cache);
+        self.regions_cache.append(&mut new_cache);
         Ok(())
     }
 
@@ -208,10 +191,8 @@ impl DmrIterator {
         if let Some(leftover) = self.leftover.take() {
             let mut new_cache = self.comp_segment(leftover);
 
-            self.regions_cache
-                .append(&mut new_cache);
-            self.regions_cache
-                .sort_by_key(|d| d.start);
+            self.regions_cache.append(&mut new_cache);
+            self.regions_cache.sort_by_key(|d| d.start);
             Ok(true)
         }
         else {

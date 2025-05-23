@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 
 use itertools::{izip, Itertools};
 
-use crate::data_structs::enums::Context;
+use crate::data_structs::typedef::{CountType, DensityType, PosType};
+use crate::data_structs::Context;
 use crate::tools::dmr::data_structs::SegmentView;
 use crate::tools::dmr::tv1d_clone::condat;
 use crate::utils::mann_whitney_u;
@@ -24,8 +25,8 @@ use crate::utils::mann_whitney_u;
 ///
 /// * If `positions` is empty.  This should be handled gracefully.
 pub fn arg_split_segment(
-    positions: &[u64],
-    max_dist: u64,
+    positions: &[PosType],
+    max_dist: PosType,
 ) -> Vec<usize> {
     if positions.is_empty() {
         return Vec::new(); // Return an empty vector instead of panicking.
@@ -71,8 +72,8 @@ pub fn tv_recurse_segment(
     l_min: f64,
     l_coef: f64,
     min_cpg: usize,
-    diff_threshold: f32,
-    seg_tolerance: f32,
+    diff_threshold: DensityType,
+    seg_tolerance: DensityType,
     merge_pvalue: f64,
 ) -> BTreeSet<SegmentView> {
     assert!(
@@ -115,9 +116,9 @@ pub fn tv_recurse_segment(
             .map(|(start, end, _)| cur_seg.slice(*start, *end))
             .collect_vec();
 
-        let (mut short_segments, mut better_segments) = new_segments
-            .iter()
-            .fold((Vec::new(), Vec::new()), |(mut short, mut better), s| {
+        let (mut short_segments, mut better_segments) = new_segments.iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut short, mut better), s| {
                 if s.size() <= min_cpg {
                     short.push(s.clone())
                 }
@@ -125,7 +126,8 @@ pub fn tv_recurse_segment(
                     better.push(s.clone())
                 }
                 (short, better)
-            });
+            },
+        );
 
         result.append(&mut short_segments);
         if better_segments.is_empty() {
@@ -183,8 +185,8 @@ pub fn tv_recurse_segment(
 ///   - The end index of the segment.
 ///   - The value of the segment (the value at the start index).
 fn extract_segments(
-    x: &[f32],
-    tolerance: f32,
+    x: &[DensityType],
+    tolerance: DensityType,
 ) -> Vec<(usize, usize, f32)> {
     let mut segments = Vec::new();
     if x.is_empty() {
@@ -280,8 +282,7 @@ pub fn merge_segments(
     let mut current_segments = segments.to_vec();
     loop {
         current_segments.sort_by_key(|s| s.rel_start);
-        let merged =
-            merge_adjacent_segments(current_segments.clone(), p_threshold);
+        let merged = merge_adjacent_segments(current_segments.clone(), p_threshold);
         if merged.len() == current_segments.len() {
             break;
         }
@@ -297,5 +298,5 @@ pub struct FilterConfig {
     /// The maximum number of missing values allowed.
     pub n_missing:    usize,
     /// The minimum coverage required.
-    pub min_coverage: i16,
+    pub min_coverage: CountType,
 }

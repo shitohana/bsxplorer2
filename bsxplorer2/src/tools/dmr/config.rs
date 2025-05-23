@@ -1,15 +1,16 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::io::{Read, Seek};
+use std::os::unix::prelude::AsRawFd;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use bio::bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
-use polars::io::mmap::MmapBytesReader;
 
-use crate::data_structs::batch::EncodedBsxBatch;
-use crate::data_structs::enums::Context;
+use crate::data_structs::batch::BsxBatch;
+use crate::data_structs::typedef::{CountType, DensityType, PosType};
+use crate::data_structs::Context;
 use crate::io::bsx::BsxFileReader;
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
@@ -19,14 +20,14 @@ use crate::tools::dmr::{segment_reading, DmrIterator};
 pub struct DmrConfig {
     pub context:        Context,
     pub n_missing:      usize,
-    pub min_coverage:   i16,
-    pub diff_threshold: f32,
+    pub min_coverage:   CountType,
+    pub diff_threshold: DensityType,
     pub min_cpgs:       usize,
-    pub max_dist:       u64,
+    pub max_dist:       PosType,
     pub initial_l:      f64,
     pub l_min:          f64,
     pub l_coef:         f64,
-    pub seg_tolerance:  f32,
+    pub seg_tolerance:  DensityType,
     pub merge_pvalue:   f64,
     pub seg_pvalue:     f64,
 }
@@ -45,7 +46,7 @@ impl DmrConfig {
         readers: Vec<(R, F)>,
     ) -> anyhow::Result<DmrIterator>
     where
-        F: Read + Seek + Send + Sync + MmapBytesReader + 'static,
+        F: AsRawFd + 'static + Sync + Send,
         R: Display
             + Eq
             + Hash
@@ -71,9 +72,9 @@ impl DmrConfig {
         }
 
         let (sender, receiver) = crossbeam::channel::bounded(10);
-        // FIXME the block_count doesn't really calculate anything, as
-        // it is passed to a thread
-        let block_count = 0;
+        let block_count = Arc::new(AtomicUsize::new(0));
+        let local_block_count = block_count.clone();
+
         let join_handle = std::thread::spawn(move || {
             let (right_n, right_readers) = init_bsx_readers(
                 readers_pair
@@ -92,7 +93,7 @@ impl DmrConfig {
                     .collect_vec(),
             );
             assert_eq!(left_n, right_n, "Number of batches does not match");
-            // block_count += left_n;
+            local_block_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             segment_reading(left_readers, right_readers, sender)
         });
 
@@ -103,7 +104,9 @@ impl DmrConfig {
             regions_cache: Vec::new(),
             last_chr: Arc::new(String::new()),
             receiver,
-            reader_stat: ReaderMetadata::new(block_count),
+            reader_stat: ReaderMetadata::new(
+                block_count.load(std::sync::atomic::Ordering::Relaxed),
+            ),
             _join_handle: join_handle,
         };
 
@@ -114,14 +117,14 @@ impl DmrConfig {
     pub fn new(
         context: Context,
         n_missing: usize,
-        min_coverage: i16,
-        diff_threshold: f32,
+        min_coverage: CountType,
+        diff_threshold: DensityType,
         min_cpgs: usize,
-        max_dist: u64,
+        max_dist: PosType,
         initial_l: f64,
         l_min: f64,
         l_coef: f64,
-        seg_tolerance: f32,
+        seg_tolerance: DensityType,
         merge_pvalue: f64,
         seg_pvalue: f64,
     ) -> Self {
@@ -161,29 +164,29 @@ impl Default for DmrConfig {
     }
 }
 
-fn init_bsx_readers<F: Read + Seek + 'static>(
+fn init_bsx_readers<F: AsRawFd + 'static>(
     handles: Vec<F>
-) -> (usize, Vec<Box<dyn Iterator<Item = EncodedBsxBatch>>>) {
+) -> (usize, Vec<Box<dyn Iterator<Item = BsxBatch>>>) {
     assert!(!handles.is_empty(), "No readers supplied");
     let bsx_readers = handles
         .into_iter()
-        .map(|reader| BsxFileReader::new(reader))
-        .collect_vec();
+        .map(|reader| BsxFileReader::try_new(reader))
+        .collect::<anyhow::Result<Vec<_>>>()
+        .expect("Failed to initialize readers");
     assert!(
-        bsx_readers
-            .iter()
-            .map(|r| r.blocks_total())
-            .all_equal(),
+        bsx_readers.iter().map(|r| r.blocks_total()).all_equal(),
         "Number of blocks not equal in files"
     );
-    let n_batches = bsx_readers[0].blocks_total();
+    #[allow(unsafe_code)]
+    let n_batches = unsafe { bsx_readers.get_unchecked(0).blocks_total() };
     let iterators = bsx_readers
         .into_iter()
         .map(|reader| {
-            reader.map(|batch_res| batch_res.expect("could not read batch"))
-        })
-        .map(|reader| {
-            Box::new(reader) as Box<dyn Iterator<Item = EncodedBsxBatch>>
+            Box::new(
+                reader
+                    .into_iter()
+                    .map(|batch_res| batch_res.expect("could not read batch")),
+            ) as Box<dyn Iterator<Item = BsxBatch>>
         })
         .collect_vec();
     (n_batches, iterators)

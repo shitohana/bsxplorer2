@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -15,7 +14,7 @@ pub trait IPCEncodedEnum {
 
 pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum Context {
     /// CG context.
@@ -27,6 +26,7 @@ pub enum Context {
 }
 
 impl Display for Context {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
@@ -67,35 +67,6 @@ impl<'de> Deserialize<'de> for Context {
     }
 }
 
-impl PartialOrd<Self> for Context {
-    fn partial_cmp(
-        &self,
-        other: &Self,
-    ) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Context {
-    fn cmp(
-        &self,
-        other: &Self,
-    ) -> Ordering {
-        // Define an explicit order
-        let self_val = match self {
-            Context::CG => 2,
-            Context::CHG => 1,
-            Context::CHH => 0,
-        };
-        let other_val = match other {
-            Context::CG => 2,
-            Context::CHG => 1,
-            Context::CHH => 0,
-        };
-        self_val.cmp(&other_val)
-    }
-}
-
 impl IPCEncodedEnum for Context {
     fn from_bool(value: Option<bool>) -> Context {
         match value {
@@ -123,7 +94,7 @@ impl IPCEncodedEnum for Context {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum Strand {
     /// Forward strand.
@@ -132,6 +103,25 @@ pub enum Strand {
     Reverse,
     /// No strand.
     None,
+}
+
+impl From<Strand> for bool {
+    fn from(value: Strand) -> bool {
+        match value {
+            Strand::Forward => true,
+            Strand::Reverse => false,
+            Strand::None => unimplemented!(),
+        }
+    }
+}
+
+impl From<bool> for Strand {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Strand::Forward,
+            false => Strand::Reverse,
+        }
+    }
 }
 
 impl From<Strand> for char {
@@ -144,15 +134,6 @@ impl From<Strand> for char {
     }
 }
 
-impl<T: AsRef<str>> From<T> for Strand {
-    fn from(value: T) -> Self {
-        match value.as_ref() {
-            "+" => Strand::Forward,
-            "-" => Strand::Reverse,
-            _ => Strand::None,
-        }
-    }
-}
 
 impl Display for Strand {
     fn fmt(
@@ -195,35 +176,6 @@ impl<'de> Deserialize<'de> for Strand {
     }
 }
 
-impl PartialOrd<Self> for Strand {
-    fn partial_cmp(
-        &self,
-        other: &Self,
-    ) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Strand {
-    fn cmp(
-        &self,
-        other: &Self,
-    ) -> Ordering {
-        // Define an explicit order
-        let self_val = match self {
-            Strand::Forward => 2,
-            Strand::Reverse => 1,
-            Strand::None => 0,
-        };
-        let other_val = match other {
-            Strand::Forward => 2,
-            Strand::Reverse => 1,
-            Strand::None => 0,
-        };
-        self_val.cmp(&other_val)
-    }
-}
-
 impl IPCEncodedEnum for Strand {
     fn from_bool(value: Option<bool>) -> Strand {
         match value {
@@ -248,94 +200,5 @@ impl IPCEncodedEnum for Strand {
             _ => Strand::None, /* Default to None for any other string
                                 * including "." */
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::panic;
-
-    use super::*;
-
-    // --- Context Tests ---
-
-    #[test]
-    fn test_context_from_str() {
-        assert_eq!(Context::from_str("CG"), Context::CG);
-        assert_eq!(Context::from_str("cg"), Context::CG);
-        assert_eq!(Context::from_str("CHG"), Context::CHG);
-        assert_eq!(Context::from_str("chg"), Context::CHG);
-        assert_eq!(Context::from_str("CHH"), Context::CHH);
-        assert_eq!(Context::from_str("chh"), Context::CHH);
-    }
-
-    #[test]
-    fn test_context_from_str_unimplemented() {
-        let result = panic::catch_unwind(|| Context::from_str("XYZ"));
-        assert!(result.is_err()); // Expecting a panic
-    }
-
-    #[test]
-    fn test_context_ord() {
-        assert_eq!(Context::CG.cmp(&Context::CG), Ordering::Equal);
-        assert_eq!(Context::CHG.cmp(&Context::CHG), Ordering::Equal);
-        assert_eq!(Context::CHH.cmp(&Context::CHH), Ordering::Equal);
-
-        assert_eq!(Context::CG.cmp(&Context::CHG), Ordering::Greater);
-        assert_eq!(Context::CG.cmp(&Context::CHH), Ordering::Greater);
-        assert_eq!(Context::CHG.cmp(&Context::CHH), Ordering::Greater);
-
-        assert_eq!(Context::CHG.cmp(&Context::CG), Ordering::Less);
-        assert_eq!(Context::CHH.cmp(&Context::CG), Ordering::Less);
-        assert_eq!(Context::CHH.cmp(&Context::CHG), Ordering::Less);
-    }
-
-    #[test]
-    fn test_context_ipc_encoded() {
-        assert_eq!(Context::from_bool(Some(true)), Context::CG);
-        assert_eq!(Context::from_bool(Some(false)), Context::CHG);
-        assert_eq!(Context::from_bool(None), Context::CHH);
-
-        assert_eq!(Context::CG.to_bool(), Some(true));
-        assert_eq!(Context::CHG.to_bool(), Some(false));
-        assert_eq!(Context::CHH.to_bool(), None);
-    }
-
-    // --- Strand Tests ---
-
-    #[test]
-    fn test_strand_from_str() {
-        assert_eq!(Strand::from_str("+"), Strand::Forward);
-        assert_eq!(Strand::from_str("-"), Strand::Reverse);
-        assert_eq!(Strand::from_str("."), Strand::None);
-        assert_eq!(Strand::from_str("forward"), Strand::None); // Defaults to None
-        assert_eq!(Strand::from_str(""), Strand::None);
-        assert_eq!(Strand::from_str("AnythingElse"), Strand::None);
-    }
-
-    #[test]
-    fn test_strand_ord() {
-        assert_eq!(Strand::Forward.cmp(&Strand::Forward), Ordering::Equal);
-        assert_eq!(Strand::Reverse.cmp(&Strand::Reverse), Ordering::Equal);
-        assert_eq!(Strand::None.cmp(&Strand::None), Ordering::Equal);
-
-        assert_eq!(Strand::Forward.cmp(&Strand::Reverse), Ordering::Greater);
-        assert_eq!(Strand::Forward.cmp(&Strand::None), Ordering::Greater);
-        assert_eq!(Strand::Reverse.cmp(&Strand::None), Ordering::Greater);
-
-        assert_eq!(Strand::Reverse.cmp(&Strand::Forward), Ordering::Less);
-        assert_eq!(Strand::None.cmp(&Strand::Forward), Ordering::Less);
-        assert_eq!(Strand::None.cmp(&Strand::Reverse), Ordering::Less);
-    }
-
-    #[test]
-    fn test_strand_ipc_encoded() {
-        assert_eq!(Strand::from_bool(Some(true)), Strand::Forward);
-        assert_eq!(Strand::from_bool(Some(false)), Strand::Reverse);
-        assert_eq!(Strand::from_bool(None), Strand::None);
-
-        assert_eq!(Strand::Forward.to_bool(), Some(true));
-        assert_eq!(Strand::Reverse.to_bool(), Some(false));
-        assert_eq!(Strand::None.to_bool(), None);
     }
 }

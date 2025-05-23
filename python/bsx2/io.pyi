@@ -1,89 +1,18 @@
-from typing import Optional, Union, List
+from typing import Optional, Union, List, BinaryIO, Callable, Any
 from pathlib import Path
 
-from .types import ReportTypeSchema, BsxBatch, Contig
+from .types import ReportTypeSchema, BsxBatch, Contig, BatchIndex
 import polars as pl
 
-class BatchIndex:
-    """
-    Index for batches in a BSX file.
-
-    Stores the genomic coordinates for each batch, allowing quick lookup
-    of batch indices that overlap with a given genomic region.
-    """
-    def __init__(self) -> None:
-        """
-        Create a new empty BatchIndex.
-        """
-        ...
-
-    def insert(
-        self,
-        contig: Contig,
-        batch_idx: int,
-    ) -> None:
-        """
-        Insert a contig and its corresponding batch index into the index.
-
-        Parameters
-        ----------
-        contig : Contig
-            The genomic region covered by the batch.
-        batch_idx : int
-            The index of the batch in the BSX file.
-        """
-        ...
-
-    def sort(
-        self,
-        contigs: List[Contig],
-    ) -> List[Contig]:
-        """
-        Sort a list of contigs according to the chromosome order and start position defined in the index.
-
-        Parameters
-        ----------
-        contigs : list[Contig]
-            A list of Contig objects to sort.
-
-        Returns
-        -------
-        list[Contig]
-            A new list containing the input contigs sorted according to the index's order.
-        """
-        ...
-
-    def find(
-        self,
-        contig: Contig,
-    ) -> Optional[List[int]]:
-        """
-        Find the batch indices that overlap with a given contig.
-
-        Parameters
-        ----------
-        contig : Contig
-            The genomic region to query.
-
-        Returns
-        -------
-        list[int] or None
-            A list of batch indices that overlap the query region, or None if
-            the chromosome is not found in the index.
-        """
-        ...
-
-    def chr_order(self) -> List[str]:
-        """
-        Returns the chromosome order as a list of strings.
-
-        Returns
-        -------
-        list[str]
-            A list of chromosome names in the order they appear in the index.
-        """
-        ...
-
+__all__ = [
+    "RegionReader",
+    "Compression",
+    "ReportReader",
+    "ReportWriter",
+    "BsxFileReader",
+    "IpcCompression",
+    "BsxFileWriter"
+]
 
 class RegionReader:
     """
@@ -94,7 +23,7 @@ class RegionReader:
     It maintains an internal cache of decoded batches that overlap the
     most recently queried regions.
     """
-    def __init__(self, path: Union[str, Path]) -> None:
+    def __init__(self, file: Union[str, BinaryIO]) -> None:
         """
         Creates a new RegionReader instance.
 
@@ -113,9 +42,9 @@ class RegionReader:
         RuntimeError
             If there's an error reading the file or building the index.
         """
-        ...
+        pass
 
-    def query(self, seqname: str, start: int, end: int) -> Optional[pl.DataFrame]:
+    def query(self, contig: Contig, postprocess_fn: Callable[[BsxBatch], BsxBatch]) -> Optional[pl.DataFrame]:
         """
         Queries the BSX file for data within a specific genomic region.
 
@@ -145,7 +74,7 @@ class RegionReader:
         RuntimeError
             If an internal error occurs during batch retrieval, caching, or assembly.
         """
-        ...
+        pass
 
     def reset(self) -> None:
         """
@@ -155,7 +84,7 @@ class RegionReader:
         from the file. Use this if memory usage becomes high or if you need
         to ensure data freshness across different query patterns.
         """
-        ...
+        pass
 
     def chr_order(self) -> List[str]:
         """
@@ -166,7 +95,34 @@ class RegionReader:
         list[str]
             A list of chromosome names in the order they appear in the BSX file's index.
         """
-        ...
+        pass
+
+    def set_preprocess_fn(self, preprocess_fn: Callable[[Any], Any]) -> None:
+        """
+        Sets the preprocessing function applied to each batch before it is cached.
+
+        Parameters
+        ----------
+        preprocess_fn : callable
+            A function that takes a BsxBatch and returns a processed BsxBatch
+
+        Raises
+        ------
+        ValueError
+            If preprocess_fn is not callable
+        """
+        pass
+
+    def index(self) -> BatchIndex:
+        """
+        Returns the BatchIndex of the BSX file.
+
+        Returns
+        -------
+        BatchIndex
+            The index of batches in the BSX file
+        """
+        pass
 
 class Compression:
     """Compression algorithms."""
@@ -242,10 +198,10 @@ class ReportReader:
         RuntimeError
             If there's an error during reader initialization or parsing.
         """
-        ...
+        pass
 
     def __iter__(self) -> "ReportReader":
-        ...
+        pass
 
     def __next__(self) -> Optional[BsxBatch]:
         """Retrieves the next batch of methylation data.
@@ -262,7 +218,7 @@ class ReportReader:
         RuntimeError
             If an error occurs during reading or processing a batch.
         """
-        ...
+        pass
 
 class ReportWriter:
     """Writes methylation report data to a file.
@@ -273,7 +229,7 @@ class ReportWriter:
     """
     def __init__(
         self,
-        path: Union[str, Path],
+        file: Union[str, BinaryIO],
         schema: ReportTypeSchema,
         n_threads: int = 1,
         compression: Optional[str] = None,
@@ -307,7 +263,7 @@ class ReportWriter:
         RuntimeError
             If the file cannot be created or the writer fails to initialize.
         """
-        ...
+        pass
 
     def write_batch(self, batch: BsxBatch) -> None:
         """Writes a BsxBatch to the output file.
@@ -322,7 +278,7 @@ class ReportWriter:
         RuntimeError
             If the writer is already closed or if writing fails.
         """
-        ...
+        pass
 
     def write_df(self, df: pl.DataFrame) -> None:
         """Writes a Polars DataFrame to the output file.
@@ -340,7 +296,7 @@ class ReportWriter:
         RuntimeError
             If the writer is already closed or if writing fails.
         """
-        ...
+        pass
 
     def close(self) -> None:
         """Closes the writer and finalizes the output file.
@@ -350,7 +306,7 @@ class ReportWriter:
         (which is not directly implemented here but recommended in Python usage).
         It ensures all buffered data is flushed to the file.
         """
-        ...
+        pass
 
 class BsxFileReader:
     """Reader for BSX files.
@@ -360,10 +316,28 @@ class BsxFileReader:
     file : str or file-like object
         Path to the BSX file or a file-like object.
     """
-    def __init__(self, file: Union[str, Path]) -> None:
-        ...
+    def __init__(self, file: Union[str, BinaryIO]) -> None:
+        pass
 
-    def get_batch(self, batch_idx: int) -> Optional[pl.DataFrame]:
+    @staticmethod
+    def from_file_and_index(file: Union[str, BinaryIO], index: Union[str, BinaryIO]) -> "BsxFileReader":
+        """Create a reader from a file and an index.
+
+        Parameters
+        ----------
+        file : str or file-like object
+            Path to the BSX file or a file-like object.
+        index : str or file-like object
+            Path to the index file or a file-like object.
+
+        Returns
+        -------
+        BsxFileReader
+            A new reader instance.
+        """
+        pass
+
+    def get_batch(self, batch_idx: int) -> Optional[BsxBatch]:
         """Get a specific batch by index.
 
         Parameters
@@ -376,7 +350,7 @@ class BsxFileReader:
         DataFrame or None
             The requested batch as a Polars DataFrame, or None if the index is out of bounds.
         """
-        ...
+        pass
 
     def blocks_total(self) -> int:
         """Get the total number of batches in the file.
@@ -386,20 +360,20 @@ class BsxFileReader:
         int
             The total number of batches.
         """
-        ...
+        pass
 
     def __iter__(self) -> "BsxFileReader":
-        ...
+        pass
 
     def __next__(self) -> Optional[pl.DataFrame]:
-        ...
+        pass
 
 class IpcCompression:
     """Compression algorithms for IPC."""
     LZ4: str
     ZSTD: str
 
-class BsxIpcWriter:
+class BsxFileWriter:
     """Writer for BSX data in Arrow IPC format.
 
     Parameters
@@ -408,25 +382,23 @@ class BsxIpcWriter:
         Path or file-like object to write to.
     chr_names : list[str]
         List of chromosome names.
-    compression : str, optional
-        Compression algorithm to use ('uncompressed', 'lz4', 'zstd'). Defaults to None (uncompressed).
-    custom_metadata : bytes, optional
-        Custom metadata to embed in the IPC file.
+    compression : IpcCompression, optional
+        Compression algorithm to use (LZ4, ZSTD). Defaults to None (uncompressed).
     """
     def __init__(
         self,
-        sink: Union[str, Path],
+        sink: Union[str, BinaryIO],
         chr_names: List[str],
         compression: Optional[IpcCompression] = None,
     ) -> None:
-        ...
+        pass
 
     @staticmethod
     def from_sink_and_fai(
-        sink: Union[str, Path],
+        sink: Union[str, BinaryIO],
         fai_path: Union[str, Path],
         compression: Optional[IpcCompression] = None,
-    ) -> "BsxIpcWriter":
+    ) -> "BsxFileWriter":
         """Create a writer using a FASTA index file (.fai) to get chromosome names.
 
         Parameters
@@ -435,24 +407,22 @@ class BsxIpcWriter:
             Path or file-like object to write to.
         fai_path : str
             Path to the FASTA index file.
-        compression : str, optional
-            Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to None.
-        custom_metadata : bytes, optional
-            Custom metadata.
+        compression : IpcCompression, optional
+            Compression algorithm (LZ4, ZSTD). Defaults to None.
 
         Returns
         -------
         BsxIpcWriter
             A new writer instance.
         """
-        ...
+        pass
 
     @staticmethod
     def from_sink_and_fasta(
-        sink: Union[str, Path],
+        sink: Union[str, BinaryIO],
         fasta_path: Union[str, Path],
         compression: Optional[IpcCompression] = None,
-    ) -> "BsxIpcWriter":
+    ) -> "BsxFileWriter":
         """Create a writer using a FASTA file to get chromosome names (will index if needed).
 
         Parameters
@@ -461,29 +431,17 @@ class BsxIpcWriter:
             Path or file-like object to write to.
         fasta_path : str
             Path to the FASTA file.
-        compression : str, optional
-            Compression algorithm ('uncompressed', 'lz4', 'zstd'). Defaults to None.
-        custom_metadata : bytes, optional
-            Custom metadata.
+        compression : IpcCompression, optional
+            Compression algorithm (LZ4, ZSTD). Defaults to None.
 
         Returns
         -------
         BsxIpcWriter
             A new writer instance.
         """
-        ...
+        pass
 
-    def write_encoded_batch(self, batch: pl.DataFrame) -> None:
-        """Write an already encoded BSX batch (DataFrame).
-
-        Parameters
-        ----------
-        batch : DataFrame
-            The encoded BSX batch (Polars DataFrame) to write.
-        """
-        ...
-
-    def write_batch(self, batch: pl.DataFrame) -> None:
+    def write_batch(self, batch: BsxBatch) -> None:
         """Encode and write a BSX batch (DataFrame).
 
         Parameters
@@ -491,14 +449,14 @@ class BsxIpcWriter:
         batch : DataFrame
             The BSX batch (Polars DataFrame) to encode and write.
         """
-        ...
+        pass
 
     def close(self) -> None:
         """Finalize the IPC file and close the writer."""
-        ...
+        pass
 
-    def __enter__(self) -> "BsxIpcWriter":
-        ...
+    def __enter__(self) -> "BsxFileWriter":
+        pass
 
     def __exit__(self, exc_type: Optional[type], exc_value: Optional[BaseException], traceback: Optional[object]) -> None:
-        ...
+        pass

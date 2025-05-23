@@ -102,10 +102,7 @@ mod inner {
                     ))
                 },
                 Compression::Zstd => {
-                    Box::new(zstd::Encoder::new(
-                        handle,
-                        compression_level as i32,
-                    )?)
+                    Box::new(zstd::Encoder::new(handle, compression_level as i32)?)
                 },
                 Compression::Lz4 => {
                     let encoder = lz4::EncoderBuilder::new()
@@ -114,10 +111,7 @@ mod inner {
                     Box::new(encoder)
                 },
                 Compression::Xz2 => {
-                    Box::new(xz2::write::XzEncoder::new(
-                        handle,
-                        compression_level,
-                    ))
+                    Box::new(xz2::write::XzEncoder::new(handle, compression_level))
                 },
                 Compression::Bzip2 => {
                     Box::new(bzip2::write::BzEncoder::new(
@@ -125,9 +119,7 @@ mod inner {
                         bzip2::Compression::new(compression_level),
                     ))
                 },
-                Compression::Zip => {
-                    Box::new(zip::write::ZipWriter::new(handle))
-                },
+                Compression::Zip => Box::new(zip::write::ZipWriter::new(handle)),
                 Compression::None => Box::new(handle),
             };
             Ok(encoder)

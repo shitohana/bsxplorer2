@@ -1,6 +1,5 @@
 use std::fmt::{Debug, Write};
 use std::str::FromStr;
-use std::sync::Arc;
 use std::{f64, fmt};
 
 use anyhow::anyhow;
@@ -11,8 +10,9 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
 
 use crate::data_structs::coords::Contig;
-use crate::data_structs::enums::Strand;
+use crate::data_structs::enums::{IPCEncodedEnum, Strand};
 use crate::data_structs::typedef::BsxSmallStr;
+use crate::{getter_fn, with_field_fn};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GffEntryAttributes {
@@ -20,7 +20,7 @@ pub struct GffEntryAttributes {
     pub name:          Option<Vec<BsxSmallStr>>,
     pub alias:         Option<Vec<BsxSmallStr>>,
     pub parent:        Option<Vec<BsxSmallStr>>,
-    pub target:        Option<Vec<Contig<Arc<str>, u32>>>,
+    pub target:        Option<Vec<Contig>>,
     pub gap:           Option<Vec<String>>,
     pub derives_from:  Option<Vec<String>>,
     pub note:          Option<Vec<String>>,
@@ -30,7 +30,42 @@ pub struct GffEntryAttributes {
 }
 
 impl GffEntryAttributes {
+    with_field_fn!(target, Option<Vec<Contig>>);
+
+    with_field_fn!(gap, Option<Vec<String>>);
+
+    with_field_fn!(derives_from, Option<Vec<String>>);
+
+    with_field_fn!(note, Option<Vec<String>>);
+
+    with_field_fn!(dbxref, Option<Vec<BsxSmallStr>>);
+
+    with_field_fn!(ontology_term, Option<Vec<String>>);
+
+    with_field_fn!(other, HashMap<String, String>);
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn id(&self) -> Option<&BsxSmallStr> {
+        self.id.as_ref()
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn name(&self) -> Option<&Vec<BsxSmallStr>> {
+        self.name.as_ref()
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn alias(&self) -> Option<&Vec<BsxSmallStr>> {
+        self.alias.as_ref()
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn parent(&self) -> Option<&Vec<BsxSmallStr>> {
+        self.parent.as_ref()
+    }
+
     /// Sets the ID attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_id<S: Into<BsxSmallStr>>(
         mut self,
         id: Option<S>,
@@ -40,108 +75,32 @@ impl GffEntryAttributes {
     }
 
     /// Sets the Name attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_name<S: Into<BsxSmallStr>>(
         mut self,
         name: Option<Vec<S>>,
     ) -> Self {
-        self.name = name.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
+        self.name = name.map(|v| v.into_iter().map(|s| s.into()).collect());
         self
     }
 
     /// Sets the Alias attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_alias<S: Into<BsxSmallStr>>(
         mut self,
         alias: Option<Vec<S>>,
     ) -> Self {
-        self.alias = alias.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
+        self.alias = alias.map(|v| v.into_iter().map(|s| s.into()).collect());
         self
     }
 
     /// Sets the Parent attribute.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_parent<S: Into<BsxSmallStr>>(
         mut self,
         parent: Option<Vec<S>>,
     ) -> Self {
-        self.parent = parent.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
-        self
-    }
-
-    /// Sets the Target attribute.
-    pub fn with_target(
-        mut self,
-        target: Option<Vec<Contig<Arc<str>, u32>>>,
-    ) -> Self {
-        self.target = target;
-        self
-    }
-
-    /// Sets the Gap attribute.
-    pub fn with_gap(
-        mut self,
-        gap: Option<Vec<String>>,
-    ) -> Self {
-        self.gap = gap;
-        self
-    }
-
-    /// Sets the Derives_from attribute.
-    pub fn with_derives_from(
-        mut self,
-        derives_from: Option<Vec<String>>,
-    ) -> Self {
-        self.derives_from = derives_from;
-        self
-    }
-
-    /// Sets the Note attribute.
-    pub fn with_note(
-        mut self,
-        note: Option<Vec<String>>,
-    ) -> Self {
-        self.note = note;
-        self
-    }
-
-    /// Sets the Dbxref attribute.
-    pub fn with_dbxref<S: Into<BsxSmallStr>>(
-        mut self,
-        dbxref: Option<Vec<S>>,
-    ) -> Self {
-        self.dbxref = dbxref.map(|v| {
-            v.into_iter()
-                .map(|s| s.into())
-                .collect()
-        });
-        self
-    }
-
-    /// Sets the Ontology_term attribute.
-    pub fn with_ontology_term(
-        mut self,
-        ontology_term: Option<Vec<String>>,
-    ) -> Self {
-        self.ontology_term = ontology_term;
-        self
-    }
-
-    /// Sets the Other attributes.
-    pub fn with_other(
-        mut self,
-        other: HashMap<String, String>,
-    ) -> Self {
-        self.other = other;
+        self.parent = parent.map(|v| v.into_iter().map(|s| s.into()).collect());
         self
     }
 }
@@ -169,9 +128,7 @@ impl FromStr for GffEntryAttributes {
             }
 
             let mut parts = pair.splitn(2, '=');
-            let key = parts
-                .next()
-                .ok_or(anyhow!("Missing key"))?;
+            let key = parts.next().ok_or(anyhow!("Missing key"))?;
             let value = parts.next();
 
             match key {
@@ -192,47 +149,34 @@ impl FromStr for GffEntryAttributes {
                 },
                 "Target" => {
                     // TODO
+                    eprintln!("Target attribute parsing is not currently implemented");
                     attributes.target = None; // Setting to None for now
                                               // because contig parsing
                                               // is unimplemented
                 },
                 "Gap" => {
-                    attributes.gap = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.gap =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 "Derives_from" => {
-                    attributes.derives_from = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.derives_from =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 "Note" => {
-                    attributes.note = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.note =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 "Dbxref" => {
                     attributes.dbxref =
                         value.map(|s| s.split(',').map(|s| s.into()).collect());
                 },
                 "Ontology_term" => {
-                    attributes.ontology_term = value.map(|s| {
-                        s.split(',')
-                            .map(|s| s.to_string())
-                            .collect()
-                    });
+                    attributes.ontology_term =
+                        value.map(|s| s.split(',').map(|s| s.to_string()).collect());
                 },
                 _ => {
                     if let Some(val) = value {
-                        attributes
-                            .other
-                            .insert(key.to_string(), val.to_string());
+                        attributes.other.insert(key.to_string(), val.to_string());
                     }
                 },
             }
@@ -305,16 +249,14 @@ impl Serialize for GffEntryAttributes {
         }
         if let Some(id) = self.id.as_ref() {
             // No need to check 'first' here, ID is always first if present
-            write!(serialized, "ID={}", id)
-                .map_err(serde::ser::Error::custom)?;
+            write!(serialized, "ID={}", id).map_err(serde::ser::Error::custom)?;
             first = false; // Mark that we've written the first attribute
         }
 
         write_attr!(self.name, "Name");
         write_attr!(self.alias, "Alias");
         write_attr!(self.parent, "Parent");
-        // FIXME Implement proper custom formatter for Target
-        write_attr!(self.target, "Target", |c: &Contig<Arc<str>, u32>| {
+        write_attr!(self.target, "Target", |c: &Contig| {
             format!("{} {} {}", c.seqname(), c.start(), c.end())
         });
         write_attr!(self.gap, "Gap");
@@ -335,8 +277,7 @@ impl Serialize for GffEntryAttributes {
             }
             // Use write! for potentially better performance than format! +
             // push_str
-            write!(serialized, "{}={}", k, v)
-                .map_err(serde::ser::Error::custom)?;
+            write!(serialized, "{}={}", k, v).map_err(serde::ser::Error::custom)?;
         }
 
         serializer.serialize_str(&serialized)
@@ -365,12 +306,38 @@ impl<'de> serde::Deserialize<'de> for GffEntryAttributes {
             ) -> Result<GffEntryAttributes, E>
             where
                 E: de::Error, {
-                GffEntryAttributes::from_str(value)
-                    .map_err(serde::de::Error::custom)
+                GffEntryAttributes::from_str(value).map_err(serde::de::Error::custom)
             }
         }
 
         deserializer.deserialize_str(GffEntryAttributesVisitor)
+    }
+}
+fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>, {
+    let s = String::deserialize(deserializer)?;
+    if s == "." {
+        Ok(None)
+    }
+    else {
+        s.parse::<f64>().map(Some).map_err(|e| {
+            serde::de::Error::custom(format!("Failed to parse f64: {}", e))
+        })
+    }
+}
+
+fn deserialize_optional_u8<'de, D>(deserializer: D) -> Result<Option<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>, {
+    let s = String::deserialize(deserializer)?;
+    if s == "." {
+        Ok(None)
+    }
+    else {
+        s.parse::<u8>()
+            .map(Some)
+            .map_err(|e| serde::de::Error::custom(format!("Failed to parse u8: {}", e)))
     }
 }
 
@@ -381,15 +348,17 @@ pub struct RawGffEntry {
     pub feature_type: BsxSmallStr,
     pub start:        u32,
     pub end:          u32,
+    #[serde(deserialize_with = "deserialize_optional_f64")]
     pub score:        Option<f64>,
     pub strand:       char,
+    #[serde(deserialize_with = "deserialize_optional_u8")]
     pub phase:        Option<u8>,
     pub attributes:   String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GffEntry {
-    pub contig:       Contig<ArcStr, u32>,
+    pub contig:       Contig,
     pub source:       ArcStr,
     pub feature_type: ArcStr,
     pub score:        Option<f64>,
@@ -400,14 +369,12 @@ pub struct GffEntry {
 
 impl From<bio::io::bed::Record> for GffEntry {
     fn from(value: bio::io::bed::Record) -> Self {
-        let contig = Contig::<ArcStr, u32>::from(value.clone());
+        let contig = Contig::from(value.clone());
         Self::new(
             contig,
             None,
             None,
-            value
-                .score()
-                .map(|s| s.parse::<f64>().unwrap_or(f64::NAN)),
+            value.score().map(|s| s.parse::<f64>().unwrap_or(f64::NAN)),
             None,
             None,
         )
@@ -415,8 +382,22 @@ impl From<bio::io::bed::Record> for GffEntry {
 }
 
 impl GffEntry {
+    getter_fn!(contig, Contig);
+
+    getter_fn!(source, ArcStr);
+
+    getter_fn!(feature_type, ArcStr);
+
+    getter_fn!(score, Option<f64>);
+
+    getter_fn!(phase, Option<u8>);
+
+    getter_fn!(attributes, GffEntryAttributes);
+
+    getter_fn!(id, BsxSmallStr);
+
     pub fn new(
-        contig: Contig<ArcStr, u32>,
+        contig: Contig,
         source: Option<ArcStr>,
         feature_type: Option<ArcStr>,
         score: Option<f64>,
@@ -445,12 +426,12 @@ impl TryFrom<RawGffEntry> for GffEntry {
     type Error = anyhow::Error;
 
     fn try_from(value: RawGffEntry) -> Result<Self, Self::Error> {
-        let seqid = ArcStr::from(value.seqid.as_str());
+        let seqid = value.seqid;
         let source = ArcStr::from(value.source.as_str());
-        let strand = Strand::from(value.strand.to_string().as_str());
+        let strand =
+            <Strand as IPCEncodedEnum>::from_str(value.strand.to_string().as_str());
         let feature_type = ArcStr::from(value.feature_type.as_str());
-        let attributes =
-            GffEntryAttributes::from_str(value.attributes.as_str())?;
+        let attributes = GffEntryAttributes::from_str(value.attributes.as_str())?;
 
         Ok(GffEntry::new(
             Contig::new(seqid, value.start, value.end, strand),

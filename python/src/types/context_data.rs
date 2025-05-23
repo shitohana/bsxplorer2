@@ -1,80 +1,62 @@
-use bsxplorer2::data_structs::batch::{BsxBatch as RsBsxBatch,
-                                      EncodedBsxBatch as RsEncodedBsxBatch};
-use bsxplorer2::data_structs::context_data::ContextData as RustContextData;
+use bsxplorer2::data_structs::ContextData as RustContextData;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
-/// Stores methylation context information derived from a DNA sequence.
-///
-/// This class pre-calculates the positions, strands, and contexts (CG, CHG,
-/// CHH) for cytosines within a given sequence, allowing for efficient alignment
-/// with methylation data.
+use super::utils::{PyContext, PyStrand};
+
 #[pyclass(name = "ContextData")]
 #[derive(Clone)]
 pub struct PyContextData {
-    data: RustContextData,
+    inner: RustContextData,
 }
 
 impl From<RustContextData> for PyContextData {
-    fn from(data: RustContextData) -> Self { Self { data } }
+    fn from(data: RustContextData) -> Self {
+        Self { inner: data }
+    }
 }
 
 impl From<PyContextData> for RustContextData {
-    fn from(py: PyContextData) -> Self { py.data }
+    fn from(py: PyContextData) -> Self {
+        py.inner
+    }
 }
 
 #[pymethods]
 impl PyContextData {
-    /// Creates a new ContextData instance from a DNA sequence.
-    ///
-    /// Parameters
-    /// ----------
-    /// sequence : bytes
-    ///     The DNA sequence as bytes (e.g., b"ACGTACGT").
-    ///
-    /// Returns
-    /// -------
-    /// ContextData
-    ///     A new instance containing context information.
     #[new]
     fn new(sequence: Vec<u8>) -> Self {
         Self {
-            data: RustContextData::from_sequence(&sequence),
+            inner: RustContextData::from_sequence(&sequence),
         }
     }
 
-    /// Converts the context information into a Polars DataFrame compatible with
-    /// BsxBatch (decoded format).
-    ///
-    /// The resulting DataFrame contains 'chr', 'position', 'strand', and
-    /// 'context' columns suitable for joining or aligning with decoded
-    /// methylation data.
-    ///
-    /// Returns
-    /// -------
-    /// DataFrame
-    ///     A Polars DataFrame with context information.
+    #[staticmethod]
+    fn empty() -> Self {
+        Self {
+            inner: RustContextData::empty(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    fn take(&self) -> (Vec<u32>, Vec<PyStrand>, Vec<PyContext>) {
+        let (ids, strands, contexts) = self.inner.clone().take();
+        (
+            ids,
+            strands.into_iter().map(PyStrand::from).collect(),
+            contexts.into_iter().map(PyContext::from).collect(),
+        )
+    }
+
     fn to_decoded_df(&self) -> PyResult<PyDataFrame> {
-        let df = self.data.clone().to_df::<RsBsxBatch>();
+        let df = self.inner.clone().to_df();
         Ok(PyDataFrame(df))
     }
 
-    /// Converts the context information into a Polars DataFrame compatible with
-    /// EncodedBsxBatch.
-    ///
-    /// The resulting DataFrame contains 'chr', 'position', 'strand', and
-    /// 'context' columns with types suitable for joining or aligning with
-    /// encoded methylation data (e.g., boolean strand/context).
-    ///
-    /// Returns
-    /// -------
-    /// DataFrame
-    ///     A Polars DataFrame with encoded context information.
-    pub fn to_encoded_df(&self) -> PyResult<PyDataFrame> {
-        let df = self
-            .data
-            .clone()
-            .to_df::<RsEncodedBsxBatch>();
-        Ok(PyDataFrame(df))
+    pub fn __len__(&self) -> usize {
+        self.inner.len()
     }
 }
