@@ -1,8 +1,13 @@
 #[cfg(feature = "compression")]
 mod inner {
     use std::fs::File;
-    use std::io::{copy, Seek, SeekFrom, Write}; /* Added copy, Seek,
-                                                 * SeekFrom */
+    use std::io::{
+        copy,
+        Seek,
+        SeekFrom,
+        Write,
+    }; /* Added copy, Seek,
+        * SeekFrom */
 
     use polars::io::mmap::MmapBytesReader;
     use tempfile::tempfile; // Added tempfile

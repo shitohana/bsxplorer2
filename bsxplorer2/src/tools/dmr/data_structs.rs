@@ -3,9 +3,16 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{
+    Deserialize,
+    Serialize,
+    Serializer,
+};
 
-use crate::data_structs::typedef::{DensityType, PosType};
+use crate::data_structs::typedef::{
+    DensityType,
+    PosType,
+};
 use crate::tools::dmr::segmentation;
 use crate::utils::mann_whitney_u;
 

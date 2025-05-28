@@ -1,0 +1,45 @@
+BSXplorer2 Convert Command
+
+The convert command provides powerful functionality for converting between different methylation report formats, with three main subcommands:
+
+SUPPORTED FORMATS:
+    - Bismark: Standard Bismark methylation extractor output format
+    - CgMap: BSMAP/CgMapTools format
+    - BedGraph: UCSC BedGraph format for methylation data
+    - Coverage: Bismark coverage format
+    - BSX: BSXplorer2's optimized binary format for fast access
+
+CONVERSION WORKFLOWS:
+
+1. TO-BSX CONVERSION:
+   Convert any supported format to BSX for optimal performance:
+
+   Example: Convert Bismark report to BSX
+   bsxplorer2 convert to-bsx input.bismark -o output.bsx --from bismark --from-compression gzip
+
+   For BedGraph/Coverage formats, reference genome files are required:
+   bsxplorer2 convert to-bsx input.bedgraph -o output.bsx --from bedgraph --fa genome.fa --fai genome.fa.fai
+
+2. FROM-BSX CONVERSION:
+   Convert BSX format back to standard formats for compatibility:
+
+   Example: Convert BSX to Bismark format
+   bsxplorer2 convert from-bsx input.bsx -o output.bismark --to bismark
+
+3. REPORT-TO-REPORT (R2R) CONVERSION:
+   Direct conversion between different text formats:
+
+   Example: Convert CgMap to BedGraph
+   bsxplorer2 convert r2r input.cgmap -o output.bedgraph --from cgmap --to bedgraph
+
+PERFORMANCE TUNING:
+    - --batch-size: Controls memory usage during processing
+    - --chunk-size: Affects output batching for BSX conversion
+    - Compression levels can be specified with --level for fine-tuning
+
+REFERENCE REQUIREMENTS:
+BedGraph and Coverage format conversions require reference genome files:
+    - --fa: Path to reference FASTA file
+    - --fai: Path to FASTA index file (can be generated with samtools faidx)
+
+The convert command is essential for integrating BSXplorer2 into existing methylation analysis pipelines while providing the performance benefits of the optimized BSX format.

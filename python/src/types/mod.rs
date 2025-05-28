@@ -19,6 +19,8 @@ pub fn register_data_structs_module(
     module.add_class::<utils::PyContext>()?;
 
     module.add_class::<batch::PyBsxBatch>()?;
+    module.add_class::<batch::PyAggMethod>()?;
+    module.add_class::<batch::PyBsxColumns>()?;
 
     module.add_class::<context_data::PyContextData>()?;
 
@@ -32,6 +34,9 @@ pub fn register_data_structs_module(
     module.add_class::<stats::PyMethylationStats>()?;
 
     module.add_class::<annot::PyAnnotStore>()?;
+    module.add_class::<annot::PyGffEntry>()?;
+    module.add_class::<annot::PyAnnotStoreIterator>()?;
+    module.add_class::<annot::PyGffEntryAttributes>()?;
     module.add_class::<index::PyBatchIndex>()?;
 
     parent_module.add_submodule(&module)?;

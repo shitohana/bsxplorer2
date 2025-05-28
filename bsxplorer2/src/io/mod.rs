@@ -7,12 +7,13 @@
 //!
 //! - [`bsx`]: Manages the reading and writing of `.bsx` files, offering
 //!   optimized sequential and regional access through structures like
-//!   [`BsxFileReader`], [`BsxFileWriter`], [`BatchIndex`], and [`RegionReader`].
+//!   [`BsxFileReader`], [`BsxFileWriter`], [`BatchIndex`], and
+//!   [`RegionReader`].
 //! - [`compression`]: Provides utilities for handling compressed data streams,
 //!   used in conjunction with file readers and writers (feature-gated).
 //! - [`report`]: Handles the parsing and writing of different methylation
-//!   report formats (e.g., Bismark, BedGraph, Coverage), including features
-//!   for aligning report data with reference genome contexts using FASTA/FAI.
+//!   report formats (e.g., Bismark, BedGraph, Coverage), including features for
+//!   aligning report data with reference genome contexts using FASTA/FAI.
 
 
 pub mod bsx;

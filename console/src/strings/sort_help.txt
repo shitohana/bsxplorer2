@@ -1,0 +1,16 @@
+BSXplorer2 Sort Command
+
+The sort command is used to reorder the genomic data within a BSX file. This is particularly useful to ensure a consistent chromosome order across multiple files before merging or comparison, or to adhere to specific reference genome conventions.
+
+The command reads an existing BSX file, determines the desired order of chromosomes (either alphabetically by default or based on a user-provided list), and writes a new BSX file with the genomic batches ordered according to this list.
+
+By default, if no specific order is provided, the command will read all chromosome names present in the input BSX file and sort them alphabetically. If a custom order is specified, only the chromosomes listed will be included in the output file in that exact sequence.
+
+TYPICAL USAGE:
+  # Sort a BSX file using the default alphabetical chromosome order
+  bsxplorer2 sort input.bsx -o sorted_output.bsx --to-compression lzma
+
+OUTPUT FILE:
+  A new BSX file containing the same data as the input, but with genomic batches reordered
+  according to the specified or default chromosome sequence. The output compression
+  level can be specified.

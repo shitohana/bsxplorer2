@@ -2,7 +2,10 @@ use bsxplorer2::data_structs::ContextData as RustContextData;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
-use super::utils::{PyContext, PyStrand};
+use super::utils::{
+    PyContext,
+    PyStrand,
+};
 
 #[pyclass(name = "ContextData")]
 #[derive(Clone)]

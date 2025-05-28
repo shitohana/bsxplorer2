@@ -2,23 +2,31 @@ use std::cmp::Ordering;
 
 use hashbrown::HashMap;
 use polars::prelude::*;
-use rstest::{fixture, rstest};
-use statrs::statistics::{OrderStatistics, Statistics};
+use rstest::{
+    fixture,
+    rstest,
+};
+use statrs::statistics::{
+    OrderStatistics,
+    Statistics,
+};
 
-use super::lazy::LazyBsxBatch;
-use super::{BsxBatchBuilder, BsxColumns as BsxCol};
-use crate::data_structs::batch::{create_caregorical_dtype, *};
-use crate::data_structs::context_data::ContextData;
-use crate::data_structs::coords::{Contig, GenomicPosition};
-use crate::data_structs::enums::{Context, Strand};
-use crate::data_structs::typedef::{DensityType, PosType};
-use crate::io::report::ReportType;
+use super::BsxColumns as BsxCol;
+use crate::data_structs::batch::{
+    create_caregorical_dtype,
+    *,
+};
+use crate::prelude::*;
 #[cfg(feature = "tools")]
 use crate::tools::dimred::*;
 use crate::utils::get_categorical_dtype;
 
 mod batch_tests {
     use super::*;
+    use crate::data_structs::typedef::{
+        DensityType,
+        PosType,
+    };
 
     #[fixture]
     fn real_batch() -> BsxBatch {
@@ -554,6 +562,12 @@ mod batch_tests {
                     / segment1_densities.len() as f64;
                 let expected2 = segment2_densities.iter().sum::<f64>()
                     / segment2_densities.len() as f64;
+                assert_approx_eq!(densities_agg[0], expected1, 1e-6);
+                assert_approx_eq!(densities_agg[1], expected2, 1e-6);
+            },
+            AggMethod::Sum => {
+                let expected1 = segment1_densities.iter().sum::<f64>();
+                let expected2 = segment2_densities.iter().sum::<f64>();
                 assert_approx_eq!(densities_agg[0], expected1, 1e-6);
                 assert_approx_eq!(densities_agg[1], expected2, 1e-6);
             },
@@ -1546,7 +1560,10 @@ mod builder_tests {
 }
 
 mod lazybatch_tests {
-    use rstest::{fixture, rstest};
+    use rstest::{
+        fixture,
+        rstest,
+    };
 
     use super::*;
 
@@ -1691,7 +1708,8 @@ mod other_tests {
         let batch2 = create_decoded_batch_2();
         let batches = vec![batch1, batch2];
 
-        let merged_batch: BsxBatch = merge_replicates(batches, sum_agg, mean_agg)?;
+        let merged_batch: BsxBatch =
+            merge_replicates(batches, Box::new(sum_agg), Box::new(mean_agg))?;
 
         // Expected results
         let expected_df = df!(
@@ -1716,7 +1734,7 @@ mod other_tests {
     #[test]
     fn test_merge_replicates_empty() {
         let batches: Vec<BsxBatch> = vec![];
-        let result = merge_replicates(batches, sum_agg, mean_agg);
+        let result = merge_replicates(batches, Box::new(sum_agg), Box::new(mean_agg));
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1728,7 +1746,8 @@ mod other_tests {
     fn test_merge_replicates_single() -> anyhow::Result<()> {
         let batch1 = create_decoded_batch_1();
         let batches = vec![batch1.clone()]; // Clone batch1 for comparison
-        let result_batch: BsxBatch = merge_replicates(batches, sum_agg, mean_agg)?;
+        let result_batch: BsxBatch =
+            merge_replicates(batches, Box::new(sum_agg), Box::new(mean_agg))?;
         assert_eq!(result_batch, batch1); // Should return the original batch
         Ok(())
     }

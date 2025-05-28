@@ -2,7 +2,10 @@ use itertools::Itertools;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-use super::{BsxBatch, BsxColumns};
+use super::{
+    BsxBatch,
+    BsxColumns,
+};
 use crate::plsmallstr;
 
 /// Merges multiple `BsxBatch` replicates into a single batch.
@@ -21,13 +24,14 @@ use crate::plsmallstr;
 /// # Returns
 ///
 /// A `Result` containing the merged `BsxBatch` or an `anyhow::Error`.
+#[allow(clippy::type_complexity)]
 pub fn merge_replicates(
     mut batches: Vec<BsxBatch>,
-    count_agg: fn(Vec<&Column>) -> Column,
-    density_agg: fn(Vec<&Column>) -> Column,
-) -> anyhow::Result<BsxBatch> {
+    count_agg: Box<dyn Fn(Vec<&Column>) -> Column>,
+    density_agg: Box<dyn Fn(Vec<&Column>) -> Column>,
+) -> PolarsResult<BsxBatch> {
     if batches.is_empty() {
-        anyhow::bail!("batches cannot be empty");
+        polars_bail!(InvalidOperation: "batches cannot be empty");
     }
     else if batches.len() == 1 {
         return Ok(batches.pop().unwrap());
@@ -130,4 +134,8 @@ macro_rules! get_col_fn {
     };
 }
 
-pub(crate) use {create_empty_series, get_col_fn, name_dtype_tuple};
+pub(crate) use {
+    create_empty_series,
+    get_col_fn,
+    name_dtype_tuple,
+};

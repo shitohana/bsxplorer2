@@ -1,7 +1,13 @@
-use std::io::{Cursor, Write};
+use std::io::{
+    Cursor,
+    Write,
+};
 
 use bio::io::fasta::Writer as FastaWriter;
-use bsxplorer2::io::report::{ReportReaderBuilder, ReportType};
+use bsxplorer2::io::report::{
+    ReportReaderBuilder,
+    ReportType,
+};
 use polars::prelude::*;
 use rand::rngs::StdRng;
 use rstest::*;

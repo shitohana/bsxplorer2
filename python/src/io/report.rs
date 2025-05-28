@@ -2,11 +2,17 @@ use std::io::BufWriter;
 use std::path::PathBuf;
 
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{ReportReader as RustReportReader,
-                             ReportReaderBuilder,
-                             ReportWriter as RustReportWriter};
+use bsxplorer2::io::report::{
+    ReportReader as RustReportReader,
+    ReportReaderBuilder,
+    ReportWriter as RustReportWriter,
+};
 use polars::frame::DataFrame;
-use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
+use pyo3::exceptions::{
+    PyFileNotFoundError,
+    PyRuntimeError,
+    PyValueError,
+};
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
@@ -30,7 +36,6 @@ impl PyReportReader {
         fasta_path=None,
         fai_path=None,
         batch_size=100000,
-        n_threads=None,
         low_memory=false,
         compression=None,
     ))]
@@ -41,7 +46,6 @@ impl PyReportReader {
         fasta_path: Option<PathBuf>,
         fai_path: Option<PathBuf>,
         batch_size: usize,
-        n_threads: Option<usize>,
         low_memory: bool,
         compression: Option<PyCompression>,
     ) -> PyResult<Self> {
@@ -56,9 +60,6 @@ impl PyReportReader {
         }
         if let Some(fai) = fai_path {
             builder = builder.with_fai_path(Some(fai));
-        }
-        if let Some(n) = n_threads {
-            builder = builder.with_n_threads(Some(n));
         }
 
         {

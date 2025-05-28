@@ -1,11 +1,20 @@
 use std::fmt::Display;
-use std::ops::{Add, Sub};
+use std::ops::{
+    Add,
+    Sub,
+};
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::NoStrand;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
-use crate::data_structs::typedef::{BsxSmallStr, PosType};
+use crate::data_structs::typedef::{
+    BsxSmallStr,
+    PosType,
+};
 
 /// Represents a genomic position with a sequence name and a position.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
@@ -14,6 +23,7 @@ pub struct GenomicPosition {
     position: PosType,
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for GenomicPosition {
     fn partial_cmp(
         &self,
@@ -66,10 +76,10 @@ impl GenomicPosition {
         shift: isize,
     ) -> GenomicPosition {
         if shift > 0 {
-            self.position += shift.abs() as PosType
+            self.position += shift.unsigned_abs() as PosType
         }
         else {
-            self.position -= shift.abs() as PosType
+            self.position -= shift.unsigned_abs() as PosType
         };
         self
     }

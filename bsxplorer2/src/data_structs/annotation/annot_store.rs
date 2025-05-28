@@ -5,14 +5,27 @@ use std::ops::Range;
 use arcstr::ArcStr;
 use bio::data_structures::interval_tree::IntervalTree;
 use hashbrown::HashMap;
-use id_tree::{InsertBehavior, Node, NodeId, Tree, TreeBuilder};
+use id_tree::{
+    InsertBehavior,
+    Node,
+    NodeId,
+    Tree,
+    TreeBuilder,
+};
 use itertools::Itertools;
-use log::warn;
+use regex_lite::Regex;
 
 use super::RawGffEntry;
-use crate::data_structs::annotation::{GffEntry, GffEntryAttributes};
-use crate::data_structs::coords::{Contig, GenomicPosition};
+use crate::data_structs::annotation::{
+    GffEntry,
+    GffEntryAttributes,
+};
+use crate::data_structs::coords::{
+    Contig,
+    GenomicPosition,
+};
 use crate::data_structs::typedef::BsxSmallStr;
+use crate::getter_fn;
 
 /// A data structure to store and manage genomic annotations (GffEntry).
 ///
@@ -23,7 +36,7 @@ use crate::data_structs::typedef::BsxSmallStr;
 /// - A `HashMap` mapping sequence names to
 ///   `bio::data_structures::interval_tree::IntervalTree` for genomic range
 ///   queries.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct HcAnnotStore {
     ids:          Vec<ArcStr>,
     entries:      HashMap<ArcStr, GffEntry>,
@@ -31,6 +44,12 @@ pub struct HcAnnotStore {
     tree_ids:     HashMap<ArcStr, NodeId>,
     tree_root_id: NodeId,
     interval_map: HashMap<BsxSmallStr, IntervalTree<GenomicPosition, ArcStr>>,
+}
+
+impl Default for HcAnnotStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<A> From<A> for HcAnnotStore
@@ -59,6 +78,12 @@ impl FromIterator<GffEntry> for HcAnnotStore {
 const TREE_ROOT_ID: ArcStr = arcstr::literal!("BSX_ROOT_NODE");
 
 impl HcAnnotStore {
+    getter_fn!(ids, Vec<ArcStr>);
+    getter_fn!(entries, HashMap<ArcStr, GffEntry>);
+    getter_fn!(tree, Tree<ArcStr>);
+    getter_fn!(tree_ids, HashMap<ArcStr, NodeId>);
+    getter_fn!(interval_map, HashMap<BsxSmallStr, IntervalTree<GenomicPosition, ArcStr>>);
+
     /// Creates a new empty `HcAnnotStore`.
     pub fn new() -> Self {
         let mut tree = Tree::new();
@@ -173,73 +198,64 @@ impl HcAnnotStore {
         entry: GffEntry,
     ) -> Result<(), Box<dyn Error>> {
         let id = ArcStr::from(entry.id().as_str());
-        self.ids.push(id.clone());
 
+        self.insert_to_imap(id.clone(), entry.contig.clone());
+        self.insert_to_tree(id.clone(), entry.attributes().parent())?;
+
+        self.ids.push(id.clone());
+        self.entries.insert(id.clone(), entry);
+        Ok(())
+    }
+
+    fn insert_to_imap(&mut self, id: ArcStr, contig: Contig) {
         self.interval_map
-            .entry(entry.contig().seqname().to_owned())
+            .entry(contig.seqname().to_owned())
             .and_modify(|tree| {
-                tree.insert(Range::<_>::from(entry.contig()), id.clone());
+                tree.insert(Range::<_>::from(&contig), id.clone());
             })
             .or_insert_with(|| {
                 let mut tree = IntervalTree::new();
-                tree.insert(Range::<_>::from(entry.contig()), id.clone());
+                tree.insert(Range::<_>::from(&contig), id.clone());
                 tree
             });
+    }
 
-        if let Some(parent_ids) = entry.attributes().parent() {
-            if !parent_ids.is_empty() {
-                let parent = parent_ids.first().unwrap();
-                if parent == "BSX_ROOT_NODE" {
-                    return Err("Name \"BSX_ROOT_NODE\" is reserved".into());
-                }
-
-                let parent_node_id = if let Some(parent_node_id) =
-                    self.tree_ids.get(&ArcStr::from(parent.as_str()))
-                {
-                    parent_node_id.clone()
-                }
-                else {
-                    let new_node = Node::new(parent.as_str().into());
-                    let new_node_id = self.tree.insert(
-                        new_node,
-                        InsertBehavior::UnderNode(&self.tree_root_id),
-                    )?;
-                    self.tree_ids
-                        .insert(parent.as_str().into(), new_node_id.clone());
-                    new_node_id
-                };
-                let new_node_id = self.tree.insert(
-                    Node::new(id.clone()),
-                    InsertBehavior::UnderNode(&parent_node_id),
-                )?;
-                self.tree_ids.insert(id.clone(), new_node_id);
-
-                if parent_ids.len() > 1 {
-                    warn!(
-                        "Multiple parent IDs are currently not supported. EntryID: {}",
-                        id
-                    );
-                }
+    fn insert_to_tree(&mut self, id: ArcStr, parents: Option<&Vec<BsxSmallStr>>) -> Result<(), Box<dyn Error>> {
+        if parents.as_ref().is_none_or(|p| p.is_empty()) {
+            self.insert_to_root(id.as_str().into())?;
+        } else {
+            let parent: ArcStr = parents.as_ref().unwrap().first().unwrap().as_str().into();
+            if parent == "BSX_ROOT_NODE" {
+                return Err("Name \"BSX_ROOT_NODE\" is reserved".into());
             }
-            else {
-                let new_node_id = self.tree.insert(
-                    Node::new(id.clone()),
-                    InsertBehavior::UnderNode(&self.tree_root_id),
-                )?;
-                self.tree_ids.insert(id.clone(), new_node_id);
-            }
-        }
-        else {
-            // No parent specified, insert under the root node
+
+            let parent_node_id = {
+                match self.tree_ids.get(&parent) {
+                    Some(id) => id,
+                    None => {
+                        self.insert_to_root(parent.clone())?;
+                        self.tree_ids.get(&parent).unwrap()
+                    }
+                }
+            };
+
             let new_node_id = self.tree.insert(
                 Node::new(id.clone()),
-                InsertBehavior::UnderNode(&self.tree_root_id),
+                InsertBehavior::UnderNode(parent_node_id),
             )?;
             self.tree_ids.insert(id.clone(), new_node_id);
         }
 
+        Ok(())
+    }
 
-        self.entries.insert(id.clone(), entry);
+    fn insert_to_root(&mut self, id: ArcStr) -> Result<(), Box<dyn Error>> {
+        let new_node = Node::new(id.clone());
+        let new_node_id = self.tree.insert(
+            new_node,
+            InsertBehavior::UnderNode(&self.tree_root_id),
+        )?;
+        self.tree_ids.insert(id.clone(), new_node_id);
         Ok(())
     }
 
@@ -302,7 +318,7 @@ impl HcAnnotStore {
 
             // Create a new unique ID for the flank entry
             let flank_id_str = format!("{}_flank_{}", id, flank);
-            let flank_id: ArcStr = flank_id_str.into(); // Convert to ArcStr
+            let flank_id: ArcStr = flank_id_str.clone().into(); // Convert to ArcStr
 
             let flank_entry = GffEntry::new(
                 (start..end).into(), /* Assuming Range<GenomicPosition> converts to
@@ -322,7 +338,7 @@ impl HcAnnotStore {
             // Use insert which handles adding to all internal structures
             // Propagate the error if insertion fails
             self.insert(flank_entry)
-                .expect("Failed to insert flank entry");
+                .expect(format!("Failed to insert flank entry: {}", flank_id_str).as_str());
         }
     }
 
@@ -387,18 +403,12 @@ impl HcAnnotStore {
     pub fn get_entries_regex(
         &self,
         pattern: &str,
-    ) -> Vec<&GffEntry> {
-        self.entries
+    ) -> Result<Vec<&GffEntry>, Box<dyn Error>> {
+        let regex_complited = Regex::new(pattern)?;
+        Ok(self.entries
             .values()
-            .filter(|entry| entry.id.find(pattern).is_some())
-            .collect()
-    }
-
-    fn get_nodeid(
-        &self,
-        id: &ArcStr,
-    ) -> Option<&NodeId> {
-        self.tree_ids.get(id)
+            .filter(|entry| regex_complited.is_match(entry.id().as_str()))
+            .collect())
     }
 
     fn get_node(
@@ -427,7 +437,7 @@ impl HcAnnotStore {
     ) -> Option<Vec<ArcStr>> {
         self.get_node(id).map(|node| {
             node.children()
-                .into_iter()
+                .iter()
                 .map(|child_id| self.tree.get(child_id).unwrap().data().clone())
                 .collect()
         })
@@ -448,12 +458,10 @@ impl HcAnnotStore {
         &self,
         id: &ArcStr,
     ) -> Option<ArcStr> {
-        self.get_node(id)
-            .map(|node| {
-                node.parent()
-                    .map(|parent| self.tree.get(parent).unwrap().data().clone())
-            })
-            .flatten()
+        self.get_node(id).and_then(|node| {
+            node.parent()
+                .map(|parent| self.tree.get(parent).unwrap().data().clone())
+        })
     }
 
     /// Sorts the children of each node in the internal tree based on the start
@@ -485,13 +493,14 @@ impl HcAnnotStore {
     }
 
     /// Returns the number of entries in the store.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn len(&self) -> usize {
-        self.ids.len() // Assuming self.ids is equivalent to self.entries.len()
+        self.ids.len()
     }
 
     /// Returns `true` if the store contains no entries.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn is_empty(&self) -> bool {
-        self.ids.is_empty() // Assuming self.ids is equivalent to
-                            // self.entries.is_empty()
+        self.ids.is_empty()
     }
 }

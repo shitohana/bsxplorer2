@@ -1,13 +1,20 @@
 pub mod convert;
+mod dimred;
 pub mod dmr;
 mod sort;
 pub mod utils;
 mod validate;
 
-use clap::{Parser, Subcommand};
-use convert::{FromBsxConvert, R2RConvert, ToBsxConvert};
+use clap::{
+    Parser,
+    Subcommand,
+};
+use convert::{
+    FromBsxConvert,
+    R2RConvert,
+    ToBsxConvert,
+};
 use sort::SortArgs;
-use utils::UtilsArgs;
 use validate::ValidateArgs;
 use wild::ArgsOs;
 
@@ -24,53 +31,71 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum MainMenu {
-    #[command(subcommand, name = "convert")]
+    #[command(
+        subcommand,
+        name = "convert",
+        about = "Convert between different file formats",
+        long_about = include_str!("strings/convert_help.txt")
+    )]
     Convert(ConvertMenu),
 
+    #[command(
+        name = "dmr",
+        about = "Perform DMR identification",
+        long_about = include_str!("strings/dmr_help.txt")
+    )]
     Dmr {
         #[clap(flatten)]
-        utils: UtilsArgs,
-        #[clap(flatten)]
-        args:  dmr::DmrArgs,
+        args: dmr::DmrArgs,
     },
 
+    #[command(
+        name = "dimred",
+        about = "Perform dimensionality reduction",
+        long_about = include_str!("strings/dimred_help.txt")
+    )]
+    Dimred {
+        #[clap(flatten)]
+        args: dimred::DimRedArgs,
+    },
+
+    #[command(
+        name = "validate",
+        about = "Validate the integrity of a datasets",
+        long_about = include_str!("strings/validate_help.txt")
+    )]
     Validate {
         #[clap(flatten)]
-        utils: UtilsArgs,
-        #[clap(flatten)]
-        args:  ValidateArgs,
+        args: ValidateArgs,
     },
 
+    #[command(
+        name = "sort",
+        about = "Sort a dataset",
+        long_about = include_str!("strings/sort_help.txt")
+    )]
     Sort {
         #[clap(flatten)]
-        args:  SortArgs,
-        #[clap(flatten)]
-        utils: UtilsArgs,
+        args: SortArgs,
     },
 }
 
 #[derive(Subcommand, Debug)]
 enum ConvertMenu {
-    #[command(name = "tobsx")]
+    #[command(name = "tobsx", about = "Convert a methylation report to BSX format")]
     ToBsx {
         #[clap(flatten)]
-        utils: UtilsArgs,
-        #[clap(flatten)]
-        args:  ToBsxConvert,
+        args: ToBsxConvert,
     },
-    #[command(name = "fbsx")]
+    #[command(name = "fbsx", about = "Convert a BSX dataset to a methylation report")]
     FromBsx {
         #[clap(flatten)]
-        utils: UtilsArgs,
-        #[clap(flatten)]
-        args:  FromBsxConvert,
+        args: FromBsxConvert,
     },
-    #[command(name = "r2r")]
+    #[command(name = "r2r", about = "Convert a methylation report to another format")]
     R2R {
         #[clap(flatten)]
-        utils: UtilsArgs,
-        #[clap(flatten)]
-        args:  R2RConvert,
+        args: R2RConvert,
     },
 }
 
@@ -79,30 +104,23 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse_from(args);
 
     match cli.command {
-        MainMenu::Convert(ConvertMenu::FromBsx { utils, args }) => {
-            utils.setup()?;
-            args.run(&utils)?;
+        MainMenu::Convert(ConvertMenu::FromBsx { args }) => {
+            args.run()?;
         },
-        MainMenu::Convert(ConvertMenu::ToBsx { utils, args }) => {
-            utils.setup()?;
-            args.run(&utils)?;
+        MainMenu::Convert(ConvertMenu::ToBsx { args }) => {
+            args.run()?;
         },
-        MainMenu::Convert(ConvertMenu::R2R { utils, args }) => {
-            utils.setup()?;
-            args.run(&utils)?;
+        MainMenu::Convert(ConvertMenu::R2R { args }) => {
+            args.run()?;
         },
-        MainMenu::Dmr { utils, args } => {
-            utils.setup()?;
-            args.run(&utils)?;
+        MainMenu::Dimred { args } => {
+            args.run()?;
         },
-        MainMenu::Validate { utils, args } => {
-            utils.setup()?;
-            args.run(&utils)?
+        MainMenu::Dmr { args } => {
+            args.run()?;
         },
-        MainMenu::Sort { args, utils } => {
-            utils.setup()?;
-            args.run(&utils)?
-        },
+        MainMenu::Validate { args } => args.run()?,
+        MainMenu::Sort { args } => args.run()?,
     }
     Ok(())
 }

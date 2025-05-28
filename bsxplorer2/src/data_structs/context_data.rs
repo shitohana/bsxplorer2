@@ -5,7 +5,10 @@ use polars::frame::DataFrame;
 use polars::prelude::*;
 
 use super::typedef::PosType;
-use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
+use crate::data_structs::enums::{
+    Context,
+    Strand,
+};
 
 #[derive(Debug, Clone)]
 pub struct Entry(PosType, Strand, Context);
@@ -234,8 +237,8 @@ impl ContextData {
 
         df!(
             "position" => positions,
-            "strand" => strands.into_iter().map(|x| x.to_bool()).collect_vec(),
-            "context" => contexts.into_iter().map(|x| x.to_bool()).collect_vec(),
+            "strand" => strands.into_iter().map(Option::<bool>::from).collect_vec(),
+            "context" => contexts.into_iter().map(Option::<bool>::from).collect_vec(),
         )
         .unwrap()
     }

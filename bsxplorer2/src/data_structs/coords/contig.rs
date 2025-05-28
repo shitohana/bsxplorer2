@@ -3,15 +3,22 @@ use std::ops::Range;
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::ReqStrand;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use super::GenomicPosition;
 use crate::data_structs::enums::Strand;
-use crate::data_structs::typedef::{BsxSmallStr, PosType, SeqNameStr};
+use crate::data_structs::typedef::{
+    BsxSmallStr,
+    PosType,
+    SeqNameStr,
+};
 
 /// Represents a contig with a sequence name, start position, end position, and
 /// strand.
-#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Contig {
     seqname: BsxSmallStr,
     start:   PosType,
@@ -258,29 +265,19 @@ impl PartialOrd for Contig {
     }
 }
 
-impl Eq for Contig {}
-
-impl PartialEq for Contig {
-    fn eq(
-        &self,
-        other: &Self,
-    ) -> bool {
-        self.seqname == other.seqname
-            && self.start == other.start
-            && self.end == other.end
-            && self.strand == other.strand
-    }
-}
-
 impl Display for Contig {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(
-            f,
-            "{}:{}-{} ({})",
-            self.seqname, self.start, self.end, self.strand
-        )
+        match self.strand {
+            Strand::None => write!(f, "{}:{}-{}", self.seqname, self.start, self.end),
+            Strand::Forward => {
+                write!(f, "{}:{}-{} (+)", self.seqname, self.start, self.end)
+            },
+            Strand::Reverse => {
+                write!(f, "{}:{}-{} (-)", self.seqname, self.start, self.end)
+            },
+        }
     }
 }

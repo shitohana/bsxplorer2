@@ -3,26 +3,29 @@ use std::ops::Deref;
 
 use anyhow::bail;
 use hashbrown::HashMap;
-use itertools::{izip, Itertools};
+use itertools::{
+    izip,
+    Itertools,
+};
 use num::Zero;
 use polars::frame::column::ScalarColumn;
 use polars::prelude::*;
 use statrs::distribution::DiscreteCDF;
 use statrs::statistics::Statistics;
 
-use super::lazy::LazyBsxBatch;
-use super::{create_empty_categorical_dtype,
-            create_empty_series,
-            get_col_fn,
-            BsxBatchBuilder,
-            BsxColumns as BsxCol};
-use crate::data_structs::context_data::ContextData;
-use crate::data_structs::coords::{Contig, GenomicPosition};
-use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
-use crate::data_structs::methstats::MethylationStats;
-use crate::data_structs::typedef::{BsxSmallStr, CountType, DensityType, PosType};
-use crate::io::report::ReportType;
+use super::{
+    create_empty_categorical_dtype,
+    create_empty_series,
+    get_col_fn,
+    BsxColumns as BsxCol,
+};
+use crate::data_structs::typedef::{
+    CountType,
+    DensityType,
+    PosType,
+};
 use crate::plsmallstr;
+use crate::prelude::*;
 #[cfg(feature = "tools")]
 use crate::tools::dimred::*;
 
@@ -352,9 +355,7 @@ impl BsxBatch {
     /// `(sum of methylation ratios, total number of sites)`.
     pub fn get_context_stats(&self) -> HashMap<Context, (DensityType, u32)> {
         izip!(self.context(), self.density())
-            .filter_map(|(k, v)| {
-                Option::map(v, |density| (Context::from_bool(k), density))
-            })
+            .filter_map(|(k, v)| Option::map(v, |density| (Context::from(k), density)))
             .into_group_map()
             .into_iter()
             .map(|(k, v)| (k, (v.iter().sum(), v.len() as u32)))
@@ -367,9 +368,7 @@ impl BsxBatch {
     /// `(sum of methylation ratios, total number of sites)`.
     pub fn get_strand_stats(&self) -> HashMap<Strand, (DensityType, u32)> {
         izip!(self.strand(), self.density())
-            .filter_map(|(k, v)| {
-                Option::map(v, |density| (Strand::from_bool(k), density))
-            })
+            .filter_map(|(k, v)| Option::map(v, |density| (Strand::from(k), density)))
             .into_group_map()
             .into_iter()
             .map(|(k, v)| (k, (v.iter().sum(), v.len() as u32)))
@@ -578,6 +577,7 @@ impl BsxBatch {
     /// consecutive breakpoints (and the start/end of the batch).
     /// Returns a tuple of vectors: relative genomic positions (0.0 to 1.0) of
     /// the segment ends, and the aggregated density for each segment.
+    #[allow(clippy::type_complexity)]
     pub fn partition(
         &self,
         mut breakpoints: Vec<usize>,
@@ -593,30 +593,60 @@ impl BsxBatch {
         if breakpoints.first().unwrap() == &0 {
             bail!("Partition index can not be 0")
         }
-        if self.density().null_count() > 0 {
-            bail!("Density contains nulls")
-        }
 
         let start = self.first_pos().unwrap();
         let end = self.last_pos().unwrap();
         let length = (end + 1 - start) as f64;
 
-        if breakpoints.last().map(|p| p != &size).unwrap_or(true) {
+        if breakpoints.last().unwrap() != &size {
             breakpoints.push(size);
         }
 
         let rel_positions = unsafe {
-            let positions = self.position();
+            let positions = self
+                .position()
+                .to_vec_null_aware()
+                .left()
+                .unwrap_unchecked();
             let mut boundary_ends = (0..(breakpoints.len() - 1))
-                .map(|i| positions.get_unchecked(*&breakpoints[i]).unwrap_unchecked())
+                .map(|i| positions[breakpoints[i]])
                 .map(|pos| (pos - start) as f64 / length)
                 .collect_vec();
             boundary_ends.push(1.0);
             boundary_ends
         };
 
-        let mut breakpoints_ext = breakpoints;
+        let densities = self.partition_density(&breakpoints, agg_fn)?;
+        Ok((rel_positions, densities))
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn partition_density(
+        &self,
+        breakpoints: &[usize],
+        agg_fn: Box<dyn Fn(&[f32]) -> f64>,
+    ) -> anyhow::Result<Vec<f64>> {
+        if self.is_empty() {
+            return Ok(Default::default());
+        }
+        let size = self.len();
+        if breakpoints.iter().any(|v| v > &size) {
+            bail!("Partition index out of bounds")
+        }
+        if !breakpoints.is_empty() && breakpoints.first().unwrap() == &0 {
+            bail!("Partition index can not be 0")
+        }
+        if self.density().null_count() > 0 {
+            bail!("Density contains nulls")
+        }
+
+        let mut breakpoints_ext = breakpoints.to_vec();
         breakpoints_ext.insert(0, 0);
+
+        if breakpoints_ext.last().unwrap() != &size {
+            breakpoints_ext.push(size);
+        }
+
         let densities = {
             let density_vals = self.density().iter().map(|v| v.unwrap()).collect_vec();
             breakpoints_ext
@@ -628,7 +658,7 @@ impl BsxBatch {
                 })
                 .collect_vec()
         };
-        Ok((rel_positions, densities))
+        Ok(densities)
     }
 
     // POSITION
@@ -805,6 +835,7 @@ mod report_type_conversion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AggMethod {
     Mean,
+    Sum,
     GeometricMean,
     Median,
     Max,
@@ -813,7 +844,8 @@ pub enum AggMethod {
 
 impl AggMethod {
     /// Returns a boxed closure for the selected aggregation method.
-    pub(crate) fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64> {
+    #[allow(clippy::type_complexity)]
+    pub fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64> {
         use statrs::statistics::*;
 
         Box::new(match self {
@@ -823,6 +855,7 @@ impl AggMethod {
                     arr.iter().sum::<f32>() as f64 / len as f64
                 }
             },
+            AggMethod::Sum => |arr: &[f32]| arr.iter().sum::<f32>() as f64,
             AggMethod::GeometricMean => {
                 |arr: &[f32]| {
                     let len = arr.len();
@@ -859,6 +892,116 @@ impl AggMethod {
                         .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
                         .unwrap_or(&f32::NAN) as f64
                 }
+            },
+        })
+    }
+
+    /// Returns a function that can aggregate columns using Polars expressions.
+    #[allow(clippy::type_complexity)]
+    pub fn get_expr(&self) -> Box<dyn Fn(Vec<&Column>) -> Column> {
+        Box::new(match self {
+            AggMethod::Mean => {
+                |columns: Vec<&Column>| {
+                    if columns.is_empty() {
+                        return Series::new_empty("".into(), &DataType::Float64).into();
+                    }
+                    let sum: Column = columns
+                        .iter()
+                        .map(|col| {
+                            col.as_materialized_series()
+                                .cast(&DataType::Float64)
+                                .unwrap()
+                        })
+                        .reduce(|acc, series| (&acc + &series).unwrap())
+                        .unwrap()
+                        .into();
+                    let count = columns.len() as f64;
+                    &sum / count
+                }
+            },
+            AggMethod::Sum => {
+                |columns: Vec<&Column>| {
+                    if columns.is_empty() {
+                        return Series::new_empty("".into(), &DataType::Float64).into();
+                    }
+                    columns
+                        .iter()
+                        .map(|col| {
+                            col.as_materialized_series()
+                                .cast(&DataType::Float64)
+                                .unwrap()
+                        })
+                        .reduce(|acc, series| (&acc + &series).unwrap())
+                        .unwrap()
+                        .into()
+                }
+            },
+            AggMethod::GeometricMean => {
+                |columns: Vec<&Column>| {
+                    if columns.is_empty() {
+                        return Series::new_empty("".into(), &DataType::Float64).into();
+                    }
+                    let log_sum = columns
+                        .iter()
+                        .map(|col| {
+                            col.as_materialized_series()
+                                .cast(&DataType::Float64)
+                                .unwrap()
+                                .log(std::f64::consts::E)
+                        })
+                        .reduce(|acc, series| (&acc + &series).unwrap())
+                        .unwrap();
+                    let count = columns.len() as f64;
+                    let log_mean = &log_sum / count;
+                    log_mean.exp().into()
+                }
+            },
+            AggMethod::Median => {
+                |columns: Vec<&Column>| {
+                    if columns.is_empty() {
+                        return Series::new_empty("".into(), &DataType::Float64).into();
+                    }
+                    let height = columns[0].len();
+                    let mut values = Vec::with_capacity(height);
+                    for i in 0..height {
+                        let row_values: Vec<f64> = columns
+                            .iter()
+                            .map(|col| {
+                                col.as_materialized_series()
+                                    .cast(&DataType::Float64)
+                                    .unwrap()
+                                    .get(i)
+                                    .unwrap()
+                                    .extract::<f64>()
+                                    .unwrap()
+                            })
+                            .collect();
+                        let median = if row_values.is_empty() {
+                            f64::NAN
+                        }
+                        else {
+                            let mut sorted = row_values;
+                            sorted.sort_by(|a, b| {
+                                a.partial_cmp(b).unwrap_or(Ordering::Equal)
+                            });
+                            let len = sorted.len();
+                            if len % 2 == 0 {
+                                (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
+                            }
+                            else {
+                                sorted[len / 2]
+                            }
+                        };
+                        values.push(median);
+                    }
+                    Series::from_vec("".into(), values).into()
+                }
+            },
+            AggMethod::Max => {
+                todo!()
+            },
+            AggMethod::Min => {
+                todo!()
             },
         })
     }

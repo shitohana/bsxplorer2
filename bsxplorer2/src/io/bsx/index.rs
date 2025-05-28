@@ -1,4 +1,7 @@
-use std::io::{Read, Write};
+use std::io::{
+    Read,
+    Write,
+};
 use std::ops::Range;
 
 use bio::data_structures::interval_tree::IntervalTree;
@@ -6,10 +9,16 @@ use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use polars::error::PolarsResult;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use super::BsxFileReader;
-use crate::data_structs::coords::{Contig, GenomicPosition};
+use crate::data_structs::coords::{
+    Contig,
+    GenomicPosition,
+};
 use crate::data_structs::typedef::BsxSmallStr;
 
 /// Index for batches in a BSX file.
@@ -92,7 +101,7 @@ impl BatchIndex {
                 batch.map(|b| (b.as_contig().unwrap(), batch_idx))
             })
             .collect::<PolarsResult<Vec<_>>>()?;
-        Ok(Self::from_iter(contigs.into_iter()))
+        Ok(Self::from_iter(contigs))
     }
 }
 

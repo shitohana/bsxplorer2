@@ -1,10 +1,16 @@
 use std::cmp::Ordering;
-use std::ops::{Add, Sub};
+use std::ops::{
+    Add,
+    Sub,
+};
 
 use bio::bio_types::annot::contig::Contig as BioContig;
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::annot::pos::SeqPosUnstranded;
-use bio::bio_types::strand::{NoStrand, ReqStrand};
+use bio::bio_types::strand::{
+    NoStrand,
+    ReqStrand,
+};
 use bio::io::bed::Record as BedRecord;
 
 use super::*;

@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 
-use clap::{Args, ValueEnum};
+use clap::ValueEnum;
 use glob::glob;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{
+    ProgressBar,
+    ProgressStyle,
+};
 use polars::prelude::IpcCompression;
 
 pub fn init_pbar(total: usize) -> anyhow::Result<ProgressBar> {
@@ -62,44 +65,6 @@ pub fn expand_wildcards_single(path: &String) -> Vec<PathBuf> {
         expanded_paths.push(PathBuf::from(path));
     }
     expanded_paths
-}
-
-#[derive(Args, Debug)]
-pub struct UtilsArgs {
-    #[arg(
-        long,
-        required = false,
-        default_value_t = true,
-        help = "Display progress bar (Disable if you need clean pipeline logs)."
-    )]
-    pub(crate) progress: bool,
-    #[arg(
-        long,
-        required = false,
-        default_value_t = 1,
-        help = "Number of threads to use."
-    )]
-    pub(crate) threads:  usize,
-    #[arg(
-        long,
-        required = false,
-        default_value_t = false,
-        help = "Verbose output."
-    )]
-    pub(crate) verbose:  bool,
-}
-
-impl UtilsArgs {
-    pub fn setup(&self) -> anyhow::Result<()> {
-        if self.verbose {
-            pretty_env_logger::try_init()?
-        }
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(self.threads)
-            .build_global()?;
-        println!("Using {} threads", rayon::current_num_threads());
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq, Copy)]

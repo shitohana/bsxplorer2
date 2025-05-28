@@ -1,18 +1,34 @@
-use std::fmt::{Debug, Write};
+use std::fmt::{
+    Debug,
+    Write,
+};
 use std::str::FromStr;
-use std::{f64, fmt};
+use std::{
+    f64,
+    fmt,
+};
 
 use anyhow::anyhow;
 use arcstr::ArcStr;
 use hashbrown::HashMap;
 use nanoid::nanoid;
-use serde::de::{self, Deserializer, Visitor};
-use serde::{Deserialize, Serialize};
+use serde::de::{
+    self,
+    Deserializer,
+    Visitor,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use crate::data_structs::coords::Contig;
-use crate::data_structs::enums::{IPCEncodedEnum, Strand};
+use crate::data_structs::enums::Strand;
 use crate::data_structs::typedef::BsxSmallStr;
-use crate::{getter_fn, with_field_fn};
+use crate::{
+    getter_fn,
+    with_field_fn,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GffEntryAttributes {
@@ -428,8 +444,7 @@ impl TryFrom<RawGffEntry> for GffEntry {
     fn try_from(value: RawGffEntry) -> Result<Self, Self::Error> {
         let seqid = value.seqid;
         let source = ArcStr::from(value.source.as_str());
-        let strand =
-            <Strand as IPCEncodedEnum>::from_str(value.strand.to_string().as_str());
+        let strand = Strand::from_str(value.strand.to_string().as_str()).unwrap();
         let feature_type = ArcStr::from(value.feature_type.as_str());
         let attributes = GffEntryAttributes::from_str(value.attributes.as_str())?;
 

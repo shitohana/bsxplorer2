@@ -1,5 +1,9 @@
 use std::fs::File;
-use std::io::{Read, Seek, Write};
+use std::io::{
+    Read,
+    Seek,
+    Write,
+};
 use std::os::fd::AsRawFd;
 
 use pyo3::exceptions::PyIOError;

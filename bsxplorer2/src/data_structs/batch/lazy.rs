@@ -1,8 +1,14 @@
 use itertools::Itertools;
 use polars::prelude::*;
 
-use super::{BsxBatch, BsxColumns as BsxCol};
-use crate::data_structs::enums::{Context, IPCEncodedEnum, Strand};
+use super::{
+    BsxBatch,
+    BsxColumns as BsxCol,
+};
+use crate::data_structs::enums::{
+    Context,
+    Strand,
+};
 
 #[derive(Clone)]
 pub struct LazyBsxBatch {
@@ -64,11 +70,14 @@ impl LazyBsxBatch {
         self,
         value: Strand,
     ) -> Self {
-        self.filter(
-            BsxCol::Strand
-                .col()
-                .eq(value.to_bool().map(lit).unwrap_or(lit(NULL))),
-        )
+        self.filter(match value {
+            Strand::Forward | Strand::Reverse => {
+                BsxCol::Strand
+                    .col()
+                    .eq(lit(Option::<bool>::from(value).unwrap()))
+            },
+            _ => BsxCol::Context.col().is_null(),
+        })
     }
 
     /// Filters entries by context value.
@@ -76,10 +85,13 @@ impl LazyBsxBatch {
         self,
         value: Context,
     ) -> Self {
-        self.filter(
-            BsxCol::Context
-                .col()
-                .eq(value.to_bool().map(lit).unwrap_or(lit(NULL))),
-        )
+        self.filter(match value {
+            Context::CG | Context::CHG => {
+                BsxCol::Context
+                    .col()
+                    .eq(lit(Option::<bool>::from(value).unwrap()))
+            },
+            _ => BsxCol::Context.col().is_null(),
+        })
     }
 }

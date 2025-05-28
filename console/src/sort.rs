@@ -1,16 +1,24 @@
 use std::fs::File;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::exit;
 
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Strand;
-use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, BsxFileWriter};
+use bsxplorer2::io::bsx::{
+    BatchIndex,
+    BsxFileReader,
+    BsxFileWriter,
+};
 use clap::Args;
 use console::style;
 use indicatif::ProgressBar;
 use itertools::Itertools;
 
-use crate::utils::{init_pbar, CliIpcCompression, UtilsArgs};
+use crate::utils::{
+    init_pbar,
+    CliIpcCompression,
+};
 
 
 #[derive(Args, Debug, Clone)]
@@ -33,10 +41,7 @@ pub(crate) struct SortArgs {
 }
 
 impl SortArgs {
-    pub fn run(
-        &self,
-        utils: &UtilsArgs,
-    ) -> anyhow::Result<()> {
+    pub fn run(&self) -> anyhow::Result<()> {
         if !self.file.exists() {
             eprintln!(
                 "File {} does not exist!",
@@ -72,10 +77,8 @@ impl SortArgs {
         )?;
 
 
-        let progress_bar = if utils.progress {
-            let progress_bar = init_pbar(reader.blocks_total())
-                .expect("Failed to initialize progress bar");
-            progress_bar
+        let progress_bar = if std::io::stdin().is_terminal() {
+            init_pbar(0)?
         }
         else {
             ProgressBar::hidden()

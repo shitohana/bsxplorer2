@@ -2,10 +2,14 @@ use std::any::Any;
 
 use polars::prelude::*;
 
-use super::{create_empty_categorical_dtype, name_dtype_tuple};
+use super::{
+    create_empty_categorical_dtype,
+    name_dtype_tuple,
+};
 use crate::plsmallstr;
 
 /// Represents the columns expected in BSX data.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum BsxColumns {
     Chr,
     Position,

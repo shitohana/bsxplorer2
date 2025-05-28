@@ -1,11 +1,17 @@
 use std::fmt::Debug;
 
-use bsxplorer2::data_structs::batch::{BsxBatch, LazyBsxBatch};
+use bsxplorer2::data_structs::batch::{
+    BsxBatch,
+    LazyBsxBatch,
+};
 use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 
 use super::batch::PyBsxBatch;
-use super::utils::{PyContext, PyStrand};
+use super::utils::{
+    PyContext,
+    PyStrand,
+};
 
 #[pyclass(name = "LazyBsxBatch")]
 #[derive(Clone)]

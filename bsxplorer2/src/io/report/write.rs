@@ -1,8 +1,18 @@
-use std::io::{Seek, Write};
+use std::io::{
+    Seek,
+    Write,
+};
 
 use anyhow::anyhow;
-use log::{debug, info, warn};
-use polars::io::csv::write::{BatchedWriter as BatchedCsvWriter, CsvWriter};
+use log::{
+    debug,
+    info,
+    warn,
+};
+use polars::io::csv::write::{
+    BatchedWriter as BatchedCsvWriter,
+    CsvWriter,
+};
 use polars::prelude::*;
 
 use crate::data_structs::batch::BsxBatch;

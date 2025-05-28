@@ -8,13 +8,14 @@ use std::sync::Arc;
 use bio::bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 
-use crate::data_structs::batch::BsxBatch;
-use crate::data_structs::typedef::{CountType, DensityType, PosType};
-use crate::data_structs::Context;
-use crate::io::bsx::BsxFileReader;
+use crate::data_structs::typedef::*;
+use crate::prelude::*;
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
-use crate::tools::dmr::{segment_reading, DmrIterator};
+use crate::tools::dmr::{
+    segment_reading,
+    DmrIterator,
+};
 
 #[derive(Debug, Clone)]
 pub struct DmrConfig {

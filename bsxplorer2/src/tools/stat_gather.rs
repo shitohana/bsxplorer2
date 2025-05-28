@@ -1,6 +1,7 @@
 use crate::data_structs::batch::BsxBatch;
 use crate::data_structs::MethylationStats;
 
+#[allow(unused)]
 struct GenomeWideStats {
     stat: MethylationStats,
 }

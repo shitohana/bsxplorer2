@@ -1,28 +1,51 @@
-from typing import Optional, Union, List, BinaryIO, Callable, Any
+from enum import Enum
+from typing import Optional, Union, List, BinaryIO
 from pathlib import Path
 
-from .types import ReportTypeSchema, BsxBatch, Contig, BatchIndex
+from .types import ReportTypeSchema, BsxBatch, Contig, BatchIndex, Strand, Context
 import polars as pl
 
 __all__ = [
-    "RegionReader",
+    "BsxFileReader",
+    "BsxFileWriter",
+    "IpcCompression",
     "Compression",
     "ReportReader",
     "ReportWriter",
-    "BsxFileReader",
-    "IpcCompression",
-    "BsxFileWriter"
+    "RegionReader",
+    "FilterOperation",
+    "RegionReaderIterator",
 ]
+
+class FilterOperation(Enum):
+    """Filter operations for RegionReader."""
+    PosGt = "PosGt"
+    PosLt = "PosLt"
+    CoverageGt = "CoverageGt"
+    Strand = "Strand"
+    Context = "Context"
+
+
+class RegionReaderIterator:
+    """Iterator for reading BSX data for multiple contigs using a RegionReader."""
+
+    def __iter__(self) -> "RegionReaderIterator":
+        """Return self as iterator."""
+        pass
+
+    def __next__(self) -> Optional[BsxBatch]:
+        """Get the next contig's data."""
+        pass
 
 class RegionReader:
     """
-    Reads BSX files efficiently by caching relevant batches for a genomic region.
+    A reader for BSX files that operates on specific regions of the genome.
 
-    This reader is designed for quickly retrieving data within specific
-    genomic coordinates, suitable for interactive exploration or querying.
-    It maintains an internal cache of decoded batches that overlap the
-    most recently queried regions.
+    RegionReader is a reader for BSX files that operates on a specific region of
+    the genome. It uses a BatchIndex to efficiently find and cache only the batches
+    that contain data for queried genomic regions, minimizing memory usage and I/O.
     """
+
     def __init__(self, file: Union[str, BinaryIO]) -> None:
         """
         Creates a new RegionReader instance.
@@ -32,8 +55,8 @@ class RegionReader:
 
         Parameters
         ----------
-        path : str or Path
-            Path to the BSX file.
+        file : str or file-like object
+            Path to the BSX file or a file-like object.
 
         Raises
         ------
@@ -44,22 +67,35 @@ class RegionReader:
         """
         pass
 
-    def query(self, contig: Contig, postprocess_fn: Callable[[BsxBatch], BsxBatch]) -> Optional[pl.DataFrame]:
+    @classmethod
+    def from_reader(cls, reader: "BsxFileReader") -> "RegionReader":
+        """
+        Create a RegionReader from an existing BsxFileReader.
+
+        Parameters
+        ----------
+        reader : BsxFileReader
+            An existing BsxFileReader instance.
+
+        Returns
+        -------
+        RegionReader
+            A new RegionReader instance.
+        """
+        pass
+
+    def query(self, contig: Contig) -> Optional[pl.DataFrame]:
         """
         Queries the BSX file for data within a specific genomic region.
 
         This method uses the internal index and cache to efficiently retrieve
-        data for the specified chromosome and coordinate range. It will read
-        and cache batches as needed to fulfill the query.
+        data for the specified contig. It will read and cache batches as needed
+        to fulfill the query.
 
         Parameters
         ----------
-        seqname : str
-            The name of the chromosome.
-        start : int
-            The start position of the region (inclusive, 0-based).
-        end : int
-            The end position of the region (exclusive, 0-based).
+        contig : Contig
+            The genomic region to query.
 
         Returns
         -------
@@ -97,20 +133,39 @@ class RegionReader:
         """
         pass
 
-    def set_preprocess_fn(self, preprocess_fn: Callable[[Any], Any]) -> None:
+    def add_filter(self, filter_op: FilterOperation) -> None:
         """
-        Sets the preprocessing function applied to each batch before it is cached.
+        Add a filter to be applied to query results.
 
         Parameters
         ----------
-        preprocess_fn : callable
-            A function that takes a BsxBatch and returns a processed BsxBatch
-
-        Raises
-        ------
-        ValueError
-            If preprocess_fn is not callable
+        filter_op : FilterOperation
+            The filter operation to add.
         """
+        pass
+
+    def clear_filters(self) -> None:
+        """Clear all filters."""
+        pass
+
+    def filter_pos_lt(self, value: int) -> None:
+        """Add a filter for positions less than value."""
+        pass
+
+    def filter_pos_gt(self, value: int) -> None:
+        """Add a filter for positions greater than value."""
+        pass
+
+    def filter_coverage_gt(self, value: int) -> None:
+        """Add a filter for coverage greater than value."""
+        pass
+
+    def filter_strand(self, value: Strand) -> None:
+        """Add a filter for specific strand."""
+        pass
+
+    def filter_context(self, value: Context) -> None:
+        """Add a filter for specific context."""
         pass
 
     def index(self) -> BatchIndex:
@@ -124,21 +179,35 @@ class RegionReader:
         """
         pass
 
+    def iter_contigs(self, contigs: List[Contig]) -> RegionReaderIterator:
+        """
+        Create an iterator over a list of contigs.
+
+        Parameters
+        ----------
+        contigs : list[Contig]
+            A list of Contig regions to iterate over.
+
+        Returns
+        -------
+        RegionReaderIterator
+            An iterator over the contigs.
+        """
+        pass
+
 class Compression:
-    """Compression algorithms."""
-    GZIP: str
-    ZSTD: str
-    BGZIP: str
-    XZ: str
-    NONE: str
+    """Compression algorithms supported for reading/writing report files."""
+
+    pass
 
 class ReportReader:
-    """Reads methylation report files batch by batch.
+    """
+    Reads methylation report files batch by batch.
 
-    This class provides an iterator interface to read various methylation report
-    formats (like Bismark, CGmap, BedGraph, Coverage) efficiently.
-    It handles file parsing, optional alignment with FASTA context, and
-    yields data in standardized BsxBatch objects.
+    Reads report data and yields batches. This class provides functionality for
+    reading various methylation report file formats, such as Bismark, CgMap,
+    BedGraph, and Coverage reports. It handles file parsing, optional alignment
+    with FASTA context, and yields data in standardized BsxBatch objects.
     """
     def __init__(
         self,
@@ -150,24 +219,22 @@ class ReportReader:
         batch_size: int = 100000,
         n_threads: Optional[int] = None,
         low_memory: bool = False,
-        queue_len: int = 1000,
-        compression: Optional[str] = None,
-        compression_level: Optional[int] = None,
+        compression: Optional[Compression] = None,
     ) -> None:
         """Creates a new ReportReader instance.
 
         Parameters
         ----------
-        path : str
+        path : str or Path
             Path to the input report file.
         report_type : ReportTypeSchema
             The format of the report file (e.g., ReportTypeSchema.Bismark).
         chunk_size : int, optional
             The target number of records per yielded batch. Defaults to 10000.
-        fasta_path : str, optional
+        fasta_path : str or Path, optional
             Path to the reference FASTA file. Required for BedGraph/Coverage formats
             or when alignment is needed.
-        fai_path : str, optional
+        fai_path : str or Path, optional
             Path to the FASTA index file (.fai). Can be used instead of `fasta_path`
             for determining chromosome order/names if FASTA content is not needed
             for alignment.
@@ -177,12 +244,8 @@ class ReportReader:
             Number of threads to use for parsing. Defaults to using available cores.
         low_memory : bool, optional
             Whether to use a low-memory parsing mode. Defaults to False.
-        queue_len : int, optional
-            Internal buffer size for parsed batches. Defaults to 1000.
-        compression : str, optional
-            Compression type ('gzip', 'zstd', 'bgzip', 'xz'). Defaults to None (autodetect).
-        compression_level : int, optional
-            Compression level if applicable. Defaults depend on the compression type.
+        compression : Compression, optional
+            Compression type. Defaults to None (autodetect).
 
         Returns
         -------
@@ -208,8 +271,8 @@ class ReportReader:
 
         Returns
         -------
-        BsxBatch
-            The next batch of data.
+        BsxBatch or None
+            The next batch of data, or None when iteration is complete.
 
         Raises
         ------
@@ -221,8 +284,10 @@ class ReportReader:
         pass
 
 class ReportWriter:
-    """Writes methylation report data to a file.
+    """
+    Writes methylation report data to a file.
 
+    Writes report data to a sink in CSV format based on a specified schema.
     This class handles writing BsxBatch objects or Polars DataFrames
     to a specified file path in a chosen report format (Bismark, CGmap, etc.).
     It manages file handling, formatting, and optional compression.
@@ -232,24 +297,23 @@ class ReportWriter:
         file: Union[str, BinaryIO],
         schema: ReportTypeSchema,
         n_threads: int = 1,
-        compression: Optional[str] = None,
+        compression: Optional[Compression] = None,
         compression_level: Optional[int] = None,
     ) -> None:
         """Creates a new ReportWriter instance.
 
         Parameters
         ----------
-        path : str
-            Path to the output file.
+        file : str or file-like object
+            Path to the output file or a file-like object.
         schema : ReportTypeSchema
             The desired output format schema (e.g., ReportTypeSchema.Bismark).
         n_threads : int, optional
             Number of threads to use for writing. Defaults to 1.
-        compression : str, optional
-            Compression type ('gzip', 'zstd', 'bgzip', 'xz'). Defaults to None.
+        compression : Compression, optional
+            Compression type. Defaults to None.
         compression_level : int, optional
-            Compression level (1-21 for zstd, 1-9 for gzip/bgzip, 0-9 for xz).
-            Defaults vary by type (e.g., 3 for zstd, 6 for gzip).
+            Compression level if applicable. Defaults depend on the compression type.
 
         Returns
         -------
@@ -309,36 +373,31 @@ class ReportWriter:
         pass
 
 class BsxFileReader:
-    """Reader for BSX files.
+    """
+    A reader for .bsx files based on Apache Arrow IPC format, optimized for
+    reading batches in parallel.
 
-    Parameters
-    ----------
-    file : str or file-like object
-        Path to the BSX file or a file-like object.
+    This reader is optimized for parallel access to data batches within a .bsx file,
+    leveraging memory mapping and multithreading for efficient data access.
     """
     def __init__(self, file: Union[str, BinaryIO]) -> None:
-        pass
+        """
+        Creates a new BsxFileReader from a file handle.
 
-    @staticmethod
-    def from_file_and_index(file: Union[str, BinaryIO], index: Union[str, BinaryIO]) -> "BsxFileReader":
-        """Create a reader from a file and an index.
+        This will memory map the file and read its metadata and dictionaries.
+        It also initializes a thread pool and thread-local handles for parallel
+        reading.
 
         Parameters
         ----------
         file : str or file-like object
             Path to the BSX file or a file-like object.
-        index : str or file-like object
-            Path to the index file or a file-like object.
-
-        Returns
-        -------
-        BsxFileReader
-            A new reader instance.
         """
         pass
 
     def get_batch(self, batch_idx: int) -> Optional[BsxBatch]:
-        """Get a specific batch by index.
+        """
+        Reads a single batch from the file at the given index.
 
         Parameters
         ----------
@@ -347,13 +406,53 @@ class BsxFileReader:
 
         Returns
         -------
-        DataFrame or None
-            The requested batch as a Polars DataFrame, or None if the index is out of bounds.
+        BsxBatch or None
+            The requested batch, or None if the index is out of bounds.
+        """
+        pass
+
+    def get_batches(self, batch_indices: List[int]) -> List[Optional[BsxBatch]]:
+        """
+        Reads multiple batches from the file at the given indices in parallel.
+
+        Parameters
+        ----------
+        batch_indices : list[int]
+            List of batch indices to retrieve.
+
+        Returns
+        -------
+        list[BsxBatch or None]
+            List of batches, with None for indices that are out of bounds.
+        """
+        pass
+
+    def cache_batches(self, batch_indices: List[int]) -> None:
+        """
+        Reads multiple batches from the file at the given indices in parallel
+        and adds them to the internal cache.
+
+        Parameters
+        ----------
+        batch_indices : list[int]
+            List of batch indices to cache.
+        """
+        pass
+
+    def n_threads(self) -> int:
+        """
+        Returns the number of threads used by the internal thread pool.
+
+        Returns
+        -------
+        int
+            Number of threads.
         """
         pass
 
     def blocks_total(self) -> int:
-        """Get the total number of batches in the file.
+        """
+        Returns the total number of data batches (blocks) in the file.
 
         Returns
         -------
@@ -365,25 +464,21 @@ class BsxFileReader:
     def __iter__(self) -> "BsxFileReader":
         pass
 
-    def __next__(self) -> Optional[pl.DataFrame]:
+    def __next__(self) -> Optional[BsxBatch]:
         pass
 
 class IpcCompression:
-    """Compression algorithms for IPC."""
-    LZ4: str
-    ZSTD: str
+    """Compression algorithms for IPC files."""
+
+    LZ4: "IpcCompression"
+    ZSTD: "IpcCompression"
 
 class BsxFileWriter:
-    """Writer for BSX data in Arrow IPC format.
+    """
+    Writer for BSX data in Arrow IPC format with optional compression.
 
-    Parameters
-    ----------
-    sink : str or file-like object
-        Path or file-like object to write to.
-    chr_names : list[str]
-        List of chromosome names.
-    compression : IpcCompression, optional
-        Compression algorithm to use (LZ4, ZSTD). Defaults to None (uncompressed).
+    A writer for creating .bsx files from data batches, supporting different
+    data sources for schema information (e.g., FASTA index) and optional compression.
     """
     def __init__(
         self,
@@ -391,6 +486,18 @@ class BsxFileWriter:
         chr_names: List[str],
         compression: Optional[IpcCompression] = None,
     ) -> None:
+        """
+        Creates a new BSX IPC writer.
+
+        Parameters
+        ----------
+        sink : str or file-like object
+            Path or file-like object to write to.
+        chr_names : list[str]
+            List of chromosome names.
+        compression : IpcCompression, optional
+            Compression algorithm to use (LZ4, ZSTD). Defaults to None (uncompressed).
+        """
         pass
 
     @staticmethod
@@ -399,20 +506,21 @@ class BsxFileWriter:
         fai_path: Union[str, Path],
         compression: Optional[IpcCompression] = None,
     ) -> "BsxFileWriter":
-        """Create a writer using a FASTA index file (.fai) to get chromosome names.
+        """
+        Creates a writer from a sink and FASTA index file.
 
         Parameters
         ----------
         sink : str or file-like object
             Path or file-like object to write to.
-        fai_path : str
+        fai_path : str or Path
             Path to the FASTA index file.
         compression : IpcCompression, optional
             Compression algorithm (LZ4, ZSTD). Defaults to None.
 
         Returns
         -------
-        BsxIpcWriter
+        BsxFileWriter
             A new writer instance.
         """
         pass
@@ -423,40 +531,51 @@ class BsxFileWriter:
         fasta_path: Union[str, Path],
         compression: Optional[IpcCompression] = None,
     ) -> "BsxFileWriter":
-        """Create a writer using a FASTA file to get chromosome names (will index if needed).
+        """
+        Creates a writer from a sink and FASTA file.
 
         Parameters
         ----------
         sink : str or file-like object
             Path or file-like object to write to.
-        fasta_path : str
+        fasta_path : str or Path
             Path to the FASTA file.
         compression : IpcCompression, optional
             Compression algorithm (LZ4, ZSTD). Defaults to None.
 
         Returns
         -------
-        BsxIpcWriter
+        BsxFileWriter
             A new writer instance.
         """
         pass
 
     def write_batch(self, batch: BsxBatch) -> None:
-        """Encode and write a BSX batch (DataFrame).
+        """
+        Writes an encoded BSX batch.
 
         Parameters
         ----------
-        batch : DataFrame
-            The BSX batch (Polars DataFrame) to encode and write.
+        batch : BsxBatch
+            The BSX batch to encode and write.
         """
         pass
 
     def close(self) -> None:
-        """Finalize the IPC file and close the writer."""
+        """
+        Finalizes the IPC file and closes the writer.
+
+        Ensures resources are properly cleaned up when dropped.
+        """
         pass
 
     def __enter__(self) -> "BsxFileWriter":
         pass
 
-    def __exit__(self, exc_type: Optional[type], exc_value: Optional[BaseException], traceback: Optional[object]) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[type],
+        exc_value: Optional[BaseException],
+        traceback: Optional[object],
+    ) -> None:
         pass
