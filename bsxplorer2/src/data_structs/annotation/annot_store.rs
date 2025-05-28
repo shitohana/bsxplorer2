@@ -79,9 +79,13 @@ const TREE_ROOT_ID: ArcStr = arcstr::literal!("BSX_ROOT_NODE");
 
 impl HcAnnotStore {
     getter_fn!(ids, Vec<ArcStr>);
+
     getter_fn!(entries, HashMap<ArcStr, GffEntry>);
+
     getter_fn!(tree, Tree<ArcStr>);
+
     getter_fn!(tree_ids, HashMap<ArcStr, NodeId>);
+
     getter_fn!(interval_map, HashMap<BsxSmallStr, IntervalTree<GenomicPosition, ArcStr>>);
 
     /// Creates a new empty `HcAnnotStore`.
@@ -207,7 +211,11 @@ impl HcAnnotStore {
         Ok(())
     }
 
-    fn insert_to_imap(&mut self, id: ArcStr, contig: Contig) {
+    fn insert_to_imap(
+        &mut self,
+        id: ArcStr,
+        contig: Contig,
+    ) {
         self.interval_map
             .entry(contig.seqname().to_owned())
             .and_modify(|tree| {
@@ -220,11 +228,17 @@ impl HcAnnotStore {
             });
     }
 
-    fn insert_to_tree(&mut self, id: ArcStr, parents: Option<&Vec<BsxSmallStr>>) -> Result<(), Box<dyn Error>> {
+    fn insert_to_tree(
+        &mut self,
+        id: ArcStr,
+        parents: Option<&Vec<BsxSmallStr>>,
+    ) -> Result<(), Box<dyn Error>> {
         if parents.as_ref().is_none_or(|p| p.is_empty()) {
             self.insert_to_root(id.as_str().into())?;
-        } else {
-            let parent: ArcStr = parents.as_ref().unwrap().first().unwrap().as_str().into();
+        }
+        else {
+            let parent: ArcStr =
+                parents.as_ref().unwrap().first().unwrap().as_str().into();
             if parent == "BSX_ROOT_NODE" {
                 return Err("Name \"BSX_ROOT_NODE\" is reserved".into());
             }
@@ -235,7 +249,7 @@ impl HcAnnotStore {
                     None => {
                         self.insert_to_root(parent.clone())?;
                         self.tree_ids.get(&parent).unwrap()
-                    }
+                    },
                 }
             };
 
@@ -249,12 +263,14 @@ impl HcAnnotStore {
         Ok(())
     }
 
-    fn insert_to_root(&mut self, id: ArcStr) -> Result<(), Box<dyn Error>> {
+    fn insert_to_root(
+        &mut self,
+        id: ArcStr,
+    ) -> Result<(), Box<dyn Error>> {
         let new_node = Node::new(id.clone());
-        let new_node_id = self.tree.insert(
-            new_node,
-            InsertBehavior::UnderNode(&self.tree_root_id),
-        )?;
+        let new_node_id = self
+            .tree
+            .insert(new_node, InsertBehavior::UnderNode(&self.tree_root_id))?;
         self.tree_ids.insert(id.clone(), new_node_id);
         Ok(())
     }
@@ -337,8 +353,9 @@ impl HcAnnotStore {
 
             // Use insert which handles adding to all internal structures
             // Propagate the error if insertion fails
-            self.insert(flank_entry)
-                .expect(format!("Failed to insert flank entry: {}", flank_id_str).as_str());
+            self.insert(flank_entry).expect(
+                format!("Failed to insert flank entry: {}", flank_id_str).as_str(),
+            );
         }
     }
 
@@ -404,10 +421,11 @@ impl HcAnnotStore {
         &self,
         pattern: &str,
     ) -> Result<Vec<&GffEntry>, Box<dyn Error>> {
-        let regex_complited = Regex::new(pattern)?;
-        Ok(self.entries
+        let regex_completed = Regex::new(pattern)?;
+        Ok(self
+            .entries
             .values()
-            .filter(|entry| regex_complited.is_match(entry.id().as_str()))
+            .filter(|entry| regex_completed.is_match(entry.id().as_str()))
             .collect())
     }
 

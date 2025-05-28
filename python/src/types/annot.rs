@@ -130,7 +130,8 @@ impl PyAnnotStore {
         pattern: String,
     ) -> Vec<PyGffEntry> {
         self.inner
-            .get_entries_regex(&pattern).unwrap()
+            .get_entries_regex(&pattern)
+            .unwrap()
             .into_iter()
             .map(|entry| PyGffEntry::from(entry.clone()))
             .collect()

@@ -32,7 +32,7 @@ bio.workspace = true
 std-semaphore = "0.1.0"
 
 [dependencies.bsxplorer2]
-path = "../bsxplorer2"
+version = "0.2.1"
 default-features = false
 features = ["console", "performant", "compression", "tools"]
 
