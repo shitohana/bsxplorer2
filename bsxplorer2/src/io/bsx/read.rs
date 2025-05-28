@@ -4,17 +4,22 @@ use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
 use itertools::Itertools;
-use memmap2::{Mmap, MmapOptions};
+use memmap2::{
+    Mmap,
+    MmapOptions,
+};
 use polars::prelude::*;
-use polars_arrow::io::ipc::read::{read_batch,
-                                  read_file_dictionaries,
-                                  read_file_metadata,
-                                  Dictionaries,
-                                  FileMetadata};
+use polars_arrow::io::ipc::read::{
+    read_batch,
+    read_file_dictionaries,
+    read_file_metadata,
+    Dictionaries,
+    FileMetadata,
+};
 use rayon::prelude::*;
-use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::data_structs::batch::BsxBatch;
+use crate::utils::THREAD_POOL;
 
 // ThreadLocalHandle no longer needs a lifetime parameter as it holds its own
 // Arc<Mmap>
@@ -60,8 +65,8 @@ impl ThreadLocalHandle {
             &mut self.message_scratch,
             &mut self.data_scratch,
         );
-        if chunk.is_err() {
-            Some(Err(chunk.unwrap_err()))
+        if let Err(err) = chunk {
+            Some(Err(err))
         }
         else {
             let chunk = chunk.unwrap();
@@ -74,7 +79,6 @@ impl ThreadLocalHandle {
 /// A reader for .bsx files based on Apache Arrow IPC format, optimized for
 /// reading batches in parallel.
 pub struct BsxFileReader {
-    thread_pool:          ThreadPool,
     thread_local_handles: Vec<ThreadLocalHandle>, // Holds the new struct
     cache:                VecDeque<BsxBatch>,
     metadata:             Arc<FileMetadata>,
@@ -82,6 +86,37 @@ pub struct BsxFileReader {
     blocks_total:         usize,
     _mmap:                Arc<Mmap>, /* Still need to hold the original Arc to keep
                                       * the Mmap alive */
+}
+
+impl Clone for BsxFileReader {
+    fn clone(&self) -> Self {
+        let thread_local_handles: Vec<ThreadLocalHandle> = (0..self.n_threads())
+            .map(|_| ThreadLocalHandle::new(self._mmap.clone())) // Pass a clone of the Arc to each handle
+            .collect_vec();
+
+        Self {
+            thread_local_handles,
+            cache: self.cache.clone(),
+            metadata: self.metadata.clone(),
+            dictionaries: self.dictionaries.clone(),
+            blocks_total: self.blocks_total,
+            _mmap: self._mmap.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for BsxFileReader {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.debug_struct("BsxFileReader")
+            .field("cache", &self.cache)
+            .field("metadata", &self.metadata)
+            .field("dictionaries", &self.dictionaries)
+            .field("blocks_total", &self.blocks_total)
+            .finish()
+    }
 }
 
 impl BsxFileReader {
@@ -93,10 +128,6 @@ impl BsxFileReader {
     pub fn try_new<R: AsRawFd + 'static>(handle: R) -> anyhow::Result<Self> {
         // 1. Create the shared Arc<Mmap>
         let mmap = Arc::new(unsafe { MmapOptions::new().map(&handle)? });
-        let thread_pool = ThreadPoolBuilder::new()
-            .num_threads(0) // 0 means default number of threads
-            .build()?;
-
         // Create a temporary reader to read metadata and dictionaries
         // This reader borrows directly from the shared mmap Arc
         let mut reader = Cursor::new(mmap.as_ref());
@@ -108,7 +139,7 @@ impl BsxFileReader {
         )?;
 
         let blocks_total = metadata.blocks.len();
-        let n_threads = thread_pool.current_num_threads();
+        let n_threads = THREAD_POOL.current_num_threads();
 
         // 2. Create thread-local handles, each with a clone of the Arc<Mmap>
         let thread_local_handles: Vec<ThreadLocalHandle> = (0..n_threads)
@@ -117,7 +148,6 @@ impl BsxFileReader {
 
 
         Ok(Self {
-            thread_pool,
             thread_local_handles,
             cache: VecDeque::new(),
             metadata: Arc::new(metadata),
@@ -131,7 +161,7 @@ impl BsxFileReader {
     pub fn get_batch(
         &mut self,
         batch_idx: usize,
-    ) -> Option<Result<BsxBatch, PolarsError>> {
+    ) -> Option<PolarsResult<BsxBatch>> {
         let handle = &mut self.thread_local_handles[0];
         let df = handle.read_batch(
             batch_idx,
@@ -168,10 +198,10 @@ impl BsxFileReader {
             .map(|c| c.collect_vec())
             .collect_vec();
 
-        let iter = self.thread_pool.install(|| {
+        let iter = THREAD_POOL.install(|| {
             chunks_to_read
                 .into_iter()
-                .map(|tasks_chunk| {
+                .flat_map(|tasks_chunk| {
                     // Number of tasks in chunk is <= number of threads
                     self.thread_local_handles
                         .par_iter_mut()
@@ -181,7 +211,6 @@ impl BsxFileReader {
                         })
                         .collect::<Vec<_>>()
                 })
-                .flatten()
                 .map(|df_res| {
                     df_res.map(|df_res| {
                         df_res.map(|df| unsafe { BsxBatch::new_unchecked(df) })
@@ -192,7 +221,7 @@ impl BsxFileReader {
     }
 
     /// Returns an iterator that reads all batches from the file sequentially.
-    pub fn iter<'a>(&'a mut self) -> impl Iterator<Item = PolarsResult<BsxBatch>> + 'a {
+    pub fn iter(&mut self) -> impl Iterator<Item = PolarsResult<BsxBatch>> + '_ {
         self.iter_batches(0..self.blocks_total())
             .map(|i| i.unwrap())
     }
@@ -259,11 +288,12 @@ impl Iterator for BsxFileIterator {
                 ..(self.current_batch + self.reader.n_threads()))
                 .collect_vec();
             let cache_res = self.reader.cache_batches(&to_read);
-            if cache_res.is_ok() {
-                self.next()
+
+            if let Err(err) = cache_res {
+                Some(Err(err))
             }
             else {
-                Some(Err(cache_res.unwrap_err()))
+                self.next()
             }
         }
         else {
@@ -304,7 +334,10 @@ mod tests {
     use std::fs::File;
     use std::path::PathBuf;
 
-    use rstest::{fixture, rstest};
+    use rstest::{
+        fixture,
+        rstest,
+    };
 
     use super::*;
 

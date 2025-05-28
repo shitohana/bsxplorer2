@@ -13,6 +13,10 @@ pub trait SegmentationData {
     ) -> f64;
     /// Returns the total number of data points.
     fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Data structure for binomial data segmentation, storing cumulative sums.

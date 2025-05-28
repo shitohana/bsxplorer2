@@ -1,33 +1,40 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::thread::JoinHandle;
 
 use anyhow::bail;
-use bio::io::fasta::{Reader as FastaReader, Record as FastaRecord};
+use bio::io::fasta::{
+    Reader as FastaReader,
+    Record as FastaRecord,
+};
 use crossbeam::channel::Receiver;
 use hashbrown::HashMap;
-use noodles::fasta::fai::{Reader as FaiReader, Record};
-use noodles::fasta::{index as index_fasta};
+use noodles::fasta::fai::{
+    Reader as FaiReader,
+    Record,
+};
+use noodles::fasta::index as index_fasta;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use rayon::prelude::*;
-use rayon::ThreadPool;
 
-use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
-use crate::data_structs::typedef::BsxSmallStr;
-use crate::data_structs::ContextData;
-#[cfg(feature = "compression")]
-use crate::io::compression::Compression;
-use crate::io::report::schema::ReportType;
-use crate::utils::get_categorical_dtype;
+use crate::prelude::*;
+use crate::utils::{
+    self,
+    get_categorical_dtype,
+    THREAD_POOL,
+};
 use crate::with_field_fn;
 
-pub(crate) fn read_chrom<P: AsRef<Path>>(
+pub(crate) fn read_chrom_names<P: AsRef<Path>>(
     path: P,
     is_index: bool,
-) -> anyhow::Result<Vec<String>> {
+) -> std::io::Result<Vec<String>> {
     let index = if is_index {
         FaiReader::new(BufReader::new(File::open(path)?)).read_index()?
     }
@@ -98,7 +105,6 @@ pub struct ReportReaderBuilder {
     fasta_path:  Option<PathBuf>,
     fai_path:    Option<PathBuf>,
     batch_size:  usize,
-    n_threads:   Option<usize>,
     low_memory:  bool,
     #[cfg(feature = "compression")]
     compression: Option<Compression>,
@@ -112,7 +118,6 @@ impl Default for ReportReaderBuilder {
             fasta_path: None,
             fai_path: None,
             batch_size: 100000,
-            n_threads: None,
             low_memory: false,
             #[cfg(feature = "compression")]
             compression: None,
@@ -131,8 +136,6 @@ impl ReportReaderBuilder {
 
     with_field_fn!(batch_size, usize);
 
-    with_field_fn!(n_threads, Option<usize>);
-
     with_field_fn!(low_memory, bool);
 
     #[cfg(feature = "compression")]
@@ -143,8 +146,8 @@ impl ReportReaderBuilder {
     /// Determines the data type of the chromosome column based on FASTA/FAI.
     fn get_chr_dtype(&self) -> anyhow::Result<Option<DataType>> {
         let chroms = match (self.fasta_path.as_ref(), self.fai_path.as_ref()) {
-            (_, Some(fai)) => Some(read_chrom(fai, true)?),
-            (Some(fasta), None) => Some(read_chrom(fasta, false)?),
+            (_, Some(fai)) => Some(read_chrom_names(fai, true)?),
+            (Some(fasta), None) => Some(read_chrom_names(fasta, false)?),
             (None, None) => return Ok(None),
         };
 
@@ -193,7 +196,6 @@ impl ReportReaderBuilder {
         let csv_reader = self
             .report_type
             .read_options()
-            .with_n_threads(self.n_threads)
             .with_low_memory(self.low_memory)
             .with_chunk_size(self.batch_size)
             .into_reader_with_file_handle(handle);
@@ -222,9 +224,8 @@ impl ReportReaderBuilder {
         }
 
         let mut csv_reader = self.get_csv_reader(handle)?;
-        let threads = self
-            .n_threads
-            .unwrap_or(rayon::current_num_threads().min(16));
+
+        let threads = utils::n_threads();
         let (sender, receiver) = crossbeam::channel::bounded(threads * 2);
 
         let join_handle = std::thread::spawn(move || {
@@ -237,9 +238,6 @@ impl ReportReaderBuilder {
         let reader = ReportReader {
             _join_handle: join_handle,
             data_receiver: receiver,
-            thread_pool: rayon::ThreadPoolBuilder::new()
-                .num_threads(threads)
-                .build()?,
             report_type: self.report_type,
             cached_batch: BTreeMap::new(),
             seen_chr: HashMap::new(),
@@ -265,7 +263,6 @@ impl ReportReaderBuilder {
 pub struct ReportReader {
     _join_handle:  JoinHandle<()>,
     data_receiver: Receiver<DataFrame>,
-    thread_pool:   ThreadPool,
     report_type:   ReportType,
     cached_batch:  BTreeMap<usize, BsxBatch>,
     seen_chr:      HashMap<BsxSmallStr, usize>,
@@ -363,7 +360,7 @@ impl ReportReader {
 
     /// Fills the cache with more data.
     fn fill_cache(&mut self) -> anyhow::Result<()> {
-        let n_threads = self.thread_pool.current_num_threads();
+        let n_threads = THREAD_POOL.current_num_threads();
         let mut new_batches = Vec::with_capacity(n_threads);
         let mut stream_ended = false;
 
@@ -375,7 +372,7 @@ impl ReportReader {
             new_batches.push(new_batch);
         }
 
-        let converted = self.thread_pool.install(|| {
+        let converted = THREAD_POOL.install(|| {
             new_batches
                 .into_par_iter()
                 .flat_map(|df| {

@@ -11,44 +11,47 @@
 //! particularly for identifying differentially methylated regions (DMRs) and
 //! performing data segmentation.
 //!
+//! If you do not want to use bsxplorer as crate, check out
+//! [**bsxplorer CLI tool**](https://crates.io/crates/bsxplorer-ci)!
+//!
 //! ## Key Features
 //!
-//! *   **Efficient Data Structures**: Optimized structures for genomic coordinates
-//!     ([`Contig`], [`GenomicPosition`]) and methylation data batches
-//!     ([`BsxBatch`]) leveraging Polars DataFrames for in-memory performance.
-//! *   **Custom `.bsx` Format**: A high-performance, indexed binary format
-//!     based on Apache Arrow IPC for storing methylation data, enabling fast
-//!     sequential and random access to genomic regions.
-//! *   **Flexible I/O**: Readers and writers for `.bsx` files ([`BsxFileReader`],
-//!     [`BsxFileWriter`], [`RegionReader`]) and common methylation report
-//!     formats ([`ReportReader`], [`ReportWriter`]), with support for
-//!     compression (feature-gated) and FASTA/FAI for context alignment.
-//! *   **Parallel Processing**: Leverages Rayon for parallel operations and
-//!     Polars' native multi-threading for data processing tasks, improving
-//!     performance on multi-core systems.
-//! *   **DMR Identification**: Tools for detecting Differentially Methylated
-//!     Regions based on statistical methods and segmentation algorithms.
-//! *   **Data Segmentation**: Implementation of segmentation algorithms (e.g.,
-//!     PELT) for identifying changepoints in genomic data streams.
-//! *   **Integration**: Uses established libraries like `bio-rs` for biological
-//!     formats (GFF, BED, FASTA) and `polars` for data manipulation.
+//! * **Efficient Data Structures**: Optimized structures for genomic
+//!   coordinates ([`Contig`], [`GenomicPosition`]) and methylation data batches
+//!   ([`BsxBatch`]) leveraging Polars DataFrames for in-memory performance.
+//! * **Custom `.bsx` Format**: A high-performance, indexed binary format based
+//!   on Apache Arrow IPC for storing methylation data, enabling fast sequential
+//!   and random access to genomic regions.
+//! * **Flexible I/O**: Readers and writers for `.bsx` files ([`BsxFileReader`],
+//!   [`BsxFileWriter`], [`RegionReader`]) and common methylation report formats
+//!   ([`ReportReader`], [`ReportWriter`]), with support for compression
+//!   (feature-gated) and FASTA/FAI for context alignment.
+//! * **Parallel Processing**: Leverages Rayon for parallel operations and
+//!   Polars' native multi-threading for data processing tasks, improving
+//!   performance on multi-core systems.
+//! * **DMR Identification**: Tools for detecting Differentially Methylated
+//!   Regions based on statistical methods and segmentation algorithms.
+//! * **Data Segmentation**: Implementation of segmentation algorithms (e.g.,
+//!   PELT) for identifying changepoints in genomic data streams.
+//! * **Integration**: Uses established libraries like `bio-rs` for biological
+//!   formats (GFF, BED, FASTA) and `polars` for data manipulation.
 //!
 //! ## Structure
 //!
 //! The crate is organized into several modules:
 //!
-//! *   [`data_structs`]: Defines the fundamental data types used throughout the
-//!     crate, including genomic coordinates ([`Contig`], [`GenomicPosition`]),
-//!     methylation data batches ([`BsxBatch`]), genomic annotations
-//!     ([`GffEntry`], [`HcAnnotStore`]), and methylation statistics
-//!     ([`MethylationStats`]).
-//! *   [`io`]: Handles file input and output, including the custom `.bsx` format
-//!     and various methylation report formats.
-//! *   [`tools`]: Contains higher-level analytical tools, such as those for
-//!     Differential Methylation Region (DMR) analysis (`dmr`) and data
-//!     segmentation (`dimred`). (feature-gated by default)
-//! *   [`utils`]: Provides common utility functions, including statistical
-//!     methods and helpers for Polars data types.
+//! * [`data_structs`]: Defines the fundamental data types used throughout the
+//!   crate, including genomic coordinates ([`Contig`], [`GenomicPosition`]),
+//!   methylation data batches ([`BsxBatch`]), genomic annotations
+//!   ([`GffEntry`], [`HcAnnotStore`]), and methylation statistics
+//!   ([`MethylationStats`]).
+//! * [`io`]: Handles file input and output, including the custom `.bsx` format
+//!   and various methylation report formats.
+//! * [`tools`]: Contains higher-level analytical tools, such as those for
+//!   Differential Methylation Region (DMR) analysis (`dmr`) and data
+//!   segmentation (`dimred`). (feature-gated by default)
+//! * [`utils`]: Provides common utility functions, including statistical
+//!   methods and helpers for Polars data types.
 //!
 //! ## Installation
 //!
@@ -57,7 +60,7 @@
 //! cargo add bsxplorer2
 //! ```
 //!
-//! To enable the `tools` module and compression features (requires C/C++ toolchain):
+//! To enable the `tools` module and compression features:
 //!
 //! ```bash
 //! # Add with features
@@ -70,7 +73,7 @@
 //!
 //! ```no_run
 //! use std::fs::File;
-//! use bsxplorer2::io::bsx::BsxFileReader;
+//! use bsxplorer2::prelude::*;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let file = File::open("path/to/your/file.bsx")?;
@@ -93,14 +96,11 @@
 //!
 //! ```no_run
 //! use std::fs::File;
-//! use bsxplorer2::io::bsx::RegionReader;
-//! use bsxplorer2::data_structs::coords::Contig;
-//! use bsxplorer2::data_structs::Strand;
-//! use bsxplorer2::data_structs::typedef::BsxSmallStr;
+//! use bsxplorer2::prelude::*;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let file = File::open("path/to/your/indexed_file.bsx")?;
-//!     let bsx_reader = bsxplorer2::io::bsx::BsxFileReader::try_new(file)?;
+//!     let bsx_reader = BsxFileReader::try_new(file)?;
 //!     let mut region_reader = RegionReader::from_reader(bsx_reader)?;
 //!
 //!     // Define the region of interest
@@ -125,7 +125,7 @@
 //!
 //! ```no_run
 //! use std::fs::File;
-//! use bsxplorer2::io::report::{ReportReaderBuilder, ReportType};
+//! use bsxplorer2::prelude::*;
 //! use std::path::PathBuf;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -155,11 +155,7 @@
 //!
 //! ```no_run
 //! use std::fs::File;
-//! use bsxplorer2::io::bsx::BsxFileWriter;
-//! use bsxplorer2::data_structs::batch::BsxBatch;
-//! use bsxplorer2::data_structs::typedef::BsxSmallStr;
-//! use bsxplorer2::data_structs::coords::Contig;
-//! use bsxplorer2::data_structs::Strand;
+//! use bsxplorer2::prelude::*;
 //! use std::path::PathBuf;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -200,12 +196,23 @@
 //!     Ok(())
 //! }
 //! ```
-#![allow(unused)]
-#![warn(unused_imports)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
+#[ctor::ctor]
+fn init() {
+    if let Ok(n) = std::env::var("BSX_NUM_THREADS") {
+        std::env::set_var("POLARS_MAX_THREADS", n)
+    }
+}
 
 pub mod data_structs;
 pub mod io;
-#[cfg(feature = "tools")]
-pub mod tools;
+pub mod prelude;
 pub mod utils;
+
+#[cfg(feature = "tools")]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub mod tools;
+
+#[allow(unused_imports)]
+use prelude::*;

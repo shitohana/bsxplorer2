@@ -2,15 +2,30 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{
+    Context,
+    Result,
+};
 use itertools::Itertools;
-use log::{debug, info, warn};
+use log::{
+    debug,
+    info,
+    warn,
+};
 use polars::datatypes::DataType;
 use polars::error::PolarsResult;
 use polars::export::arrow::datatypes::Metadata;
-use polars::prelude::{IpcCompression, IpcWriterOptions, Schema};
+use polars::prelude::{
+    IpcCompression,
+    IpcWriterOptions,
+    Schema,
+};
 
-use crate::data_structs::batch::{create_caregorical_dtype, BsxBatch, BsxColumns};
+use crate::data_structs::batch::{
+    create_caregorical_dtype,
+    BsxBatch,
+    BsxColumns,
+};
 
 /// Writer for BSX data in Arrow IPC format with optional compression.
 pub struct BsxFileWriter<W>

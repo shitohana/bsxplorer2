@@ -42,7 +42,11 @@ mod utils {
     }
 }
 
-use std::{cmp, iter, ops};
+use std::{
+    cmp,
+    iter,
+    ops,
+};
 
 /// Denoises the input values based on a tautstring algorithm by
 /// Davies P. and Kovac A. in 2001 in the paper ["Local extremes,

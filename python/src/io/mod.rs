@@ -14,6 +14,8 @@ pub fn register_io_module(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<report::PyReportReader>()?;
     module.add_class::<report::PyReportWriter>()?;
     module.add_class::<region::PyRegionReader>()?;
+    module.add_class::<region::PyFilterOperation>()?;
+    module.add_class::<region::PyRegionReaderIterator>()?;
 
     parent_module.add_submodule(&module)?;
     Ok(())

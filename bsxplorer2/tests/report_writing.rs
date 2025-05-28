@@ -5,10 +5,17 @@ use bio::io::fasta::Writer as FastaWriter;
 use bsxplorer2::data_structs::batch::BsxBatch;
 #[cfg(feature = "compression")]
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{ReportReaderBuilder, ReportType, ReportWriter};
+use bsxplorer2::io::report::{
+    ReportReaderBuilder,
+    ReportType,
+    ReportWriter,
+};
 use polars::prelude::*;
 use rand::rngs::StdRng;
-use rstest::{fixture, rstest};
+use rstest::{
+    fixture,
+    rstest,
+};
 
 mod common;
 use common::DemoReportBuilder;

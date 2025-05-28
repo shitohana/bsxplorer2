@@ -2,18 +2,24 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use bsxplorer2::io::bsx::{BsxFileReader as RsBsxFileReader,
-                          BsxFileWriter as RsBsxIpcWriter};
+use bsxplorer2::io::bsx::{
+    BsxFileReader as RsBsxFileReader,
+    BsxFileWriter as RsBsxIpcWriter,
+};
 use polars::prelude::IpcCompression;
 use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 
 use crate::types::batch::PyBsxBatch;
-use crate::utils::{FileOrFileLike, SinkHandle};
+use crate::utils::{
+    FileOrFileLike,
+    SinkHandle,
+};
 
 
 #[pyclass(name = "BsxFileReader", unsendable)]
+#[derive(Debug, Clone)]
 pub struct PyBsxFileReader {
     reader:            RsBsxFileReader,
     current_batch_idx: usize,
@@ -22,6 +28,10 @@ pub struct PyBsxFileReader {
 impl PyBsxFileReader {
     pub(crate) fn into_inner(self) -> RsBsxFileReader {
         self.reader
+    }
+
+    pub(crate) fn inner_mut(&mut self) -> &mut RsBsxFileReader {
+        &mut self.reader
     }
 }
 
@@ -51,36 +61,40 @@ impl PyBsxFileReader {
         }
     }
 
-    // pub fn index(&mut self) -> PyResult<PyBatchIndex> {
-    //     self.reader
-    //         .index()
-    //         .cloned()
-    //         .map(PyBatchIndex::from)
-    //         .map_err(|e| e.into())
-    // }
+    pub fn get_batches(
+        &mut self,
+        batch_indices: Vec<usize>,
+    ) -> PyResult<Vec<Option<PyBsxBatch>>> {
+        let results = self.reader.get_batches(&batch_indices);
+        let mut py_results = Vec::new();
+        for result in results {
+            match result {
+                Some(Ok(batch)) => py_results.push(Some(batch.into())),
+                Some(Err(e)) => return Err(PyPolarsErr::Polars(e).into()),
+                None => py_results.push(None),
+            }
+        }
+        Ok(py_results)
+    }
 
-    // pub fn set_index(
-    //     &mut self,
-    //     index: PyBatchIndex,
-    // ) -> () {
-    //     self.reader.set_index(Some(index.into()))
-    // }
+    pub fn cache_batches(
+        &mut self,
+        batch_indices: Vec<usize>,
+    ) -> PyResult<()> {
+        self.reader
+            .cache_batches(&batch_indices)
+            .map_err(|e| PyPolarsErr::Polars(e).into())
+    }
 
-    // pub fn query(
-    //     &mut self,
-    //     query: PyContig,
-    // ) -> PyResult<Option<PyBsxBatch>> {
-    //     Ok(self.reader.query(&query.into())?.map(PyBsxBatch::from))
-    // }
+    pub fn n_threads(&self) -> usize {
+        self.reader.n_threads()
+    }
 
     pub fn blocks_total(&self) -> usize {
         self.reader.blocks_total()
     }
 
     pub fn __iter__(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
-        // Reset index on starting iteration
-        // This assumes the PyBsxFileReader struct has a `current_batch_index: usize`
-        // field which needs to be initialized in the `new` method as well.
         slf.current_batch_idx = 0;
         slf
     }

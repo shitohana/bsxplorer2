@@ -1,19 +1,32 @@
 use std::fs::File;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::exit;
 
 use bsxplorer2::data_structs::coords::GenomicPosition;
-use bsxplorer2::io::bsx::{BsxFileReader, BsxFileWriter};
+use bsxplorer2::io::bsx::{
+    BsxFileReader,
+    BsxFileWriter,
+};
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{ReportReaderBuilder, ReportType, ReportWriter};
-use clap::{Args, ValueEnum};
+use bsxplorer2::io::report::{
+    ReportReaderBuilder,
+    ReportType,
+    ReportWriter,
+};
+use clap::{
+    Args,
+    ValueEnum,
+};
 use console::style;
+use indicatif::ProgressBar;
 
-use crate::utils::{init_hidden,
-                   init_pbar,
-                   init_spinner,
-                   CliIpcCompression,
-                   UtilsArgs};
+use crate::utils::{
+    init_hidden,
+    init_pbar,
+    init_spinner,
+    CliIpcCompression,
+};
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum ConvertReportType {
@@ -82,10 +95,7 @@ pub struct ToBsxConvert {
 }
 
 impl ToBsxConvert {
-    pub fn run(
-        &self,
-        utils_args: &UtilsArgs,
-    ) -> anyhow::Result<()> {
+    pub fn run(&self) -> anyhow::Result<()> {
         if matches!(self.from_type, ReportType::BedGraph | ReportType::Coverage)
             && !(self.fasta_path.is_some() && self.fai_path.is_some())
         {
@@ -96,7 +106,8 @@ impl ToBsxConvert {
             )
         }
 
-        let pbar = if utils_args.progress {
+        use std::io::IsTerminal;
+        let pbar = if std::io::stdin().is_terminal() {
             init_spinner()?
         }
         else {
@@ -104,7 +115,6 @@ impl ToBsxConvert {
         };
 
         let mut report_reader_builder = ReportReaderBuilder::default()
-            .with_n_threads(Some(utils_args.threads))
             .with_batch_size(self.batch_size)
             .with_chunk_size(self.chunk_size)
             .with_low_memory(self.low_memory)
@@ -184,10 +194,7 @@ pub struct FromBsxConvert {
 }
 
 impl FromBsxConvert {
-    pub fn run(
-        &self,
-        utils_args: &UtilsArgs,
-    ) -> anyhow::Result<()> {
+    pub fn run(&self) -> anyhow::Result<()> {
         let input_handle = File::open(self.input.clone())?;
         let bsx_reader = BsxFileReader::try_new(input_handle)?;
 
@@ -195,16 +202,16 @@ impl FromBsxConvert {
         let mut writer = ReportWriter::try_new(
             output_handle,
             self.to_type,
-            utils_args.threads,
+            bsxplorer2::utils::n_threads(),
             self.to_compression.clone(),
             self.compression_level,
         )?;
 
-        let pbar = if utils_args.progress {
-            init_pbar(bsx_reader.blocks_total())?
+        let pbar = if std::io::stdin().is_terminal() {
+            init_pbar(0)?
         }
         else {
-            init_hidden()?
+            ProgressBar::hidden()
         };
 
         for batch in bsx_reader.into_iter() {
@@ -264,11 +271,8 @@ pub struct R2RConvert {
 }
 
 impl R2RConvert {
-    pub fn run(
-        &self,
-        utils_args: &UtilsArgs,
-    ) -> anyhow::Result<()> {
-        let pbar = if utils_args.progress {
+    pub fn run(&self) -> anyhow::Result<()> {
+        let pbar = if std::io::stdin().is_terminal() {
             init_spinner()?
         }
         else {
@@ -276,7 +280,6 @@ impl R2RConvert {
         };
 
         let mut report_reader_builder = ReportReaderBuilder::default()
-            .with_n_threads(Some(utils_args.threads))
             .with_batch_size(self.batch_size)
             .with_low_memory(self.low_memory)
             .with_report_type(self.from_type)
@@ -292,7 +295,7 @@ impl R2RConvert {
         let mut writer = ReportWriter::try_new(
             output_handle,
             self.to_type,
-            utils_args.threads,
+            bsxplorer2::utils::n_threads(),
             self.to_compression.clone(),
             self.compression_level,
         )?;

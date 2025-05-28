@@ -1,18 +1,12 @@
+use std::convert::Infallible;
 use std::fmt::Display;
 use std::hash::Hash;
+use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
-
-pub trait IPCEncodedEnum {
-    /// Converts an optional boolean value to the enum.
-    fn from_bool(value: Option<bool>) -> Self;
-    /// Converts the enum to an optional boolean value.
-    fn to_bool(&self) -> Option<bool>;
-    /// Converts a string slice to the enum.
-    fn from_str(value: &str) -> Self;
-}
-
-pub type BSXResult<T> = Result<T, Box<dyn std::error::Error>>;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
@@ -23,6 +17,26 @@ pub enum Context {
     CHG,
     /// CHH context.
     CHH,
+}
+
+impl From<Option<bool>> for Context {
+    fn from(value: Option<bool>) -> Self {
+        match value {
+            Some(true) => Context::CG,
+            Some(false) => Context::CHG,
+            None => Context::CHH,
+        }
+    }
+}
+
+impl From<Context> for Option<bool> {
+    fn from(value: Context) -> Self {
+        match value {
+            Context::CG => Some(true),
+            Context::CHG => Some(false),
+            Context::CHH => None,
+        }
+    }
 }
 
 impl Display for Context {
@@ -40,10 +54,14 @@ impl Display for Context {
 }
 
 impl std::str::FromStr for Context {
-    type Err = String;
+    type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(<Self as IPCEncodedEnum>::from_str(s))
+        match s.to_uppercase().as_str() {
+            "CG" => Ok(Context::CG),
+            "CHG" => Ok(Context::CHG),
+            _ => Ok(Context::CHH),
+        }
     }
 }
 
@@ -67,32 +85,6 @@ impl<'de> Deserialize<'de> for Context {
     }
 }
 
-impl IPCEncodedEnum for Context {
-    fn from_bool(value: Option<bool>) -> Context {
-        match value {
-            Some(true) => Context::CG,
-            Some(false) => Context::CHG,
-            None => Context::CHH,
-        }
-    }
-
-    fn to_bool(&self) -> Option<bool> {
-        match self {
-            Context::CG => Some(true),
-            Context::CHG => Some(false),
-            Context::CHH => None,
-        }
-    }
-
-    fn from_str(value: &str) -> Self {
-        match value.to_uppercase().as_str() {
-            "CG" => Context::CG,
-            "CHG" => Context::CHG,
-            "CHH" => Context::CHH,
-            other => unimplemented!("Context {} is not yet supported", other),
-        }
-    }
-}
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
@@ -105,12 +97,44 @@ pub enum Strand {
     None,
 }
 
+impl FromStr for Strand {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "+" => Ok(Strand::Forward),
+            "-" => Ok(Strand::Reverse),
+            _ => Ok(Strand::None),
+        }
+    }
+}
+
 impl From<Strand> for bool {
     fn from(value: Strand) -> bool {
         match value {
             Strand::Forward => true,
             Strand::Reverse => false,
             Strand::None => unimplemented!(),
+        }
+    }
+}
+
+impl From<Strand> for Option<bool> {
+    fn from(value: Strand) -> Option<bool> {
+        match value {
+            Strand::Forward => Some(true),
+            Strand::Reverse => Some(false),
+            Strand::None => None,
+        }
+    }
+}
+
+impl From<Option<bool>> for Strand {
+    fn from(value: Option<bool>) -> Strand {
+        match value {
+            Some(true) => Strand::Forward,
+            Some(false) => Strand::Reverse,
+            None => Strand::None,
         }
     }
 }
@@ -148,14 +172,6 @@ impl Display for Strand {
     }
 }
 
-impl std::str::FromStr for Strand {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(<Self as IPCEncodedEnum>::from_str(s))
-    }
-}
-
 impl Serialize for Strand {
     fn serialize<S>(
         &self,
@@ -173,32 +189,5 @@ impl<'de> Deserialize<'de> for Strand {
         D: serde::Deserializer<'de>, {
         let s = String::deserialize(deserializer)?;
         std::str::FromStr::from_str(&s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl IPCEncodedEnum for Strand {
-    fn from_bool(value: Option<bool>) -> Strand {
-        match value {
-            Some(true) => Strand::Forward,
-            Some(false) => Strand::Reverse,
-            None => Strand::None,
-        }
-    }
-
-    fn to_bool(&self) -> Option<bool> {
-        match self {
-            Strand::Forward => Some(true),
-            Strand::Reverse => Some(false),
-            Strand::None => None,
-        }
-    }
-
-    fn from_str(value: &str) -> Self {
-        match value.to_lowercase().as_str() {
-            "+" => Strand::Forward,
-            "-" => Strand::Reverse,
-            _ => Strand::None, /* Default to None for any other string
-                                * including "." */
-        }
     }
 }

@@ -18,13 +18,12 @@
 //!   and lazy evaluation wrappers.
 //! - [`coords`]: Basic structures for representing genomic locations:
 //!   [`GenomicPosition`] for single points and [`Contig`] for genomic regions.
-//! - [`ContextData`], which stores genomic context
-//!   (like CG, CHG, CHH sites) derived from sequence information.
-//! - Common enumerations used across the application, such as
-//!   [`Context`] for methylation context and [`Strand`] for genomic strand.
-//! - Structures ([`MethylationStats`], [`MethylationStatFlat`])
-//!   for holding and summarizing methylation statistics for genomic regions or
-//!   entire samples.
+//! - [`ContextData`], which stores genomic context (like CG, CHG, CHH sites)
+//!   derived from sequence information.
+//! - Common enumerations used across the application, such as [`Context`] for
+//!   methylation context and [`Strand`] for genomic strand.
+//! - Structures ([`MethylationStats`], [`MethylationStatFlat`]) for holding and
+//!   summarizing methylation statistics for genomic regions or entire samples.
 //! - [`typedef`]: Defines type aliases for common data types used for
 //!   positions, counts, densities, and sequence names to improve code
 //!   readability and maintainability.
@@ -42,5 +41,11 @@ pub mod typedef;
 mod tests;
 
 pub use context_data::ContextData;
-pub use enums::{Context, IPCEncodedEnum, Strand};
-pub use methstats::{MethylationStatFlat, MethylationStats};
+pub use enums::{
+    Context,
+    Strand,
+};
+pub use methstats::{
+    MethylationStatFlat,
+    MethylationStats,
+};

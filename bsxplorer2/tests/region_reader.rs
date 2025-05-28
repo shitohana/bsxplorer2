@@ -5,9 +5,15 @@ use bsxplorer2::data_structs::annotation::HcAnnotStore;
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Context;
-use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
-use rstest::{fixture, rstest};
-
+use bsxplorer2::io::bsx::{
+    BatchIndex,
+    BsxFileReader,
+    RegionReader,
+};
+use rstest::{
+    fixture,
+    rstest,
+};
 
 #[fixture]
 fn bsx_reader() -> BsxFileReader {

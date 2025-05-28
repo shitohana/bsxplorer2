@@ -1,6 +1,9 @@
 use std::hash::Hash;
 
-use num::{PrimInt, Unsigned};
+use num::{
+    PrimInt,
+    Unsigned,
+};
 use smallstr::SmallString;
 
 pub const SMALLSTR_SIZE: usize = 20;

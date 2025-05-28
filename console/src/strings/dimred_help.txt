@@ -1,0 +1,37 @@
+DIMRED (Dimensionality Reduction) Analysis
+
+This tool performs dimensionality reduction analysis on bisulfite sequencing methylation data to identify regions with high methylation variability across samples. The analysis uses changepoint detection to segment the genome and identify regions of interest for downstream analysis.
+
+1. DATA LOADING AND PREPROCESSING
+   - Loads BSX files containing methylation data
+   - Filters cytosines based on methylation context (CG/CHG/CHH)
+   - Applies coverage thresholds to ensure data quality
+   - Removes cytosines with excessive missing data across samples
+
+2. CHANGEPOINT DETECTION
+    - Performs segmentation analysis using the PELT (Pruned Exact Linear Time) algorithm
+    - Fits a binomial distribution model to detect significant changes in methylation levels
+    - Groups nearby changepoints to reduce noise and focus on meaningful regions
+    - Applies minimum segment size filters to ensure robust regions
+
+3. OUTPUT GENERATION
+   - Produces BED format files with identified variable regions
+   - Includes methylation statistics and variability metrics
+   - Provides coordinates suitable for downstream genomic analysis
+
+TYPICAL USAGE:
+  bsxplorer2 dimred sample1.bsx sample2.bsx sample3.bsx -o variable_regions
+
+ADVANCED USAGE:
+  # Focus on CG context with specific filtering
+  bsxplorer2 dimred *.bsx -o dimred_results \
+    --context CG --min-coverage 10 --coverage 0.8 \
+    --min-size 100 --chunk 1000000
+
+  # Joint analysis across all contexts
+  bsxplorer2 dimred samples/*.bsx -o comprehensive_analysis \
+    --joint --beta 0.5 --intersection
+
+OUTPUT FILES:
+  The tool generates BED format files containing genomic coordinates of identified
+  variable methylation regions along with associated statistics and metrics.

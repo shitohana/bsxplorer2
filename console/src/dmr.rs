@@ -3,16 +3,26 @@ use std::iter::repeat_n;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
-use bsxplorer2::data_structs::typedef::{CountType, DensityType, PosType};
+use bsxplorer2::data_structs::typedef::{
+    CountType,
+    DensityType,
+    PosType,
+};
 use bsxplorer2::data_structs::Context;
 use bsxplorer2::tools::dmr::DMRegion;
-use clap::{Args, ValueEnum};
+use clap::{
+    Args,
+    ValueEnum,
+};
 use console::style;
 use dialoguer::Confirm;
 use indicatif::ProgressBar;
 use serde::Serialize;
 
-use crate::utils::{expand_wildcards, init_pbar, UtilsArgs};
+use crate::utils::{
+    expand_wildcards,
+    init_pbar,
+};
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct DmrArgs {
@@ -191,10 +201,7 @@ pub(crate) enum PadjMethod {
 }
 
 impl DmrArgs {
-    pub fn run(
-        &self,
-        utils: &UtilsArgs,
-    ) -> anyhow::Result<()> {
+    pub fn run(&self) -> anyhow::Result<()> {
         let a_paths = expand_wildcards(self.group_a.clone());
         let b_paths = expand_wildcards(self.group_b.clone());
 
@@ -276,10 +283,9 @@ impl DmrArgs {
             .try_finish(labeled)
             .expect("Failed to initialize DMR iterator");
 
-        let progress_bar = if utils.progress {
-            let progress_bar = init_pbar(dmr_iterator.blocks_total())
-                .expect("Failed to initialize progress bar");
-            progress_bar
+        use std::io::IsTerminal;
+        let progress_bar = if std::io::stdin().is_terminal() {
+            init_pbar(dmr_iterator.blocks_total())?
         }
         else {
             ProgressBar::hidden()

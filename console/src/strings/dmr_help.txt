@@ -1,0 +1,40 @@
+DMR (Differentially Methylated Regions) Analysis
+
+This command identifies differentially methylated regions between two groups of bisulfite sequencing samples. The analysis follows a multi-step approach:
+
+1. DATA LOADING AND FILTERING
+   - Loads BSX files for both sample groups
+   - Filters cytosines based on context (CG/CHG/CHH)
+   - Removes cytosines with insufficient coverage or too many missing values
+   - Only retains cytosines present in sufficient samples
+
+2. SEGMENTATION
+   - Groups nearby cytosines into segments based on maximum distance threshold
+   - Uses Total Variation denoising (Condat's algorithm) to smooth methylation signals
+   - Applies recursive segmentation with Mann-Whitney U-tests to identify homogeneous regions
+   - Merges adjacent segments with similar methylation patterns
+
+3. STATISTICAL TESTING
+   - Performs 2D Kolmogorov-Smirnov tests on each segment
+   - Applies multiple testing correction (Bonferroni, Benjamini-Hochberg, or Benjamini-Yekutieli)
+   - Filters regions based on p-value thresholds and methylation differences
+
+4. OUTPUT
+   - Generates two files: all segments and filtered DMRs
+   - Reports regions meeting significance and effect size criteria
+
+TYPICAL USAGE:
+  bsxplorer2 dmr -A sample1_group1.bsx sample2_group1.bsx -B sample1_group2.bsx sample2_group2.bsx -o results
+
+ADVANCED USAGE:
+  # Custom filtering and segmentation parameters
+  bsxplorer2 dmr -A group1/*.bsx -B group2/*.bsx -o dmr_results \
+    --context CG --min-coverage 10 --diff-threshold 0.1 \
+    --max-dist 200 --initial-l 3.0 --padj 0.01
+
+OUTPUT FILES:
+  {prefix}.segments.tsv - All identified segments with statistics
+  {prefix}.filtered.tsv - DMRs passing all filtering criteria
+
+The filtered output includes genomic coordinates, sample group methylation levels,
+statistical significance, and effect sizes for each identified DMR.

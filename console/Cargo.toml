@@ -20,6 +20,7 @@ glob = "0.3"
 indicatif = "0.17.11"
 wild = "2.0"
 
+crossbeam.workspace = true
 adjustp.workspace = true
 anyhow.workspace = true
 pretty_env_logger.workspace = true
@@ -27,9 +28,11 @@ rayon.workspace = true
 serde.workspace = true
 polars.workspace = true
 itertools.workspace = true
+bio.workspace = true
+std-semaphore = "0.1.0"
 
 [dependencies.bsxplorer2]
-version = "0.2.0"
+path = "../bsxplorer2"
 default-features = false
 features = ["console", "performant", "compression", "tools"]
 

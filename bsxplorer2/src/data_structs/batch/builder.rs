@@ -2,11 +2,13 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use polars::prelude::*;
 
-use super::{create_caregorical_dtype,
-            create_empty_categorical_dtype,
-            name_dtype_tuple,
-            BsxBatch,
-            BsxColumns as BsxCol};
+use super::{
+    create_caregorical_dtype,
+    create_empty_categorical_dtype,
+    name_dtype_tuple,
+    BsxBatch,
+    BsxColumns as BsxCol,
+};
 use crate::data_structs::coords::Contig;
 use crate::io::report::ReportType;
 use crate::with_field_fn;

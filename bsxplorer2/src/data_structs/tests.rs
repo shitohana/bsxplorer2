@@ -2,7 +2,10 @@ mod methstats_tests {
     use assert_approx_eq::assert_approx_eq;
     use hashbrown::HashMap;
 
-    use crate::data_structs::enums::{Context, Strand};
+    use crate::data_structs::enums::{
+        Context,
+        Strand,
+    };
     use crate::data_structs::methstats::MethylationStats;
     use crate::data_structs::typedef::DensityType;
 
@@ -240,7 +243,7 @@ mod methstats_tests {
 }
 
 mod enums_tests {
-    use std::panic;
+    use std::str::FromStr;
 
     use crate::data_structs::enums::*;
 
@@ -248,52 +251,46 @@ mod enums_tests {
 
     #[test]
     fn test_context_from_str() {
-        assert_eq!(Context::from_str("CG"), Context::CG);
-        assert_eq!(Context::from_str("cg"), Context::CG);
-        assert_eq!(Context::from_str("CHG"), Context::CHG);
-        assert_eq!(Context::from_str("chg"), Context::CHG);
-        assert_eq!(Context::from_str("CHH"), Context::CHH);
-        assert_eq!(Context::from_str("chh"), Context::CHH);
-    }
-
-    #[test]
-    fn test_context_from_str_unimplemented() {
-        let result = panic::catch_unwind(|| Context::from_str("XYZ"));
-        assert!(result.is_err()); // Expecting a panic
+        assert_eq!(Context::from_str("CG").unwrap(), Context::CG);
+        assert_eq!(Context::from_str("cg").unwrap(), Context::CG);
+        assert_eq!(Context::from_str("CHG").unwrap(), Context::CHG);
+        assert_eq!(Context::from_str("chg").unwrap(), Context::CHG);
+        assert_eq!(Context::from_str("CHH").unwrap(), Context::CHH);
+        assert_eq!(Context::from_str("chh").unwrap(), Context::CHH);
     }
 
     #[test]
     fn test_context_ipc_encoded() {
-        assert_eq!(Context::from_bool(Some(true)), Context::CG);
-        assert_eq!(Context::from_bool(Some(false)), Context::CHG);
-        assert_eq!(Context::from_bool(None), Context::CHH);
+        assert_eq!(Context::from(Some(true)), Context::CG);
+        assert_eq!(Context::from(Some(false)), Context::CHG);
+        assert_eq!(Context::from(None), Context::CHH);
 
-        assert_eq!(Context::CG.to_bool(), Some(true));
-        assert_eq!(Context::CHG.to_bool(), Some(false));
-        assert_eq!(Context::CHH.to_bool(), None);
+        assert_eq!(Option::<bool>::from(Context::CG), Some(true));
+        assert_eq!(Option::<bool>::from(Context::CHG), Some(false));
+        assert_eq!(Option::<bool>::from(Context::CHH), None);
     }
 
     // --- Strand Tests ---
 
     #[test]
     fn test_strand_from_str() {
-        assert_eq!(Strand::from_str("+"), Strand::Forward);
-        assert_eq!(Strand::from_str("-"), Strand::Reverse);
-        assert_eq!(Strand::from_str("."), Strand::None);
-        assert_eq!(Strand::from_str("forward"), Strand::None); // Defaults to None
-        assert_eq!(Strand::from_str(""), Strand::None);
-        assert_eq!(Strand::from_str("AnythingElse"), Strand::None);
+        assert_eq!(Strand::from_str("+").unwrap(), Strand::Forward);
+        assert_eq!(Strand::from_str("-").unwrap(), Strand::Reverse);
+        assert_eq!(Strand::from_str(".").unwrap(), Strand::None);
+        assert_eq!(Strand::from_str("forward").unwrap(), Strand::None); // Defaults to None
+        assert_eq!(Strand::from_str("").unwrap(), Strand::None);
+        assert_eq!(Strand::from_str("AnythingElse").unwrap(), Strand::None);
     }
 
     #[test]
     fn test_strand_ipc_encoded() {
-        assert_eq!(Strand::from_bool(Some(true)), Strand::Forward);
-        assert_eq!(Strand::from_bool(Some(false)), Strand::Reverse);
-        assert_eq!(Strand::from_bool(None), Strand::None);
+        assert_eq!(Strand::from(Some(true)), Strand::Forward);
+        assert_eq!(Strand::from(Some(false)), Strand::Reverse);
+        assert_eq!(Strand::from(None), Strand::None);
 
-        assert_eq!(Strand::Forward.to_bool(), Some(true));
-        assert_eq!(Strand::Reverse.to_bool(), Some(false));
-        assert_eq!(Strand::None.to_bool(), None);
+        assert_eq!(Option::<bool>::from(Strand::Forward), Some(true));
+        assert_eq!(Option::<bool>::from(Strand::Reverse), Some(false));
+        assert_eq!(Option::<bool>::from(Strand::None), None);
     }
 }
 
@@ -302,7 +299,10 @@ mod context_data_tests {
     use rstest::rstest;
 
     use crate::data_structs::context_data::ContextData;
-    use crate::data_structs::enums::{Context, Strand};
+    use crate::data_structs::enums::{
+        Context,
+        Strand,
+    };
 
     #[test]
     fn test_from_sequence_basic() {

@@ -1,15 +1,25 @@
 use std::collections::HashMap;
+use std::fmt::{
+    Debug,
+    Display,
+};
 use std::fs::File;
+use std::hash::Hash;
 use std::process::exit;
 use std::rc::Rc;
 
+use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::io::bsx::BsxFileReader;
 use clap::Args;
 use console::style;
 use indicatif::ProgressBar;
 use itertools::Itertools;
+use polars::error::PolarsResult;
 
-use crate::utils::{expand_wildcards_single, init_pbar, UtilsArgs};
+use crate::utils::{
+    expand_wildcards_single,
+    init_pbar,
+};
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct ValidateArgs {
@@ -20,181 +30,320 @@ pub(crate) struct ValidateArgs {
         help = "Paths to BSX files"
     )]
     files: Vec<String>,
+
+    #[arg(short, long, default_value_t = false, help = "Validate each row")]
+    deep: bool,
+}
+
+#[derive(Debug, Clone)]
+enum ValidationErrorType {
+    BatchNumber,
+    BatchSize { batch_num: usize },
+    BatchRange { batch_num: usize },
+    BatchPositions { batch_num: usize },
+}
+
+impl ValidationErrorType {
+    fn inconsistency_message(&self) -> String {
+        match self {
+            ValidationErrorType::BatchNumber => {
+                "inconsistency in batch number".to_string()
+            },
+            ValidationErrorType::BatchSize { batch_num } => {
+                format!("inconsistency in batch size. Batch №{}", batch_num)
+            },
+            ValidationErrorType::BatchRange { batch_num } => {
+                format!(
+                    "inconsistency in batch values range. Batch №{:?}",
+                    batch_num
+                )
+            },
+            ValidationErrorType::BatchPositions { batch_num } => {
+                format!("inconsistency in batch positions. Batch №{:?}", batch_num)
+            },
+        }
+    }
+
+    fn most_files_message<T: Debug>(
+        &self,
+        value: &T,
+    ) -> String {
+        match self {
+            ValidationErrorType::BatchNumber => {
+                format!("Most files have {:?} batches", value)
+            },
+            ValidationErrorType::BatchSize { .. } => {
+                format!("Most files have {:?} rows", value)
+            },
+            ValidationErrorType::BatchRange { .. } => {
+                format!("Most files cover {:?} region", value)
+            },
+            ValidationErrorType::BatchPositions { .. } => {
+                format!("")
+            },
+        }
+    }
+
+    fn following_files_message<T: Debug>(
+        &self,
+        value: &T,
+    ) -> String {
+        match self {
+            ValidationErrorType::BatchNumber => {
+                format!("Following files have {:?} batches:", value)
+            },
+            ValidationErrorType::BatchSize { .. } => {
+                format!("Following files have {:?} rows:", value)
+            },
+            ValidationErrorType::BatchRange { .. } => {
+                format!("Following files cover {:?} region:", value)
+            },
+            ValidationErrorType::BatchPositions { .. } => {
+                format!("Following files have different positions")
+            },
+        }
+    }
+}
+
+fn validate_consistency<K, V>(
+    grouped_data: &HashMap<K, Vec<V>>,
+    error_type: ValidationErrorType,
+) where
+    K: Clone + Debug + Hash + Eq,
+    V: Display, {
+    if grouped_data.len() > 1 {
+        let most_common_key = grouped_data
+            .keys()
+            .max_by_key(|k| grouped_data.get(k).unwrap().len())
+            .unwrap();
+
+        eprintln!(
+            "Detected {}",
+            style(error_type.inconsistency_message()).red()
+        );
+        eprintln!(
+            "{}",
+            style(error_type.most_files_message(most_common_key)).green()
+        );
+
+        for (key, values) in grouped_data
+            .iter()
+            .sorted_by_key(|(_k, v)| v.len())
+            .take(grouped_data.len() - 1)
+        {
+            eprintln!("{}", style(error_type.following_files_message(key)).red());
+            for value in values {
+                eprintln!("\t{}", value);
+            }
+        }
+        exit(-1);
+    }
 }
 
 impl ValidateArgs {
-    pub fn run(
-        &self,
-        utils: &UtilsArgs,
-    ) -> anyhow::Result<()> {
+    pub fn run(&self) -> anyhow::Result<()> {
+        // Expand file paths with wildcards
         let paths = self
             .files
             .iter()
-            .map(|path| expand_wildcards_single(path))
-            .flatten()
+            .flat_map(|path| expand_wildcards_single(path))
             .collect::<Vec<_>>();
 
-        for path in paths.iter() {
-            if !path.exists() {
-                eprintln!("Path {} does not exist.", style(path.display()).red());
-                exit(-1);
-            }
-            if !path.is_file() {
-                eprintln!("Path {} is not a file.", style(path.display()).red());
-                exit(-1);
-            }
-        }
+        // Create readers for all files
+        let mut readers = self.create_file_readers(&paths)?;
 
-        let mut readers = paths
-            .iter()
-            .map(|path| File::open(path).map(|f| (path.clone(), f)))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_else(|e| {
-                panic!("Error when opening files: {}", style(e.to_string()).red())
-            })
-            .into_iter()
-            .map(|(path, file)| {
-                BsxFileReader::try_new(file).map(|reader| (path, reader))
-            })
-            .collect::<anyhow::Result<HashMap<_, _>>>()?;
+        // Validate that all files have the same number of batches
+        let common_batch_num = self.validate_batch_numbers(&readers)?;
 
-        let batch_num = readers
-            .iter()
-            .map(|(path, reader)| (reader.blocks_total(), path.clone()))
-            .into_group_map();
-
-        if batch_num.len() > 1 {
-            let max_batch_num = batch_num
-                .iter()
-                .sorted_by_key(|(_k, v)| v.len())
-                .map(|(k, _v)| k)
-                .max()
-                .cloned()
-                .unwrap();
-
-            eprintln!("Detected {}", style("inconsistency in batch number").red());
-            eprintln!("Most files have {} batches", style(max_batch_num).green());
-            for (k, v) in batch_num.iter() {
-                if *k == max_batch_num {
-                    continue;
-                }
-                eprintln!("Following files have {} batches:", style(k).red());
-
-                for path in v {
-                    eprintln!("\t{}", path.to_string_lossy())
-                }
-                exit(-1)
-            }
-        }
-        let common_batch_num = {
-            let keys = batch_num.keys().collect_vec();
-            *keys[0]
-        };
         println!(
             "[{}] All files have {} batches",
             style("V").green(),
             style(common_batch_num).green()
         );
 
+        // Create iterators for batch processing
         let mut iterators = readers
             .iter_mut()
-            .map(|(k, v)| (Rc::new(k.clone()), v.iter()))
+            .map(|(path, reader)| (Rc::new(path.clone()), reader.iter()))
             .collect::<HashMap<_, _>>();
 
-        let progress_bar = if utils.progress {
-            let progress_bar =
-                init_pbar(common_batch_num).expect("Failed to initialize progress bar");
-            progress_bar
+        // Initialize progress bar
+        use std::io::IsTerminal;
+        let progress_bar = if std::io::stdin().is_terminal() {
+            init_pbar(common_batch_num)?
         }
         else {
             ProgressBar::hidden()
         };
 
+        // Process and validate each batch
+        self.validate_batches(&mut iterators, &progress_bar)?;
+
+        progress_bar.finish_and_clear();
+
+        println!("[{}] All files have equivalent batches", style("V").green());
+        println!("{}", style("Files are valid").green());
+        Ok(())
+    }
+
+    fn create_file_readers(
+        &self,
+        paths: &[std::path::PathBuf],
+    ) -> anyhow::Result<HashMap<String, BsxFileReader>> {
+        let mut readers = HashMap::new();
+
+        for path in paths {
+            let file = File::open(path).map_err(|e| {
+                anyhow::anyhow!("Error when opening file {}: {}", path.display(), e)
+            })?;
+
+            let reader = BsxFileReader::try_new(file).map_err(|e| {
+                anyhow::anyhow!(
+                    "Error when creating reader for file {}: {}",
+                    path.display(),
+                    e
+                )
+            })?;
+
+            readers.insert(path.to_string_lossy().to_string(), reader);
+        }
+
+        Ok(readers)
+    }
+
+    fn validate_batch_numbers(
+        &self,
+        readers: &HashMap<String, BsxFileReader>,
+    ) -> anyhow::Result<usize> {
+        let batch_numbers = readers
+            .iter()
+            .map(|(path, reader)| (reader.blocks_total(), path.clone()))
+            .into_group_map();
+
+        validate_consistency(&batch_numbers, ValidationErrorType::BatchNumber);
+
+        let common_batch_num = batch_numbers
+            .keys()
+            .next()
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("No files found"))?;
+
+        Ok(common_batch_num)
+    }
+
+    fn validate_batches(
+        &self,
+        iterators: &mut HashMap<
+            Rc<String>,
+            impl Iterator<Item = PolarsResult<BsxBatch>>,
+        >,
+        progress_bar: &ProgressBar,
+    ) -> anyhow::Result<()> {
         let mut batch_count = 0;
-        while let Some(new_batches) = iterators
-            .iter_mut()
-            .map(|(k, v)| {
-                v.next().map(|batch_res| {
-                    let batch = batch_res.unwrap_or_else(|e| {
-                        eprintln!(
-                            "Error when reading batch from {}",
-                            k.to_string_lossy()
-                        );
-                        panic!("{e}")
-                    });
-                    (k.clone(), batch)
-                })
-            })
-            .collect::<Option<Vec<_>>>()
-        {
-            let batch_size = new_batches
-                .iter()
-                .map(|(path, batch)| (batch.len(), path))
-                .into_group_map();
 
-            if batch_size.len() > 1 {
-                let max_size = batch_size
-                    .keys()
-                    .max_by_key(|k| batch_size.get(k).unwrap().len())
-                    .unwrap();
-                eprintln!(
-                    "Detected {}. Batch №{}",
-                    style("inconsistency in batch size").red(),
-                    batch_count
-                );
-                eprintln!("Most files have {} rows", style(max_size).green());
+        while let Some(new_batches) = self.read_next_batches(iterators)? {
+            self.validate_batch_sizes(&new_batches, batch_count)?;
+            self.validate_batch_ranges(&new_batches, batch_count)?;
 
-                for (size, paths) in batch_size
-                    .iter()
-                    .sorted_by_key(|(_s, paths)| paths.len())
-                    .take(batch_size.len() - 1)
-                {
-                    eprintln!("Following files have {} rows:", style(size).red());
-                    for path in paths {
-                        eprintln!("\t{}", path.to_string_lossy())
-                    }
-                }
-
-                exit(-1)
-            }
-
-            let contigs = new_batches
-                .iter()
-                .map(|(path, batch)| (batch.as_contig().unwrap(), path))
-                .into_group_map();
-
-            if contigs.len() > 1 {
-                let common_contig = contigs
-                    .keys()
-                    .max_by_key(|k| contigs.get(k).unwrap().len())
-                    .unwrap();
-                eprintln!(
-                    "Detected {}. Batch №{}",
-                    style("inconsistency in batch values range").red(),
-                    batch_count
-                );
-                eprintln!("Most files cover {} region", style(common_contig).green());
-
-                for (contig, paths) in contigs
-                    .iter()
-                    .sorted_by_key(|(_s, paths)| paths.len())
-                    .take(contigs.len() - 1)
-                {
-                    eprintln!("Following files cover {} region:", style(contig).red());
-                    for path in paths {
-                        eprintln!("\t{}", path.to_string_lossy())
-                    }
-                }
-                exit(-1)
+            if self.deep {
+                self.validate_batch_positions(&new_batches, batch_count)?;
             }
 
             batch_count += 1;
             progress_bar.inc(1);
         }
-        progress_bar.finish_and_clear();
 
-        println!("[{}] All files have equivalent batches", style("V").green(),);
-        println!("{}", style("Files are valid").green(),);
+        Ok(())
+    }
+
+    fn read_next_batches(
+        &self,
+        iterators: &mut HashMap<
+            Rc<String>,
+            impl Iterator<Item = PolarsResult<BsxBatch>>,
+        >,
+    ) -> anyhow::Result<Option<Vec<(Rc<String>, BsxBatch)>>> {
+        let batches: Result<Vec<_>, _> = iterators
+            .iter_mut()
+            .map(|(path, iterator)| {
+                iterator
+                    .next()
+                    .map(|batch_result| -> Result<(Rc<String>, BsxBatch), _> {
+                        let batch = batch_result.map_err(|e| {
+                            anyhow::anyhow!(
+                                "Error when reading batch from {}: {}",
+                                path,
+                                e
+                            )
+                        })?;
+                        Ok::<(Rc<String>, BsxBatch), anyhow::Error>((
+                            path.clone(),
+                            batch,
+                        ))
+                    })
+                    .transpose()
+            })
+            .collect();
+
+        match batches? {
+            batches if batches.iter().all(|b| b.is_some()) => {
+                Ok(Some(batches.into_iter().map(|b| b.unwrap()).collect()))
+            },
+            batches if batches.iter().all(|b| b.is_none()) => Ok(None),
+            _ => Err(anyhow::anyhow!("Files have different number of batches")),
+        }
+    }
+
+    fn validate_batch_sizes(
+        &self,
+        batches: &[(Rc<String>, BsxBatch)],
+        batch_count: usize,
+    ) -> anyhow::Result<()> {
+        let batch_sizes = batches
+            .iter()
+            .map(|(path, batch)| (batch.len(), path))
+            .into_group_map();
+
+        validate_consistency(&batch_sizes, ValidationErrorType::BatchSize {
+            batch_num: batch_count,
+        });
+
+        Ok(())
+    }
+
+    fn validate_batch_ranges(
+        &self,
+        batches: &[(Rc<String>, BsxBatch)],
+        batch_count: usize,
+    ) -> anyhow::Result<()> {
+        let contigs = batches
+            .iter()
+            .map(|(path, batch)| (batch.as_contig().unwrap(), path))
+            .into_group_map();
+
+        validate_consistency(&contigs, ValidationErrorType::BatchRange {
+            batch_num: batch_count,
+        });
+
+        Ok(())
+    }
+
+    fn validate_batch_positions(
+        &self,
+        batches: &[(Rc<String>, BsxBatch)],
+        batch_count: usize,
+    ) -> anyhow::Result<()> {
+        let positions = batches
+            .iter()
+            .map(|(path, batch)| {
+                (batch.position().to_vec_null_aware().unwrap_left(), path)
+            })
+            .into_group_map();
+
+        validate_consistency(&positions, ValidationErrorType::BatchPositions {
+            batch_num: batch_count,
+        });
+
         Ok(())
     }
 }

@@ -2,7 +2,10 @@ use std::fmt;
 
 use log::*;
 use num::Float;
-use statrs::distribution::{ContinuousCDF, Normal};
+use statrs::distribution::{
+    ContinuousCDF,
+    Normal,
+};
 use statrs::statistics::Statistics;
 
 /// Calculates Pearson correlation coefficient between two variables.
@@ -215,7 +218,10 @@ pub fn mann_whitney_u<F: Float>(
 mod tests {
     use assert_approx_eq::assert_approx_eq;
 
-    use crate::utils::{mann_whitney_u, pearson_r};
+    use crate::utils::{
+        mann_whitney_u,
+        pearson_r,
+    };
 
     #[test]
     fn test_utest() {

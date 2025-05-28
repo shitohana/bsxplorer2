@@ -3,17 +3,31 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bio::bio_types::annot::refids::RefIDSet;
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::channel::{
+    Receiver,
+    Sender,
+};
 use itertools::Itertools;
 use log::error;
 use polars::prelude::Column;
 use rayon::prelude::*;
 
-use crate::data_structs::batch::{merge_replicates, BsxBatch};
-use crate::data_structs::typedef::{DensityType, PosType};
+use crate::data_structs::batch::{
+    merge_replicates,
+    BsxBatch,
+};
+use crate::data_structs::typedef::{
+    DensityType,
+    PosType,
+};
 use crate::tools::dmr::config::DmrConfig;
-use crate::tools::dmr::data_structs::{DMRegion, ReaderMetadata, SegmentOwned};
+use crate::tools::dmr::data_structs::{
+    DMRegion,
+    ReaderMetadata,
+    SegmentOwned,
+};
 use crate::tools::dmr::segmentation::tv_recurse_segment;
+use crate::utils::THREAD_POOL;
 
 fn merge_counts(columns: Vec<&Column>) -> Column {
     let mut columns = columns;
@@ -52,10 +66,18 @@ pub(crate) fn segment_reading<I>(
                 .collect::<Option<Vec<_>>>(),
         ) {
             (Some(left), Some(right)) => {
-                let left_merged = merge_replicates(left, merge_counts, merge_density)
-                    .expect("Failed to merge replicates");
-                let right_merged = merge_replicates(right, merge_counts, merge_density)
-                    .expect("Failed to merge replicates");
+                let left_merged = merge_replicates(
+                    left,
+                    Box::new(merge_counts),
+                    Box::new(merge_density),
+                )
+                .expect("Failed to merge replicates");
+                let right_merged = merge_replicates(
+                    right,
+                    Box::new(merge_counts),
+                    Box::new(merge_density),
+                )
+                .expect("Failed to merge replicates");
 
                 let chr = left_merged.seqname().unwrap_or_default();
                 // TODO add filtering
@@ -176,11 +198,13 @@ impl DmrIterator {
         self.last_chr = chr.clone();
         self.leftover = Some(initial_segments.pop().unwrap());
 
-        let mut new_cache = initial_segments
-            .into_par_iter()
-            .map(|seg| self.comp_segment(seg))
-            .flatten()
-            .collect::<Vec<_>>();
+        let mut new_cache = THREAD_POOL.install(|| {
+            initial_segments
+                .into_par_iter()
+                .map(|seg| self.comp_segment(seg))
+                .flatten()
+                .collect::<Vec<_>>()
+        });
 
         self.regions_cache.append(&mut new_cache);
         Ok(())

@@ -6,18 +6,34 @@ use std::ops::BitOr;
 
 use anyhow::bail;
 use bio::io::fasta::Record;
-use bsxplorer2::data_structs::batch::{create_caregorical_dtype,
-                                      BsxBatch,
-                                      BsxBatchBuilder,
-                                      BsxColumns};
+use bsxplorer2::data_structs::batch::{
+    create_caregorical_dtype,
+    BsxBatch,
+    BsxBatchBuilder,
+    BsxColumns,
+};
 use bsxplorer2::data_structs::ContextData;
 use bsxplorer2::io::bsx::BsxFileWriter;
 use bsxplorer2::io::report::ReportType;
 use itertools::Itertools;
-use polars::prelude::{AnyValue, Column, DataType, Scalar};
+use polars::prelude::{
+    AnyValue,
+    Column,
+    DataType,
+    Scalar,
+};
 use polars::series::ChunkCompareEq;
-use rand::{random, Rng, RngCore, SeedableRng};
-use rand_distr::{Binomial, Distribution, Normal};
+use rand::{
+    random,
+    Rng,
+    RngCore,
+    SeedableRng,
+};
+use rand_distr::{
+    Binomial,
+    Distribution,
+    Normal,
+};
 
 pub struct DemoReportBuilder<R: SeedableRng + RngCore> {
     chr_len:       usize,

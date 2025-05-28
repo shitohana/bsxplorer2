@@ -1,0 +1,24 @@
+BSXplorer2 Validate Command
+
+The validate command is a critical utility for ensuring the structural integrity and consistency of multiple BSX files. This is particularly important when preparing files for joint analysis operations like merging, dimensionality reduction (`dimred`), or differential methylation analysis (`dmr`), which require input files to align on genomic structure.
+
+WHAT IT DOES:
+- It first confirms that all specified files exist and can be opened and read as BSX files.
+- It checks for a fundamental consistency: the total number of genomic batches (blocks) must be identical across all input files.
+- It then iterates through the batches sequentially, reading one batch from each file simultaneously.
+- For each corresponding batch across the files, it performs several checks:
+    - Verifies that the batch was successfully read from every file at the current index.
+    - Confirms that the size (number of rows/cytosines) of the batch is the same in all files.
+    - Checks that the genomic range covered by the batch (chromosome name and start/end coordinates) is identical across all files.
+    - If the `--deep` flag is used, it performs a rigorous check by comparing the exact genomic positions of every single cytosine within the batch across all files. This ensures not just the region but the specific sites are aligned.
+
+Upon detecting any inconsistency (different number of batches, different batch size, different genomic range for a corresponding batch, or different positions in deep mode), the command will print a clear error message detailing the discrepancy and the files involved, and then exit immediately. If all checks pass for all batches, the command will report that the files are valid.
+
+TYPICAL USAGE:
+  # Validate that a set of BSX files have consistent structure
+  bsxplorer2 validate sample1.bsx sample2.bsx replicateA.bsx replicateB.bsx
+
+  # Validate all BSX files in a directory, including a deep check of positions
+  bsxplorer2 validate path/to/files/*.bsx --deep
+
+Using the validate command early in your analysis pipeline can help prevent errors and ensure reliable results from subsequent joint analysis operations.

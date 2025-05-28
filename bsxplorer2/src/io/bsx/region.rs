@@ -1,18 +1,31 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{
+    BTreeMap,
+    BTreeSet,
+    VecDeque,
+};
 
-use anyhow::{anyhow, bail};
+use anyhow::{
+    anyhow,
+    bail,
+};
 use itertools::Itertools;
 use polars::error::PolarsResult;
 use polars::prelude::search_sorted::binary_search_ca;
 use polars::prelude::SearchSortedSide;
 
 use super::BsxFileReader;
-use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
+use crate::data_structs::batch::{
+    BsxBatch,
+    BsxBatchBuilder,
+};
 use crate::data_structs::coords::Contig;
 use crate::io::bsx::BatchIndex;
 
 /// RegionReader is a reader for BSX files that operates on a specific region of
 /// the genome.
+type PreprocessFn =
+    Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch> + Send + Sync + 'static>;
+
 pub struct RegionReader {
     /// Cache of encoded BSX batches.
     cache:         BTreeMap<usize, BsxBatch>,
@@ -21,7 +34,7 @@ pub struct RegionReader {
     /// Index of the BSX file.
     index:         BatchIndex,
     /// Preprocessing function to be applied to each batch before it is cached.
-    preprocess_fn: Option<Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
+    preprocess_fn: Option<PreprocessFn>,
 }
 
 // PRIVATE METHODS
@@ -244,7 +257,7 @@ impl RegionReader {
     /// Sets the preprocessing function.
     pub fn set_preprocess_fn(
         &mut self,
-        preprocess_fn: Option<Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
+        preprocess_fn: Option<PreprocessFn>,
     ) {
         self.preprocess_fn = preprocess_fn;
     }
@@ -266,9 +279,7 @@ impl RegionReader {
             cache: BTreeMap::new(),
             inner,
             index,
-            preprocess_fn: preprocess_fn.map(|c| {
-                Box::new(c) as Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch>>
-            }),
+            preprocess_fn: preprocess_fn.map(|c| Box::new(c) as PreprocessFn),
         }
     }
 
@@ -311,7 +322,7 @@ impl RegionReader {
     pub fn query(
         &mut self,
         contig: Contig,
-        postprocess_fn: Option<Box<fn(BsxBatch) -> anyhow::Result<BsxBatch>>>,
+        postprocess_fn: Option<PreprocessFn>,
     ) -> anyhow::Result<Option<BsxBatch>> {
         const MAX_ITERATION_LIMIT: usize = 10;
         let mut depth = 0usize;
@@ -369,12 +380,12 @@ pub struct RegionReaderIterator<'a> {
     cached_contigs:  VecDeque<Contig>,
 }
 
-impl<'a> Iterator for RegionReaderIterator<'a> {
+impl Iterator for RegionReaderIterator<'_> {
     type Item = anyhow::Result<BsxBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(contig) = self.cached_contigs.pop_front() {
-            self.reader.query(contig, None).transpose()
+            self.reader.query(contig, None::<PreprocessFn>).transpose()
         }
         else {
             let fill_cache_res = self.fill_cache();
@@ -391,7 +402,7 @@ impl<'a> Iterator for RegionReaderIterator<'a> {
     }
 }
 
-impl<'a> RegionReaderIterator<'a> {
+impl RegionReaderIterator<'_> {
     fn fill_cache(&mut self) -> Option<anyhow::Result<()>> {
         let mut required_batches = BTreeSet::new();
         let n_threads = self.reader.inner.n_threads();
@@ -407,7 +418,7 @@ impl<'a> RegionReaderIterator<'a> {
                 cur_chr = Some(contig.seqname().clone());
             }
 
-            if let Some(mut batches) = self.reader.find(&contig) {
+            if let Some(batches) = self.reader.find(&contig) {
                 required_batches.append(&mut BTreeSet::from_iter(batches));
                 self.cached_contigs.push_back(contig);
             }
@@ -417,7 +428,7 @@ impl<'a> RegionReaderIterator<'a> {
         }
 
         if required_batches.is_empty() {
-            return None;
+            None
         }
         else {
             let res = self
