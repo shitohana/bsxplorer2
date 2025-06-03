@@ -17,4 +17,4 @@ def create_dummy_df() -> pl.DataFrame:
 
 @pytest.fixture
 def create_dummy_batch(create_dummy_df) -> BsxBatch:
-    return BsxBatch(create_dummy_df)
+    return BsxBatch.from_dataframe(create_dummy_df)

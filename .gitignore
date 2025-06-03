@@ -5,6 +5,7 @@
 .idea
 .zed
 .helix
+.ruff_cache
 .vscode
 .venv
 .pytest_cache
@@ -17,3 +18,4 @@ target
 __pycache__
 Cargo.lock
 .lapce
+temp

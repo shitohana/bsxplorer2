@@ -117,7 +117,7 @@ where
         info!("Creating BsxIpcWriter from FASTA file: {:?}", fasta_path);
 
         // Create index if it doesn't exist
-        noodles::fasta::fs::index(fasta_path.clone())
+        noodles_fasta::fs::index(fasta_path.clone())
             .with_context(|| format!("Failed to index FASTA file {:?}", fasta_path))?;
 
         let index_path = format!("{}.fai", fasta_path.to_str().unwrap());

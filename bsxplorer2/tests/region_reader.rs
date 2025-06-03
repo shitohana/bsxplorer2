@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bsxplorer2::data_structs::annotation::HcAnnotStore;
 use bsxplorer2::data_structs::batch::BsxBatch;
@@ -51,7 +52,7 @@ fn contigs(index: &BatchIndex) -> Vec<Contig> {
     )
     .expect("Error parsing test contigs file");
 
-    let contigs_iter = annot.iter().map(|e| e.contig().clone());
+    let contigs_iter = annot.values().map(|e| e.contig().clone());
     index.sort(contigs_iter).collect()
 }
 
@@ -90,7 +91,7 @@ fn test_reader_preprocess(
     contigs: &[Contig],
 ) {
     let mut count = 0;
-    reader.set_preprocess_fn(Some(Box::new(|batch: BsxBatch| {
+    reader.set_preprocess_fn(Some(Arc::new(|batch: BsxBatch| {
         batch
             .lazy()
             .filter_context(Context::CG)

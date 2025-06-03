@@ -663,8 +663,8 @@ class AnnotStore:
         """Returns a vector of unique feature types present in the store."""
         ...
 
-    def add_flank(
-        self, selector: Callable[[GffEntry], bool], flank: int, prefix: str
+    def add_flanks(
+        self, parents: list[str], flank: int, prefix: str
     ) -> None:
         """Adds flanking regions to annotation map."""
         ...

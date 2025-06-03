@@ -1,5 +1,10 @@
 use std::cmp::Ordering;
-use std::ops::Deref;
+use std::fmt::Display;
+use std::ops::{
+    Deref,
+    Index,
+};
+use std::panic::AssertUnwindSafe;
 
 use anyhow::bail;
 use hashbrown::HashMap;
@@ -38,6 +43,32 @@ use crate::tools::dimred::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct BsxBatch {
     data: DataFrame,
+}
+
+impl Display for BsxBatch {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        writeln!(f, "BsxBatch with {} rows", self.len())?;
+        if !self.is_empty() {
+            writeln!(f, "Covers region: {}", self.as_contig().unwrap())?;
+            writeln!(f, "Data:")?;
+            writeln!(f, "{}", self.data())?;
+        }
+        Ok(())
+    }
+}
+
+impl Index<BsxCol> for BsxBatch {
+    type Output = Series;
+
+    fn index(
+        &self,
+        index: BsxCol,
+    ) -> &Self::Output {
+        self.column(index)
+    }
 }
 
 impl BsxBatch {
@@ -483,7 +514,7 @@ impl BsxBatch {
         };
         let meth_data = MethDataBinom::new(&count_m, &count_total);
 
-        let segment_boundaries = match method {
+        let mut segment_boundaries = match method {
             SegmentAlgorithm::Pelt(beta, min_size) => {
                 let (segments, _score) = pelt(
                     &meth_data,
@@ -493,6 +524,9 @@ impl BsxBatch {
                 segments.iter().map(|v| v + 1).collect_vec()
             },
         };
+        if segment_boundaries.is_empty() {
+            segment_boundaries.push(self.len());
+        }
 
         self.partition(segment_boundaries, AggMethod::Mean.get_fn())
     }
@@ -668,7 +702,14 @@ impl BsxBatch {
         if self.data.is_empty() {
             return None;
         }
-        self.position().first()
+        let result =
+            std::panic::catch_unwind(AssertUnwindSafe(|| self.position().first()));
+        if result.is_err() {
+            panic!("Polars internal error. Make sure to rechunk the data!")
+        }
+        else {
+            result.unwrap()
+        }
     }
 
     /// Gets the position of the last site in the batch.
@@ -677,7 +718,14 @@ impl BsxBatch {
         if self.data.is_empty() {
             return None;
         }
-        self.position().last()
+        let result =
+            std::panic::catch_unwind(AssertUnwindSafe(|| self.position().last()));
+        if result.is_err() {
+            panic!("Polars internal error. Make sure to rechunk the data!")
+        }
+        else {
+            result.unwrap()
+        }
     }
 
     /// Gets the sequence name (chromosome) for the batch.

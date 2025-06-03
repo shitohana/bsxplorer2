@@ -1,375 +1,23 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 use bsxplorer2::data_structs::annotation::{
+    EntryId,
     GffEntry,
     GffEntryAttributes,
     HcAnnotStore,
-    RawGffEntry,
 };
 use bsxplorer2::data_structs::coords::Contig;
+use slotmap::{KeyData, Key};
 use pyo3::exceptions::{
-    PyFileNotFoundError,
-    PyIOError,
-    PyValueError,
+    PyFileNotFoundError, PyValueError, PyRuntimeError
 };
 use pyo3::prelude::*;
 
+
 use crate::types::coords::PyContig;
 
-#[pyclass(name = "AnnotStore")]
-pub struct PyAnnotStore {
-    inner: HcAnnotStore,
-}
-
-impl From<HcAnnotStore> for PyAnnotStore {
-    fn from(inner: HcAnnotStore) -> Self {
-        Self { inner }
-    }
-}
-
-impl From<PyAnnotStore> for HcAnnotStore {
-    fn from(py_annot_store: PyAnnotStore) -> Self {
-        py_annot_store.inner
-    }
-}
-
-#[pymethods]
-impl PyAnnotStore {
-    #[new]
-    pub fn new() -> Self {
-        Self {
-            inner: HcAnnotStore::new(),
-        }
-    }
-
-    #[staticmethod]
-    pub fn from_gff(path: PathBuf) -> PyResult<Self> {
-        let mut reader = csv::ReaderBuilder::new()
-            .delimiter(b'\t')
-            .has_headers(false)
-            .flexible(true)
-            .ascii()
-            .from_path(path)
-            .map_err(|e| {
-                PyIOError::new_err(format!("Failed to read GFF file: {}", e))
-            })?;
-
-        let mut entries = Vec::new();
-        for result in reader.deserialize() {
-            let entry: RawGffEntry =
-                result.map_err(|e| PyValueError::new_err(format!("{}", e)))?;
-            entries.push(GffEntry::try_from(entry)?);
-        }
-
-        let annot = HcAnnotStore::from_iter(entries);
-        Ok(Self { inner: annot })
-    }
-
-    #[staticmethod]
-    pub fn from_bed(path: PathBuf) -> PyResult<Self> {
-        use std::fs::File;
-
-        let file = File::open(&path).map_err(|e| {
-            PyFileNotFoundError::new_err(format!("Failed to open BED file: {}", e))
-        })?;
-
-        use bio::io::bed;
-        let mut reader = bed::Reader::new(file);
-        let mut annot_store = HcAnnotStore::new();
-
-        for record in reader.records() {
-            let record = record.map_err(|e| {
-                PyValueError::new_err(format!("Error reading BED record: {}", e))
-            })?;
-
-            let entry = GffEntry::from(record);
-            annot_store.insert(entry).map_err(|e| {
-                PyValueError::new_err(format!("Failed to insert entry: {}", e))
-            })?;
-        }
-
-        Ok(PyAnnotStore { inner: annot_store })
-    }
-
-    #[staticmethod]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            inner: HcAnnotStore::with_capacity(capacity),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    pub fn insert(
-        &mut self,
-        entry: PyGffEntry,
-    ) -> PyResult<()> {
-        self.inner.insert(entry.into()).map_err(|e| {
-            PyValueError::new_err(format!("Failed to insert entry: {}", e))
-        })?;
-        Ok(())
-    }
-
-    pub fn get_entry(
-        &self,
-        id: String,
-    ) -> Option<PyGffEntry> {
-        self.inner
-            .get_entry(&id.into())
-            .map(|entry| PyGffEntry::from(entry.clone()))
-    }
-
-    pub fn get_entries_regex(
-        &self,
-        pattern: String,
-    ) -> Vec<PyGffEntry> {
-        self.inner
-            .get_entries_regex(&pattern)
-            .unwrap()
-            .into_iter()
-            .map(|entry| PyGffEntry::from(entry.clone()))
-            .collect()
-    }
-
-    pub fn get_children(
-        &self,
-        id: String,
-    ) -> Option<Vec<String>> {
-        self.inner
-            .get_children(&id.into())
-            .map(|entry| entry.into_iter().map(|child| child.to_string()).collect())
-    }
-
-    pub fn get_parent(
-        &self,
-        id: String,
-    ) -> Option<String> {
-        self.inner
-            .get_parent(&id.into())
-            .map(|parent| parent.to_string())
-    }
-
-    pub fn genomic_query(
-        &self,
-        contig: &PyContig,
-    ) -> Option<Vec<String>> {
-        let rust_contig: Contig = contig.clone().into();
-        self.inner
-            .genomic_query(&rust_contig)
-            .map(|ids| ids.into_iter().map(|id| id.to_string()).collect())
-    }
-
-    pub fn get_feature_types(&self) -> Vec<String> {
-        self.inner
-            .get_feature_types()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect()
-    }
-
-    pub fn add_flank(
-        &mut self,
-        selector: PyObject,
-        flank: i32,
-        prefix: String,
-    ) -> PyResult<()> {
-        Python::with_gil(|py| {
-            let selector_fn = |entry: &GffEntry| -> bool {
-                // Create a PyGffEntry from the Rust GffEntry
-                let py_entry = PyGffEntry::from(entry.clone());
-
-                // Call the Python selector function with the PyGffEntry
-                match selector.call1(py, (py_entry,)) {
-                    Ok(result) => {
-                        // Convert the Python result to a boolean
-                        match result.extract::<bool>(py) {
-                            Ok(bool_result) => bool_result,
-                            Err(_) => {
-                                // If extraction fails, default to false
-                                false
-                            },
-                        }
-                    },
-                    Err(_) => {
-                        // If the call fails, default to false
-                        false
-                    },
-                }
-            };
-
-            self.inner.add_flank(selector_fn, flank, &prefix);
-            Ok(())
-        })
-    }
-
-    pub fn sort_self(&mut self) -> PyResult<()> {
-        self.inner
-            .sort_self()
-            .map_err(|e| PyValueError::new_err(format!("Failed to sort: {}", e)))
-    }
-
-    pub fn iter(&self) -> PyAnnotStoreIterator {
-        PyAnnotStoreIterator {
-            entries: self.inner.iter().cloned().collect(),
-            index:   0,
-        }
-    }
-
-    pub fn __len__(&self) -> usize {
-        self.inner.len()
-    }
-
-    pub fn __repr__(&self) -> String {
-        format!("AnnotStore(entries={})", self.inner.len())
-    }
-
-    pub fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<PyAnnotStoreIterator>> {
-        let iter = PyAnnotStoreIterator {
-            entries: slf.inner.iter().cloned().collect(),
-            index:   0,
-        };
-        Py::new(slf.py(), iter)
-    }
-}
-
-#[pyclass]
-pub struct PyAnnotStoreIterator {
-    entries: Vec<GffEntry>,
-    index:   usize,
-}
-
-#[pymethods]
-impl PyAnnotStoreIterator {
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyGffEntry> {
-        if slf.index < slf.entries.len() {
-            let entry = slf.entries[slf.index].clone();
-            slf.index += 1;
-            Some(PyGffEntry::from(entry))
-        }
-        else {
-            None
-        }
-    }
-}
-
-#[pyclass(name = "GffEntry")]
-#[derive(Debug, Clone)]
-pub struct PyGffEntry {
-    inner: GffEntry,
-}
-
-impl From<GffEntry> for PyGffEntry {
-    fn from(inner: GffEntry) -> Self {
-        Self { inner }
-    }
-}
-
-impl From<PyGffEntry> for GffEntry {
-    fn from(py_gff_entry: PyGffEntry) -> Self {
-        py_gff_entry.inner
-    }
-}
-
-#[pymethods]
-impl PyGffEntry {
-    #[new]
-    #[pyo3(signature = (contig, source=None, feature_type=None, score=None, phase=None, id=None))]
-    fn from_contig(
-        contig: &PyContig,
-        source: Option<String>,
-        feature_type: Option<String>,
-        score: Option<f64>,
-        phase: Option<u8>,
-        id: Option<String>,
-    ) -> PyResult<Self> {
-        // Convert PyContig to Contig<ArcStr, u32>
-        let rust_contig: Contig = contig.clone().into();
-
-        // Create attributes with optional ID
-        let mut attributes = GffEntryAttributes::default();
-        if let Some(id_str) = id {
-            attributes = attributes.with_id(Some(id_str));
-        }
-
-        // Convert Optional<String> to Optional<ArcStr>
-        let arc_source = source.map(|s| s.into());
-        let arc_feature_type = feature_type.map(|s| s.into());
-
-        // Create GffEntry
-        let entry = GffEntry::new(
-            rust_contig,
-            arc_source,
-            arc_feature_type,
-            score,
-            phase,
-            Some(attributes),
-        );
-
-        Ok(Self { inner: entry })
-    }
-
-    #[getter]
-    fn get_id(&self) -> String {
-        self.inner.id.to_string()
-    }
-
-    #[getter]
-    fn get_contig(&self) -> PyResult<PyContig> {
-        let contig = &self.inner.contig;
-        PyContig::new(
-            contig.seqname().to_string(),
-            contig.start(),
-            contig.end(),
-            contig.strand().to_string().as_str(),
-        )
-    }
-
-    #[getter]
-    fn get_source(&self) -> String {
-        self.inner.source.to_string()
-    }
-
-    #[getter]
-    fn get_feature_type(&self) -> String {
-        self.inner.feature_type.to_string()
-    }
-
-    #[getter]
-    fn get_score(&self) -> Option<f64> {
-        self.inner.score
-    }
-
-    #[getter]
-    fn get_phase(&self) -> Option<u8> {
-        self.inner.phase
-    }
-
-    #[getter]
-    fn get_attributes(&self) -> PyGffEntryAttributes {
-        PyGffEntryAttributes::from(self.inner.attributes.clone())
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "GffEntry(id={}, feature={}, {}:{}-{})",
-            self.inner.id,
-            self.inner.feature_type,
-            self.inner.contig.seqname(),
-            self.inner.contig.start(),
-            self.inner.contig.end()
-        )
-    }
-}
 
 #[pyclass(name = "GffEntryAttributes")]
 #[derive(Debug, Clone)]
@@ -424,7 +72,394 @@ impl PyGffEntryAttributes {
             .map(|parents| parents.iter().map(|s| s.to_string()).collect())
     }
 
+    // Add a getter for the 'other' hashmap
+    #[getter]
+    fn get_other(&self) -> HashMap<String, String> {
+        HashMap::from_iter(self.inner.other.clone().into_iter())
+    }
+
+
     fn __repr__(&self) -> String {
         format!("GffEntryAttributes({})", self.inner)
+    }
+}
+
+
+#[pyclass(name = "GffEntry")]
+#[derive(Debug, Clone)]
+pub struct PyGffEntry {
+    inner: GffEntry,
+}
+
+impl From<GffEntry> for PyGffEntry {
+    fn from(inner: GffEntry) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<PyGffEntry> for GffEntry {
+    fn from(py_gff_entry: PyGffEntry) -> Self {
+        py_gff_entry.inner
+    }
+}
+
+#[pymethods]
+impl PyGffEntry {
+    #[new]
+    #[pyo3(signature = (contig, source=None, feature_type=None, score=None, phase=None, id=None))]
+    fn from_contig(
+        contig: &PyContig,
+        source: Option<String>,
+        feature_type: Option<String>,
+        score: Option<f64>,
+        phase: Option<u8>,
+        id: Option<String>, // This is the GFF attribute ID (BsxSmallStr), not EntryId (u64)
+    ) -> PyResult<Self> {
+        let rust_contig: Contig = contig.clone().into();
+
+        let mut attributes = GffEntryAttributes::default();
+        if let Some(id_str) = id {
+            attributes = attributes.with_id(id_str);
+        }
+
+        let arc_source = source.map(|s| s.into());
+        let arc_feature_type = feature_type.map(|s| s.into());
+
+        let entry = GffEntry::new(
+            rust_contig,
+            arc_source,
+            arc_feature_type,
+            score,
+            phase,
+            Some(attributes),
+        );
+
+        Ok(Self { inner: entry })
+    }
+
+    #[getter]
+    // This getter returns the GFF attribute ID string, not the internal EntryId (u64)
+    fn get_id(&self) -> String {
+        self.inner.id.to_string()
+    }
+
+    #[getter]
+    fn get_contig(&self) -> PyResult<PyContig> {
+        let contig = &self.inner.contig;
+        PyContig::new(
+            contig.seqname().to_string(),
+            contig.start(),
+            contig.end(),
+            contig.strand().to_string().as_str(),
+        )
+    }
+
+    #[getter]
+    fn get_source(&self) -> String {
+        self.inner.source.to_string()
+    }
+
+    #[getter]
+    fn get_feature_type(&self) -> String {
+        self.inner.feature_type.to_string()
+    }
+
+    #[getter]
+    fn get_score(&self) -> Option<f64> {
+        self.inner.score
+    }
+
+    #[getter]
+    fn get_phase(&self) -> Option<u8> {
+        self.inner.phase
+    }
+
+    #[getter]
+    fn get_attributes(&self) -> PyGffEntryAttributes {
+        PyGffEntryAttributes::from(self.inner.attributes.clone())
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "GffEntry(id='{}', feature='{}', {}:{}-{})", // Use single quotes for id string
+            self.inner.id,
+            self.inner.feature_type,
+            self.inner.contig.seqname(),
+            self.inner.contig.start(),
+            self.inner.contig.end()
+        )
+    }
+}
+
+#[pyclass(name = "AnnotStore")]
+pub struct PyAnnotStore {
+    inner: HcAnnotStore,
+}
+
+impl From<HcAnnotStore> for PyAnnotStore {
+    fn from(inner: HcAnnotStore) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<PyAnnotStore> for HcAnnotStore {
+    fn from(py_annot_store: PyAnnotStore) -> Self {
+        py_annot_store.inner
+    }
+}
+
+#[pymethods]
+impl PyAnnotStore {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: HcAnnotStore::new(),
+        }
+    }
+
+    #[staticmethod]
+    pub fn from_gff(path: PathBuf) -> PyResult<Self> {
+        let file = std::fs::File::open(&path).map_err(|e| {
+            PyFileNotFoundError::new_err(format!("Failed to open GFF file: {}", e))
+        })?;
+        let annot_store = HcAnnotStore::from_gff(file)
+             .map_err(|e| PyValueError::new_err(format!("Failed to parse GFF: {}", e)))?;
+        Ok(Self { inner: annot_store })
+    }
+
+    #[staticmethod]
+    pub fn from_bed(path: PathBuf) -> PyResult<Self> {
+        let file = std::fs::File::open(&path).map_err(|e| {
+            PyFileNotFoundError::new_err(format!("Failed to open BED file: {}", e))
+        })?;
+        let annot_store = HcAnnotStore::from_bed(file)
+             .map_err(|e| PyValueError::new_err(format!("Failed to parse BED: {}", e)))?;
+
+        Ok(PyAnnotStore { inner: annot_store })
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    // Returns the u64 EntryId of the inserted entry
+    pub fn insert(
+        &mut self,
+        entry: PyGffEntry,
+    ) -> PyResult<u64> {
+        let id = self.inner.insert(entry.into());
+        Ok(id.data().as_ffi())
+    }
+
+    // Retrieves an entry by its internal EntryId (u64)
+    pub fn get_entry(
+        &self,
+        id_u64: u64,
+    ) -> Option<PyGffEntry> {
+        let entry_id = EntryId::from(KeyData::from_ffi(id_u64));
+        self.inner
+            .get(entry_id)
+            .map(|entry| PyGffEntry::from(entry.clone()))
+    }
+
+    // Retrieves entries whose GFF attribute ID matches a regex pattern (uses GffEntry.id: BsxSmallStr)
+    pub fn get_entries_regex(
+        &self,
+        pattern: String,
+    ) -> PyResult<Vec<PyGffEntry>> {
+        self.inner
+            .get_entries_regex(&pattern)
+            .map(|entries| entries.into_iter().map(|entry| PyGffEntry::from(entry.clone())).collect())
+            .map_err(|e| PyValueError::new_err(format!("Invalid regex pattern: {}", e)))
+    }
+
+    // Initializes the internal tree structure
+    pub fn init_tree(&mut self) -> PyResult<()> {
+        self.inner.init_tree()
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to initialize tree: {}", e)))
+    }
+
+    // Initializes the internal interval map
+    pub fn init_imap(&mut self) -> PyResult<()> {
+        self.inner.init_imap(); // init_imap does not return Result
+        Ok(())
+    }
+
+
+    // Retrieves the internal EntryIds (u64) of direct children of a given EntryId (u64)
+    pub fn get_children(
+        &self,
+        id_u64: u64,
+    ) -> PyResult<Option<Vec<u64>>> {
+        let entry_id = EntryId::from(KeyData::from_ffi(id_u64));
+        self.inner
+            .get_children(entry_id)
+            .map(|opt_ids| opt_ids.map(|ids| ids.into_iter().map(|child_id| child_id.data().as_ffi()).collect()))
+             .map_err(|e| PyRuntimeError::new_err(format!("Failed to get children: {}", e)))
+    }
+
+    // Retrieves the internal EntryId (u64) of the direct parent of a given EntryId (u64)
+    pub fn get_parent(
+        &self,
+        id_u64: u64,
+    ) -> PyResult<Option<u64>> {
+        let entry_id = EntryId::from(KeyData::from_ffi(id_u64));
+        self.inner
+            .get_parent(&entry_id) // get_parent takes &EntryId
+            .map(|opt_id| opt_id.map(|id| id.data().as_ffi()))
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to get parent: {}", e)))
+    }
+
+    // Performs a genomic query and returns a list of matching internal EntryIds (u64)
+    pub fn genomic_query(
+        &self,
+        contig: &PyContig,
+    ) -> PyResult<Vec<u64>> {
+        let rust_contig: Contig = contig.clone().into();
+        self.inner
+            .genomic_query(&rust_contig)
+            .map(|ids| ids.into_iter().map(|id| id.data().as_ffi()).collect())
+            .map_err(|e| PyRuntimeError::new_err(format!("Genomic query failed: {}", e)))
+    }
+
+    // Gets feature types present in the store mapped to internal EntryIds (u64)
+    pub fn get_feature_types(&self) -> HashMap<String, Vec<u64>> {
+        self.inner
+            .get_feature_types()
+            .into_iter()
+            .map(|(feat_type, ids)| {
+                let ids_u64 = ids.into_iter().map(|id| id.data().as_ffi()).collect();
+                (feat_type.to_string(), ids_u64)
+            })
+            .collect()
+    }
+
+    // Adds flanking regions to entries selected by their internal EntryId (u64)
+    pub fn add_flanks(
+        &mut self,
+        ids_u64: Vec<u64>,
+        flank: i32,
+        prefix: String,
+    ) -> PyResult<()> {
+        // Convert u64 list to HashSet of EntryId
+        let id_set: HashSet<EntryId> = ids_u64.into_iter().map(|id_u64| EntryId::from(KeyData::from_ffi(id_u64))).collect();
+
+        // Iterate over existing entries, check if their ID is in the set, and add flanks
+        // This replicates the logic from the Rust add_flank but selects using the provided id_set.
+
+        let selected_entries: Vec<(EntryId, GffEntry)> = self
+            .inner
+            .iter() // yields (EntryId, &GffEntry)
+            .filter(|(id, _entry)| id_set.contains(id)) // filter by internal EntryId
+            .map(|(id, entry)| (id.clone(), entry.clone())) // clone EntryId and GffEntry
+            .collect();
+
+        for (id, parent_entry) in selected_entries {
+            let (start, end) = if flank > 0 {
+                // Flank downstream (after end)
+                (
+                    parent_entry.contig.end_gpos(),
+                    parent_entry.contig.end_gpos().shift(flank as isize),
+                )
+            }
+            else {
+                // Flank upstream (before start)
+                (
+                    parent_entry.contig.start_gpos().shift(flank as isize),
+                    parent_entry.contig.start_gpos(),
+                )
+            };
+
+            // Ensure start <= end for the range
+            let (start, end) = if start <= end {
+                (start, end)
+            }
+            else {
+                (end, start)
+            };
+
+            let mut feature_type = prefix.to_string();
+            feature_type.push_str(parent_entry.feature_type.as_str());
+
+            // Create a new unique ID for the flank entry (this is the GFF attribute ID string)
+            // We don't need to predict the EntryId here, it's assigned on insert.
+            let flank_attribute_id_str = format!("{}_flank_{}", parent_entry.id(), flank);
+
+            let flank_entry = GffEntry::new(
+                (start..end).into(),
+                None,
+                Some(feature_type.into()),
+                None,
+                None,
+                Some(
+                    GffEntryAttributes::default()
+                        .with_id(flank_attribute_id_str) // Set the unique attribute ID
+                        .with_parent(vec![parent_entry.id().clone()]), // Set GFF parent attribute to original entry's GFF attribute ID
+                ),
+            );
+
+            // Use insert which handles adding to all internal structures and assigns the new EntryId
+            self.inner.insert(flank_entry);
+        }
+
+        Ok(())
+    }
+
+
+    // Remove the sort_self method as it doesn't exist in HcAnnotStore
+
+    // The iterator will yield (u64, PyGffEntry) tuples
+    pub fn iter(&self) -> PyResult<PyAnnotStoreIterator> {
+        let iter = PyAnnotStoreIterator {
+            entries: self.inner.iter().map(|(id, entry)| (id.data().as_ffi(), entry.clone())).collect(),
+            index:   0,
+        };
+        Ok(iter)
+    }
+
+    pub fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("AnnotStore(entries={})", self.inner.len())
+    }
+
+    pub fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<PyAnnotStoreIterator>> {
+        let iter = PyAnnotStoreIterator {
+            entries: slf.inner.iter().map(|(id, entry)| (id.data().as_ffi(), entry.clone())).collect(),
+            index:   0,
+        };
+        Py::new(slf.py(), iter)
+    }
+}
+
+#[pyclass]
+// Iterator now yields (u64 EntryId, GffEntry)
+pub struct PyAnnotStoreIterator {
+    entries: Vec<(u64, GffEntry)>,
+    index:   usize,
+}
+
+#[pymethods]
+impl PyAnnotStoreIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    // Yields a tuple: (u64 EntryId, PyGffEntry)
+    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<(u64, PyGffEntry)> {
+        if slf.index < slf.entries.len() {
+            let (id_u64, entry) = slf.entries[slf.index].clone();
+            slf.index += 1;
+            Some((id_u64, PyGffEntry::from(entry)))
+        }
+        else {
+            None
+        }
     }
 }

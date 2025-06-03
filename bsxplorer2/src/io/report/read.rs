@@ -14,11 +14,9 @@ use bio::io::fasta::{
 };
 use crossbeam::channel::Receiver;
 use hashbrown::HashMap;
-use noodles::fasta::fai::{
-    Reader as FaiReader,
-    Record,
-};
-use noodles::fasta::index as index_fasta;
+use noodles_fasta::fai::Record;
+use noodles_fasta::fai::io::Reader as FaiReader;
+use noodles_fasta::fs::index as index_fasta;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use rayon::prelude::*;

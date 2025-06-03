@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use log::warn;
-use noodles::fasta::io::Indexer;
+use noodles_fasta::io::Indexer;
 use once_cell::sync::Lazy;
 use polars::prelude::*;
 
@@ -129,8 +129,8 @@ macro_rules! with_field_fn {
 }
 
 pub fn read_chrs_from_fai<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
-    let records: Vec<noodles::fasta::fai::Record> =
-        noodles::fasta::fai::io::Reader::new(BufReader::new(reader))
+    let records: Vec<noodles_fasta::fai::Record> =
+        noodles_fasta::fai::io::Reader::new(BufReader::new(reader))
             .read_index()?
             .into();
     Ok(records

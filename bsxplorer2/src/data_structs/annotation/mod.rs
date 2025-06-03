@@ -22,7 +22,10 @@
 mod annot_store;
 mod gff_entry;
 
-pub use annot_store::HcAnnotStore;
+pub use annot_store::{
+    EntryId,
+    HcAnnotStore,
+};
 pub use gff_entry::{
     GffEntry,
     GffEntryAttributes,

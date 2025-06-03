@@ -105,8 +105,8 @@ fn test_report_reading_with_alignment(
             .with_fasta_path(Some(sequence_file.path().to_path_buf()));
     }
     else {
-        let index = noodles::fasta::index(sequence_file.path())?;
-        noodles::fasta::fai::Writer::new(fai_file.reopen()?).write_index(&index)?;
+        let index = noodles_fasta::fs::index(sequence_file.path())?;
+        noodles_fasta::fai::io::Writer::new(fai_file.reopen()?).write_index(&index)?;
         report_reader_builder =
             report_reader_builder.with_fai_path(Some(fai_file.path().to_path_buf()))
     }

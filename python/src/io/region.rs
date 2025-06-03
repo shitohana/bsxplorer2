@@ -6,7 +6,6 @@ use bsxplorer2::io::bsx::{
     BsxFileReader,
     RegionReader,
 };
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 use pyo3_polars::PyDataFrame;
@@ -63,7 +62,7 @@ fn apply_filters(
 
 #[pyclass(unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
-    inner:   Option<RegionReader>,
+    inner:   RegionReader,
     filters: Vec<PyFilterOperation>,
 }
 
@@ -88,7 +87,7 @@ impl PyRegionReader {
             BatchIndex::from_reader(&mut reader).map_err(|e| PyPolarsErr::Polars(e))?;
 
         Ok(Self {
-            inner:   Some(RegionReader::new(reader, index, None)),
+            inner:   RegionReader::new(reader, index, None),
             filters: Vec::new(),
         })
     }
@@ -101,7 +100,7 @@ impl PyRegionReader {
         let inner = RegionReader::from_reader(reader.into_inner())?;
 
         Ok(Self {
-            inner:   Some(inner),
+            inner,
             filters: Vec::new(),
         })
     }
@@ -110,9 +109,7 @@ impl PyRegionReader {
         &mut self,
         contig: PyContig,
     ) -> PyResult<Option<PyDataFrame>> {
-        let reader = self.inner.as_mut().ok_or_else(|| {
-            PyValueError::new_err("RegionReader has been moved to an iterator")
-        })?;
+        let reader = &mut self.inner;
 
         let result = reader.query(contig.into(), None);
 
@@ -127,17 +124,11 @@ impl PyRegionReader {
     }
 
     fn reset(&mut self) {
-        if let Some(ref mut reader) = self.inner {
-            reader.reset();
-        }
+        self.inner.reset();
     }
 
     fn chr_order(&self) -> PyResult<Vec<String>> {
-        let reader = self.inner.as_ref().ok_or_else(|| {
-            PyValueError::new_err("RegionReader has been moved to an iterator")
-        })?;
-
-        Ok(reader
+        Ok(self.inner
             .index()
             .get_chr_order()
             .iter()
@@ -193,20 +184,14 @@ impl PyRegionReader {
     }
 
     fn index(&self) -> PyResult<PyBatchIndex> {
-        let reader = self.inner.as_ref().ok_or_else(|| {
-            PyValueError::new_err("RegionReader has been moved to an iterator")
-        })?;
-
-        Ok(reader.index().clone().into())
+        Ok(self.inner.index().clone().into())
     }
 
     fn iter_contigs(
         &mut self,
         contigs: Vec<PyContig>,
     ) -> PyResult<PyRegionReaderIterator> {
-        let reader = self.inner.take().ok_or_else(|| {
-            PyValueError::new_err("RegionReader has already been moved to an iterator")
-        })?;
+        let reader = self.inner.clone();
 
         Ok(PyRegionReaderIterator {
             inner: reader,

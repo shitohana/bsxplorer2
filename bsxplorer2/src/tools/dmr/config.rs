@@ -9,7 +9,7 @@ use bio::bio_types::annot::refids::RefIDSet;
 use itertools::Itertools;
 
 use crate::data_structs::typedef::*;
-use crate::prelude::*;
+use crate::{prelude::*, with_field_fn};
 use crate::tools::dmr::data_structs::ReaderMetadata;
 use crate::tools::dmr::segmentation::FilterConfig;
 use crate::tools::dmr::{
@@ -34,6 +34,19 @@ pub struct DmrConfig {
 }
 
 impl DmrConfig {
+    with_field_fn!(context, Context);
+    with_field_fn!(n_missing, usize);
+    with_field_fn!(min_coverage, CountType);
+    with_field_fn!(diff_threshold, DensityType);
+    with_field_fn!(min_cpgs, usize);
+    with_field_fn!(max_dist, PosType);
+    with_field_fn!(initial_l, f64);
+    with_field_fn!(l_min, f64);
+    with_field_fn!(l_coef, f64);
+    with_field_fn!(seg_tolerance, DensityType);
+    with_field_fn!(merge_pvalue, f64);
+    with_field_fn!(seg_pvalue, f64);
+
     pub fn filter_config(&self) -> FilterConfig {
         FilterConfig {
             context:      self.context,

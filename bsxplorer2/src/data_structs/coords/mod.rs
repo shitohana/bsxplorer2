@@ -13,9 +13,11 @@
 
 mod contig;
 mod gpos;
+mod interval_map;
 
 pub use contig::Contig;
 pub use gpos::GenomicPosition;
+pub use interval_map::ContigIntervalMap;
 
 #[cfg(test)]
 mod tests;

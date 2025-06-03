@@ -5,7 +5,7 @@ It offers high-performance data structures and algorithms for analyzing
 bisulfite sequencing data.
 """
 
-from . import types  #type: ignore
+from . import data_struct  #type: ignore
 from . import io  #type: ignore
 
 __version__ = "0.1.0"

@@ -2,10 +2,6 @@ use std::io::{
     Read,
     Write,
 };
-use std::ops::Range;
-
-use bio::data_structures::interval_tree::IntervalTree;
-use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use polars::error::PolarsResult;
@@ -16,8 +12,7 @@ use serde::{
 
 use super::BsxFileReader;
 use crate::data_structs::coords::{
-    Contig,
-    GenomicPosition,
+    Contig, ContigIntervalMap
 };
 use crate::data_structs::typedef::BsxSmallStr;
 
@@ -29,7 +24,7 @@ use crate::data_structs::typedef::BsxSmallStr;
 /// batch indices within the file where data for those regions can be found.
 /// It also maintains an ordered list of chromosome names.
 pub struct BatchIndex {
-    map:       HashMap<BsxSmallStr, IntervalTree<GenomicPosition, usize>>,
+    map:       ContigIntervalMap<usize>,
     chr_order: IndexSet<BsxSmallStr>,
 }
 
@@ -115,7 +110,7 @@ impl BatchIndex {
     /// Creates a new empty `BatchIndex`.
     pub fn new() -> Self {
         Self {
-            map:       HashMap::new(),
+            map:       ContigIntervalMap::new(),
             chr_order: IndexSet::new(),
         }
     }
@@ -137,16 +132,7 @@ impl BatchIndex {
     ) {
         self.chr_order.insert(contig.seqname().clone());
 
-        self.map
-            .entry(contig.seqname().to_owned())
-            .and_modify(|tree| {
-                tree.insert(Range::<_>::from(&contig), batch_idx);
-            })
-            .or_insert_with(|| {
-                let mut tree = IntervalTree::new();
-                tree.insert(Range::<_>::from(&contig), batch_idx);
-                tree
-            });
+        self.map.insert(contig, batch_idx);
     }
 
     /// Sorts a set of contigs according to the internal chromosome order and
@@ -204,21 +190,7 @@ impl BatchIndex {
         &self,
         contig: &Contig,
     ) -> Option<Vec<usize>> {
-        if let Some(tree) = self.map.get(contig.seqname()) {
-            let batches = tree
-                .find(Range::<_>::from(contig.clone()))
-                .map(|entry| *entry.data())
-                .collect_vec();
-            if batches.is_empty() {
-                None
-            }
-            else {
-                Some(batches)
-            }
-        }
-        else {
-            None
-        }
+        self.map.find(contig).map(|v| v.into_iter().cloned().collect())
     }
 
     /// Returns the chromosome order stored in the index.
@@ -248,7 +220,7 @@ impl BatchIndex {
 
     /// Returns a reference to the underlying map storing the interval trees
     /// per chromosome.
-    pub fn map(&self) -> &HashMap<BsxSmallStr, IntervalTree<GenomicPosition, usize>> {
+    pub fn map(&self) -> &ContigIntervalMap<usize> {
         &self.map
     }
 }
