@@ -126,6 +126,14 @@ impl BsxFileReader {
     /// It also initializes a thread pool and thread-local handles for parallel
     /// reading.
     pub fn try_new<R: AsRawFd + 'static>(handle: R) -> anyhow::Result<Self> {
+        let n_threads = THREAD_POOL.current_num_threads();
+        Self::with_n_threads(handle, n_threads)
+    }
+
+    pub fn with_n_threads<R: AsRawFd + 'static>(
+        handle: R,
+        n_threads: usize,
+    ) -> anyhow::Result<Self> {
         // 1. Create the shared Arc<Mmap>
         let mmap = Arc::new(unsafe { MmapOptions::new().map(&handle)? });
         // Create a temporary reader to read metadata and dictionaries
@@ -139,7 +147,6 @@ impl BsxFileReader {
         )?;
 
         let blocks_total = metadata.blocks.len();
-        let n_threads = THREAD_POOL.current_num_threads();
 
         // 2. Create thread-local handles, each with a clone of the Arc<Mmap>
         let thread_local_handles: Vec<ThreadLocalHandle> = (0..n_threads)

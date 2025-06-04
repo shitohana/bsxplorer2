@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::fmt::Display;
 
 use polars::prelude::*;
 
@@ -18,6 +19,21 @@ pub enum BsxColumns {
     CountM,
     CountTotal,
     Density,
+}
+
+impl AsRef<str> for BsxColumns {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Display for BsxColumns {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 

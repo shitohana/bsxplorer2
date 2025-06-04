@@ -775,6 +775,40 @@ impl BsxBatch {
             None
         }
     }
+
+    pub fn set_validity_bitmap(
+        &mut self,
+        column: BsxCol,
+        bitmap: Vec<bool>,
+    ) -> PolarsResult<()> {
+        if matches!(column, BsxCol::Chr | BsxCol::Position) {
+            return Err(PolarsError::InvalidOperation(
+                format!("Column {} cannot be set to null", column).into(),
+            ));
+        }
+        if bitmap.len() != self.len() {
+            return Err(PolarsError::OutOfBounds(
+                "Lengths of data and bitmap do not match".into(),
+            ));
+        }
+        self.data.apply(column.as_ref(), |c| {
+            let values = c
+                .as_materialized_series()
+                .iter()
+                .zip(bitmap.iter())
+                .map(|(v, valid)| {
+                    if *valid {
+                        v
+                    }
+                    else {
+                        AnyValue::Null
+                    }
+                })
+                .collect_vec();
+            Series::new(column.as_ref().into(), &values)
+        })?;
+        Ok(())
+    }
 }
 
 mod report_type_conversion {

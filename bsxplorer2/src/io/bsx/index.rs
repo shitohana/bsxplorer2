@@ -2,6 +2,7 @@ use std::io::{
     Read,
     Write,
 };
+
 use indexmap::IndexSet;
 use itertools::Itertools;
 use polars::error::PolarsResult;
@@ -12,7 +13,8 @@ use serde::{
 
 use super::BsxFileReader;
 use crate::data_structs::coords::{
-    Contig, ContigIntervalMap
+    Contig,
+    ContigIntervalMap,
 };
 use crate::data_structs::typedef::BsxSmallStr;
 
@@ -190,7 +192,9 @@ impl BatchIndex {
         &self,
         contig: &Contig,
     ) -> Option<Vec<usize>> {
-        self.map.find(contig).map(|v| v.into_iter().cloned().collect())
+        self.map
+            .find(contig)
+            .map(|v| v.into_iter().cloned().collect())
     }
 
     /// Returns the chromosome order stored in the index.

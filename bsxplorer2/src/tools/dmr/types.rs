@@ -15,6 +15,7 @@ use crate::data_structs::typedef::{
 };
 use crate::tools::dmr::segmentation;
 use crate::utils::mann_whitney_u;
+use crate::BsxBatch;
 
 #[derive(Clone, Debug)]
 pub struct SegmentView<'a> {
@@ -173,6 +174,40 @@ pub struct SegmentOwned {
     positions: Vec<PosType>,
 }
 
+impl TryFrom<(&BsxBatch, &BsxBatch)> for SegmentOwned {
+    type Error = anyhow::Error;
+
+    fn try_from(value: (&BsxBatch, &BsxBatch)) -> Result<Self, Self::Error> {
+        let (left, right) = value;
+
+        if right.len() != left.len() {
+            anyhow::bail!("Batches have different lengths")
+        }
+        if right.as_contig().unwrap() != left.as_contig().unwrap() {
+            anyhow::bail!("Batches cover different regions")
+        }
+
+        let positions = left
+            .position()
+            .into_no_null_iter()
+            .map(|v| v as PosType)
+            .collect_vec();
+
+        let left_density = left
+            .density()
+            .into_iter()
+            .map(|v| v.unwrap_or(DensityType::NAN))
+            .collect_vec();
+        let right_density = right
+            .density()
+            .into_iter()
+            .map(|v| v.unwrap_or(DensityType::NAN))
+            .collect_vec();
+
+        Ok(Self::new(positions, left_density, right_density))
+    }
+}
+
 impl SegmentOwned {
     pub fn new(
         positions: Vec<PosType>,
@@ -243,19 +278,6 @@ impl SegmentOwned {
     }
 }
 
-pub struct ReaderMetadata {
-    pub(crate) blocks_total:  usize,
-    pub(crate) current_block: usize,
-}
-
-impl ReaderMetadata {
-    pub(crate) fn new(blocks_total: usize) -> Self {
-        Self {
-            blocks_total,
-            current_block: 0,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMRegion {

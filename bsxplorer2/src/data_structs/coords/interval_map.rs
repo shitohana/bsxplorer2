@@ -6,7 +6,10 @@ use rust_lapper::{
     Lapper,
 };
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use super::Contig;
 use crate::data_structs::typedef::PosType;
@@ -16,8 +19,7 @@ use crate::BsxSmallStr;
 #[serde(bound = "V: Serialize + DeserializeOwned")]
 pub struct ContigIntervalMap<V>
 where
-    V: Default + Sync + Send + Eq + Clone,
-    {
+    V: Default + Sync + Send + Eq + Clone, {
     inner: HashMap<BsxSmallStr, Lapper<PosType, V>>,
 }
 
