@@ -25,7 +25,6 @@ use std::io::{
 use std::sync::Arc;
 
 use itertools::Itertools;
-use log::warn;
 use noodles_fasta::io::Indexer;
 use once_cell::sync::Lazy;
 use polars::prelude::*;
@@ -66,13 +65,6 @@ pub(crate) fn schema_from_arrays(
     names: &[&str],
     dtypes: &[DataType],
 ) -> Schema {
-    if names.len() != dtypes.len() {
-        warn!(
-            "Mismatch between names and dtypes array lengths: {} vs {}",
-            names.len(),
-            dtypes.len()
-        );
-    }
     Schema::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
 }
 
@@ -81,13 +73,6 @@ pub(crate) fn hashmap_from_arrays<'a>(
     names: &[&'a str],
     dtypes: &[DataType],
 ) -> PlHashMap<&'a str, DataType> {
-    if names.len() != dtypes.len() {
-        warn!(
-            "Mismatch between names and dtypes array lengths: {} vs {}",
-            names.len(),
-            dtypes.len()
-        );
-    }
     PlHashMap::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
 }
 
@@ -95,12 +80,6 @@ pub(crate) fn hashmap_from_arrays<'a>(
 macro_rules! plsmallstr {
     ($string: expr) => {
         PlSmallStr::from($string)
-    };
-    () => {
-        PlSmallStr::from("")
-    };
-    () => {
-        PlSmallStr::from("")
     };
 }
 
@@ -112,6 +91,12 @@ macro_rules! getter_fn {
             &self.$field_name
         }
     };
+    ($field_name:ident, mut $field_type:ty) => { paste::paste!{
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        pub fn [<$field_name _mut>](&mut self) -> &mut $field_type {
+            &mut self.$field_name
+        }
+    }}
 }
 pub use getter_fn;
 
@@ -121,8 +106,8 @@ macro_rules! with_field_fn {
         paste::paste! {
             #[cfg_attr(coverage_nightly, coverage(off))]
             pub fn [<with_$field_name>](mut self, value: $field_type) -> Self {
-            self.$field_name = value;
-            self
+                self.$field_name = value;
+                self
             }
         }
     };

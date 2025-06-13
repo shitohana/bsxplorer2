@@ -1,9 +1,10 @@
-pub mod convert;
+mod convert;
 mod dimred;
-pub mod dmr;
+mod dmr;
 mod sort;
-pub mod utils;
+mod utils;
 mod validate;
+mod strings;
 
 use clap::{
     Parser,

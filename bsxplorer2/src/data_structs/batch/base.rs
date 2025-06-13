@@ -927,7 +927,7 @@ pub enum AggMethod {
 impl AggMethod {
     /// Returns a boxed closure for the selected aggregation method.
     #[allow(clippy::type_complexity)]
-    pub fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64> {
+    pub fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64 + Sync + Send> {
         use statrs::statistics::*;
 
         Box::new(match self {

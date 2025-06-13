@@ -13,19 +13,31 @@ use serde::{
 
 use super::Contig;
 use crate::data_structs::typedef::PosType;
+use crate::utils::THREAD_POOL;
 use crate::BsxSmallStr;
 
-#[derive(Default, Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(bound = "V: Serialize + DeserializeOwned")]
 pub struct ContigIntervalMap<V>
 where
-    V: Default + Sync + Send + Eq + Clone, {
+    V: Sync + Send + Eq + Clone, {
     inner: HashMap<BsxSmallStr, Lapper<PosType, V>>,
+}
+
+impl<V> Default for ContigIntervalMap<V>
+where
+    V: Sync + Send + Eq + Clone,
+{
+    fn default() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
 }
 
 impl<V> FromIterator<(Contig, V)> for ContigIntervalMap<V>
 where
-    V: Default + Sync + Send + Eq + Clone,
+    V: Sync + Send + Eq + Clone,
 {
     fn from_iter<T: IntoIterator<Item = (Contig, V)>>(iter: T) -> Self {
         let multimap = iter
@@ -59,10 +71,26 @@ where
 
 impl<V> ContigIntervalMap<V>
 where
-    V: Default + Sync + Send + Eq + Clone,
+    V: Sync + Send + Eq + Clone,
 {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn into_inner(self) -> HashMap<BsxSmallStr, Lapper<PosType, V>> {
+        self.inner
+    }
+
+    pub fn inner(&self) -> &HashMap<BsxSmallStr, Lapper<PosType, V>> {
+        &self.inner
+    }
+
+    pub fn n_chr(&self) -> usize {
+        self.inner().len()
+    }
+
+    pub fn chr_names(&self) -> Vec<BsxSmallStr> {
+        self.inner().keys().cloned().collect()
     }
 
     pub fn insert(
@@ -104,5 +132,17 @@ where
                 })
                 .or_insert(imap.clone());
         }
+    }
+
+    pub fn get_breakpoints(&self) -> Vec<(BsxSmallStr, Vec<u32>)> {
+        self.inner()
+            .iter()
+            .map(|(chr, lap)| {
+                (
+                    chr.clone(),
+                    lap.iter().map(|i| vec![i.start, i.stop]).concat(),
+                )
+            })
+            .collect_vec()
     }
 }

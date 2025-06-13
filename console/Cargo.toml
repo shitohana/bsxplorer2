@@ -32,7 +32,7 @@ itertools.workspace = true
 bio.workspace = true
 
 [dependencies.bsxplorer2]
-version = "0.2.1"
+path = "../bsxplorer2"
 default-features = false
 features = ["console", "performant", "compression", "tools"]
 

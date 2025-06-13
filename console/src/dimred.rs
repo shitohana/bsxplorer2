@@ -1,3 +1,4 @@
+eprintln!("Dimensionality reduction completed successfully!");
 use std::collections::{
     BTreeMap,
     HashMap,
@@ -19,19 +20,8 @@ use bsxplorer2::data_structs::batch::{
     AggMethod,
     BsxBatch,
 };
-use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::data_structs::typedef::{
-    BsxSmallStr,
-    PosType,
-};
-use bsxplorer2::data_structs::{
-    Context,
-    Strand,
-};
-use bsxplorer2::io::bsx::{
-    BsxFileReader,
-    MultiBsxFileReader,
-};
+use bsxplorer2::data_structs::typedef::PosType;
+use bsxplorer2::prelude::*;
 use bsxplorer2::tools::dimred::{
     pelt,
     MethDataBinom,
@@ -46,6 +36,7 @@ use itertools::{
 };
 use std_semaphore::Semaphore;
 
+use crate::strings::dimred as strings;
 use crate::utils::{
     expand_wildcards_single,
     init_pbar,
@@ -57,44 +48,53 @@ pub(crate) struct DimRedArgs {
         value_parser,
         num_args=1..,
         required = true,
-        help = "Paths to BSX files"
+        help = strings::FILES
     )]
     files:        Vec<String>,
-    #[arg(short, long, required = true, help = "Path to output file")]
+    #[arg(
+        short, long,
+        required = true,
+        help = strings::OUTPUT
+    )]
     output:       PathBuf,
     #[arg(
         short, long,
-        help = "Methylation context",
+        help = strings::CONTEXT,
         default_value_t = Context::CG
     )]
     context:      Context,
-    #[arg(short = 'C', long, help = "Minimal coverage", default_value_t = 5)]
+    #[arg(
+        short = 'C', long,
+        help = strings::COVERAGE,
+        default_value_t = 5
+    )]
     coverage:     u16,
     #[arg(
-        short,
-        long,
-        help = "Beta parameter value for PELT algorithm. If none - BIC (ln(length)) \
-                is selected."
+        short, long,
+        help = strings::BETA
     )]
     beta:         Option<f64>,
     #[arg(
-        short,
-        long,
+        short, long,
         default_value_t = 20,
-        help = "Minimal segment size (number of cytosines)"
+        help = strings::MIN_SIZE
     )]
     min_size:     usize,
-    #[arg(long, default_value_t = 10000, help = "Chunk size for PELT algorithm")]
+    #[arg(
+        long,
+        default_value_t = 10000,
+        help = strings::CHUNK
+    )]
     chunk:        usize,
     #[arg(
         long,
-        help = "Batch intersection size for parallel processing",
+        help = strings::INTERSECTION,
         default_value_t = 1000
     )]
     intersection: usize,
     #[arg(
         long,
-        help = "Changepoint joint distance for parallel processing",
+        help = strings::JOINT,
         default_value_t = 5
     )]
     joint:        usize,
@@ -305,15 +305,14 @@ impl DimRedRunner {
             0.0
         };
 
-        eprintln!();
-        eprintln!("Dimensionality reduction completed successfully!");
-        eprintln!("  Total cytosines processed: {}", total_cytosines);
-        eprintln!("  Total changepoints identified: {}", total_changepoints);
-        eprintln!(
+        println!();
+        println!("  Total cytosines processed: {}", total_cytosines);
+        println!("  Total changepoints identified: {}", total_changepoints);
+        println!(
             "  Compression ratio: {:.2}% of original data",
             compression_ratio
         );
-        eprintln!("  Output file: {}", style(output_path.display()).green());
+        println!("  Output file: {}", style(output_path.display()).green());
 
         Ok(())
     }
@@ -423,11 +422,6 @@ fn process_batch(
         densities.pop();
     }
 
-    debug_assert_eq!(
-        selected_positions.len(),
-        densities.len(),
-        "Length mismatch {selected_positions:?}, {densities:?}, {is_last}"
-    );
     Ok((selected_positions, densities))
 }
 

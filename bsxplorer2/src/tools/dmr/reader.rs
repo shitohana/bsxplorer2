@@ -1,4 +1,3 @@
-use std::hash::Hash;
 use std::os::fd::AsRawFd;
 
 use anyhow::anyhow;
@@ -98,37 +97,24 @@ impl DmrReader {
         Self { config, readers }
     }
 
-    pub fn from_readers<R, F>(
-        readers: Vec<(R, F)>,
+    pub fn blocks_total(&self) -> usize {
+        self.readers.0.blocks_total()
+    }
+
+    pub fn from_readers<F>(
+        left: Vec<F>,
+        right: Vec<F>,
         config: DmrConfig,
     ) -> anyhow::Result<Self>
     where
         F: AsRawFd + 'static + Sync + Send,
-        R: Hash + Eq, {
-        let mut readers = readers
-            .into_iter()
-            .into_group_map()
-            .into_values()
-            .map(|v| {
-                v.into_iter()
-                    .map(BsxFileReader::try_new)
-                    .collect::<anyhow::Result<Vec<_>>>()
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?
-            .into_iter()
-            .map(|v| MultiBsxFileReader::from_iter(v))
-            .collect_vec();
-
-        readers.iter_mut().try_for_each(|r| r.validate(false))?;
-
-        match readers.len() {
-            0 => anyhow::bail!("No readers supplied"),
-            2 => {},
-            n => anyhow::bail!("Too many readers groups supplied: {}", n),
-        }
-
-        let left = readers.pop().unwrap();
-        let right = readers.pop().unwrap();
+    {
+        let left = MultiBsxFileReader::from_iter(
+            left.into_iter().map(BsxFileReader::try_new).collect::<Result<Vec<_>, _>>()?
+        );
+        let right = MultiBsxFileReader::from_iter(
+            right.into_iter().map(BsxFileReader::try_new).collect::<Result<Vec<_>, _>>()?
+        );
 
         let out = Self::new(config, (left, right));
 
@@ -150,6 +136,7 @@ pub struct DmrIterator<'a> {
     results:    SegQueue<DMRegion>,
     last_chr:   ArcStr,
     leftover:   Option<SegmentOwned>,
+    batch_num:  usize
 }
 
 impl<'a> DmrIterator<'a> {
@@ -168,12 +155,18 @@ impl<'a> DmrIterator<'a> {
             leftover,
             last_chr,
             results,
+            batch_num: 0
         }
+    }
+
+    pub fn batch_num(&self) -> usize {
+        self.batch_num
     }
 
     fn get_batches(&mut self) -> anyhow::Result<Option<(BsxBatch, BsxBatch)>> {
         let right = self.right_iter.next().transpose()?;
         let left = self.left_iter.next().transpose()?;
+        self.batch_num += 1;
 
         let iterators_ended = right.is_none() && left.is_none();
         let both_batches_empty = right.as_ref().is_some_and(|b| b.is_empty())

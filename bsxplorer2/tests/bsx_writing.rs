@@ -39,7 +39,6 @@ fn write_bsx(mut test_bsxreader: BsxFileReader) -> anyhow::Result<()> {
             .map(BsxSmallStr::to_string)
             .collect_vec(),
         None,
-        None,
     )?;
 
     for batch in test_bsxreader.iter() {

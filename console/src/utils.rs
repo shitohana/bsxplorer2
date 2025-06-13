@@ -33,6 +33,37 @@ pub fn init_spinner() -> anyhow::Result<ProgressBar> {
     Ok(spinner)
 }
 
+#[macro_export]
+macro_rules! init_progress {
+    () => { init_progress!(@inner init_spinner())  };
+    ($total:expr) => { init_progress!(@inner init_pbar($total)) };
+    (@inner $init_with:expr ) => {{
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            $init_with
+        }
+        else {
+            Ok(ProgressBar::hidden())
+        }
+    }}
+}
+
+#[macro_export]
+macro_rules! exit_with_msg {
+    ($fmt:literal$(, $value:expr)*) => {
+        eprintln!($fmt$(, console::style($value).red())*);
+        std::process::exit(-1);
+    };
+}
+
+#[macro_export]
+macro_rules! assert_or_exit {
+    ($expr:expr, $fmt:literal$(, $value:expr)*) => {
+        if !$expr { crate::exit_with_msg!($fmt $(, $value)*); }
+    };
+}
+
+
 pub fn init_hidden() -> anyhow::Result<ProgressBar> {
     Ok(ProgressBar::hidden())
 }

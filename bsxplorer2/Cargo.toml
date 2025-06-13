@@ -17,7 +17,7 @@ compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip", "tempfile"]
 performant = ["polars/performant", "polars/cse"]
 performant_nightly = ["polars/nightly"]
 console = ["clap"]
-tools = []
+tools = ["dep:typed_floats", "dep:dbscan", "dep:smallvec"]
 
 [lib]
 path = "src/lib.rs"
@@ -57,12 +57,15 @@ xz2 = { version = "0.1.7", optional = true }
 zip = { version = "=3.0.0", optional = true }
 flate2 = { version = "1.1.1", optional = true }
 tempfile = { version = "3.15.0", optional = true }
+smallvec = { version = "1.15.0", optional = true }
 
 clap = { version = "4.1", features = ["derive"], optional = true }
 ctor = "0.4.2"
 regex-lite = "0.1.6"
 rust-lapper = { version = "1.1.0", features = ["serde", "with_serde"] }
 noodles-fasta = { version = "0.54.0", default-features = false }
+typed_floats = { version = "1.0.6", features = ["serde"], optional = true }
+dbscan = { version = "0.3.1", optional = true }
 
 [dev-dependencies]
 rstest = "0.25.0"
