@@ -9,13 +9,12 @@ use clap::{
 };
 use console::style;
 
+use super::FromReportArgs;
 use crate::utils::{
     init_hidden,
     init_spinner,
     CliIpcCompression,
 };
-
-use super::FromReportArgs;
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum ConvertReportType {
@@ -63,7 +62,7 @@ pub struct ToBsxConvert {
     fai_path: Option<PathBuf>,
 
     #[clap(flatten)]
-    from_report: FromReportArgs
+    from_report: FromReportArgs,
 }
 
 impl ToBsxConvert {

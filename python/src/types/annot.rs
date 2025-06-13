@@ -1,6 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 use bsxplorer2::data_structs::annotation::{
     EntryId,
@@ -9,12 +11,16 @@ use bsxplorer2::data_structs::annotation::{
     HcAnnotStore,
 };
 use bsxplorer2::data_structs::coords::Contig;
-use slotmap::{KeyData, Key};
 use pyo3::exceptions::{
-    PyFileNotFoundError, PyValueError, PyRuntimeError
+    PyFileNotFoundError,
+    PyRuntimeError,
+    PyValueError,
 };
 use pyo3::prelude::*;
-
+use slotmap::{
+    Key,
+    KeyData,
+};
 
 use crate::types::coords::PyContig;
 
@@ -78,7 +84,6 @@ impl PyGffEntryAttributes {
         HashMap::from_iter(self.inner.other.clone().into_iter())
     }
 
-
     fn __repr__(&self) -> String {
         format!("GffEntryAttributes({})", self.inner)
     }
@@ -113,7 +118,8 @@ impl PyGffEntry {
         feature_type: Option<String>,
         score: Option<f64>,
         phase: Option<u8>,
-        id: Option<String>, // This is the GFF attribute ID (BsxSmallStr), not EntryId (u64)
+        id: Option<String>, /* This is the GFF attribute ID (BsxSmallStr), not
+                             * EntryId (u64) */
     ) -> PyResult<Self> {
         let rust_contig: Contig = contig.clone().into();
 
@@ -138,7 +144,8 @@ impl PyGffEntry {
     }
 
     #[getter]
-    // This getter returns the GFF attribute ID string, not the internal EntryId (u64)
+    // This getter returns the GFF attribute ID string, not the internal EntryId
+    // (u64)
     fn get_id(&self) -> String {
         self.inner.id.to_string()
     }
@@ -181,7 +188,8 @@ impl PyGffEntry {
 
     fn __repr__(&self) -> String {
         format!(
-            "GffEntry(id='{}', feature='{}', {}:{}-{})", // Use single quotes for id string
+            "GffEntry(id='{}', feature='{}', {}:{}-{})", /* Use single quotes for id
+                                                          * string */
             self.inner.id,
             self.inner.feature_type,
             self.inner.contig.seqname(),
@@ -222,8 +230,9 @@ impl PyAnnotStore {
         let file = std::fs::File::open(&path).map_err(|e| {
             PyFileNotFoundError::new_err(format!("Failed to open GFF file: {}", e))
         })?;
-        let annot_store = HcAnnotStore::from_gff(file)
-             .map_err(|e| PyValueError::new_err(format!("Failed to parse GFF: {}", e)))?;
+        let annot_store = HcAnnotStore::from_gff(file).map_err(|e| {
+            PyValueError::new_err(format!("Failed to parse GFF: {}", e))
+        })?;
         Ok(Self { inner: annot_store })
     }
 
@@ -232,8 +241,9 @@ impl PyAnnotStore {
         let file = std::fs::File::open(&path).map_err(|e| {
             PyFileNotFoundError::new_err(format!("Failed to open BED file: {}", e))
         })?;
-        let annot_store = HcAnnotStore::from_bed(file)
-             .map_err(|e| PyValueError::new_err(format!("Failed to parse BED: {}", e)))?;
+        let annot_store = HcAnnotStore::from_bed(file).map_err(|e| {
+            PyValueError::new_err(format!("Failed to parse BED: {}", e))
+        })?;
 
         Ok(PyAnnotStore { inner: annot_store })
     }
@@ -266,21 +276,28 @@ impl PyAnnotStore {
             .map(|entry| PyGffEntry::from(entry.clone()))
     }
 
-    // Retrieves entries whose GFF attribute ID matches a regex pattern (uses GffEntry.id: BsxSmallStr)
+    // Retrieves entries whose GFF attribute ID matches a regex pattern (uses
+    // GffEntry.id: BsxSmallStr)
     pub fn get_entries_regex(
         &self,
         pattern: String,
     ) -> PyResult<Vec<PyGffEntry>> {
         self.inner
             .get_entries_regex(&pattern)
-            .map(|entries| entries.into_iter().map(|entry| PyGffEntry::from(entry.clone())).collect())
+            .map(|entries| {
+                entries
+                    .into_iter()
+                    .map(|entry| PyGffEntry::from(entry.clone()))
+                    .collect()
+            })
             .map_err(|e| PyValueError::new_err(format!("Invalid regex pattern: {}", e)))
     }
 
     // Initializes the internal tree structure
     pub fn init_tree(&mut self) -> PyResult<()> {
-        self.inner.init_tree()
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to initialize tree: {}", e)))
+        self.inner.init_tree().map_err(|e| {
+            PyRuntimeError::new_err(format!("Failed to initialize tree: {}", e))
+        })
     }
 
     // Initializes the internal interval map
@@ -289,8 +306,8 @@ impl PyAnnotStore {
         Ok(())
     }
 
-
-    // Retrieves the internal EntryIds (u64) of direct children of a given EntryId (u64)
+    // Retrieves the internal EntryIds (u64) of direct children of a given EntryId
+    // (u64)
     pub fn get_children(
         &self,
         id_u64: u64,
@@ -298,11 +315,20 @@ impl PyAnnotStore {
         let entry_id = EntryId::from(KeyData::from_ffi(id_u64));
         self.inner
             .get_children(entry_id)
-            .map(|opt_ids| opt_ids.map(|ids| ids.into_iter().map(|child_id| child_id.data().as_ffi()).collect()))
-             .map_err(|e| PyRuntimeError::new_err(format!("Failed to get children: {}", e)))
+            .map(|opt_ids| {
+                opt_ids.map(|ids| {
+                    ids.into_iter()
+                        .map(|child_id| child_id.data().as_ffi())
+                        .collect()
+                })
+            })
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to get children: {}", e))
+            })
     }
 
-    // Retrieves the internal EntryId (u64) of the direct parent of a given EntryId (u64)
+    // Retrieves the internal EntryId (u64) of the direct parent of a given EntryId
+    // (u64)
     pub fn get_parent(
         &self,
         id_u64: u64,
@@ -314,7 +340,8 @@ impl PyAnnotStore {
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to get parent: {}", e)))
     }
 
-    // Performs a genomic query and returns a list of matching internal EntryIds (u64)
+    // Performs a genomic query and returns a list of matching internal EntryIds
+    // (u64)
     pub fn genomic_query(
         &self,
         contig: &PyContig,
@@ -323,7 +350,9 @@ impl PyAnnotStore {
         self.inner
             .genomic_query(&rust_contig)
             .map(|ids| ids.into_iter().map(|id| id.data().as_ffi()).collect())
-            .map_err(|e| PyRuntimeError::new_err(format!("Genomic query failed: {}", e)))
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("Genomic query failed: {}", e))
+            })
     }
 
     // Gets feature types present in the store mapped to internal EntryIds (u64)
@@ -346,10 +375,14 @@ impl PyAnnotStore {
         prefix: String,
     ) -> PyResult<()> {
         // Convert u64 list to HashSet of EntryId
-        let id_set: HashSet<EntryId> = ids_u64.into_iter().map(|id_u64| EntryId::from(KeyData::from_ffi(id_u64))).collect();
+        let id_set: HashSet<EntryId> = ids_u64
+            .into_iter()
+            .map(|id_u64| EntryId::from(KeyData::from_ffi(id_u64)))
+            .collect();
 
-        // Iterate over existing entries, check if their ID is in the set, and add flanks
-        // This replicates the logic from the Rust add_flank but selects using the provided id_set.
+        // Iterate over existing entries, check if their ID is in the set, and add
+        // flanks This replicates the logic from the Rust add_flank but selects
+        // using the provided id_set.
 
         let selected_entries: Vec<(EntryId, GffEntry)> = self
             .inner
@@ -385,9 +418,11 @@ impl PyAnnotStore {
             let mut feature_type = prefix.to_string();
             feature_type.push_str(parent_entry.feature_type.as_str());
 
-            // Create a new unique ID for the flank entry (this is the GFF attribute ID string)
-            // We don't need to predict the EntryId here, it's assigned on insert.
-            let flank_attribute_id_str = format!("{}_flank_{}", parent_entry.id(), flank);
+            // Create a new unique ID for the flank entry (this is the GFF attribute ID
+            // string) We don't need to predict the EntryId here, it's
+            // assigned on insert.
+            let flank_attribute_id_str =
+                format!("{}_flank_{}", parent_entry.id(), flank);
 
             let flank_entry = GffEntry::new(
                 (start..end).into(),
@@ -398,24 +433,28 @@ impl PyAnnotStore {
                 Some(
                     GffEntryAttributes::default()
                         .with_id(flank_attribute_id_str) // Set the unique attribute ID
-                        .with_parent(vec![parent_entry.id().clone()]), // Set GFF parent attribute to original entry's GFF attribute ID
+                        .with_parent(vec![parent_entry.id().clone()]), /* Set GFF parent attribute to original entry's GFF attribute ID */
                 ),
             );
 
-            // Use insert which handles adding to all internal structures and assigns the new EntryId
+            // Use insert which handles adding to all internal structures and assigns
+            // the new EntryId
             self.inner.insert(flank_entry);
         }
 
         Ok(())
     }
 
-
     // Remove the sort_self method as it doesn't exist in HcAnnotStore
 
     // The iterator will yield (u64, PyGffEntry) tuples
     pub fn iter(&self) -> PyResult<PyAnnotStoreIterator> {
         let iter = PyAnnotStoreIterator {
-            entries: self.inner.iter().map(|(id, entry)| (id.data().as_ffi(), entry.clone())).collect(),
+            entries: self
+                .inner
+                .iter()
+                .map(|(id, entry)| (id.data().as_ffi(), entry.clone()))
+                .collect(),
             index:   0,
         };
         Ok(iter)
@@ -431,7 +470,11 @@ impl PyAnnotStore {
 
     pub fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<PyAnnotStoreIterator>> {
         let iter = PyAnnotStoreIterator {
-            entries: slf.inner.iter().map(|(id, entry)| (id.data().as_ffi(), entry.clone())).collect(),
+            entries: slf
+                .inner
+                .iter()
+                .map(|(id, entry)| (id.data().as_ffi(), entry.clone()))
+                .collect(),
             index:   0,
         };
         Py::new(slf.py(), iter)

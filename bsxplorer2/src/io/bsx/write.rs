@@ -60,8 +60,6 @@ where
         fai_path: PathBuf,
         compression: Option<IpcCompression>,
     ) -> Result<Self> {
-
-
         let index = bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
             format!("Failed to read FASTA index from {:?}", fai_path)
         })?;
@@ -72,9 +70,9 @@ where
             .map(|seq| seq.name)
             .collect_vec();
 
-        Self::try_new(sink, chr_names, compression).with_context(
-            || format!("Failed to create writer from FASTA index at {:?}", fai_path),
-        )
+        Self::try_new(sink, chr_names, compression).with_context(|| {
+            format!("Failed to create writer from FASTA index at {:?}", fai_path)
+        })
     }
 
     /// Creates a writer from a sink and FASTA file.
@@ -83,21 +81,14 @@ where
         fasta_path: PathBuf,
         compression: Option<IpcCompression>,
     ) -> Result<Self> {
-
-
         // Create index if it doesn't exist
         noodles_fasta::fs::index(fasta_path.clone())
             .with_context(|| format!("Failed to index FASTA file {:?}", fasta_path))?;
 
         let index_path = format!("{}.fai", fasta_path.to_str().unwrap());
-        Self::try_from_sink_and_fai(
-            sink,
-            index_path.into(),
-            compression,
+        Self::try_from_sink_and_fai(sink, index_path.into(), compression).with_context(
+            || format!("Failed to create writer from FASTA file {:?}", fasta_path),
         )
-        .with_context(|| {
-            format!("Failed to create writer from FASTA file {:?}", fasta_path)
-        })
     }
 
     /// Writes an encoded BSX batch.
@@ -110,7 +101,6 @@ where
 
     /// Finalizes the IPC file and closes the writer.
     pub fn close(&mut self) -> PolarsResult<()> {
-
         self.writer.finish()
     }
 

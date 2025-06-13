@@ -6,10 +6,14 @@ use clap::Args;
 use indicatif::ProgressBar;
 use itertools::Itertools;
 
-use crate::{assert_or_exit, init_progress, utils::{
+use crate::utils::{
     init_pbar,
     CliIpcCompression,
-}};
+};
+use crate::{
+    assert_or_exit,
+    init_progress,
+};
 
 
 #[derive(Args, Debug, Clone)]
@@ -33,8 +37,16 @@ pub(crate) struct SortArgs {
 
 impl SortArgs {
     pub fn run(&self) -> anyhow::Result<()> {
-        assert_or_exit!(self.file.exists(), "File {} does not exist!", self.file.display());
-        assert_or_exit!(!self.output.is_dir(), "{} is a directory!", self.output.display());
+        assert_or_exit!(
+            self.file.exists(),
+            "File {} does not exist!",
+            self.file.display()
+        );
+        assert_or_exit!(
+            !self.output.is_dir(),
+            "{} is a directory!",
+            self.output.display()
+        );
 
         let mut reader = BsxFileReader::try_new(File::open(self.file.clone())?)?;
 
@@ -61,7 +73,11 @@ impl SortArgs {
             let batch_indices =
                 index.find(&Contig::new(chr.clone().into(), 0, u32::MAX, Strand::None));
 
-            assert_or_exit!(batch_indices.is_some(), "Chromosome {} not found in file", chr);
+            assert_or_exit!(
+                batch_indices.is_some(),
+                "Chromosome {} not found in file",
+                chr
+            );
             let batches = batch_indices.unwrap();
             for batch_idx in batches {
                 let batch = reader.get_batch(batch_idx).unwrap()?;

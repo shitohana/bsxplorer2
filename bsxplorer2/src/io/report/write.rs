@@ -32,7 +32,6 @@ impl ReportWriter {
         #[cfg(feature = "compression")] compression: Compression,
         #[cfg(feature = "compression")] compression_level: Option<u32>,
     ) -> anyhow::Result<Self> {
-
         let report_options = schema.read_options();
 
         #[cfg(feature = "compression")]
@@ -48,10 +47,7 @@ impl ReportWriter {
             )
             .n_threads(n_threads)
             .batched(&schema.schema())
-            .map_err(|e| {
-
-                e
-            })?;
+            .map_err(|e| e)?;
 
 
         Ok(Self { schema, writer })
@@ -76,10 +72,7 @@ impl ReportWriter {
         &mut self,
         df: &DataFrame,
     ) -> PolarsResult<()> {
-        self.writer.write_batch(df).map_err(|e| {
-
-            e
-        })
+        self.writer.write_batch(df).map_err(|e| e)
     }
 
     pub fn finish(mut self) -> anyhow::Result<()> {

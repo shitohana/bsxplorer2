@@ -121,6 +121,8 @@ impl std::fmt::Debug for BsxFileReader {
 }
 
 impl BsxFileReader {
+    getter_fn!(cache, mut VecDeque<BsxBatch>);
+
     /// Creates a new `BsxFileReader` from a file handle.
     ///
     /// This will memory map the file and read its metadata and dictionaries.
@@ -253,8 +255,6 @@ impl BsxFileReader {
         self.cache.append(&mut new_batches);
         Ok(())
     }
-
-    getter_fn!(cache, mut VecDeque<BsxBatch>);
 
     /// Returns the number of threads used by the internal thread pool.
     pub fn n_threads(&self) -> usize {

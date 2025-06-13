@@ -107,13 +107,17 @@ impl DmrReader {
         config: DmrConfig,
     ) -> anyhow::Result<Self>
     where
-        F: AsRawFd + 'static + Sync + Send,
-    {
+        F: AsRawFd + 'static + Sync + Send, {
         let left = MultiBsxFileReader::from_iter(
-            left.into_iter().map(BsxFileReader::try_new).collect::<Result<Vec<_>, _>>()?
+            left.into_iter()
+                .map(BsxFileReader::try_new)
+                .collect::<Result<Vec<_>, _>>()?,
         );
         let right = MultiBsxFileReader::from_iter(
-            right.into_iter().map(BsxFileReader::try_new).collect::<Result<Vec<_>, _>>()?
+            right
+                .into_iter()
+                .map(BsxFileReader::try_new)
+                .collect::<Result<Vec<_>, _>>()?,
         );
 
         let out = Self::new(config, (left, right));
@@ -136,7 +140,7 @@ pub struct DmrIterator<'a> {
     results:    SegQueue<DMRegion>,
     last_chr:   ArcStr,
     leftover:   Option<SegmentOwned>,
-    batch_num:  usize
+    batch_num:  usize,
 }
 
 impl<'a> DmrIterator<'a> {
@@ -155,7 +159,7 @@ impl<'a> DmrIterator<'a> {
             leftover,
             last_chr,
             results,
-            batch_num: 0
+            batch_num: 0,
         }
     }
 

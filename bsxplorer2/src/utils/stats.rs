@@ -32,7 +32,6 @@ where
     }
 
     if x.is_empty() {
-
         return 0.0;
     }
 
@@ -57,7 +56,6 @@ where
     };
 
     if denominator == 0.0 {
-
         return 0.0;
     }
 
@@ -83,7 +81,6 @@ pub fn mann_whitney_u<F: Float>(
     group1: &[F],
     group2: &[F],
 ) -> (f64, f64) {
-
     let n1 = F::from(group1.len()).unwrap();
     let n2 = F::from(group2.len()).unwrap();
     let n_total = n1 + n2;
@@ -189,7 +186,6 @@ pub fn mann_whitney_u<F: Float>(
         (u_stat - mean_u + F::from(0.5).unwrap()) / variance_u.sqrt()
     }
     else {
-
         F::from(0.0).unwrap()
     };
     let z = z.to_f64().unwrap();

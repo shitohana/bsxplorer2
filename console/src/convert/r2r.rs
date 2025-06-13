@@ -8,12 +8,11 @@ use clap::{
     ValueEnum,
 };
 
+use super::FromReportArgs;
 use crate::utils::{
     init_hidden,
     init_spinner,
 };
-
-use super::FromReportArgs;
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum ConvertReportType {
@@ -47,7 +46,7 @@ pub struct R2RConvert {
     compression_level: Option<u32>,
 
     #[clap(flatten)]
-    from_report: FromReportArgs
+    from_report: FromReportArgs,
 }
 
 impl R2RConvert {

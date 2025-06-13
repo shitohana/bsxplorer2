@@ -114,34 +114,34 @@ impl Model {
         sample: PosType,
         population: &[PosType],
     ) -> Vec<usize> {
-        let value_idx = population
-            .binary_search(&sample)
-            .unwrap_or_else(|e| e);
+        let value_idx = population.binary_search(&sample).unwrap_or_else(|e| e);
 
         let len = population.len();
         let (min, max) = unsafe {
             let mut cur_idx = value_idx;
             let min_idx = loop {
                 if cur_idx == 0 {
-                    break 0
+                    break 0;
                 }
                 let val = population.get_unchecked(cur_idx);
                 if val.abs_diff(sample) < self.eps {
                     cur_idx -= 1;
-                } else {
-                    break cur_idx + 1
+                }
+                else {
+                    break cur_idx + 1;
                 }
             };
             let mut cur_idx = value_idx;
             let max_idx = loop {
                 if cur_idx >= len {
-                    break len - 1
+                    break len - 1;
                 }
                 let val = population.get_unchecked(cur_idx);
                 if val.abs_diff(sample) < self.eps {
                     cur_idx += 1;
-                } else {
-                    break cur_idx - 1
+                }
+                else {
+                    break cur_idx - 1;
                 }
             };
 
@@ -162,7 +162,8 @@ impl Model {
             let mut pop_clone = population.to_vec();
             pop_clone.par_sort_unstable();
             pop_clone
-        } else {
+        }
+        else {
             population.to_vec()
         };
 

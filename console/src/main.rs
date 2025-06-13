@@ -2,9 +2,9 @@ mod convert;
 mod dimred;
 mod dmr;
 mod sort;
+mod strings;
 mod utils;
 mod validate;
-mod strings;
 
 use clap::{
     Parser,

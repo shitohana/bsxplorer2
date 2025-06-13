@@ -128,7 +128,8 @@ impl PyRegionReader {
     }
 
     fn chr_order(&self) -> PyResult<Vec<String>> {
-        Ok(self.inner
+        Ok(self
+            .inner
             .index()
             .get_chr_order()
             .iter()

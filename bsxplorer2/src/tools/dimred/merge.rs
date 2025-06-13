@@ -86,8 +86,16 @@ fn gather_breakpoints(
         .into_iter()
         .into_group_map()
         .into_iter()
-        .map(|(k, v)| (ArcStr::from(k.as_str()), v.concat().into_iter().collect_vec()))
-        .map(|(k, mut v)| {v.par_sort_unstable(); (k, v)})
+        .map(|(k, v)| {
+            (
+                ArcStr::from(k.as_str()),
+                v.concat().into_iter().collect_vec(),
+            )
+        })
+        .map(|(k, mut v)| {
+            v.par_sort_unstable();
+            (k, v)
+        })
         .collect::<HashMap<_, _>>()
 }
 
@@ -131,7 +139,7 @@ fn partition_by_dist(
 fn apply_dbscan_to_part(
     pos: Vec<PosType>,
     model: dbscan::Model,
-    agg_fn: &(dyn Fn(&[f32]) -> f64 + Sync + Send)
+    agg_fn: &(dyn Fn(&[f32]) -> f64 + Sync + Send),
 ) -> Vec<u32> {
     model
         .run(&pos)
@@ -146,9 +154,7 @@ fn apply_dbscan_to_part(
         })
         .into_par_iter()
         .filter(|v| !v.is_empty())
-        .map(|indices| {
-            indices.iter().map(|i| pos[*i] as DensityType).collect_vec()
-        })
+        .map(|indices| indices.iter().map(|i| pos[*i] as DensityType).collect_vec())
         .map(|res| agg_fn(&res).round() as PosType)
         .collect::<Vec<_>>()
 }
@@ -174,13 +180,20 @@ fn apply_dbscan(
         .collect()
 }
 
-fn merge_signal(new: Vec<PosType>, reference: Vec<PosType>, reference_values: Vec<EqFloat>) {
-    let zipped_values = vec![vec![-1isize; new.len()], (0isize..reference_values.len() as isize).collect_vec()].concat();
+fn merge_signal(
+    new: Vec<PosType>,
+    reference: Vec<PosType>,
+    reference_values: Vec<EqFloat>,
+) {
+    let zipped_values = vec![
+        vec![-1isize; new.len()],
+        (0isize..reference_values.len() as isize).collect_vec(),
+    ]
+    .concat();
     let zipped = vec![new, reference].concat();
 
     let sorted_indices = {
-        let mut indices = (0..zipped.len())
-            .collect_vec();
+        let mut indices = (0..zipped.len()).collect_vec();
         indices.par_sort_unstable_by_key(|i| zipped[*i]);
         indices
     };
@@ -193,7 +206,11 @@ pub fn merge_breakpoints(
     THREAD_POOL.install(|| -> anyhow::Result<()> {
         let gathered = gather_breakpoints(intervals);
         println!("Before {}", gathered.values().map(Vec::len).sum::<usize>());
-        println!("Mean {}", gathered.values().map(Vec::len).sum::<usize>() as f64 / intervals.len() as f64);
+        println!(
+            "Mean {}",
+            gathered.values().map(Vec::len).sum::<usize>() as f64
+                / intervals.len() as f64
+        );
         let partitioned = partition_by_dist(gathered, 1000);
         let res = apply_dbscan(partitioned, 20, 3, AggMethod::Median);
         println!("After {:?}", res.values().find_or_first(|_| true).unwrap());

@@ -67,7 +67,7 @@ pub mod dmr {
 }
 
 pub mod dimred {
-    define_strings!{
+    define_strings! {
         FILES =
             "Paths to BSX files";
         OUTPUT =
