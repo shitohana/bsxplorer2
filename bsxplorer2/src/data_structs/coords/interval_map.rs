@@ -24,6 +24,16 @@ where
     inner: HashMap<BsxSmallStr, Lapper<PosType, V>>,
 }
 
+
+impl<V> From<HashMap<BsxSmallStr, Lapper<PosType, V>>> for ContigIntervalMap<V>
+where
+    V: Sync + Send + Eq + Clone,
+{
+    fn from(value: HashMap<BsxSmallStr, Lapper<PosType, V>>) -> Self {
+        Self { inner: value }
+    }
+}
+
 impl<V> Default for ContigIntervalMap<V>
 where
     V: Sync + Send + Eq + Clone,
@@ -75,6 +85,40 @@ where
 {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn from_breakpoints<K, A>(breakpoints: HashMap<K, A>) -> Self
+    where
+        K: AsRef<str>,
+        A: AsRef<[(PosType, V)]>, {
+        breakpoints
+            .iter()
+            .map(|(k, v)| {
+                let key = BsxSmallStr::from(k.as_ref());
+                let value = if v.as_ref().is_empty() {
+                    Default::default()
+                }
+                else {
+                    let mut res = vec![];
+                    let prev_pos = 0;
+                    for (end, val) in v.as_ref() {
+                        res.push(Interval {
+                            start: prev_pos,
+                            stop:  *end,
+                            val:   val.to_owned(),
+                        });
+                    }
+                    res
+                };
+                let value = Lapper::new(value);
+                (key, value)
+            })
+            .collect::<HashMap<_, _>>()
+            .into()
+    }
+
+    pub fn n_intervals(&self) -> usize {
+        self.inner().values().map(|v| v.len()).sum()
     }
 
     pub fn into_inner(self) -> HashMap<BsxSmallStr, Lapper<PosType, V>> {
@@ -144,5 +188,29 @@ where
                 )
             })
             .collect_vec()
+    }
+}
+
+impl<V> ContigIntervalMap<V>
+where
+    V: Sync + Send + Eq + Clone + ToString,
+{
+    pub fn to_bed_records(self) -> Vec<bio::io::bed::Record> {
+        self.chr_names()
+            .iter()
+            .sorted()
+            .map(|chr| {
+                let lapper = self.inner.get(chr).unwrap();
+                lapper.intervals.iter().map(|interval| {
+                    let mut record = bio::io::bed::Record::new();
+                    record.set_start(interval.start as u64);
+                    record.set_end(interval.stop as u64);
+                    record.set_chrom(chr.as_str());
+                    record.set_score(interval.val.to_string().as_str());
+                    record
+                })
+            })
+            .flatten()
+            .collect()
     }
 }

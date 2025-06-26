@@ -1,6 +1,7 @@
 use core::f64;
 
 use crate::data_structs::typedef::CountType;
+use crate::prelude::BsxBatch;
 
 /// Trait defining the interface for data structures used in segmentation
 /// algorithms.
@@ -25,6 +26,37 @@ pub struct MethDataBinom {
     count_m_cumsum:     Vec<u32>,
     /// Cumulative sum of total counts.
     count_total_cumsum: Vec<u32>,
+}
+
+impl From<&BsxBatch> for MethDataBinom {
+    fn from(value: &BsxBatch) -> Self {
+        assert_eq!(
+            value.count_m().null_count(),
+            0,
+            "'count_m' column cannot contain nulls"
+        );
+        assert_eq!(
+            value.count_total().null_count(),
+            0,
+            "'count_total' column cannot contain nulls"
+        );
+
+        let (count_m, count_total) = unsafe {
+            (
+                value
+                    .count_m()
+                    .to_vec_null_aware()
+                    .left()
+                    .unwrap_unchecked(),
+                value
+                    .count_total()
+                    .to_vec_null_aware()
+                    .left()
+                    .unwrap_unchecked(),
+            )
+        };
+        Self::new(&count_m, &count_total)
+    }
 }
 
 impl MethDataBinom {

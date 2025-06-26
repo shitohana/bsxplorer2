@@ -141,7 +141,6 @@ mod batch_tests {
         assert_approx_eq!(densities_half[0], first_half_density_mean, 1e-6);
         assert_approx_eq!(densities_half[1], second_half_density_mean, 1e-6);
 
-
         // Case 4: Multiple breakpoints
         let breakpoints_multi =
             vec![batch_size / 4, batch_size / 2, 3 * batch_size / 4];
@@ -158,7 +157,6 @@ mod batch_tests {
         assert_eq!(rel_pos_with_size.len(), 2);
         assert_eq!(densities_with_size.len(), 2);
         assert_approx_eq!(rel_pos_with_size.last().copied().unwrap(), 1.0, 1e-6);
-
 
         // Case 6: Invalid breakpoint (index 0) - should bail
         let breakpoints_zero = vec![0, 100];
@@ -366,7 +364,6 @@ mod batch_tests {
         }
         debug_assert_eq!(expected_partition_breakpoints.len(), n_fragments_eq_len - 1); // This is what discretise passes to partition
 
-
         let mut expected_rel_pos: Vec<f64> = Vec::with_capacity(n_fragments_eq_len);
         let mut partition_internal_bps = expected_partition_breakpoints.clone();
         // This check should match partition's internal logic: if breakpoints.last() !=
@@ -389,7 +386,6 @@ mod batch_tests {
             expected_rel_pos.push((pos_value - start as f64) / genomic_length);
         }
         expected_rel_pos.push(1.0); // Always add 1.0 at the end
-
 
         let mut segmentation_indices = vec![0];
         segmentation_indices.extend_from_slice(&expected_partition_breakpoints);
@@ -416,7 +412,6 @@ mod batch_tests {
             expected_densities.push(agg_fn(segment_densities));
         }
         debug_assert_eq!(expected_densities.len(), n_fragments_eq_len); // Should have n_fragments densities
-
 
         // Call the actual method
         let (rel_pos_eq, densities_eq) =
@@ -542,7 +537,6 @@ mod batch_tests {
                 pos_values[expected_breakpoints_for_partition[0]] as f64; // pos at index 3 is 12
             vec![(breakpoint_pos_value - start_pos) / genomic_length, 1.0] // [(12 - 3) / 13.0, 1.0] = [9.0/13.0, 1.0]
         };
-
 
         let (rel_pos_agg, densities_agg) =
             test_batch.discretise(n_fragments_agg, agg_method.clone())?;
@@ -1107,7 +1101,6 @@ mod batch_tests {
         expected_context_stats.insert(Context::CG, (1.25, 2));
         expected_context_stats.insert(Context::CHG, (10.0 / 30.0 as f64, 1));
         expected_context_stats.insert(Context::CHH, (1.5, 2));
-
 
         assert_eq!(context_stats.len(), 3);
         assert_approx_eq!(

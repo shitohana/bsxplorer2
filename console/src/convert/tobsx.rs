@@ -1,20 +1,19 @@
 use std::fs::File;
 use std::path::PathBuf;
-use std::process::exit;
 
+use anyhow::{anyhow, ensure};
 use bsxplorer2::prelude::*;
 use clap::{
     Args,
     ValueEnum,
 };
-use console::style;
+use spipe::spipe;
 
 use super::FromReportArgs;
 use crate::utils::{
-    init_hidden,
-    init_spinner,
-    CliIpcCompression,
+    init_progress, validate_output, CliIpcCompression
 };
+use crate::PipelineCommand;
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum ConvertReportType {
@@ -65,25 +64,19 @@ pub struct ToBsxConvert {
     from_report: FromReportArgs,
 }
 
-impl ToBsxConvert {
-    pub fn run(&self) -> anyhow::Result<()> {
-        if self.from_report.from_type.need_align()
-            && !(self.from_report.fasta_path.is_some() && self.fai_path.is_some())
+impl PipelineCommand for ToBsxConvert {
+    fn run(&self) -> anyhow::Result<()> {
         {
-            eprintln!(
-                "For {:?} report type conversion, both {}",
+            let need_align = self.from_report.from_type.need_align();
+            let fasta_defined = self.from_report.fasta_path.is_some();
+            let fai_defined = self.fai_path.is_some();
+
+            ensure!(
+                !need_align || (fasta_defined && fai_defined),
+                "For {:?} report type conversion, both fasta path and fai path must be set",
                 self.from_report.from_type,
-                style("fasta_path and fai_path must be set").red()
             )
         }
-
-        use std::io::IsTerminal;
-        let pbar = if std::io::stdin().is_terminal() {
-            init_spinner()?
-        }
-        else {
-            init_hidden()?
-        };
 
         let mut report_reader_builder = ReportReaderBuilder::default()
             .with_batch_size(self.from_report.batch_size)
@@ -103,37 +96,41 @@ impl ToBsxConvert {
 
         let report_reader = report_reader_builder.build(self.input.clone())?;
 
-        let sink = File::create(self.output.clone())?;
         let mut bsx_writer = if let Some(fai_path) = &self.fai_path {
-            BsxFileWriter::try_from_sink_and_fai(
-                sink,
-                fai_path.clone(),
-                self.to_compression.into(),
-            )?
+            spipe!(
+                &self.output =>
+                validate_output =>?
+                File::create =>?
+                BsxFileWriter::try_from_sink_and_fai(
+                    fai_path.clone(),
+                    self.to_compression.into()
+                ) =>? ...
+            )
         }
         else if let Some(fasta_path) = &self.from_report.fasta_path {
-            BsxFileWriter::try_from_sink_and_fasta(
-                sink,
-                fasta_path.clone(),
-                self.to_compression.into(),
-            )?
+            spipe!(
+                &self.output =>
+                validate_output =>?
+                File::create =>?
+                BsxFileWriter::try_from_sink_and_fasta(
+                    fasta_path.clone(),
+                    self.to_compression.into()
+                ) =>? ...
+            )
         }
         else {
-            eprintln!(
-                "{}",
-                style("Either fasta_path or fai_path must be set").red()
-            );
-            exit(0x0100)
+            return Err(anyhow!("Either fasta_path or fai_path must be set"))
         };
 
-        for batch in report_reader {
+        let pbar = init_progress(None)?;
+        for batch in pbar.wrap_iter(report_reader) {
             let batch = batch?;
             let cur_pos: GenomicPosition = batch.last_genomic_pos().unwrap_or_default();
-            pbar.set_message(format!("Reading: {}", cur_pos));
-            pbar.inc(1);
 
             bsx_writer.write_batch(batch)?;
+            pbar.set_message(format!("Reading: {}", cur_pos));
         }
+
         bsx_writer.close()?;
         Ok(())
     }

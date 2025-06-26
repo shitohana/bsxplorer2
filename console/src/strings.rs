@@ -8,7 +8,6 @@ macro_rules! define_strings {
     };
 }
 
-
 pub mod dmr {
     define_strings! {
         PADJ =

@@ -10,7 +10,6 @@
 //! These structures are fundamental for handling location-based data within the
 //! crate.
 
-
 mod contig;
 mod gpos;
 mod interval_map;

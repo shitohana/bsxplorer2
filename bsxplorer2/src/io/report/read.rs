@@ -434,7 +434,7 @@ impl ReportReader {
             self.cached_batch
                 .entry(*chr_idx)
                 .and_modify(|b| {
-                    unsafe { b.extend_unchecked(&bsx_batch).expect("vstack failed") };
+                    unsafe { b.extend_unchecked(&bsx_batch) };
                 })
                 .or_insert(bsx_batch);
         }

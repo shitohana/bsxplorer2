@@ -13,6 +13,10 @@ pub struct MultiBsxFileReader {
 }
 
 impl MultiBsxFileReader {
+    pub fn n_readers(&self) -> usize {
+        self.readers.len()
+    }
+
     pub fn validate(
         &mut self,
         deep: bool,

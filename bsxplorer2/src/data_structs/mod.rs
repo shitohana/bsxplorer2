@@ -28,7 +28,6 @@
 //!   positions, counts, densities, and sequence names to improve code
 //!   readability and maintainability.
 
-
 pub mod annotation;
 pub mod batch;
 mod context_data;

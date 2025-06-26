@@ -27,9 +27,9 @@ where
     W: Write,
 {
     /// Creates a new BSX IPC writer.
-    pub fn try_new(
+    pub fn try_new<R: AsRef<str>>(
         sink: W,
-        chr_names: Vec<String>,
+        chr_names: &[R],
         compression: Option<IpcCompression>,
     ) -> Result<BsxFileWriter<W>> {
         let opts = IpcWriterOptions {
@@ -38,7 +38,7 @@ where
         };
 
         let chr_dtype =
-            create_caregorical_dtype(chr_names.into_iter().map(Some).collect_vec());
+            create_caregorical_dtype(chr_names.iter().map(Some).collect_vec());
         let mut schema = BsxColumns::schema();
         schema.set_dtype(BsxColumns::Chr.as_str(), chr_dtype);
 
@@ -70,7 +70,7 @@ where
             .map(|seq| seq.name)
             .collect_vec();
 
-        Self::try_new(sink, chr_names, compression).with_context(|| {
+        Self::try_new(sink, &chr_names, compression).with_context(|| {
             format!("Failed to create writer from FASTA index at {:?}", fai_path)
         })
     }

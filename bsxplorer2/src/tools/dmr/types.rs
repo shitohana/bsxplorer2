@@ -13,6 +13,10 @@ use crate::data_structs::typedef::{
     DensityType,
     PosType,
 };
+use crate::prelude::{
+    Contig,
+    Strand,
+};
 use crate::tools::dmr::segmentation;
 use crate::utils::mann_whitney_u;
 use crate::BsxBatch;
@@ -278,7 +282,6 @@ impl SegmentOwned {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMRegion {
     pub chr:         String,
@@ -325,6 +328,10 @@ impl DMRegion {
 
     pub fn length(&self) -> PosType {
         self.end - self.start + 1
+    }
+
+    pub fn as_contig(&self) -> Contig {
+        Contig::new(self.chr.as_str().into(), self.start, self.end, Strand::None)
     }
 }
 

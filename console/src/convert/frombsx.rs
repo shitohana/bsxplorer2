@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use bsxplorer2::prelude::*;
@@ -7,9 +6,10 @@ use clap::{
     Args,
     ValueEnum,
 };
-use indicatif::ProgressBar;
+use spipe::spipe;
 
-use crate::utils::init_pbar;
+use crate::utils::{init_progress, validate_input, validate_output};
+use crate::PipelineCommand;
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum ConvertReportType {
@@ -43,30 +43,32 @@ pub struct FromBsxConvert {
     compression_level: Option<u32>,
 }
 
-impl FromBsxConvert {
-    pub fn run(&self) -> anyhow::Result<()> {
-        let input_handle = File::open(self.input.clone())?;
-        let bsx_reader = BsxFileReader::try_new(input_handle)?;
+impl PipelineCommand for FromBsxConvert {
+    fn run(&self) -> anyhow::Result<()> {
+        let reader = spipe!(
+            &self.input =>
+            validate_input =>?
+            File::open =>?
+            BsxFileReader::try_new =>?
+            ...
+        );
 
-        let output_handle = File::create(self.output.clone())?;
-        let mut writer = ReportWriter::try_new(
-            output_handle,
-            self.to_type,
-            bsxplorer2::utils::n_threads(),
-            self.to_compression.clone(),
-            self.compression_level,
-        )?;
+        let mut writer = spipe!(
+            &self.output =>
+            validate_output =>?
+            File::create =>?
+            ReportWriter::try_new(
+                self.to_type,
+                bsxplorer2::utils::n_threads(),
+                self.to_compression,
+                self.compression_level
+            ) =>? ...
+        );
 
-        let pbar = if std::io::stdin().is_terminal() {
-            init_pbar(0)?
-        }
-        else {
-            ProgressBar::hidden()
-        };
+        let pbar = init_progress(Some(reader.blocks_total()))?;
 
-        for batch in bsx_reader.into_iter() {
+        for batch in pbar.wrap_iter(reader.into_iter()) {
             writer.write_batch(batch?)?;
-            pbar.inc(1);
         }
         writer.finish()?;
         Ok(())

@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use bsxplorer2::prelude::*;
@@ -9,10 +8,8 @@ use clap::{
 };
 
 use super::FromReportArgs;
-use crate::utils::{
-    init_hidden,
-    init_spinner,
-};
+use crate::utils::init_progress;
+use crate::PipelineCommand;
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum ConvertReportType {
@@ -49,15 +46,8 @@ pub struct R2RConvert {
     from_report: FromReportArgs,
 }
 
-impl R2RConvert {
-    pub fn run(&self) -> anyhow::Result<()> {
-        let pbar = if std::io::stdin().is_terminal() {
-            init_spinner()?
-        }
-        else {
-            init_hidden()?
-        };
-
+impl PipelineCommand for R2RConvert {
+    fn run(&self) -> anyhow::Result<()> {
         let mut report_reader_builder = ReportReaderBuilder::default()
             .with_batch_size(self.from_report.batch_size)
             .with_low_memory(self.from_report.low_memory)
@@ -79,12 +69,12 @@ impl R2RConvert {
             self.compression_level,
         )?;
 
-        for batch in report_reader {
+        let pbar = init_progress(None)?;
+        for batch in pbar.wrap_iter(report_reader) {
             let batch = batch?;
             let cur_pos: GenomicPosition = batch.last_genomic_pos().unwrap_or_default();
-            pbar.set_message(format!("Reading: {}", cur_pos));
-            pbar.inc(1);
 
+            pbar.set_message(format!("Reading: {}", cur_pos));
             writer.write_batch(batch)?;
         }
         writer.finish()?;

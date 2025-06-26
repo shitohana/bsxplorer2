@@ -85,7 +85,6 @@ impl<'de> Deserialize<'de> for Context {
     }
 }
 
-
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum Strand {
@@ -157,7 +156,6 @@ impl From<Strand> for char {
         }
     }
 }
-
 
 impl Display for Strand {
     fn fmt(

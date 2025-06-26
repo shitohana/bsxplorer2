@@ -101,7 +101,7 @@ impl DmrReader {
         self.readers.0.blocks_total()
     }
 
-    pub fn from_readers<F>(
+    pub fn from_handles<F>(
         left: Vec<F>,
         right: Vec<F>,
         config: DmrConfig,

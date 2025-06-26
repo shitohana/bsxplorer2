@@ -399,7 +399,6 @@ impl HcAnnotStore {
                 (end, start)
             };
 
-
             let mut feature_type = prefix.to_string();
             feature_type.push_str(parent.feature_type.as_str());
 

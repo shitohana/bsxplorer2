@@ -5,6 +5,7 @@ use std::ops::{
     Index,
 };
 use std::panic::AssertUnwindSafe;
+use std::str::FromStr;
 
 use anyhow::bail;
 use hashbrown::HashMap;
@@ -251,8 +252,8 @@ impl BsxBatch {
     pub unsafe fn extend_unchecked(
         &mut self,
         other: &Self,
-    ) -> PolarsResult<()> {
-        self.data.extend(other.data())
+    ) {
+        self.data.extend(other.data()).unwrap()
     }
 
     /// Adds context data (strand and context) to the `BsxBatch`.
@@ -728,6 +729,15 @@ impl BsxBatch {
         }
     }
 
+    pub fn positions_vec(&self) -> Vec<PosType> {
+        unsafe {
+            self.position()
+                .to_vec_null_aware()
+                .left()
+                .unwrap_unchecked()
+        }
+    }
+
     /// Gets the sequence name (chromosome) for the batch.
     ///
     /// Assumes all sites in the batch are on the same sequence.
@@ -922,6 +932,22 @@ pub enum AggMethod {
     Median,
     Max,
     Min,
+}
+
+impl FromStr for AggMethod {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "mean" => Ok(AggMethod::Mean),
+            "sum" => Ok(AggMethod::Sum),
+            "gmean" => Ok(AggMethod::GeometricMean),
+            "median" => Ok(AggMethod::Median),
+            "max" => Ok(AggMethod::Max),
+            "min" => Ok(AggMethod::Min),
+            other => bail!("AggMethod {} not implemented", other),
+        }
+    }
 }
 
 impl AggMethod {

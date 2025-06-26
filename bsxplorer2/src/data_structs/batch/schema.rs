@@ -36,7 +36,6 @@ impl Display for BsxColumns {
     }
 }
 
-
 impl BsxColumns {
     /// Returns the Polars Schema for the BSX columns.
     pub fn schema() -> Schema {

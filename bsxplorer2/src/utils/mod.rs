@@ -22,7 +22,9 @@ use std::io::{
     BufReader,
     Read,
 };
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 
 use itertools::Itertools;
 use noodles_fasta::io::Indexer;
@@ -138,4 +140,87 @@ pub fn read_chrs_from_fa<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
         .into_iter()
         .map(|r| String::from_utf8_lossy(r.name()).to_string())
         .collect())
+}
+
+pub struct Semaphore {
+    count:      AtomicUsize,
+    zero_cvar:  Condvar,
+    zero_mutex: Mutex<()>,
+}
+
+impl Semaphore {
+    pub fn new(count: usize) -> Arc<Self> {
+        Arc::new(Semaphore {
+            count:      AtomicUsize::new(count),
+            zero_cvar:  Condvar::new(),
+            zero_mutex: Mutex::new(()),
+        })
+    }
+
+    pub fn acquire(&self) {
+        // Spin briefly before parking
+        for _ in 0..10 {
+            if self.count.fetch_sub(1, Ordering::AcqRel) > 0 {
+                return;
+            }
+            self.count.fetch_add(1, Ordering::AcqRel);
+            std::hint::spin_loop();
+        }
+
+        // Fall back to parking if still unavailable
+        while self.count.fetch_sub(1, Ordering::AcqRel) == 0 {
+            self.count.fetch_add(1, Ordering::AcqRel);
+            thread::park();
+        }
+    }
+
+    pub fn release(&self) {
+        let old = self.count.fetch_add(1, Ordering::AcqRel);
+
+        // Notify if this was the last release
+        if old == 0 {
+            let _lock = self.zero_mutex.lock().unwrap();
+            self.zero_cvar.notify_all();
+        }
+    }
+
+    pub fn wait_until_zero(&self) {
+        let mut lock = self.zero_mutex.lock().unwrap();
+        while self.count.load(Ordering::Acquire) > 0 {
+            lock = self.zero_cvar.wait(lock).unwrap();
+        }
+    }
+}
+
+
+pub struct BoundThreadExecutor<'a> {
+    semaphore:   Arc<Semaphore>,
+    thread_pool: &'a ThreadPool,
+}
+
+impl<'a> BoundThreadExecutor<'a> {
+    pub fn new(thread_pool: &'a ThreadPool) -> Self {
+        let semaphore = Semaphore::new(thread_pool.current_num_threads());
+        Self {
+            semaphore,
+            thread_pool,
+        }
+    }
+
+    pub fn join(self) {
+        self.semaphore.wait_until_zero();
+    }
+
+    pub fn install<F>(
+        &self,
+        op: F,
+    ) where
+        F: FnOnce() + Send + 'static, {
+        let semaphore = Arc::clone(&self.semaphore);
+        semaphore.acquire();
+        self.thread_pool.spawn(move || {
+            op();
+            semaphore.release();
+        });
+    }
 }

@@ -156,7 +156,6 @@ impl BsxFileReader {
             .map(|_| ThreadLocalHandle::new(mmap.clone())) // Pass a clone of the Arc to each handle
             .collect_vec();
 
-
         Ok(Self {
             thread_local_handles,
             cache: VecDeque::new(),

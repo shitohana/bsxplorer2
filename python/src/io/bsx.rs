@@ -17,7 +17,6 @@ use crate::utils::{
     SinkHandle,
 };
 
-
 #[pyclass(name = "BsxFileReader", unsendable)]
 #[derive(Debug, Clone)]
 pub struct PyBsxFileReader {
@@ -165,7 +164,7 @@ impl PyBsxFileWriter {
         let file: Box<dyn SinkHandle> = sink.get_writer()?;
         let writer = RsBsxIpcWriter::try_new(
             BufWriter::new(file),
-            chr_names,
+            &chr_names,
             compression.map(|x| x.into()),
         )
         .map_err(|e| PyIOError::new_err(e.to_string()))?;

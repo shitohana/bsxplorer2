@@ -24,7 +24,6 @@ use slotmap::{
 
 use crate::types::coords::PyContig;
 
-
 #[pyclass(name = "GffEntryAttributes")]
 #[derive(Debug, Clone)]
 pub struct PyGffEntryAttributes {
@@ -88,7 +87,6 @@ impl PyGffEntryAttributes {
         format!("GffEntryAttributes({})", self.inner)
     }
 }
-
 
 #[pyclass(name = "GffEntry")]
 #[derive(Debug, Clone)]

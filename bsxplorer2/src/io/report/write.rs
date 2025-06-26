@@ -49,7 +49,6 @@ impl ReportWriter {
             .batched(&schema.schema())
             .map_err(|e| e)?;
 
-
         Ok(Self { schema, writer })
     }
 
