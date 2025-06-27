@@ -19,26 +19,28 @@ dialoguer = "0.11.0"
 glob = "0.3"
 indicatif = "0.17.11"
 wild = "2.0"
-std-semaphore = "0.1.0"
 
 crossbeam.workspace = true
 adjustp.workspace = true
 anyhow.workspace = true
-pretty_env_logger.workspace = true
 rayon.workspace = true
 serde.workspace = true
 polars.workspace = true
+once_cell.workspace  = true
 itertools.workspace = true
 bio.workspace = true
-log = "0.4.27"
+log.workspace = true
 spipe = "0.1.0"
 hashbrown.workspace = true
 uuid = { version = "1.17.0", features = ["v4"] }
+arcstr = "1.2.0"
+num = "0.4.3"
+
 
 [dependencies.bsxplorer2]
 path = "../bsxplorer2"
 default-features = false
-features = ["console", "performant", "compression", "tools"]
+features = ["performant", "compression", "tools"]
 
 [[bin]]
 name = "bsxplorer"

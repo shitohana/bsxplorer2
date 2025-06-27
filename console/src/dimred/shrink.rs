@@ -1,5 +1,4 @@
 use std::fs::File;
-
 use std::path::PathBuf;
 use std::sync::{
     Arc,
@@ -18,7 +17,10 @@ use bsxplorer2::tools::dimred::{
     pelt,
     MethDataBinom,
 };
-use bsxplorer2::utils::{BoundThreadExecutor, THREAD_POOL};
+use bsxplorer2::utils::{
+    BoundThreadExecutor,
+    THREAD_POOL,
+};
 use clap::Args;
 use crossbeam::channel::Sender;
 use hashbrown::HashMap;
@@ -34,13 +36,13 @@ use log::{
 use rayon::prelude::*;
 use uuid::Uuid;
 
+use crate::dimred::write_imap;
 use crate::strings::dimred as strings;
 use crate::utils::{
     check_validate_paths,
     init_progress,
     init_readers,
 };
-use crate::dimred::write_imap;
 use crate::PipelineCommand;
 
 #[derive(Args, Debug, Clone)]
@@ -165,7 +167,7 @@ impl DimRedRunner {
             Arc::try_unwrap(results_map)
                 .expect("Should not fail")
                 .into_inner()?,
-            self.args.joint
+            self.args.joint,
         );
         print_stats(cyt_sum, contig_imap.n_intervals());
         info!("Changepoints merged");

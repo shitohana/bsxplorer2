@@ -12,8 +12,8 @@ pub use crate::data_structs::batch::{
 };
 pub use crate::data_structs::coords::{
     Contig,
+    ContigIntervalMap,
     GenomicPosition,
-    ContigIntervalMap
 };
 pub use crate::data_structs::typedef::BsxSmallStr;
 pub use crate::data_structs::{

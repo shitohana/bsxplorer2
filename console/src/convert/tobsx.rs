@@ -1,7 +1,10 @@
 use std::fs::File;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, ensure};
+use anyhow::{
+    anyhow,
+    ensure,
+};
 use bsxplorer2::prelude::*;
 use clap::{
     Args,
@@ -11,7 +14,9 @@ use spipe::spipe;
 
 use super::FromReportArgs;
 use crate::utils::{
-    init_progress, validate_output, CliIpcCompression
+    init_progress,
+    validate_output,
+    CliIpcCompression,
 };
 use crate::PipelineCommand;
 
@@ -43,7 +48,6 @@ pub struct ToBsxConvert {
     #[clap(
         short,
         long,
-        value_enum,
         default_value_t = Context::CG,
         help = "Select cytosine methylation context."
     )]
@@ -73,7 +77,8 @@ impl PipelineCommand for ToBsxConvert {
 
             ensure!(
                 !need_align || (fasta_defined && fai_defined),
-                "For {:?} report type conversion, both fasta path and fai path must be set",
+                "For {:?} report type conversion, both fasta path and fai path must \
+                 be set",
                 self.from_report.from_type,
             )
         }
@@ -119,7 +124,7 @@ impl PipelineCommand for ToBsxConvert {
             )
         }
         else {
-            return Err(anyhow!("Either fasta_path or fai_path must be set"))
+            return Err(anyhow!("Either fasta_path or fai_path must be set"));
         };
 
         let pbar = init_progress(None)?;

@@ -15,7 +15,10 @@ use convert::{
     R2RConvert,
     ToBsxConvert,
 };
-use dimred::{DimRedArgs, MergeArgs};
+use dimred::{
+    DimRedArgs,
+    MergeArgs,
+};
 use sort::SortArgs;
 use validate::ValidateArgs;
 use wild::ArgsOs;
@@ -55,11 +58,7 @@ enum MainMenu {
         args: dmr::DmrArgs,
     },
 
-    #[command(
-        subcommand,
-        name = "dimred",
-        about = "Dimensionality reduction tools",
-    )]
+    #[command(subcommand, name = "dimred", about = "Dimensionality reduction tools")]
     Dimred(DimRedMenu),
 
     #[command(
@@ -105,9 +104,15 @@ enum ConvertMenu {
 #[derive(Subcommand, Debug)]
 enum DimRedMenu {
     #[command(name = "shrink", about = "Perform dimensionality reduction", long_about = include_str!("strings/dimred_help.txt"))]
-    Shrink { #[clap(flatten)] args: DimRedArgs },
+    Shrink {
+        #[clap(flatten)]
+        args: DimRedArgs,
+    },
     #[command(name = "merge", about = "Merge multiple dimred files")]
-    Merge { #[clap(flatten)] args: MergeArgs }
+    Merge {
+        #[clap(flatten)]
+        args: MergeArgs,
+    },
 }
 
 impl MainMenu {

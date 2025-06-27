@@ -1,12 +1,14 @@
-mod shrink;
 mod merge;
+mod shrink;
 
-pub(crate) use shrink::DimRedArgs;
 pub(crate) use merge::MergeArgs;
+pub(crate) use shrink::DimRedArgs;
 
 pub(self) fn write_imap<W: std::io::Write>(
     writer: W,
-    values: &bsxplorer2::prelude::ContigIntervalMap<bsxplorer2::tools::dimred::merge::EqFloat>,
+    values: &bsxplorer2::prelude::ContigIntervalMap<
+        bsxplorer2::tools::dimred::merge::EqFloat,
+    >,
 ) -> anyhow::Result<()> {
     let file = std::io::BufWriter::new(writer);
     let mut writer = bio::io::bed::Writer::new(file);

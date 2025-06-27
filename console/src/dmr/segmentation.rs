@@ -1,17 +1,17 @@
 use std::collections::BTreeSet;
 
+use bsxplorer2::data_structs::typedef::{
+    DensityType,
+    PosType,
+};
+use bsxplorer2::utils::mann_whitney_u;
 use itertools::{
     izip,
     Itertools,
 };
 
-use super::SegmentView;
-use crate::data_structs::typedef::{
-    DensityType,
-    PosType,
-};
-use crate::tools::dmr::tv1d_clone::condat;
-use crate::utils::mann_whitney_u;
+use super::tv1d_clone::condat;
+use super::types::SegmentView;
 
 /// Splits a segment based on the distance between positions.
 ///

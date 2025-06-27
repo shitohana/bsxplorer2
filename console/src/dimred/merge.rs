@@ -17,7 +17,10 @@ use clap::Args;
 use rayon::prelude::*;
 
 use crate::dimred::write_imap;
-use crate::utils::{expand_wildcard, CliError};
+use crate::utils::{
+    expand_wildcard,
+    CliError,
+};
 use crate::PipelineCommand;
 
 pub fn read_segments<R: Read>(handle: R) -> anyhow::Result<ContigIntervalMap<EqFloat>> {

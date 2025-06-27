@@ -12,9 +12,9 @@ pub use tobsx::ToBsxConvert;
 
 #[derive(Debug, Clone, Args)]
 pub(self) struct FromReportArgs {
-    #[clap(short='f', long = "from", required = true, value_enum, default_value_t = ReportType::Bismark)]
+    #[clap(short='f', long = "from", required = true, default_value_t = ReportType::Bismark)]
     from_type:        ReportType,
-    #[clap(short='F', long = "from-compression", required = true, value_enum, default_value_t = Compression::None)]
+    #[clap(short='F', long = "from-compression", required = true, default_value_t = Compression::None)]
     from_compression: Compression,
     #[arg(
         long,

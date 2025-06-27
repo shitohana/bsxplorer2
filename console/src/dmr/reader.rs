@@ -1,31 +1,30 @@
-use std::os::fd::AsRawFd;
-
 use anyhow::anyhow;
 use arcstr::ArcStr;
+use bsxplorer2::data_structs::batch::{
+    merge_replicates,
+    BsxColumns,
+};
+use bsxplorer2::prelude::{
+    AggMethod,
+    BsxBatch,
+    MultiBsxFileReader,
+};
+use bsxplorer2::utils::THREAD_POOL;
 use crossbeam::queue::SegQueue;
 use itertools::Itertools;
 use polars::error::PolarsResult;
 use rayon::prelude::*;
 
-use super::{
-    tv_recurse_segment,
+use super::segmentation::tv_recurse_segment;
+use super::types::{
     DMRegion,
-    DmrConfig,
     SegmentOwned,
 };
-use crate::data_structs::batch::merge_replicates;
-use crate::prelude::{
-    AggMethod,
-    BsxBatch,
-    BsxFileReader,
-    MultiBsxFileReader,
-};
-use crate::utils::THREAD_POOL;
-use crate::BsxColumns;
+use super::DmrArgs;
 
 fn comp_segment(
     segment: SegmentOwned,
-    config: &DmrConfig,
+    config: &DmrArgs,
     chr: ArcStr,
 ) -> Vec<DMRegion> {
     tv_recurse_segment(
@@ -33,10 +32,10 @@ fn comp_segment(
         config.initial_l,
         config.l_min,
         config.l_coef,
-        config.min_cpgs,
+        config.min_cytosines,
         config.diff_threshold,
-        config.seg_tolerance,
-        config.merge_pvalue,
+        config.tolerance,
+        config.merge_p,
     )
     .into_iter()
     .filter(|s| s.end_pos() != s.start_pos())
@@ -46,7 +45,7 @@ fn comp_segment(
 
 fn merge_for_dmr(
     batches: Vec<BsxBatch>,
-    config: &DmrConfig,
+    config: &DmrArgs,
 ) -> PolarsResult<BsxBatch> {
     let bitmap = batches
         .iter()
@@ -85,13 +84,13 @@ fn merge_for_dmr(
 }
 
 pub struct DmrReader {
-    config:  DmrConfig,
+    config:  DmrArgs,
     readers: (MultiBsxFileReader, MultiBsxFileReader),
 }
 
 impl DmrReader {
     pub fn new(
-        config: DmrConfig,
+        config: DmrArgs,
         readers: (MultiBsxFileReader, MultiBsxFileReader),
     ) -> Self {
         Self { config, readers }
@@ -99,30 +98,6 @@ impl DmrReader {
 
     pub fn blocks_total(&self) -> usize {
         self.readers.0.blocks_total()
-    }
-
-    pub fn from_handles<F>(
-        left: Vec<F>,
-        right: Vec<F>,
-        config: DmrConfig,
-    ) -> anyhow::Result<Self>
-    where
-        F: AsRawFd + 'static + Sync + Send, {
-        let left = MultiBsxFileReader::from_iter(
-            left.into_iter()
-                .map(BsxFileReader::try_new)
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-        let right = MultiBsxFileReader::from_iter(
-            right
-                .into_iter()
-                .map(BsxFileReader::try_new)
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-
-        let out = Self::new(config, (left, right));
-
-        Ok(out)
     }
 
     pub fn iter(&mut self) -> DmrIterator<'_> {
@@ -136,7 +111,7 @@ impl DmrReader {
 pub struct DmrIterator<'a> {
     right_iter: Box<dyn Iterator<Item = PolarsResult<Vec<BsxBatch>>> + 'a>,
     left_iter:  Box<dyn Iterator<Item = PolarsResult<Vec<BsxBatch>>> + 'a>,
-    config:     &'a DmrConfig,
+    config:     &'a DmrArgs,
     results:    SegQueue<DMRegion>,
     last_chr:   ArcStr,
     leftover:   Option<SegmentOwned>,
@@ -147,7 +122,7 @@ impl<'a> DmrIterator<'a> {
     pub fn new(
         left_iter: Box<dyn Iterator<Item = PolarsResult<Vec<BsxBatch>>> + 'a>,
         right_iter: Box<dyn Iterator<Item = PolarsResult<Vec<BsxBatch>>> + 'a>,
-        config: &'a DmrConfig,
+        config: &'a DmrArgs,
     ) -> DmrIterator<'a> {
         let leftover = None;
         let last_chr = ArcStr::from("");

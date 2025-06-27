@@ -18,7 +18,6 @@ performant = ["polars/performant", "polars/cse"]
 # performant_nightly = ["polars/nightly"]
 # Currently disable to silence the rust-analyzer
 performant_nightly = []
-console = ["clap"]
 tools = ["dep:typed_floats", "dep:dbscan", "dep:smallvec"]
 
 [lib]
@@ -30,7 +29,6 @@ bio.workspace        = true
 crossbeam.workspace  = true
 hashbrown.workspace  = true
 itertools.workspace  = true
-log.workspace        = true
 once_cell.workspace  = true
 paste.workspace      = true
 polars.workspace     = true
@@ -64,9 +62,7 @@ xz2      = { version = "0.1.7",  optional = true }
 zip      = { version = "=3.0.0", optional = true }
 zstd     = { version = "0.13.3", optional = true }
 
-clap          = { version = "4.1", features = ["derive"], optional = true }
 dbscan        = { version = "0.3.1", optional = true }
-glob          = {version = "0.3", optional = true}
 noodles-fasta = { version = "0.54.0", default-features = false }
 rust-lapper   = { version = "1.1.0", features = ["serde", "with_serde"] }
 typed_floats  = { version = "1.0.6", features = ["serde"], optional = true }

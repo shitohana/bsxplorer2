@@ -1,6 +1,16 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use bsxplorer2::data_structs::typedef::{
+    DensityType,
+    PosType,
+};
+use bsxplorer2::prelude::{
+    BsxBatch,
+    Contig,
+    Strand,
+};
+use bsxplorer2::utils::mann_whitney_u;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use serde::{
@@ -9,17 +19,7 @@ use serde::{
     Serializer,
 };
 
-use crate::data_structs::typedef::{
-    DensityType,
-    PosType,
-};
-use crate::prelude::{
-    Contig,
-    Strand,
-};
-use crate::tools::dmr::segmentation;
-use crate::utils::mann_whitney_u;
-use crate::BsxBatch;
+use super::segmentation;
 
 #[derive(Clone, Debug)]
 pub struct SegmentView<'a> {
@@ -317,17 +317,9 @@ impl DMRegion {
         }
     }
 
-    pub fn meth_diff(&self) -> DensityType {
-        self.meth_left - self.meth_right
-    }
-
     #[allow(dead_code)]
     fn meth_mean(&self) -> DensityType {
         (self.meth_left + self.meth_right) / 2.0
-    }
-
-    pub fn length(&self) -> PosType {
-        self.end - self.start + 1
     }
 
     pub fn as_contig(&self) -> Contig {

@@ -33,10 +33,10 @@ pub struct R2RConvert {
     )]
     output: PathBuf,
 
-    #[clap(short='t', long = "to", required = true, value_enum, default_value_t = ReportType::Bismark)]
+    #[clap(short='t', long = "to", required = true, default_value_t = ReportType::Bismark)]
     to_type: ReportType,
 
-    #[clap(short='T', long = "to-compression", required = true, value_enum, default_value_t = Compression::None)]
+    #[clap(short='T', long = "to-compression", required = true, default_value_t = Compression::None)]
     to_compression: Compression,
 
     #[clap(short='L', long = "level", required = false, value_enum, default_value = None)]

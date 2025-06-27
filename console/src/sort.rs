@@ -9,7 +9,10 @@ use log::info;
 use spipe::spipe;
 
 use crate::utils::{
-    init_progress, validate_input, validate_output, CliIpcCompression
+    init_progress,
+    validate_input,
+    validate_output,
+    CliIpcCompression,
 };
 use crate::PipelineCommand;
 
@@ -67,7 +70,8 @@ impl PipelineCommand for SortArgs {
         let progress_bar = init_progress(Some(reader.blocks_total()))?;
 
         for chr in chr_order {
-            let batches = index.chr_indices(&chr)
+            let batches = index
+                .chr_indices(&chr)
                 .ok_or(anyhow!("Chromosome {} not present in file", chr))?;
 
             for batch_idx in batches {

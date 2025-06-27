@@ -16,11 +16,6 @@ use bsxplorer2::data_structs::typedef::{
 };
 use bsxplorer2::data_structs::Context;
 use bsxplorer2::prelude::MultiBsxFileReader;
-use bsxplorer2::tools::dmr::{
-    DMRegion,
-    DmrConfig,
-    DmrReader,
-};
 use clap::{
     Args,
     ValueEnum,
@@ -35,6 +30,8 @@ use log::{
 use serde::Serialize;
 use spipe::spipe;
 
+use super::types::DMRegion;
+use crate::dmr::reader::DmrReader;
 use crate::strings::dmr as strings;
 use crate::utils::{
     check_validate_paths,
@@ -47,7 +44,7 @@ use crate::{
 };
 
 #[derive(Args, Debug, Clone)]
-pub(crate) struct DmrArgs {
+pub struct DmrArgs {
     #[arg(
         value_parser,
         short = 'A', long,
@@ -55,7 +52,7 @@ pub(crate) struct DmrArgs {
         required = true,
         help = strings::GROUP_A
     )]
-    group_a: Vec<String>,
+    pub(crate) group_a: Vec<String>,
     #[arg(
         value_parser,
         short = 'B', long,
@@ -63,28 +60,27 @@ pub(crate) struct DmrArgs {
         required = true,
         help = strings::GROUP_B
     )]
-    group_b: Vec<String>,
+    pub(crate) group_b: Vec<String>,
     #[arg(
         short = 'o', long,
         required = true,
         help = strings::OUTPUT
     )]
-    output:  PathBuf,
+    pub(crate) output:  PathBuf,
     #[arg(
         short, long,
         default_value_t = false,
         help = strings::FORCE
     )]
-    force:   bool,
+    pub(crate) force:   bool,
 
     #[clap(
         short, long,
-        value_enum,
         default_value_t = Context::CG,
         help_heading = "FILTER ARGS",
         help = strings::CONTEXT
     )]
-    context: Context,
+    pub(crate) context: Context,
 
     #[arg(
         short, long,
@@ -92,7 +88,7 @@ pub(crate) struct DmrArgs {
         help_heading = "FILTER ARGS",
         help = strings::N_MISSING
     )]
-    n_missing: usize,
+    pub(crate) n_missing: usize,
 
     #[arg(
         short = 'v', long,
@@ -100,7 +96,7 @@ pub(crate) struct DmrArgs {
         help_heading = "FILTER ARGS",
         help = strings::MIN_COVERAGE
     )]
-    min_coverage: CountType,
+    pub(crate) min_coverage: CountType,
 
     #[arg(
         short, long,
@@ -108,7 +104,7 @@ pub(crate) struct DmrArgs {
         help_heading = "FILTER ARGS",
         help = strings::MIN_CYTOSINES
     )]
-    min_cytosines: usize,
+    pub(crate) min_cytosines: usize,
 
     #[arg(
         short, long,
@@ -116,7 +112,7 @@ pub(crate) struct DmrArgs {
         help_heading = "FILTER ARGS",
         help = strings::DIFF_THRESHOLD
     )]
-    diff_threshold: DensityType,
+    pub(crate) diff_threshold: DensityType,
 
     #[arg(
         short = 'D', long,
@@ -124,7 +120,7 @@ pub(crate) struct DmrArgs {
         help_heading = "SEGMENTATION ARGS",
         help = strings::MAX_DIST
     )]
-    max_dist: PosType,
+    pub(crate) max_dist: PosType,
 
     #[arg(
         short = 'L', long,
@@ -132,7 +128,7 @@ pub(crate) struct DmrArgs {
         help_heading = "SEGMENTATION ARGS",
         help = strings::INITIAL_L
     )]
-    initial_l: f64,
+    pub(crate) initial_l: f64,
 
     #[arg(
         short = 'l', long,
@@ -140,7 +136,7 @@ pub(crate) struct DmrArgs {
         help_heading = "SEGMENTATION ARGS",
         help = strings::L_MIN
     )]
-    l_min: f64,
+    pub(crate) l_min: f64,
 
     #[arg(
         long = "coef",
@@ -148,7 +144,7 @@ pub(crate) struct DmrArgs {
         help_heading = "SEGMENTATION ARGS",
         help = strings::L_COEF
     )]
-    l_coef: f64,
+    pub(crate) l_coef: f64,
 
     #[arg(
         long,
@@ -156,7 +152,7 @@ pub(crate) struct DmrArgs {
         help_heading = "SEGMENTATION ARGS",
         help = strings::TOLERANCE
     )]
-    tolerance: DensityType,
+    pub(crate) tolerance: DensityType,
 
     #[arg(
         long,
@@ -164,7 +160,7 @@ pub(crate) struct DmrArgs {
         help_heading = "SEGMENTATION ARGS",
         help = strings::MERGE_P
     )]
-    merge_p: f64,
+    pub(crate) merge_p: f64,
 
     #[arg(
         short = 'p', long,
@@ -172,7 +168,7 @@ pub(crate) struct DmrArgs {
         help_heading = "FILTER ARGS",
         help = strings::PADJ
     )]
-    padj: f64,
+    pub(crate) padj: f64,
 
     #[clap(
         long="pmethod",
@@ -180,7 +176,7 @@ pub(crate) struct DmrArgs {
         default_value_t = PadjMethod::BH,
         help_heading = "FILTER ARGS"
     )]
-    pmethod: PadjMethod,
+    pub(crate) pmethod: PadjMethod,
 }
 
 #[derive(Debug, Clone, ValueEnum, Copy)]
@@ -212,7 +208,7 @@ fn get_csv_reader(path: &Path) -> Result<csv::Reader<File>> {
 fn write_dmr_segments(
     left_paths: &[String],
     right_paths: &[String],
-    config: DmrConfig,
+    config: DmrArgs,
     output: PathBuf,
 ) -> Result<PathBuf> {
     let left_reader = spipe!(
@@ -374,7 +370,7 @@ impl PipelineCommand for DmrArgs {
         let segments_path = write_dmr_segments(
             &self.group_a,
             &self.group_b,
-            DmrConfig::from(self),
+            self.clone(),
             self.output.clone(),
         )?;
 
@@ -432,25 +428,6 @@ impl DmrFilteredRow {
             group_b: dmr.meth_right,
             meth_diff: dmr.meth_diff,
             meth_mean: dmr.meth_mean,
-        }
-    }
-}
-
-impl From<&DmrArgs> for DmrConfig {
-    fn from(value: &DmrArgs) -> Self {
-        bsxplorer2::tools::dmr::DmrConfig {
-            context:        value.context,
-            n_missing:      value.n_missing,
-            min_coverage:   value.min_coverage,
-            diff_threshold: value.diff_threshold,
-            min_cpgs:       value.min_cytosines,
-            max_dist:       value.max_dist,
-            initial_l:      value.initial_l,
-            l_min:          value.l_min,
-            l_coef:         value.l_coef,
-            seg_tolerance:  value.tolerance,
-            merge_pvalue:   value.merge_p,
-            seg_pvalue:     value.padj,
         }
     }
 }

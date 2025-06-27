@@ -22,21 +22,27 @@ use std::io::{
     BufReader,
     Read,
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
+use std::sync::{
+    Arc,
+    Condvar,
+    Mutex,
+};
 use std::thread;
 
 use itertools::Itertools;
 use noodles_fasta::io::Indexer;
 use once_cell::sync::Lazy;
 use polars::prelude::*;
-
-mod stats;
 use rayon::{
     ThreadPool,
     ThreadPoolBuilder,
 };
-pub use stats::*;
+
+pub use crate::tools::stats::*;
 
 pub static THREAD_POOL: Lazy<ThreadPool> = Lazy::new(|| {
     let num_threads: Option<usize> = std::env::var("BSX_NUM_THREADS")

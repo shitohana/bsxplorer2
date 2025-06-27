@@ -160,20 +160,34 @@ pub fn check_validate_paths<R: AsRef<str>>(
         .concat();
     ensure!(paths.len() > 0, "Paths cannot be empty");
 
-    paths.iter().try_for_each(|x| { validate_input(x).map(|_| {}) })?;
+    paths
+        .iter()
+        .try_for_each(|x| validate_input(x).map(|_| {}))?;
     info!("Paths {:?} valid", paths);
     Ok(paths)
 }
 
 pub fn validate_input<P: AsRef<Path>>(path: P) -> anyhow::Result<P> {
-    ensure!(path.as_ref().exists(), "Path {} does not exist", path.as_ref().display());
-    ensure!(path.as_ref().is_file(), "Path {} is not a file", path.as_ref().display());
+    ensure!(
+        path.as_ref().exists(),
+        "Path {} does not exist",
+        path.as_ref().display()
+    );
+    ensure!(
+        path.as_ref().is_file(),
+        "Path {} is not a file",
+        path.as_ref().display()
+    );
     debug!("Path {} valid", path.as_ref().display());
     Ok(path)
 }
 
 pub fn validate_output<P: AsRef<Path>>(path: P) -> anyhow::Result<P> {
-    ensure!(!path.as_ref().is_dir(), "Path {} is a directory", path.as_ref().display());
+    ensure!(
+        !path.as_ref().is_dir(),
+        "Path {} is a directory",
+        path.as_ref().display()
+    );
     if path.as_ref().exists() {
         info!("Overwriting {}", path.as_ref().display())
     }

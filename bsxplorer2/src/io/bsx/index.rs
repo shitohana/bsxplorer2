@@ -198,15 +198,11 @@ impl BatchIndex {
             .map(|v| v.into_iter().cloned().collect())
     }
 
-    pub fn chr_indices<R: AsRef<str>>(&self, chr: R) -> Option<Vec<usize>> {
-        self.find(
-            &Contig::new(
-                chr.as_ref().into(),
-                0,
-                u32::MAX,
-                Strand::None
-            )
-        )
+    pub fn chr_indices<R: AsRef<str>>(
+        &self,
+        chr: R,
+    ) -> Option<Vec<usize>> {
+        self.find(&Contig::new(chr.as_ref().into(), 0, u32::MAX, Strand::None))
     }
 
     /// Returns the chromosome order stored in the index.
