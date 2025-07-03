@@ -99,6 +99,12 @@ macro_rules! getter_fn {
             &self.$field_name
         }
     };
+    (*$field_name: ident, $field_type: ty) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        pub fn $field_name(&self) -> $field_type {
+            self.$field_name
+        }
+    };
     ($field_name:ident, mut $field_type:ty) => {
         paste::paste! {
             #[cfg_attr(coverage_nightly, coverage(off))]

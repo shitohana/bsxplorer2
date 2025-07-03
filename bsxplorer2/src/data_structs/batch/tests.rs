@@ -1061,13 +1061,7 @@ mod batch_tests {
             .into_no_null_iter()
             .map(|v| v as f64)
             .collect();
-        let expected_var = statrs::statistics::Data::new(density_f64).iter().variance(); // Sample variance
-
         assert_approx_eq!(meth_stats.mean_methylation() as f64, expected_mean, 1e-6);
-        // Check variance with a reasonable tolerance
-        assert_approx_eq!(meth_stats.methylation_var() as f64, expected_var, 1e-6);
-        // Note: coverage_dist, context_stats, and strand_stats are tested in
-        // their own functions below.
     }
 
     #[rstest]

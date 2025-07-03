@@ -360,7 +360,6 @@ impl BsxBatch {
 
         MethylationStats::from_data(
             mean,
-            var,
             self.get_coverage_dist(),
             self.get_context_stats(),
             self.get_strand_stats(),

@@ -420,9 +420,9 @@ impl GffEntry {
 
     getter_fn!(feature_type, ArcStr);
 
-    getter_fn!(score, Option<f64>);
+    getter_fn!(*score, Option<f64>);
 
-    getter_fn!(phase, Option<u8>);
+    getter_fn!(*phase, Option<u8>);
 
     getter_fn!(attributes, GffEntryAttributes);
 

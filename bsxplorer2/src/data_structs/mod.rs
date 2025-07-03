@@ -44,7 +44,4 @@ pub use enums::{
     Context,
     Strand,
 };
-pub use methstats::{
-    MethylationStatFlat,
-    MethylationStats,
-};
+pub use methstats::MethylationStats;

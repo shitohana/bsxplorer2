@@ -24,7 +24,6 @@ mod methstats_tests {
 
         MethylationStats {
             mean_methylation: mean,
-            methylation_var: variance,
             coverage_distribution,
             context_methylation,
             strand_methylation: HashMap::new(),
@@ -36,73 +35,13 @@ mod methstats_tests {
     fn test_methylation_stats_new() {
         let stats = MethylationStats::new();
         assert_eq!(stats.mean_methylation, 0.0);
-        assert_eq!(stats.methylation_var, 0.0);
         assert!(stats.coverage_distribution.is_empty());
         assert!(stats.context_methylation.is_empty());
         assert!(stats.strand_methylation.is_empty()); // Test strand_methylation
                                                       // is empty too
     }
 
-    /// Test merging of two `MethylationStats` structures
-    #[test]
-    fn test_merge_methylation_stats() {
-        let mut stats1 = sample_stats(0.3, 0.01, vec![(10, 100), (20, 50)], vec![(
-            Context::CG,
-            45.0,
-            150,
-        )]);
-        let stats2 = sample_stats(0.5, 0.02, vec![(10, 200), (30, 75)], vec![
-            (Context::CG, 110.0, 275),
-            (Context::CHG, 60.0, 100), /* Fixed: was 0.6 which is incorrect
-                                        * for sum */
-        ]);
-
-        let weight1 = 150.0;
-        let weight2 = 275.0;
-        let total_weight = weight1 + weight2;
-        let mean1 = 0.3;
-        let mean2 = 0.5;
-        let var1 = 0.01;
-        let var2 = 0.02;
-        let delta = mean1 - mean2;
-
-        let expected_mean = (weight1 * mean1 + weight2 * mean2) / total_weight;
-        let expected_variance = ((weight1 * var1 + weight2 * var2)
-            + (weight1 * weight2 / total_weight) * (delta * delta))
-            / total_weight;
-
-        stats1.merge(&stats2);
-        stats1.finalize_methylation();
-
-        // Check if mean methylation is correctly weighted
-        assert!((stats1.mean_methylation - expected_mean).abs() < 1e-6);
-
-        // Check if variance is correctly calculated
-        assert!((stats1.methylation_var - expected_variance).abs() < 1e-6);
-
-        // Check merged coverage distribution
-        assert_eq!(stats1.coverage_distribution.get(&10), Some(&300));
-        assert_eq!(stats1.coverage_distribution.get(&20), Some(&50));
-        assert_eq!(stats1.coverage_distribution.get(&30), Some(&75));
-
-        // Check finalized context methylation (ensuring it's averaged)
-        // CG context should be (45.0 + 110.0) / (150 + 275) = 155.0 / 425 =
-        // 0.36470588
-        assert_approx_eq!(
-            stats1.context_methylation.get(&Context::CG).unwrap().0,
-            155.0 / 425.0,
-            1e-6
-        );
-
-        // CHG context should be 60.0 / 100 = 0.6
-        assert_approx_eq!(
-            stats1.context_methylation.get(&Context::CHG).unwrap().0,
-            0.6,
-            1e-6
-        );
-    }
-
-    /// Test genome-wide mean methylation calculation
+        /// Test genome-wide mean methylation calculation
     #[test]
     fn test_genome_wide_mean_methylation() {
         let stats = sample_stats(0.4, 0.02, vec![(10, 100), (20, 200)], vec![(
@@ -118,63 +57,7 @@ mod methstats_tests {
         assert_eq!(empty_stats.mean_methylation(), 0.0);
     }
 
-    /// Test merging multiple methylation statistics
-    #[test]
-    fn test_merge_multiple_methylation_stats() {
-        let stats1 = sample_stats(0.2, 0.01, vec![(10, 100)], vec![(
-            Context::CG,
-            20.0, // Should be sum (0.2 * 100 = 20.0), not mean
-            100,
-        )]);
-        let stats2 = sample_stats(0.4, 0.02, vec![(20, 200)], vec![(
-            Context::CG,
-            80.0, // Should be sum (0.4 * 200 = 80.0), not mean
-            200,
-        )]);
-        let stats3 = sample_stats(0.6, 0.03, vec![(30, 300)], vec![(
-            Context::CHG,
-            180.0, // Should be sum (0.6 * 300 = 180.0), not mean
-            300,
-        )]);
-
-        let merged = MethylationStats::merge_multiple(&vec![stats1, stats2, stats3]);
-
-        let weight1 = 100.0;
-        let weight2 = 200.0;
-        let weight3 = 300.0;
-        let total_weight = weight1 + weight2 + weight3;
-        let mean1 = 0.2;
-        let mean2 = 0.4;
-        let mean3 = 0.6;
-
-        let expected_mean =
-            (weight1 * mean1 + weight2 * mean2 + weight3 * mean3) / total_weight;
-
-        // Variance calculation is complex in multi-merge and not correctly
-        // implemented in test The test adds pairwise delta terms which
-        // isn't correct for 3+ datasets
-
-        assert!((merged.mean_methylation - expected_mean).abs() < 1e-6);
-
-        assert_eq!(merged.coverage_distribution.get(&10), Some(&100));
-        assert_eq!(merged.coverage_distribution.get(&20), Some(&200));
-        assert_eq!(merged.coverage_distribution.get(&30), Some(&300));
-
-        // Check context-specific methylation after finalization
-        assert_approx_eq!(
-            merged.context_methylation.get(&Context::CG).unwrap().0,
-            (20.0 + 80.0) / 300.0, /* (sum1 + sum2) / (count1 + count2) =
-                                    * 100/300 = 0.33333 */
-            1e-6
-        );
-        assert_approx_eq!(
-            merged.context_methylation.get(&Context::CHG).unwrap().0,
-            180.0 / 300.0, // sum3 / count3 = 0.6
-            1e-6
-        );
-    }
-
-    /// Test finalization of context methylation levels
+        /// Test finalization of context methylation levels
     #[test]
     fn test_finalize_context_methylation() {
         let mut stats = sample_stats(0.5, 0.01, vec![], vec![
@@ -222,10 +105,6 @@ mod methstats_tests {
         assert_eq!(
             stats_with_strand.mean_methylation,
             deserialized.mean_methylation
-        );
-        assert_eq!(
-            stats_with_strand.methylation_var,
-            deserialized.methylation_var
         );
         assert_eq!(
             stats_with_strand.coverage_distribution,
