@@ -1,19 +1,22 @@
 #[cfg(feature = "compression")]
 mod inner {
+    use std::convert::Infallible;
+    use std::fmt::Display;
     use std::fs::File;
     use std::io::{
         copy,
         Seek,
         SeekFrom,
         Write,
-    }; /* Added copy, Seek,
-        * SeekFrom */
+    };
+    use std::str::FromStr;
 
+    // Added copy, Seek,
+    // SeekFrom
     use polars::io::mmap::MmapBytesReader;
     use tempfile::tempfile; // Added tempfile
 
     #[derive(Clone, Debug, Copy, PartialEq, Eq)]
-    #[cfg_attr(feature = "console", derive(clap::ValueEnum))]
     pub enum Compression {
         None,
         Gz,
@@ -22,6 +25,41 @@ mod inner {
         Xz2,
         Bzip2,
         Zip,
+    }
+
+    impl FromStr for Compression {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            match s {
+                "none" => Ok(Compression::None),
+                "gz" => Ok(Compression::Gz),
+                "zstd" => Ok(Compression::Zstd),
+                "lz4" => Ok(Compression::Lz4),
+                "xz2" => Ok(Compression::Xz2),
+                "bzip2" => Ok(Compression::Bzip2),
+                "zip" => Ok(Compression::Zip),
+                _ => unimplemented!(),
+            }
+        }
+    }
+
+    impl Display for Compression {
+        fn fmt(
+            &self,
+            f: &mut std::fmt::Formatter<'_>,
+        ) -> std::fmt::Result {
+            let str = match self {
+                Compression::None => String::from("none"),
+                Compression::Gz => String::from("gz"),
+                Compression::Zstd => String::from("zstd"),
+                Compression::Lz4 => String::from("lz4"),
+                Compression::Xz2 => String::from("xz2"),
+                Compression::Bzip2 => String::from("bzip2"),
+                Compression::Zip => String::from("zip"),
+            };
+            write!(f, "{}", str)
+        }
     }
 
     impl Compression {

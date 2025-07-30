@@ -23,18 +23,24 @@ wild = "2.0"
 crossbeam.workspace = true
 adjustp.workspace = true
 anyhow.workspace = true
-pretty_env_logger.workspace = true
 rayon.workspace = true
 serde.workspace = true
 polars.workspace = true
+once_cell.workspace  = true
 itertools.workspace = true
 bio.workspace = true
-std-semaphore = "0.1.0"
+log.workspace = true
+spipe = "0.1.0"
+hashbrown.workspace = true
+uuid = { version = "1.17.0", features = ["v4"] }
+arcstr = "1.2.0"
+num = "0.4.3"
+
 
 [dependencies.bsxplorer2]
-version = "0.2.1"
+path = "../bsxplorer2"
 default-features = false
-features = ["console", "performant", "compression", "tools"]
+features = ["performant", "compression", "tools"]
 
 [[bin]]
 name = "bsxplorer"

@@ -19,6 +19,7 @@ use polars_arrow::io::ipc::read::{
 use rayon::prelude::*;
 
 use crate::data_structs::batch::BsxBatch;
+use crate::getter_fn;
 use crate::utils::THREAD_POOL;
 
 // ThreadLocalHandle no longer needs a lifetime parameter as it holds its own
@@ -120,12 +121,22 @@ impl std::fmt::Debug for BsxFileReader {
 }
 
 impl BsxFileReader {
+    getter_fn!(cache, mut VecDeque<BsxBatch>);
+
     /// Creates a new `BsxFileReader` from a file handle.
     ///
     /// This will memory map the file and read its metadata and dictionaries.
     /// It also initializes a thread pool and thread-local handles for parallel
     /// reading.
     pub fn try_new<R: AsRawFd + 'static>(handle: R) -> anyhow::Result<Self> {
+        let n_threads = THREAD_POOL.current_num_threads();
+        Self::with_n_threads(handle, n_threads)
+    }
+
+    pub fn with_n_threads<R: AsRawFd + 'static>(
+        handle: R,
+        n_threads: usize,
+    ) -> anyhow::Result<Self> {
         // 1. Create the shared Arc<Mmap>
         let mmap = Arc::new(unsafe { MmapOptions::new().map(&handle)? });
         // Create a temporary reader to read metadata and dictionaries
@@ -139,13 +150,11 @@ impl BsxFileReader {
         )?;
 
         let blocks_total = metadata.blocks.len();
-        let n_threads = THREAD_POOL.current_num_threads();
 
         // 2. Create thread-local handles, each with a clone of the Arc<Mmap>
         let thread_local_handles: Vec<ThreadLocalHandle> = (0..n_threads)
             .map(|_| ThreadLocalHandle::new(mmap.clone())) // Pass a clone of the Arc to each handle
             .collect_vec();
-
 
         Ok(Self {
             thread_local_handles,
@@ -246,11 +255,6 @@ impl BsxFileReader {
         Ok(())
     }
 
-    /// Returns a mutable reference to the internal batch cache.
-    pub fn get_cache_mut(&mut self) -> &mut VecDeque<BsxBatch> {
-        &mut self.cache
-    }
-
     /// Returns the number of threads used by the internal thread pool.
     pub fn n_threads(&self) -> usize {
         self.thread_local_handles.len()
@@ -279,7 +283,7 @@ impl Iterator for BsxFileIterator {
     type Item = PolarsResult<BsxBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(batch) = self.reader.get_cache_mut().pop_front() {
+        if let Some(batch) = self.reader.cache_mut().pop_front() {
             self.current_batch += 1;
             Some(Ok(batch))
         }
@@ -324,7 +328,7 @@ impl Iterator for BsxFileIterator {
         n: usize,
     ) -> Option<Self::Item> {
         self.current_batch = n;
-        self.reader.get_cache_mut().clear();
+        self.reader.cache_mut().clear();
         self.reader.get_batch(n)
     }
 }
@@ -358,7 +362,7 @@ mod tests {
     #[rstest]
     fn test_reading(mut _reader: BsxFileReader) -> anyhow::Result<()> {
         _reader.cache_batches(&[1, 2, 3, 4, 5, 6])?;
-        assert!(!_reader.get_cache_mut().pop_front().unwrap().is_empty());
+        assert!(!_reader.cache_mut().pop_front().unwrap().is_empty());
         Ok(())
     }
 

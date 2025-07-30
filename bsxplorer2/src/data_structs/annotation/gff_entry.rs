@@ -2,6 +2,7 @@ use std::fmt::{
     Debug,
     Write,
 };
+use std::hash::Hash;
 use std::str::FromStr;
 use std::{
     f64,
@@ -12,6 +13,7 @@ use anyhow::anyhow;
 use arcstr::ArcStr;
 use hashbrown::HashMap;
 use nanoid::nanoid;
+use paste::paste;
 use serde::de::{
     self,
     Deserializer,
@@ -45,18 +47,62 @@ pub struct GffEntryAttributes {
     pub other:         HashMap<String, String>,
 }
 
+impl Hash for GffEntryAttributes {
+    fn hash<H: std::hash::Hasher>(
+        &self,
+        state: &mut H,
+    ) {
+        self.id.hash(state);
+        // 'other' field is intentionally excluded from hashing
+    }
+}
+
+macro_rules! with_vec_field_fn {
+    ($name: ident, $item: ty, $op: expr) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        paste! {
+            pub fn [<with_$name>]<S: $item, I: IntoIterator<Item = S>>(
+                mut self,
+                values: I,
+            ) -> Self {
+                self.$name = Some(values.into_iter().map($op).collect());
+                self
+            }
+        }
+    };
+
+    ($name: ident, $type: ty) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        paste! {
+            pub fn [<with_$name>]<I: IntoIterator<Item = $type>>(
+                mut self,
+                values: I,
+            ) -> Self {
+                self.$name = Some(values.into_iter().map(|s| s.to_owned()).collect());
+                self
+            }
+        }
+    };
+}
+
 impl GffEntryAttributes {
-    with_field_fn!(target, Option<Vec<Contig>>);
+    with_vec_field_fn!(target, Contig);
 
-    with_field_fn!(gap, Option<Vec<String>>);
+    with_vec_field_fn!(gap, String);
 
-    with_field_fn!(derives_from, Option<Vec<String>>);
+    with_vec_field_fn!(derives_from, String);
 
-    with_field_fn!(note, Option<Vec<String>>);
+    with_vec_field_fn!(note, String);
 
-    with_field_fn!(dbxref, Option<Vec<BsxSmallStr>>);
+    with_vec_field_fn!(ontology_term, String);
 
-    with_field_fn!(ontology_term, Option<Vec<String>>);
+    with_vec_field_fn!(dbxref, AsRef<str>, |v| v.as_ref().into());
+
+    with_vec_field_fn!(name, AsRef<str>, |v| v.as_ref().into());
+
+    with_vec_field_fn!(alias, AsRef<str>, |v| v.as_ref().into());
+
+    with_vec_field_fn!(parent, AsRef<str>, |v| v.as_ref().into());
 
     with_field_fn!(other, HashMap<String, String>);
 
@@ -82,41 +128,11 @@ impl GffEntryAttributes {
 
     /// Sets the ID attribute.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_id<S: Into<BsxSmallStr>>(
+    pub fn with_id<S: AsRef<str>>(
         mut self,
-        id: Option<S>,
+        id: S,
     ) -> Self {
-        self.id = id.map(|s| s.into());
-        self
-    }
-
-    /// Sets the Name attribute.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_name<S: Into<BsxSmallStr>>(
-        mut self,
-        name: Option<Vec<S>>,
-    ) -> Self {
-        self.name = name.map(|v| v.into_iter().map(|s| s.into()).collect());
-        self
-    }
-
-    /// Sets the Alias attribute.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_alias<S: Into<BsxSmallStr>>(
-        mut self,
-        alias: Option<Vec<S>>,
-    ) -> Self {
-        self.alias = alias.map(|v| v.into_iter().map(|s| s.into()).collect());
-        self
-    }
-
-    /// Sets the Parent attribute.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn with_parent<S: Into<BsxSmallStr>>(
-        mut self,
-        parent: Option<Vec<S>>,
-    ) -> Self {
-        self.parent = parent.map(|v| v.into_iter().map(|s| s.into()).collect());
+        self.id = Some(id.as_ref().into());
         self
     }
 }
@@ -404,9 +420,9 @@ impl GffEntry {
 
     getter_fn!(feature_type, ArcStr);
 
-    getter_fn!(score, Option<f64>);
+    getter_fn!(*score, Option<f64>);
 
-    getter_fn!(phase, Option<u8>);
+    getter_fn!(*phase, Option<u8>);
 
     getter_fn!(attributes, GffEntryAttributes);
 

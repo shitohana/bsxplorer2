@@ -28,3 +28,4 @@ polars.workspace = true
 bio.workspace = true
 hashbrown.workspace = true
 itertools.workspace = true
+slotmap.workspace = true

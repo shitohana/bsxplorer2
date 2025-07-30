@@ -1,25 +1,20 @@
 use std::fs::File;
-use std::io::IsTerminal;
 use std::path::PathBuf;
-use std::process::exit;
 
-use bsxplorer2::data_structs::coords::Contig;
-use bsxplorer2::data_structs::Strand;
-use bsxplorer2::io::bsx::{
-    BatchIndex,
-    BsxFileReader,
-    BsxFileWriter,
-};
+use anyhow::anyhow;
+use bsxplorer2::prelude::*;
 use clap::Args;
-use console::style;
-use indicatif::ProgressBar;
 use itertools::Itertools;
+use log::info;
+use spipe::spipe;
 
 use crate::utils::{
-    init_pbar,
+    init_progress,
+    validate_input,
+    validate_output,
     CliIpcCompression,
 };
-
+use crate::PipelineCommand;
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct SortArgs {
@@ -35,29 +30,23 @@ pub(crate) struct SortArgs {
     #[arg(
         short = 'O', long,
         num_args=2..,
-        help = "Order of the chromosomes"
+        help = "Order of the chromosomes",
     )]
     order: Option<Vec<String>>,
 }
 
-impl SortArgs {
-    pub fn run(&self) -> anyhow::Result<()> {
-        if !self.file.exists() {
-            eprintln!(
-                "File {} does not exist!",
-                style(self.file.to_string_lossy()).red()
-            );
-            exit(-1)
-        }
-        if self.output.is_dir() {
-            eprintln!(
-                "{} is a directory!",
-                style(self.output.to_string_lossy()).red()
-            );
-            exit(-1)
-        }
+impl PipelineCommand for SortArgs {
+    fn run(&self) -> anyhow::Result<()> {
+        validate_input(&self.file)?;
 
-        let mut reader = BsxFileReader::try_new(File::open(self.file.clone())?)?;
+        let mut reader = spipe!(
+            &self.file =>
+            validate_input =>?
+            File::open =>?
+            BsxFileReader::try_new =>?
+            ...
+        );
+        info!("Created reader at {}", self.file.display());
 
         let index = BatchIndex::from_reader(&mut reader)?;
         let chr_order = self.order.clone().unwrap_or(
@@ -69,33 +58,28 @@ impl SortArgs {
                 .collect_vec(),
         );
 
-        let mut writer = BsxFileWriter::try_new(
-            File::create(self.output.clone())?,
-            chr_order.clone(),
-            self.to_compression.into(),
-            None,
-        )?;
+        let mut writer = spipe!(
+            &self.output =>
+            validate_output =>?
+            File::create =>?
+            BsxFileWriter::try_new(&chr_order, self.to_compression.into()) =>?
+            ...
+        );
+        info!("Created writer at {}", self.output.display());
 
-
-        let progress_bar = if std::io::stdin().is_terminal() {
-            init_pbar(0)?
-        }
-        else {
-            ProgressBar::hidden()
-        };
+        let progress_bar = init_progress(Some(reader.blocks_total()))?;
 
         for chr in chr_order {
-            let batch_indices =
-                index.find(&Contig::new(chr.clone().into(), 0, u32::MAX, Strand::None));
+            let batches = index
+                .chr_indices(&chr)
+                .ok_or(anyhow!("Chromosome {} not present in file", chr))?;
 
-            if batch_indices.is_none() {
-                eprintln!("Chromosome {} not found in file", style(chr).red());
-                continue;
-            }
-            let batches = batch_indices.unwrap();
             for batch_idx in batches {
-                let batch = reader.get_batch(batch_idx).unwrap()?;
-                writer.write_batch(batch)?;
+                spipe!(
+                    reader.get_batch(batch_idx) =>
+                    .unwrap =>?
+                    |x| writer.write_batch(x) =>? ...
+                );
                 progress_bar.inc(1);
             }
         }

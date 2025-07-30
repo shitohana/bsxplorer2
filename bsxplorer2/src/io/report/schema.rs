@@ -1,3 +1,7 @@
+use std::convert::Infallible;
+use std::fmt::Display;
+use std::str::FromStr;
+
 use polars::prelude::*;
 
 use crate::utils::{
@@ -7,7 +11,6 @@ use crate::utils::{
 
 /// Supported methylation report file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum ReportType {
     /// Bismark methylation extractor output format
     Bismark,
@@ -17,6 +20,35 @@ pub enum ReportType {
     BedGraph,
     /// Coverage report format with methylated/unmethylated counts
     Coverage,
+}
+
+impl FromStr for ReportType {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "bismark" => Ok(ReportType::Bismark),
+            "cgmap" => Ok(ReportType::CgMap),
+            "bedgraph" => Ok(ReportType::BedGraph),
+            "coverage" => Ok(ReportType::Coverage),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Display for ReportType {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        let str = match self {
+            ReportType::Bismark => String::from("bismark"),
+            ReportType::CgMap => String::from("cgmap"),
+            ReportType::BedGraph => String::from("bedgraph"),
+            ReportType::Coverage => String::from("coverage"),
+        };
+        write!(f, "{}", str)
+    }
 }
 
 impl ReportType {

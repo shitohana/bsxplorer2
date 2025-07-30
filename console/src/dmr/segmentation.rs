@@ -1,19 +1,17 @@
 use std::collections::BTreeSet;
 
+use bsxplorer2::data_structs::typedef::{
+    DensityType,
+    PosType,
+};
+use bsxplorer2::utils::mann_whitney_u;
 use itertools::{
     izip,
     Itertools,
 };
 
-use crate::data_structs::typedef::{
-    CountType,
-    DensityType,
-    PosType,
-};
-use crate::data_structs::Context;
-use crate::tools::dmr::data_structs::SegmentView;
-use crate::tools::dmr::tv1d_clone::condat;
-use crate::utils::mann_whitney_u;
+use super::tv1d_clone::condat;
+use super::types::SegmentView;
 
 /// Splits a segment based on the distance between positions.
 ///
@@ -30,7 +28,7 @@ use crate::utils::mann_whitney_u;
 /// A vector of indices where the segment should be split.
 /// # Panics
 ///
-/// * If `positions` is empty.  This should be handled gracefully.
+/// * If `positions` is empty.
 pub fn arg_split_segment(
     positions: &[PosType],
     max_dist: PosType,
@@ -296,14 +294,4 @@ pub fn merge_segments(
         current_segments = merged;
     }
     current_segments
-}
-
-/// Configuration for filtering data_structs.
-pub struct FilterConfig {
-    /// The context to consider (e.g., CpG, CHG, CHH).
-    pub context:      Context,
-    /// The maximum number of missing values allowed.
-    pub n_missing:    usize,
-    /// The minimum coverage required.
-    pub min_coverage: CountType,
 }

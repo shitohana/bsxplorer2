@@ -9,7 +9,6 @@ use serde::{
 };
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
-#[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum Context {
     /// CG context.
     CG,
@@ -53,7 +52,7 @@ impl Display for Context {
     }
 }
 
-impl std::str::FromStr for Context {
+impl FromStr for Context {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -85,9 +84,7 @@ impl<'de> Deserialize<'de> for Context {
     }
 }
 
-
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
-#[cfg_attr(feature = "console", derive(clap::ValueEnum))]
 pub enum Strand {
     /// Forward strand.
     Forward,
@@ -157,7 +154,6 @@ impl From<Strand> for char {
         }
     }
 }
-
 
 impl Display for Strand {
     fn fmt(

@@ -14,11 +14,9 @@ use bio::io::fasta::{
 };
 use crossbeam::channel::Receiver;
 use hashbrown::HashMap;
-use noodles::fasta::fai::{
-    Reader as FaiReader,
-    Record,
-};
-use noodles::fasta::index as index_fasta;
+use noodles_fasta::fai::io::Reader as FaiReader;
+use noodles_fasta::fai::Record;
+use noodles_fasta::fs::index as index_fasta;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use rayon::prelude::*;
@@ -436,7 +434,7 @@ impl ReportReader {
             self.cached_batch
                 .entry(*chr_idx)
                 .and_modify(|b| {
-                    unsafe { b.extend_unchecked(&bsx_batch).expect("vstack failed") };
+                    unsafe { b.extend_unchecked(&bsx_batch) };
                 })
                 .or_insert(bsx_batch);
         }

@@ -15,7 +15,6 @@
 //!   report formats (e.g., Bismark, BedGraph, Coverage), including features for
 //!   aligning report data with reference genome contexts using FASTA/FAI.
 
-
 pub mod bsx;
 #[cfg(feature = "compression")]
 pub mod compression;

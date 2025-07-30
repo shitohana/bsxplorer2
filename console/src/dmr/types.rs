@@ -1,6 +1,16 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use bsxplorer2::data_structs::typedef::{
+    DensityType,
+    PosType,
+};
+use bsxplorer2::prelude::{
+    BsxBatch,
+    Contig,
+    Strand,
+};
+use bsxplorer2::utils::mann_whitney_u;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use serde::{
@@ -9,12 +19,7 @@ use serde::{
     Serializer,
 };
 
-use crate::data_structs::typedef::{
-    DensityType,
-    PosType,
-};
-use crate::tools::dmr::segmentation;
-use crate::utils::mann_whitney_u;
+use super::segmentation;
 
 #[derive(Clone, Debug)]
 pub struct SegmentView<'a> {
@@ -173,6 +178,40 @@ pub struct SegmentOwned {
     positions: Vec<PosType>,
 }
 
+impl TryFrom<(&BsxBatch, &BsxBatch)> for SegmentOwned {
+    type Error = anyhow::Error;
+
+    fn try_from(value: (&BsxBatch, &BsxBatch)) -> Result<Self, Self::Error> {
+        let (left, right) = value;
+
+        if right.len() != left.len() {
+            anyhow::bail!("Batches have different lengths")
+        }
+        if right.as_contig().unwrap() != left.as_contig().unwrap() {
+            anyhow::bail!("Batches cover different regions")
+        }
+
+        let positions = left
+            .position()
+            .into_no_null_iter()
+            .map(|v| v as PosType)
+            .collect_vec();
+
+        let left_density = left
+            .density()
+            .into_iter()
+            .map(|v| v.unwrap_or(DensityType::NAN))
+            .collect_vec();
+        let right_density = right
+            .density()
+            .into_iter()
+            .map(|v| v.unwrap_or(DensityType::NAN))
+            .collect_vec();
+
+        Ok(Self::new(positions, left_density, right_density))
+    }
+}
+
 impl SegmentOwned {
     pub fn new(
         positions: Vec<PosType>,
@@ -243,20 +282,6 @@ impl SegmentOwned {
     }
 }
 
-pub struct ReaderMetadata {
-    pub(crate) blocks_total:  usize,
-    pub(crate) current_block: usize,
-}
-
-impl ReaderMetadata {
-    pub(crate) fn new(blocks_total: usize) -> Self {
-        Self {
-            blocks_total,
-            current_block: 0,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMRegion {
     pub chr:         String,
@@ -292,17 +317,13 @@ impl DMRegion {
         }
     }
 
-    pub fn meth_diff(&self) -> DensityType {
-        self.meth_left - self.meth_right
-    }
-
     #[allow(dead_code)]
     fn meth_mean(&self) -> DensityType {
         (self.meth_left + self.meth_right) / 2.0
     }
 
-    pub fn length(&self) -> PosType {
-        self.end - self.start + 1
+    pub fn as_contig(&self) -> Contig {
+        Contig::new(self.chr.as_str().into(), self.start, self.end, Strand::None)
     }
 }
 

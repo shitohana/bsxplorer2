@@ -22,20 +22,27 @@ use std::io::{
     BufReader,
     Read,
 };
-use std::sync::Arc;
+use std::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
+use std::sync::{
+    Arc,
+    Condvar,
+    Mutex,
+};
+use std::thread;
 
 use itertools::Itertools;
-use log::warn;
-use noodles::fasta::io::Indexer;
+use noodles_fasta::io::Indexer;
 use once_cell::sync::Lazy;
 use polars::prelude::*;
-
-mod stats;
 use rayon::{
     ThreadPool,
     ThreadPoolBuilder,
 };
-pub use stats::*;
+
+pub use crate::tools::stats::*;
 
 pub static THREAD_POOL: Lazy<ThreadPool> = Lazy::new(|| {
     let num_threads: Option<usize> = std::env::var("BSX_NUM_THREADS")
@@ -66,13 +73,6 @@ pub(crate) fn schema_from_arrays(
     names: &[&str],
     dtypes: &[DataType],
 ) -> Schema {
-    if names.len() != dtypes.len() {
-        warn!(
-            "Mismatch between names and dtypes array lengths: {} vs {}",
-            names.len(),
-            dtypes.len()
-        );
-    }
     Schema::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
 }
 
@@ -81,13 +81,6 @@ pub(crate) fn hashmap_from_arrays<'a>(
     names: &[&'a str],
     dtypes: &[DataType],
 ) -> PlHashMap<&'a str, DataType> {
-    if names.len() != dtypes.len() {
-        warn!(
-            "Mismatch between names and dtypes array lengths: {} vs {}",
-            names.len(),
-            dtypes.len()
-        );
-    }
     PlHashMap::from_iter(names.iter().cloned().map_into().zip(dtypes.iter().cloned()))
 }
 
@@ -95,12 +88,6 @@ pub(crate) fn hashmap_from_arrays<'a>(
 macro_rules! plsmallstr {
     ($string: expr) => {
         PlSmallStr::from($string)
-    };
-    () => {
-        PlSmallStr::from("")
-    };
-    () => {
-        PlSmallStr::from("")
     };
 }
 
@@ -112,6 +99,20 @@ macro_rules! getter_fn {
             &self.$field_name
         }
     };
+    (*$field_name: ident, $field_type: ty) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        pub fn $field_name(&self) -> $field_type {
+            self.$field_name
+        }
+    };
+    ($field_name:ident, mut $field_type:ty) => {
+        paste::paste! {
+            #[cfg_attr(coverage_nightly, coverage(off))]
+            pub fn [<$field_name _mut>](&mut self) -> &mut $field_type {
+                &mut self.$field_name
+            }
+        }
+    };
 }
 pub use getter_fn;
 
@@ -121,16 +122,16 @@ macro_rules! with_field_fn {
         paste::paste! {
             #[cfg_attr(coverage_nightly, coverage(off))]
             pub fn [<with_$field_name>](mut self, value: $field_type) -> Self {
-            self.$field_name = value;
-            self
+                self.$field_name = value;
+                self
             }
         }
     };
 }
 
 pub fn read_chrs_from_fai<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
-    let records: Vec<noodles::fasta::fai::Record> =
-        noodles::fasta::fai::io::Reader::new(BufReader::new(reader))
+    let records: Vec<noodles_fasta::fai::Record> =
+        noodles_fasta::fai::io::Reader::new(BufReader::new(reader))
             .read_index()?
             .into();
     Ok(records
@@ -151,4 +152,86 @@ pub fn read_chrs_from_fa<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
         .into_iter()
         .map(|r| String::from_utf8_lossy(r.name()).to_string())
         .collect())
+}
+
+pub struct Semaphore {
+    count:      AtomicUsize,
+    zero_cvar:  Condvar,
+    zero_mutex: Mutex<()>,
+}
+
+impl Semaphore {
+    pub fn new(count: usize) -> Arc<Self> {
+        Arc::new(Semaphore {
+            count:      AtomicUsize::new(count),
+            zero_cvar:  Condvar::new(),
+            zero_mutex: Mutex::new(()),
+        })
+    }
+
+    pub fn acquire(&self) {
+        // Spin briefly before parking
+        for _ in 0..10 {
+            if self.count.fetch_sub(1, Ordering::AcqRel) > 0 {
+                return;
+            }
+            self.count.fetch_add(1, Ordering::AcqRel);
+            std::hint::spin_loop();
+        }
+
+        // Fall back to parking if still unavailable
+        while self.count.fetch_sub(1, Ordering::AcqRel) == 0 {
+            self.count.fetch_add(1, Ordering::AcqRel);
+            thread::park();
+        }
+    }
+
+    pub fn release(&self) {
+        let old = self.count.fetch_add(1, Ordering::AcqRel);
+
+        // Notify if this was the last release
+        if old == 0 {
+            let _lock = self.zero_mutex.lock().unwrap();
+            self.zero_cvar.notify_all();
+        }
+    }
+
+    pub fn wait_until_zero(&self) {
+        let mut lock = self.zero_mutex.lock().unwrap();
+        while self.count.load(Ordering::Acquire) > 0 {
+            lock = self.zero_cvar.wait(lock).unwrap();
+        }
+    }
+}
+
+pub struct BoundThreadExecutor<'a> {
+    semaphore:   Arc<Semaphore>,
+    thread_pool: &'a ThreadPool,
+}
+
+impl<'a> BoundThreadExecutor<'a> {
+    pub fn new(thread_pool: &'a ThreadPool) -> Self {
+        let semaphore = Semaphore::new(thread_pool.current_num_threads());
+        Self {
+            semaphore,
+            thread_pool,
+        }
+    }
+
+    pub fn join(self) {
+        self.semaphore.wait_until_zero();
+    }
+
+    pub fn install<F>(
+        &self,
+        op: F,
+    ) where
+        F: FnOnce() + Send + 'static, {
+        let semaphore = Arc::clone(&self.semaphore);
+        semaphore.acquire();
+        self.thread_pool.spawn(move || {
+            op();
+            semaphore.release();
+        });
+    }
 }

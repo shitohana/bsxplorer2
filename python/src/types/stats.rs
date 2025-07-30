@@ -64,19 +64,11 @@ impl PyMethylationStats {
         PyMethylationStats {
             inner: MethylationStats::from_data(
                 mean_methylation,
-                variance_methylation,
                 coverage_distribution,
                 context_distribution,
                 strand_distribution,
             ),
         }
-    }
-
-    pub fn merge(
-        &mut self,
-        other: &PyMethylationStats,
-    ) {
-        self.inner.merge(&other.inner);
     }
 
     pub fn finalize_methylation(&mut self) {
@@ -91,29 +83,12 @@ impl PyMethylationStats {
         self.inner.mean_methylation()
     }
 
-    #[staticmethod]
-    pub fn merge_multiple(
-        py: Python,
-        stats_list: &Bound<PyAny>,
-    ) -> PyResult<Self> {
-        let list: &Bound<PyList> = stats_list.downcast::<PyList>()?;
-        let stats: Vec<PyMethylationStats> = list.extract()?;
-        let inner_stats = stats.into_iter().map(|s| s.inner).collect_vec();
-        Ok(PyMethylationStats {
-            inner: MethylationStats::merge_multiple(&inner_stats),
-        })
-    }
-
     pub fn coverage_distribution(&self) -> HashMap<u16, u32> {
         self.inner
             .coverage_distribution()
             .into_iter()
             .map(|(key, value)| (*key, *value))
             .collect()
-    }
-
-    pub fn methylation_var(&self) -> DensityType {
-        self.inner.methylation_var()
     }
 
     pub fn context_methylation(&self) -> HashMap<String, (DensityType, u32)> {

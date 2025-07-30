@@ -5,6 +5,7 @@
 .idea
 .zed
 .helix
+.ruff_cache
 .vscode
 .venv
 .pytest_cache
@@ -17,3 +18,8 @@ target
 __pycache__
 Cargo.lock
 .lapce
+temp
+profile.json.*
+examples
+# pixi environments
+.pixi

@@ -1,6 +1,6 @@
 [package]
 name = "bsxplorer2"
-exclude = ["tests"]
+exclude = ["tests", "examples"]
 authors.workspace = true
 description.workspace = true
 license-file.workspace = true
@@ -15,59 +15,62 @@ readme.workspace = true
 default = ["tools"]
 compression = ["zstd", "lz4", "flate2", "xz2", "bzip2", "zip", "tempfile"]
 performant = ["polars/performant", "polars/cse"]
-performant_nightly = ["polars/nightly"]
-console = ["clap"]
-tools = []
+# performant_nightly = ["polars/nightly"]
+# Currently disable to silence the rust-analyzer
+performant_nightly = []
+tools = ["dep:typed_floats", "dep:dbscan", "dep:smallvec", "dep:statrs"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-paste.workspace = true
-anyhow.workspace = true
-bio.workspace = true
-itertools.workspace = true
-log.workspace = true
-once_cell.workspace = true
-rayon.workspace = true
-serde.workspace = true
+anyhow.workspace     = true
+bio.workspace        = true
+crossbeam.workspace  = true
+hashbrown.workspace  = true
+itertools.workspace  = true
+once_cell.workspace  = true
+paste.workspace      = true
+polars.workspace     = true
+rayon.workspace      = true
+serde.workspace      = true
 serde_json.workspace = true
-statrs.workspace = true
-polars.workspace = true
-hashbrown.workspace = true
-crossbeam.workspace = true
+slotmap.workspace    = true
 
-arcstr = "1.2.0"
-bincode = { version = "=2.0.0-rc.3", features = ["serde"] } # We're using *-rc, because release version needs rust 1.85
-num = "0.4.3"
+arcstr = { version = "1.2.0", features = ["serde"] }
+bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
+csv = "1.3.1"
+ctor = "0.4.2"
 indexmap = "2.9.0"
 memmap2 = "0.9.5"
-csv = "1.3.1"
 nanoid = "0.4.0"
-smallstr = { version = "0.3.0", features = ["serde"] }
-noodles = { version = "0.98.0", features = ["fasta"] }
+num = "0.4.3"
+regex-lite = "0.1.6"
+rust-lapper   = { version = "1.1.0", features = ["serde", "with_serde"] }
+spipe = "0.1.0"
 
 id_tree = "1.8.0"
 polars-arrow = "=0.45.0"
 
-bzip2 = { version = "0.5.2", optional = true }
-zstd = { version = "0.13.3", optional = true }
-lz4 = { version = "1.28.1", optional = true }
-xz2 = { version = "0.1.7", optional = true }
-zip = { version = "=3.0.0", optional = true }
-flate2 = { version = "1.1.1", optional = true }
+bzip2    = { version = "0.5.2",  optional = true }
+flate2   = { version = "1.1.1",  optional = true }
+lz4      = { version = "1.28.1", optional = true }
+smallvec = { version = "1.15.0", optional = true }
 tempfile = { version = "3.15.0", optional = true }
+xz2      = { version = "0.1.7",  optional = true }
+zip      = { version = "=3.0.0", optional = true }
+zstd     = { version = "0.13.3", optional = true }
 
-clap = { version = "4.1", features = ["derive"], optional = true }
-std-semaphore = "0.1.0"
-ctor = "0.4.2"
-regex-lite = "0.1.6"
+dbscan        = { version = "0.3.1", optional = true }
+noodles-fasta = { version = "0.54.0", default-features = false }
+typed_floats  = { version = "1.0.6", features = ["serde"], optional = true }
+statrs        = { workspace = true, optional = true }
 
 [dev-dependencies]
-rstest = "0.25.0"
 assert_approx_eq = "1.1.0"
-rand_distr = "=0.4.3"
 rand = { version = "=0.8.5", features = ["std", "std_rng"] }
+rand_distr = "=0.4.3"
+rstest = "0.25.0"
 tempfile = "3.15.0"
 
 [lints]

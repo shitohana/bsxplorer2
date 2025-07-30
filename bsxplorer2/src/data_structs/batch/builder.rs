@@ -181,17 +181,20 @@ impl BsxBatchBuilder {
     }
 
     /// Concatenates multiple `BsxBatch` instances into a single batch.
-    pub fn concat(batches: Vec<BsxBatch>) -> PolarsResult<BsxBatch> {
+    pub fn concat(mut batches: Vec<BsxBatch>) -> PolarsResult<BsxBatch> {
+        if batches.is_empty() {
+            return Err(PolarsError::NoData("Vector is empty".into()));
+        }
+        else if batches.len() == 1 {
+            return Ok(batches.pop().unwrap());
+        }
+
         let contigs = batches
             .iter()
             .filter(|b| !b.is_empty())
             .map(|b| b.as_contig())
-            .collect::<Option<Vec<_>>>();
-
-        if contigs.is_none() {
-            return Ok(BsxBatch::empty(None));
-        }
-        let contigs = contigs.unwrap();
+            .collect::<Option<Vec<_>>>()
+            .ok_or(PolarsError::NoData("All batches are empty".into()))?;
 
         if !contigs.iter().map(Contig::seqname).all_equal() {
             return Err(PolarsError::ComputeError("Chromosomes do not match".into()));
@@ -201,24 +204,29 @@ impl BsxBatchBuilder {
                 "Batch positions are not sorted".into(),
             ));
         }
-        let data = concat(
+
+        let mut batches_data = unsafe {
             batches
                 .into_iter()
-                .map(|b| b.into_inner().lazy())
-                .collect_vec(),
-            Default::default(),
-        )?
-        .collect()?;
+                .map(BsxBatch::into_inner)
+                .reduce(|mut acc, df| {
+                    acc.get_columns_mut()
+                        .iter_mut()
+                        .zip(df.get_columns().iter())
+                        .for_each(|(left, right)| {
+                            left.append(right).expect("should not fail");
+                        });
+                    acc.set_height(acc.height() + df.height());
+                    acc
+                })
+                .unwrap_unchecked()
+        };
+        batches_data.align_chunks_par();
+        if batches_data.should_rechunk() {
+            batches_data.rechunk_mut();
+        };
 
-        let builder = BsxBatchBuilder::no_checks()
-            .with_rechunk(true)
-            .with_check_duplicates(true)
-            .with_chr_dtype(Some(
-                data.schema().get(BsxCol::Chr.as_str()).unwrap().clone(),
-            ));
-
-        builder.checks_only(&data)?;
-        Ok(unsafe { BsxBatch::new_unchecked(builder.cast_only(data)?) })
+        Ok(unsafe { BsxBatch::new_unchecked(batches_data) })
     }
 }
 

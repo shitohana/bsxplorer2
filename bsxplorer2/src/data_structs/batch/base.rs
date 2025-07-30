@@ -1,8 +1,13 @@
 use std::cmp::Ordering;
-use std::ops::Deref;
+use std::fmt::Display;
+use std::ops::{
+    Deref,
+    Index,
+};
+use std::panic::AssertUnwindSafe;
+use std::str::FromStr;
 
 use anyhow::bail;
-use hashbrown::HashMap;
 use itertools::{
     izip,
     Itertools,
@@ -10,8 +15,6 @@ use itertools::{
 use num::Zero;
 use polars::frame::column::ScalarColumn;
 use polars::prelude::*;
-use statrs::distribution::DiscreteCDF;
-use statrs::statistics::Statistics;
 
 use super::{
     create_empty_categorical_dtype,
@@ -38,6 +41,32 @@ use crate::tools::dimred::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct BsxBatch {
     data: DataFrame,
+}
+
+impl Display for BsxBatch {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        writeln!(f, "BsxBatch with {} rows", self.len())?;
+        if !self.is_empty() {
+            writeln!(f, "Covers region: {}", self.as_contig().unwrap())?;
+            writeln!(f, "Data:")?;
+            writeln!(f, "{}", self.data())?;
+        }
+        Ok(())
+    }
+}
+
+impl Index<BsxCol> for BsxBatch {
+    type Output = Series;
+
+    fn index(
+        &self,
+        index: BsxCol,
+    ) -> &Self::Output {
+        self.column(index)
+    }
 }
 
 impl BsxBatch {
@@ -220,8 +249,8 @@ impl BsxBatch {
     pub unsafe fn extend_unchecked(
         &mut self,
         other: &Self,
-    ) -> PolarsResult<()> {
-        self.data.extend(other.data())
+    ) {
+        self.data.extend(other.data()).unwrap()
     }
 
     /// Adds context data (strand and context) to the `BsxBatch`.
@@ -317,62 +346,25 @@ impl BsxBatch {
     }
 
     /// Calculates and returns various methylation statistics for the batch.
-    pub fn get_methylation_stats(&self) -> MethylationStats {
-        let nonull = self.density().drop_nulls();
-        let mean = nonull
-            .mean()
-            .map(|v| v as DensityType)
-            .unwrap_or(DensityType::NAN);
-        let var =
-            nonull.into_no_null_iter().map(|x| x as f64).variance() as DensityType;
-
-        MethylationStats::from_data(
-            mean,
-            var,
-            self.get_coverage_dist(),
-            self.get_context_stats(),
-            self.get_strand_stats(),
+    pub fn get_methylation_stats(&self) -> RegionMethAgg {
+        izip!(
+            self.context(),
+            self.strand(),
+            self.count_m(),
+            self.count_total(),
+            self.density()
         )
-    }
-
-    /// Gets the distribution of coverage counts across the batch.
-    ///
-    /// Returns a HashMap where keys are coverage counts and values are
-    /// the number of sites with that coverage.
-    pub fn get_coverage_dist(&self) -> HashMap<CountType, u32> {
-        self.count_total()
-            .into_iter()
-            .filter_map(|v| v.map(|v1| (v1, v1)))
-            .into_group_map()
-            .into_iter()
-            .map(|(k, v)| (k, v.len() as u32))
-            .collect()
-    }
-
-    /// Gets methylation statistics grouped by context (CG/CHG/CHH).
-    ///
-    /// Returns a HashMap where keys are `Context` and values are tuples
-    /// `(sum of methylation ratios, total number of sites)`.
-    pub fn get_context_stats(&self) -> HashMap<Context, (DensityType, u32)> {
-        izip!(self.context(), self.density())
-            .filter_map(|(k, v)| Option::map(v, |density| (Context::from(k), density)))
-            .into_group_map()
-            .into_iter()
-            .map(|(k, v)| (k, (v.iter().sum(), v.len() as u32)))
-            .collect()
-    }
-
-    /// Gets methylation statistics grouped by strand (+/-).
-    ///
-    /// Returns a HashMap where keys are `Strand` and values are tuples
-    /// `(sum of methylation ratios, total number of sites)`.
-    pub fn get_strand_stats(&self) -> HashMap<Strand, (DensityType, u32)> {
-        izip!(self.strand(), self.density())
-            .filter_map(|(k, v)| Option::map(v, |density| (Strand::from(k), density)))
-            .into_group_map()
-            .into_iter()
-            .map(|(k, v)| (k, (v.iter().sum(), v.len() as u32)))
-            .collect()
+        .into_iter()
+        .filter(|(_, _, _, c, d)| c.is_some() || d.is_some())
+        .map(|(ctx, snd, cm, ct, dens)| {
+            let count = if cm.is_some() { ct } else { None };
+            let sum = cm.map(|v| v as DensityType).unwrap_or(dens.unwrap());
+            (ctx, snd, sum, count)
+        })
+        .fold(RegionMethAgg::new(), |mut acc, (ctx, snd, sum, count)| {
+            acc.add_cytosine(sum, count, ctx.into(), snd.into());
+            acc
+        })
     }
 
     /// Filters sites based on a binomial test p-value and replaces counts and
@@ -383,11 +375,16 @@ impl BsxBatch {
     /// density to NaN. Sites passing the test have counts set to (1, 1) and
     /// density to 1.0. Sites with 0 total reads initially have density NaN
     /// and counts (0, 0).
+    #[cfg(feature = "tools")]
     pub fn as_binom(
         self,
         mean: f64,
         pvalue: f64,
     ) -> PolarsResult<Self> {
+        use statrs::distribution::{
+            Binomial,
+            DiscreteCDF,
+        };
         let pvalue_vec = izip!(self.count_m(), self.count_total())
             .map(|(m, n)| (m.unwrap_or(0), n.unwrap_or(0)))
             .map(|(m, n)| {
@@ -401,8 +398,7 @@ impl BsxBatch {
                     0.0
                 }
                 else {
-                    let binom =
-                        statrs::distribution::Binomial::new(mean, n as u64).unwrap();
+                    let binom = Binomial::new(mean, n as u64).unwrap();
                     1.0 - binom.cdf(m as u64)
                 }
             })
@@ -483,7 +479,7 @@ impl BsxBatch {
         };
         let meth_data = MethDataBinom::new(&count_m, &count_total);
 
-        let segment_boundaries = match method {
+        let mut segment_boundaries = match method {
             SegmentAlgorithm::Pelt(beta, min_size) => {
                 let (segments, _score) = pelt(
                     &meth_data,
@@ -493,6 +489,9 @@ impl BsxBatch {
                 segments.iter().map(|v| v + 1).collect_vec()
             },
         };
+        if segment_boundaries.is_empty() {
+            segment_boundaries.push(self.len());
+        }
 
         self.partition(segment_boundaries, AggMethod::Mean.get_fn())
     }
@@ -668,7 +667,14 @@ impl BsxBatch {
         if self.data.is_empty() {
             return None;
         }
-        self.position().first()
+        let result =
+            std::panic::catch_unwind(AssertUnwindSafe(|| self.position().first()));
+        if result.is_err() {
+            panic!("Polars internal error. Make sure to rechunk the data!")
+        }
+        else {
+            result.unwrap()
+        }
     }
 
     /// Gets the position of the last site in the batch.
@@ -677,7 +683,23 @@ impl BsxBatch {
         if self.data.is_empty() {
             return None;
         }
-        self.position().last()
+        let result =
+            std::panic::catch_unwind(AssertUnwindSafe(|| self.position().last()));
+        if result.is_err() {
+            panic!("Polars internal error. Make sure to rechunk the data!")
+        }
+        else {
+            result.unwrap()
+        }
+    }
+
+    pub fn positions_vec(&self) -> Vec<PosType> {
+        unsafe {
+            self.position()
+                .to_vec_null_aware()
+                .left()
+                .unwrap_unchecked()
+        }
     }
 
     /// Gets the sequence name (chromosome) for the batch.
@@ -726,6 +748,40 @@ impl BsxBatch {
         else {
             None
         }
+    }
+
+    pub fn set_validity_bitmap(
+        &mut self,
+        column: BsxCol,
+        bitmap: Vec<bool>,
+    ) -> PolarsResult<()> {
+        if matches!(column, BsxCol::Chr | BsxCol::Position) {
+            return Err(PolarsError::InvalidOperation(
+                format!("Column {} cannot be set to null", column).into(),
+            ));
+        }
+        if bitmap.len() != self.len() {
+            return Err(PolarsError::OutOfBounds(
+                "Lengths of data and bitmap do not match".into(),
+            ));
+        }
+        self.data.apply(column.as_ref(), |c| {
+            let values = c
+                .as_materialized_series()
+                .iter()
+                .zip(bitmap.iter())
+                .map(|(v, valid)| {
+                    if *valid {
+                        v
+                    }
+                    else {
+                        AnyValue::Null
+                    }
+                })
+                .collect_vec();
+            Series::new(column.as_ref().into(), &values)
+        })?;
+        Ok(())
     }
 }
 
@@ -842,12 +898,26 @@ pub enum AggMethod {
     Min,
 }
 
+impl FromStr for AggMethod {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "mean" => Ok(AggMethod::Mean),
+            "sum" => Ok(AggMethod::Sum),
+            "gmean" => Ok(AggMethod::GeometricMean),
+            "median" => Ok(AggMethod::Median),
+            "max" => Ok(AggMethod::Max),
+            "min" => Ok(AggMethod::Min),
+            other => bail!("AggMethod {} not implemented", other),
+        }
+    }
+}
+
 impl AggMethod {
     /// Returns a boxed closure for the selected aggregation method.
     #[allow(clippy::type_complexity)]
-    pub fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64> {
-        use statrs::statistics::*;
-
+    pub fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64 + Sync + Send> {
         Box::new(match self {
             AggMethod::Mean => {
                 |arr: &[f32]| {
@@ -868,8 +938,10 @@ impl AggMethod {
                     }
                 }
             },
+            #[cfg(feature = "tools")]
             AggMethod::Median => {
                 |arr: &[f32]| {
+                    use statrs::statistics::*;
                     if arr.is_empty() {
                         f64::NAN
                     }

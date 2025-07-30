@@ -14,9 +14,11 @@ scipy = "*"
 matplotlib = ">=3.8,<4.0"
 plotly = ">=5.0,<6.0"
 pydantic = "~=2.0"
+holoviews = "^1.20.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
+tqdm = "^4.67.1"
 
 [tool.maturin]
 python-source = "."

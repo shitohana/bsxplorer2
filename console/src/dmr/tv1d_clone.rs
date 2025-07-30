@@ -29,7 +29,7 @@
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 
-extern crate num;
+use num;
 
 mod utils {
     pub fn sync_values(

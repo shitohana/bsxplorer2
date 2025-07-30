@@ -28,7 +28,6 @@
 //! - `utils`: Contains utility functions, such as `merge_replicates` for
 //!   combining data from multiple samples covering the same genomic regions.
 
-
 mod base;
 mod builder;
 mod lazy;

@@ -17,9 +17,10 @@ use itertools::Itertools;
 use polars::error::PolarsResult;
 
 use crate::utils::{
-    expand_wildcards_single,
-    init_pbar,
+    expand_wildcard,
+    init_progress,
 };
+use crate::PipelineCommand;
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct ValidateArgs {
@@ -35,157 +36,7 @@ pub(crate) struct ValidateArgs {
     deep: bool,
 }
 
-#[derive(Debug, Clone)]
-enum ValidationErrorType {
-    BatchNumber,
-    BatchSize { batch_num: usize },
-    BatchRange { batch_num: usize },
-    BatchPositions { batch_num: usize },
-}
-
-impl ValidationErrorType {
-    fn inconsistency_message(&self) -> String {
-        match self {
-            ValidationErrorType::BatchNumber => {
-                "inconsistency in batch number".to_string()
-            },
-            ValidationErrorType::BatchSize { batch_num } => {
-                format!("inconsistency in batch size. Batch №{}", batch_num)
-            },
-            ValidationErrorType::BatchRange { batch_num } => {
-                format!(
-                    "inconsistency in batch values range. Batch №{:?}",
-                    batch_num
-                )
-            },
-            ValidationErrorType::BatchPositions { batch_num } => {
-                format!("inconsistency in batch positions. Batch №{:?}", batch_num)
-            },
-        }
-    }
-
-    fn most_files_message<T: Debug>(
-        &self,
-        value: &T,
-    ) -> String {
-        match self {
-            ValidationErrorType::BatchNumber => {
-                format!("Most files have {:?} batches", value)
-            },
-            ValidationErrorType::BatchSize { .. } => {
-                format!("Most files have {:?} rows", value)
-            },
-            ValidationErrorType::BatchRange { .. } => {
-                format!("Most files cover {:?} region", value)
-            },
-            ValidationErrorType::BatchPositions { .. } => {
-                format!("")
-            },
-        }
-    }
-
-    fn following_files_message<T: Debug>(
-        &self,
-        value: &T,
-    ) -> String {
-        match self {
-            ValidationErrorType::BatchNumber => {
-                format!("Following files have {:?} batches:", value)
-            },
-            ValidationErrorType::BatchSize { .. } => {
-                format!("Following files have {:?} rows:", value)
-            },
-            ValidationErrorType::BatchRange { .. } => {
-                format!("Following files cover {:?} region:", value)
-            },
-            ValidationErrorType::BatchPositions { .. } => {
-                format!("Following files have different positions")
-            },
-        }
-    }
-}
-
-fn validate_consistency<K, V>(
-    grouped_data: &HashMap<K, Vec<V>>,
-    error_type: ValidationErrorType,
-) where
-    K: Clone + Debug + Hash + Eq,
-    V: Display, {
-    if grouped_data.len() > 1 {
-        let most_common_key = grouped_data
-            .keys()
-            .max_by_key(|k| grouped_data.get(k).unwrap().len())
-            .unwrap();
-
-        eprintln!(
-            "Detected {}",
-            style(error_type.inconsistency_message()).red()
-        );
-        eprintln!(
-            "{}",
-            style(error_type.most_files_message(most_common_key)).green()
-        );
-
-        for (key, values) in grouped_data
-            .iter()
-            .sorted_by_key(|(_k, v)| v.len())
-            .take(grouped_data.len() - 1)
-        {
-            eprintln!("{}", style(error_type.following_files_message(key)).red());
-            for value in values {
-                eprintln!("\t{}", value);
-            }
-        }
-        exit(-1);
-    }
-}
-
 impl ValidateArgs {
-    pub fn run(&self) -> anyhow::Result<()> {
-        // Expand file paths with wildcards
-        let paths = self
-            .files
-            .iter()
-            .flat_map(|path| expand_wildcards_single(path))
-            .collect::<Vec<_>>();
-
-        // Create readers for all files
-        let mut readers = self.create_file_readers(&paths)?;
-
-        // Validate that all files have the same number of batches
-        let common_batch_num = self.validate_batch_numbers(&readers)?;
-
-        println!(
-            "[{}] All files have {} batches",
-            style("V").green(),
-            style(common_batch_num).green()
-        );
-
-        // Create iterators for batch processing
-        let mut iterators = readers
-            .iter_mut()
-            .map(|(path, reader)| (Rc::new(path.clone()), reader.iter()))
-            .collect::<HashMap<_, _>>();
-
-        // Initialize progress bar
-        use std::io::IsTerminal;
-        let progress_bar = if std::io::stdin().is_terminal() {
-            init_pbar(common_batch_num)?
-        }
-        else {
-            ProgressBar::hidden()
-        };
-
-        // Process and validate each batch
-        self.validate_batches(&mut iterators, &progress_bar)?;
-
-        progress_bar.finish_and_clear();
-
-        println!("[{}] All files have equivalent batches", style("V").green());
-        println!("{}", style("Files are valid").green());
-        Ok(())
-    }
-
     fn create_file_readers(
         &self,
         paths: &[std::path::PathBuf],
@@ -344,6 +195,153 @@ impl ValidateArgs {
             batch_num: batch_count,
         });
 
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ValidationErrorType {
+    BatchNumber,
+    BatchSize { batch_num: usize },
+    BatchRange { batch_num: usize },
+    BatchPositions { batch_num: usize },
+}
+
+impl ValidationErrorType {
+    fn inconsistency_message(&self) -> String {
+        match self {
+            ValidationErrorType::BatchNumber => {
+                "inconsistency in batch number".to_string()
+            },
+            ValidationErrorType::BatchSize { batch_num } => {
+                format!("inconsistency in batch size. Batch №{}", batch_num)
+            },
+            ValidationErrorType::BatchRange { batch_num } => {
+                format!(
+                    "inconsistency in batch values range. Batch №{:?}",
+                    batch_num
+                )
+            },
+            ValidationErrorType::BatchPositions { batch_num } => {
+                format!("inconsistency in batch positions. Batch №{:?}", batch_num)
+            },
+        }
+    }
+
+    fn most_files_message<T: Debug>(
+        &self,
+        value: &T,
+    ) -> String {
+        match self {
+            ValidationErrorType::BatchNumber => {
+                format!("Most files have {:?} batches", value)
+            },
+            ValidationErrorType::BatchSize { .. } => {
+                format!("Most files have {:?} rows", value)
+            },
+            ValidationErrorType::BatchRange { .. } => {
+                format!("Most files cover {:?} region", value)
+            },
+            ValidationErrorType::BatchPositions { .. } => {
+                format!("")
+            },
+        }
+    }
+
+    fn following_files_message<T: Debug>(
+        &self,
+        value: &T,
+    ) -> String {
+        match self {
+            ValidationErrorType::BatchNumber => {
+                format!("Following files have {:?} batches:", value)
+            },
+            ValidationErrorType::BatchSize { .. } => {
+                format!("Following files have {:?} rows:", value)
+            },
+            ValidationErrorType::BatchRange { .. } => {
+                format!("Following files cover {:?} region:", value)
+            },
+            ValidationErrorType::BatchPositions { .. } => {
+                format!("Following files have different positions")
+            },
+        }
+    }
+}
+
+fn validate_consistency<K, V>(
+    grouped_data: &HashMap<K, Vec<V>>,
+    error_type: ValidationErrorType,
+) where
+    K: Clone + Debug + Hash + Eq,
+    V: Display, {
+    if grouped_data.len() > 1 {
+        let most_common_key = grouped_data
+            .keys()
+            .max_by_key(|k| grouped_data.get(k).unwrap().len())
+            .unwrap();
+
+        eprintln!(
+            "Detected {}",
+            style(error_type.inconsistency_message()).red()
+        );
+        eprintln!(
+            "{}",
+            style(error_type.most_files_message(most_common_key)).green()
+        );
+
+        for (key, values) in grouped_data
+            .iter()
+            .sorted_by_key(|(_k, v)| v.len())
+            .take(grouped_data.len() - 1)
+        {
+            eprintln!("{}", style(error_type.following_files_message(key)).red());
+            for value in values {
+                eprintln!("\t{}", value);
+            }
+        }
+        exit(-1);
+    }
+}
+
+impl PipelineCommand for ValidateArgs {
+    fn run(&self) -> anyhow::Result<()> {
+        // Expand file paths with wildcards
+        let paths = self
+            .files
+            .iter()
+            .flat_map(|path| expand_wildcard(path))
+            .flatten()
+            .collect::<Vec<_>>();
+
+        // Create readers for all files
+        let mut readers = self.create_file_readers(&paths)?;
+
+        // Validate that all files have the same number of batches
+        let common_batch_num = self.validate_batch_numbers(&readers)?;
+
+        println!(
+            "[{}] All files have {} batches",
+            style("V").green(),
+            style(common_batch_num).green()
+        );
+
+        // Create iterators for batch processing
+        let mut iterators = readers
+            .iter_mut()
+            .map(|(path, reader)| (Rc::new(path.clone()), reader.iter()))
+            .collect::<HashMap<_, _>>();
+
+        // Initialize progress bar
+        let progress_bar = init_progress(Some(common_batch_num))?;
+
+        // Process and validate each batch
+        self.validate_batches(&mut iterators, &progress_bar)?;
+
+        progress_bar.finish_and_clear();
+
+        println!("[{}] All files have equivalent batches", style("V").green());
+        println!("{}", style("Files are valid").green());
         Ok(())
     }
 }

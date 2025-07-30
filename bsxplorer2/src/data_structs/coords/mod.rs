@@ -10,12 +10,13 @@
 //! These structures are fundamental for handling location-based data within the
 //! crate.
 
-
 mod contig;
 mod gpos;
+mod interval_map;
 
 pub use contig::Contig;
 pub use gpos::GenomicPosition;
+pub use interval_map::ContigIntervalMap;
 
 #[cfg(test)]
 mod tests;

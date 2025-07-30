@@ -17,7 +17,7 @@ use crate::data_structs::typedef::{
 };
 
 /// Represents a genomic position with a sequence name and a position.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq, Hash)]
 pub struct GenomicPosition {
     seqname:  BsxSmallStr,
     position: PosType,

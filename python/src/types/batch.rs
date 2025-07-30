@@ -16,7 +16,6 @@ use polars::prelude::{
     IntoSeries,
 };
 use pyo3::prelude::*;
-use pyo3_polars::error::PyPolarsErr;
 use pyo3_polars::{
     PyDataFrame,
     PyDataType,
@@ -354,12 +353,8 @@ impl PyBsxBatch {
     pub fn extend_unchecked(
         &mut self,
         other: &Self,
-    ) -> PyResult<()> {
-        unsafe {
-            self.inner
-                .extend_unchecked(&other.inner)
-                .map_err(|e| PyPolarsErr::Polars(e).into())
-        }
+    ) {
+        unsafe { self.inner.extend_unchecked(&other.inner) }
     }
 
     #[pyo3(signature = (min_size, beta=None))]
@@ -508,7 +503,6 @@ impl PyBsxBatch {
         }
     }
 }
-
 
 // Removed PyEncodedBsxBatch, encode, and decode functions as they have no
 // corresponding Rust types/methods in the provided context.

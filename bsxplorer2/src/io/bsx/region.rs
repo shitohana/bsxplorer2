@@ -3,6 +3,7 @@ use std::collections::{
     BTreeSet,
     VecDeque,
 };
+use std::sync::Arc;
 
 use anyhow::{
     anyhow,
@@ -24,8 +25,9 @@ use crate::io::bsx::BatchIndex;
 /// RegionReader is a reader for BSX files that operates on a specific region of
 /// the genome.
 type PreprocessFn =
-    Box<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch> + Send + Sync + 'static>;
+    Arc<dyn Fn(BsxBatch) -> anyhow::Result<BsxBatch> + Send + Sync + 'static>;
 
+#[derive(Clone)]
 pub struct RegionReader {
     /// Cache of encoded BSX batches.
     cache:         BTreeMap<usize, BsxBatch>,
@@ -279,7 +281,7 @@ impl RegionReader {
             cache: BTreeMap::new(),
             inner,
             index,
-            preprocess_fn: preprocess_fn.map(|c| Box::new(c) as PreprocessFn),
+            preprocess_fn: preprocess_fn.map(|c| Arc::new(c) as PreprocessFn),
         }
     }
 
@@ -324,51 +326,49 @@ impl RegionReader {
         contig: Contig,
         postprocess_fn: Option<PreprocessFn>,
     ) -> anyhow::Result<Option<BsxBatch>> {
-        const MAX_ITERATION_LIMIT: usize = 10;
-        let mut depth = 0usize;
-
         if !self.index().get_chr_order().contains(contig.seqname()) {
             bail!("Contig seqname not found in index")
         }
 
-        loop {
-            if depth > MAX_ITERATION_LIMIT {
-                bail!("Maximum recursion depth exceeded");
-            }
-            depth += 1;
+        match self.determine_intersection(&contig)? {
+            IntersectionKind::PartialLeft => {
+                bail!(
+                    "Required batch has already been processed. Make sure the regions \
+                     are sorted with BatchIndex.sort"
+                )
+            },
+            IntersectionKind::Full => {
+                self.prepare_region(&contig, postprocess_fn.clone())
+            },
+            IntersectionKind::PartialRight | IntersectionKind::None => {
+                if let Some(required_batches) = self.find(&contig) {
+                    self.update_cache(&required_batches)?;
+                    self.prepare_region(&contig, postprocess_fn.clone())
+                }
+                else {
+                    Ok(None)
+                }
+            },
+        }
+    }
 
-            match self.determine_intersection(&contig)? {
-                IntersectionKind::PartialLeft => {
-                    bail!(
-                        "Required batch has already been processed. Make sure the \
-                         regions are sorted with BatchIndex.sort"
-                    )
-                },
-                IntersectionKind::Full => {
-                    let batches = self.get_batches_for_contig(&contig)?;
-                    let res = self.assemble_region(&contig, batches)?;
-                    if let Some(data) = res {
-                        if let Some(postprocess_fn) = postprocess_fn {
-                            return Some(postprocess_fn(data)).transpose();
-                        }
-                        else {
-                            return Some(Ok(data)).transpose();
-                        }
-                    }
-                    else {
-                        return Ok(None);
-                    }
-                },
-                IntersectionKind::PartialRight | IntersectionKind::None => {
-                    if let Some(required_batches) = self.find(&contig) {
-                        self.update_cache(&required_batches)?;
-                        continue;
-                    }
-                    else {
-                        return Ok(None);
-                    }
-                },
+    fn prepare_region(
+        &self,
+        contig: &Contig,
+        postprocess_fn: Option<PreprocessFn>,
+    ) -> anyhow::Result<Option<BsxBatch>> {
+        let batches = self.get_batches_for_contig(contig)?;
+        let res = self.assemble_region(contig, batches)?;
+        if let Some(data) = res {
+            if let Some(postprocess_fn) = postprocess_fn {
+                Some(postprocess_fn(data)).transpose()
             }
+            else {
+                Some(Ok(data)).transpose()
+            }
+        }
+        else {
+            Ok(None)
         }
     }
 }

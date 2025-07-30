@@ -33,12 +33,11 @@ fn write_bsx(mut test_bsxreader: BsxFileReader) -> anyhow::Result<()> {
     let sink_tempfile = NamedTempFile::new()?;
     let mut writer = BsxFileWriter::try_new(
         sink_tempfile.reopen()?,
-        index
+        &index
             .get_chr_order()
             .into_iter()
             .map(BsxSmallStr::to_string)
             .collect_vec(),
-        None,
         None,
     )?;
 

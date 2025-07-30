@@ -2,7 +2,6 @@ mod common;
 use std::fs::File;
 use std::path::PathBuf;
 
-use bio::io::gff::Reader as GffReader;
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Strand;
@@ -25,15 +24,6 @@ fn test_bsxreader() -> BsxFileReader {
     )
     .expect("Failed to create reader");
     reader
-}
-
-#[fixture]
-fn test_gffreader() -> GffReader<File> {
-    GffReader::from_file(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/annot.gff"),
-        bio::io::gff::GffType::GFF3,
-    )
-    .expect("Error opening test GFF file")
 }
 
 #[fixture]

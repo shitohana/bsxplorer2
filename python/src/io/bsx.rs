@@ -17,7 +17,6 @@ use crate::utils::{
     SinkHandle,
 };
 
-
 #[pyclass(name = "BsxFileReader", unsendable)]
 #[derive(Debug, Clone)]
 pub struct PyBsxFileReader {
@@ -100,7 +99,7 @@ impl PyBsxFileReader {
     }
 
     pub fn __next__(&mut self) -> Option<PyResult<PyBsxBatch>> {
-        if let Some(batch) = self.reader.get_cache_mut().pop_front() {
+        if let Some(batch) = self.reader.cache_mut().pop_front() {
             self.current_batch_idx += 1;
             Some(Ok(batch.into()))
         }
@@ -165,9 +164,8 @@ impl PyBsxFileWriter {
         let file: Box<dyn SinkHandle> = sink.get_writer()?;
         let writer = RsBsxIpcWriter::try_new(
             BufWriter::new(file),
-            chr_names,
+            &chr_names,
             compression.map(|x| x.into()),
-            None,
         )
         .map_err(|e| PyIOError::new_err(e.to_string()))?;
 
@@ -188,7 +186,6 @@ impl PyBsxFileWriter {
             BufWriter::new(file),
             fai_path,
             compression.map(|x| x.into()),
-            None,
         )
         .map_err(|e| PyIOError::new_err(e.to_string()))?;
 
@@ -209,7 +206,6 @@ impl PyBsxFileWriter {
             BufWriter::new(file),
             fasta_path,
             compression.map(|x| x.into()),
-            None,
         )
         .map_err(|e| PyIOError::new_err(e.to_string()))?;
 

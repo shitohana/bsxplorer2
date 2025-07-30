@@ -73,7 +73,6 @@ impl ContextData {
             }
         }
 
-
         Self { entries }
     }
 

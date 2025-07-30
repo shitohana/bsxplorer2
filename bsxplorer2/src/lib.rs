@@ -36,8 +36,8 @@
 //! * **Integration**: Uses established libraries like `bio-rs` for biological
 //!   formats (GFF, BED, FASTA) and `polars` for data manipulation.
 //!
-//! Number of threads to be used can be configured with setting `BSX_NUM_THREADS`
-//! environment variable.
+//! Number of threads to be used can be configured with setting
+//! `BSX_NUM_THREADS` environment variable.
 //!
 //! ## Structure
 //!

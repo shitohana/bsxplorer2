@@ -4,11 +4,6 @@ use std::io::{
 };
 
 use anyhow::anyhow;
-use log::{
-    debug,
-    info,
-    warn,
-};
 use polars::io::csv::write::{
     BatchedWriter as BatchedCsvWriter,
     CsvWriter,
@@ -37,7 +32,6 @@ impl ReportWriter {
         #[cfg(feature = "compression")] compression: Compression,
         #[cfg(feature = "compression")] compression_level: Option<u32>,
     ) -> anyhow::Result<Self> {
-        debug!("Creating new ReportWriter with {} threads", n_threads);
         let report_options = schema.read_options();
 
         #[cfg(feature = "compression")]
@@ -53,12 +47,8 @@ impl ReportWriter {
             )
             .n_threads(n_threads)
             .batched(&schema.schema())
-            .map_err(|e| {
-                warn!("Failed to create batched CSV writer: {}", e);
-                e
-            })?;
+            .map_err(|e| e)?;
 
-        info!("ReportWriter successfully created");
         Ok(Self { schema, writer })
     }
 
@@ -81,10 +71,7 @@ impl ReportWriter {
         &mut self,
         df: &DataFrame,
     ) -> PolarsResult<()> {
-        self.writer.write_batch(df).map_err(|e| {
-            warn!("Failed to write DataFrame: {}", e);
-            e
-        })
+        self.writer.write_batch(df).map_err(|e| e)
     }
 
     pub fn finish(mut self) -> anyhow::Result<()> {

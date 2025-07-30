@@ -1,6 +1,5 @@
 use std::fmt;
 
-use log::*;
 use num::Float;
 use statrs::distribution::{
     ContinuousCDF,
@@ -29,16 +28,10 @@ where
         + num::traits::NumOps
         + fmt::Debug, {
     if x.len() != y.len() {
-        warn!(
-            "Cannot calculate Pearson's r: x length ({}) doesn't match y length ({})",
-            x.len(),
-            y.len()
-        );
         return 0.0;
     }
 
     if x.is_empty() {
-        warn!("Cannot calculate Pearson's r: empty arrays");
         return 0.0;
     }
 
@@ -63,12 +56,11 @@ where
     };
 
     if denominator == 0.0 {
-        debug!("Denominator is zero, returning r=0");
         return 0.0;
     }
 
     let r = numerator / denominator;
-    debug!("Pearson's r = {:.4}", r);
+
     r
 }
 
@@ -89,18 +81,11 @@ pub fn mann_whitney_u<F: Float>(
     group1: &[F],
     group2: &[F],
 ) -> (f64, f64) {
-    info!(
-        "Performing Mann-Whitney U test: group1={}, group2={}",
-        group1.len(),
-        group2.len()
-    );
-
     let n1 = F::from(group1.len()).unwrap();
     let n2 = F::from(group2.len()).unwrap();
     let n_total = n1 + n2;
 
     if group1.is_empty() || group2.is_empty() {
-        warn!("Mann-Whitney U test: one or both groups are empty");
         return (0.0, 1.0);
     }
 
@@ -201,7 +186,6 @@ pub fn mann_whitney_u<F: Float>(
         (u_stat - mean_u + F::from(0.5).unwrap()) / variance_u.sqrt()
     }
     else {
-        warn!("Variance is zero in Mann-Whitney U test");
         F::from(0.0).unwrap()
     };
     let z = z.to_f64().unwrap();
