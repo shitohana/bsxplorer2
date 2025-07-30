@@ -19,7 +19,8 @@ pub use crate::data_structs::typedef::BsxSmallStr;
 pub use crate::data_structs::{
     Context,
     ContextData,
-    MethylationStats,
+    MethAgg,
+    RegionMethAgg,
     Strand,
 };
 pub use crate::io::bsx::{

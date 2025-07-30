@@ -1,5 +1,10 @@
 [workspace]
-members = ["bsxplorer2", "console", "python"]
+members = [
+    "bsxplorer2",
+    "console",
+    # Currently disabled
+    # "python"
+    ]
 resolver = "2"
 default-members = ["bsxplorer2"]
 

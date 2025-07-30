@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
 
-use hashbrown::HashMap;
 use polars::prelude::*;
 use rstest::{
     fixture,
     rstest,
 };
+#[cfg(feature = "tools")]
 use statrs::statistics::{
     OrderStatistics,
     Statistics,
@@ -565,6 +565,7 @@ mod batch_tests {
                 assert_approx_eq!(densities_agg[0], expected1, 1e-6);
                 assert_approx_eq!(densities_agg[1], expected2, 1e-6);
             },
+            #[cfg(feature = "tools")]
             AggMethod::GeometricMean => {
                 let expected1 = Data::new(segment1_densities.clone())
                     .iter()
@@ -575,6 +576,7 @@ mod batch_tests {
                 assert_approx_eq!(densities_agg[0], expected1, 1e-6);
                 assert_approx_eq!(densities_agg[1], expected2, 1e-6);
             },
+            #[cfg(feature = "tools")]
             AggMethod::Median => {
                 let mut segment1_densities_sorted = segment1_densities.clone();
                 segment1_densities_sorted
@@ -1040,207 +1042,6 @@ mod batch_tests {
         assert_eq!(
             contig,
             Some(Contig::new("chr1".into(), 3, 15, Strand::None))
-        );
-    }
-
-    #[rstest]
-    fn test_get_methylation_stats(test_batch: BsxBatch) {
-        use assert_approx_eq::assert_approx_eq;
-
-        let meth_stats = test_batch.get_methylation_stats();
-
-        // Calculate expected values based on test_batch data (densities: [0.5,
-        // 0.333..., 0.75, 1.0, 0.5])
-        let expected_mean =
-            (0.5 + 10.0 / 30.0 + 15.0 / 20.0 + 10.0 / 10.0 + 5.0 / 10.0) / 5.0; // 0.616666668
-                                                                                // Variance calculation from test_batch density values (using f64 for
-                                                                                // calculation accuracy)
-        let density_f64: Vec<f64> = test_batch
-            .density()
-            .drop_nulls()
-            .into_no_null_iter()
-            .map(|v| v as f64)
-            .collect();
-        assert_approx_eq!(meth_stats.mean_methylation() as f64, expected_mean, 1e-6);
-    }
-
-    #[rstest]
-    fn test_get_coverage_dist(test_batch: BsxBatch) {
-        let cov_dist = test_batch.get_coverage_dist();
-
-        // Expected distribution from test_batch (CountM, CountTotal):
-        // [(5, 10), (10, 30), (15, 20), (10, 10), (5, 10)]
-        // Grouped: (5, 10) -> 2, (10, 30) -> 1, (15, 20) -> 1, (10, 10) -> 1
-        let mut expected_cov_dist: HashMap<u16, u32> = HashMap::new();
-        expected_cov_dist.insert(10, 3);
-        expected_cov_dist.insert(20, 1);
-        expected_cov_dist.insert(30, 1);
-
-        assert_eq!(cov_dist.len(), 3);
-        assert_eq!(cov_dist, expected_cov_dist);
-    }
-
-    #[rstest]
-    fn test_get_context_stats(test_batch: BsxBatch) {
-        use assert_approx_eq::assert_approx_eq;
-
-        let context_stats = test_batch.get_context_stats();
-
-        // Expected stats from test_batch (filtered for non-null density):
-        // (Context, Density): [(CG, 0.5), (CHG, 0.333...), (CG, 0.75), (CHH, 1.0),
-        // (CHH, 0.5)] CG: sum=0.5+0.75=1.25, count=2
-        // CHG: sum=0.333..., count=1
-        // CHH: sum=1.0+0.5=1.5, count=2
-        let mut expected_context_stats: HashMap<Context, (f64, u32)> = HashMap::new();
-        expected_context_stats.insert(Context::CG, (1.25, 2));
-        expected_context_stats.insert(Context::CHG, (10.0 / 30.0 as f64, 1));
-        expected_context_stats.insert(Context::CHH, (1.5, 2));
-
-        assert_eq!(context_stats.len(), 3);
-        assert_approx_eq!(
-            context_stats
-                .get(&Context::CG)
-                .copied()
-                .unwrap_or_default()
-                .0 as f64,
-            expected_context_stats
-                .get(&Context::CG)
-                .copied()
-                .unwrap_or_default()
-                .0,
-            1e-6
-        );
-        assert_eq!(
-            context_stats
-                .get(&Context::CG)
-                .copied()
-                .unwrap_or_default()
-                .1,
-            expected_context_stats
-                .get(&Context::CG)
-                .copied()
-                .unwrap_or_default()
-                .1
-        );
-
-        assert_approx_eq!(
-            context_stats
-                .get(&Context::CHG)
-                .copied()
-                .unwrap_or_default()
-                .0 as f64,
-            expected_context_stats
-                .get(&Context::CHG)
-                .copied()
-                .unwrap_or_default()
-                .0,
-            1e-6
-        );
-        assert_eq!(
-            context_stats
-                .get(&Context::CHG)
-                .copied()
-                .unwrap_or_default()
-                .1,
-            expected_context_stats
-                .get(&Context::CHG)
-                .copied()
-                .unwrap_or_default()
-                .1
-        );
-
-        assert_approx_eq!(
-            context_stats
-                .get(&Context::CHH)
-                .copied()
-                .unwrap_or_default()
-                .0 as f64,
-            expected_context_stats
-                .get(&Context::CHH)
-                .copied()
-                .unwrap_or_default()
-                .0,
-            1e-6
-        );
-        assert_eq!(
-            context_stats
-                .get(&Context::CHH)
-                .copied()
-                .unwrap_or_default()
-                .1,
-            expected_context_stats
-                .get(&Context::CHH)
-                .copied()
-                .unwrap_or_default()
-                .1
-        );
-    }
-
-    #[rstest]
-    fn test_get_strand_stats(test_batch: BsxBatch) {
-        use assert_approx_eq::assert_approx_eq;
-
-        let strand_stats = test_batch.get_strand_stats();
-
-        // Expected stats from test_batch (filtered for non-null density):
-        // (Strand, Density): [(Forward, 0.5), (Reverse, 0.333...), (Forward, 0.75),
-        // (Forward, 1.0), (Reverse, 0.5)] Forward: sum=0.5+0.75+1.0=2.25,
-        // count=3 Reverse: sum=0.333...+0.5=0.833..., count=2
-        let mut expected_strand_stats: HashMap<Strand, (f64, u32)> = HashMap::new();
-        expected_strand_stats.insert(Strand::Forward, (2.25, 3));
-        expected_strand_stats.insert(Strand::Reverse, (10.0 / 30.0 as f64 + 0.5, 2));
-
-        assert_eq!(strand_stats.len(), 2);
-        assert_approx_eq!(
-            strand_stats
-                .get(&Strand::Forward)
-                .copied()
-                .unwrap_or_default()
-                .0 as f64,
-            expected_strand_stats
-                .get(&Strand::Forward)
-                .copied()
-                .unwrap_or_default()
-                .0,
-            1e-6
-        );
-        assert_eq!(
-            strand_stats
-                .get(&Strand::Forward)
-                .copied()
-                .unwrap_or_default()
-                .1,
-            expected_strand_stats
-                .get(&Strand::Forward)
-                .copied()
-                .unwrap_or_default()
-                .1
-        );
-
-        assert_approx_eq!(
-            strand_stats
-                .get(&Strand::Reverse)
-                .copied()
-                .unwrap_or_default()
-                .0 as f64,
-            expected_strand_stats
-                .get(&Strand::Reverse)
-                .copied()
-                .unwrap_or_default()
-                .0,
-            1e-6
-        );
-        assert_eq!(
-            strand_stats
-                .get(&Strand::Reverse)
-                .copied()
-                .unwrap_or_default()
-                .1,
-            expected_strand_stats
-                .get(&Strand::Reverse)
-                .copied()
-                .unwrap_or_default()
-                .1
         );
     }
 

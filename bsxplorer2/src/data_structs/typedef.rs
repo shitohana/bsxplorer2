@@ -1,13 +1,14 @@
 use std::hash::Hash;
 
+use arcstr::ArcStr;
 use num::{
     PrimInt,
     Unsigned,
 };
-use smallstr::SmallString;
 
-pub const SMALLSTR_SIZE: usize = 20;
-pub type BsxSmallStr = SmallString<[u8; SMALLSTR_SIZE]>;
+// TODO:    Test, whether using ArcStr improves performance
+//          if no: go back to SmallStr
+pub type BsxSmallStr = ArcStr;
 pub type PosType = u32;
 pub type CountType = u16;
 pub type DensityType = f32;

@@ -439,12 +439,11 @@ impl HcAnnotStore {
             .unwrap()
             .unwrap_or_default();
 
-        let gffid2entryid: HashMap<&smallstr::SmallString<[u8; 20]>, EntryId> =
-            HashMap::from_iter(
-                self.entries
-                    .iter()
-                    .flat_map(|(k, v)| v.attributes().id().zip(Some(k))),
-            );
+        let gffid2entryid: HashMap<ArcStr, EntryId> = HashMap::from_iter(
+            self.entries
+                .iter()
+                .flat_map(|(k, v)| v.attributes().id().cloned().zip(Some(k))),
+        );
         let iter = self
             .entries
             .iter()

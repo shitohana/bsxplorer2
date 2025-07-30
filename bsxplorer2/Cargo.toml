@@ -18,7 +18,7 @@ performant = ["polars/performant", "polars/cse"]
 # performant_nightly = ["polars/nightly"]
 # Currently disable to silence the rust-analyzer
 performant_nightly = []
-tools = ["dep:typed_floats", "dep:dbscan", "dep:smallvec"]
+tools = ["dep:typed_floats", "dep:dbscan", "dep:smallvec", "dep:statrs"]
 
 [lib]
 path = "src/lib.rs"
@@ -36,9 +36,8 @@ rayon.workspace      = true
 serde.workspace      = true
 serde_json.workspace = true
 slotmap.workspace    = true
-statrs.workspace     = true
 
-arcstr = "1.2.0"
+arcstr = { version = "1.2.0", features = ["serde"] }
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
 csv = "1.3.1"
 ctor = "0.4.2"
@@ -47,7 +46,7 @@ memmap2 = "0.9.5"
 nanoid = "0.4.0"
 num = "0.4.3"
 regex-lite = "0.1.6"
-smallstr = { version = "0.3.0", features = ["serde"] }
+rust-lapper   = { version = "1.1.0", features = ["serde", "with_serde"] }
 spipe = "0.1.0"
 
 id_tree = "1.8.0"
@@ -64,8 +63,8 @@ zstd     = { version = "0.13.3", optional = true }
 
 dbscan        = { version = "0.3.1", optional = true }
 noodles-fasta = { version = "0.54.0", default-features = false }
-rust-lapper   = { version = "1.1.0", features = ["serde", "with_serde"] }
 typed_floats  = { version = "1.0.6", features = ["serde"], optional = true }
+statrs        = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_approx_eq = "1.1.0"

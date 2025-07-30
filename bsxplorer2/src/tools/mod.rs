@@ -16,5 +16,4 @@
 //!   for representing potential DMRs, and an iterator-based approach for
 //!   processing data streams and identifying DMRs.
 pub mod dimred;
-mod stat_gather;
 pub mod stats;

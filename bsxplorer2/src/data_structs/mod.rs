@@ -44,4 +44,7 @@ pub use enums::{
     Context,
     Strand,
 };
-pub use methstats::MethylationStats;
+pub use methstats::{
+    MethAgg,
+    RegionMethAgg,
+};

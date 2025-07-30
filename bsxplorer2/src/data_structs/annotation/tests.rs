@@ -61,7 +61,7 @@ fn test_raw_gff_entry_conversion() {
 
     assert_eq!(
         gff_entry.contig.seqname().to_owned(),
-        BsxSmallStr::from_str("chr1")
+        BsxSmallStr::from_str("chr1").unwrap()
     );
     assert_eq!(gff_entry.contig.start(), 100);
     assert_eq!(gff_entry.contig.end(), 200);

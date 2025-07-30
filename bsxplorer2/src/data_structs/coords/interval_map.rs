@@ -24,7 +24,6 @@ where
     inner: HashMap<BsxSmallStr, Lapper<PosType, V>>,
 }
 
-
 impl<V> From<HashMap<BsxSmallStr, Lapper<PosType, V>>> for ContigIntervalMap<V>
 where
     V: Sync + Send + Eq + Clone,

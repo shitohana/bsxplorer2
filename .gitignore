@@ -21,3 +21,5 @@ Cargo.lock
 temp
 profile.json.*
 examples
+# pixi environments
+.pixi

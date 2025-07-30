@@ -8,7 +8,6 @@ use std::panic::AssertUnwindSafe;
 use std::str::FromStr;
 
 use anyhow::bail;
-use hashbrown::HashMap;
 use itertools::{
     izip,
     Itertools,
@@ -16,8 +15,6 @@ use itertools::{
 use num::Zero;
 use polars::frame::column::ScalarColumn;
 use polars::prelude::*;
-use statrs::distribution::DiscreteCDF;
-use statrs::statistics::Statistics;
 
 use super::{
     create_empty_categorical_dtype,
@@ -349,61 +346,25 @@ impl BsxBatch {
     }
 
     /// Calculates and returns various methylation statistics for the batch.
-    pub fn get_methylation_stats(&self) -> MethylationStats {
-        let nonull = self.density().drop_nulls();
-        let mean = nonull
-            .mean()
-            .map(|v| v as DensityType)
-            .unwrap_or(DensityType::NAN);
-        let var =
-            nonull.into_no_null_iter().map(|x| x as f64).variance() as DensityType;
-
-        MethylationStats::from_data(
-            mean,
-            self.get_coverage_dist(),
-            self.get_context_stats(),
-            self.get_strand_stats(),
+    pub fn get_methylation_stats(&self) -> RegionMethAgg {
+        izip!(
+            self.context(),
+            self.strand(),
+            self.count_m(),
+            self.count_total(),
+            self.density()
         )
-    }
-
-    /// Gets the distribution of coverage counts across the batch.
-    ///
-    /// Returns a HashMap where keys are coverage counts and values are
-    /// the number of sites with that coverage.
-    pub fn get_coverage_dist(&self) -> HashMap<CountType, u32> {
-        self.count_total()
-            .into_iter()
-            .filter_map(|v| v.map(|v1| (v1, v1)))
-            .into_group_map()
-            .into_iter()
-            .map(|(k, v)| (k, v.len() as u32))
-            .collect()
-    }
-
-    /// Gets methylation statistics grouped by context (CG/CHG/CHH).
-    ///
-    /// Returns a HashMap where keys are `Context` and values are tuples
-    /// `(sum of methylation ratios, total number of sites)`.
-    pub fn get_context_stats(&self) -> HashMap<Context, (DensityType, u32)> {
-        izip!(self.context(), self.density())
-            .filter_map(|(k, v)| Option::map(v, |density| (Context::from(k), density)))
-            .into_group_map()
-            .into_iter()
-            .map(|(k, v)| (k, (v.iter().sum(), v.len() as u32)))
-            .collect()
-    }
-
-    /// Gets methylation statistics grouped by strand (+/-).
-    ///
-    /// Returns a HashMap where keys are `Strand` and values are tuples
-    /// `(sum of methylation ratios, total number of sites)`.
-    pub fn get_strand_stats(&self) -> HashMap<Strand, (DensityType, u32)> {
-        izip!(self.strand(), self.density())
-            .filter_map(|(k, v)| Option::map(v, |density| (Strand::from(k), density)))
-            .into_group_map()
-            .into_iter()
-            .map(|(k, v)| (k, (v.iter().sum(), v.len() as u32)))
-            .collect()
+        .into_iter()
+        .filter(|(_, _, _, c, d)| c.is_some() || d.is_some())
+        .map(|(ctx, snd, cm, ct, dens)| {
+            let count = if cm.is_some() { ct } else { None };
+            let sum = cm.map(|v| v as DensityType).unwrap_or(dens.unwrap());
+            (ctx, snd, sum, count)
+        })
+        .fold(RegionMethAgg::new(), |mut acc, (ctx, snd, sum, count)| {
+            acc.add_cytosine(sum, count, ctx.into(), snd.into());
+            acc
+        })
     }
 
     /// Filters sites based on a binomial test p-value and replaces counts and
@@ -414,11 +375,16 @@ impl BsxBatch {
     /// density to NaN. Sites passing the test have counts set to (1, 1) and
     /// density to 1.0. Sites with 0 total reads initially have density NaN
     /// and counts (0, 0).
+    #[cfg(feature = "tools")]
     pub fn as_binom(
         self,
         mean: f64,
         pvalue: f64,
     ) -> PolarsResult<Self> {
+        use statrs::distribution::{
+            Binomial,
+            DiscreteCDF,
+        };
         let pvalue_vec = izip!(self.count_m(), self.count_total())
             .map(|(m, n)| (m.unwrap_or(0), n.unwrap_or(0)))
             .map(|(m, n)| {
@@ -432,8 +398,7 @@ impl BsxBatch {
                     0.0
                 }
                 else {
-                    let binom =
-                        statrs::distribution::Binomial::new(mean, n as u64).unwrap();
+                    let binom = Binomial::new(mean, n as u64).unwrap();
                     1.0 - binom.cdf(m as u64)
                 }
             })
@@ -953,8 +918,6 @@ impl AggMethod {
     /// Returns a boxed closure for the selected aggregation method.
     #[allow(clippy::type_complexity)]
     pub fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64 + Sync + Send> {
-        use statrs::statistics::*;
-
         Box::new(match self {
             AggMethod::Mean => {
                 |arr: &[f32]| {
@@ -975,8 +938,10 @@ impl AggMethod {
                     }
                 }
             },
+            #[cfg(feature = "tools")]
             AggMethod::Median => {
                 |arr: &[f32]| {
+                    use statrs::statistics::*;
                     if arr.is_empty() {
                         f64::NAN
                     }

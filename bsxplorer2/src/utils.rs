@@ -204,7 +204,6 @@ impl Semaphore {
     }
 }
 
-
 pub struct BoundThreadExecutor<'a> {
     semaphore:   Arc<Semaphore>,
     thread_pool: &'a ThreadPool,
