@@ -2,7 +2,6 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bsxplorer2::data_structs::annotation::HcAnnotStore;
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Context;
@@ -11,6 +10,7 @@ use bsxplorer2::io::bsx::{
     BsxFileReader,
     RegionReader,
 };
+use bsxplorer2::prelude::HcAnnotStore;
 use rstest::{
     fixture,
     rstest,

@@ -24,7 +24,7 @@ use crate::prelude::{
     Strand,
 };
 
-#[derive(Clone, Debug, Copy, Serialize, Deserialize)]
+#[derive(Clone, Debug, Copy, Serialize, Deserialize, PartialEq)]
 pub struct MethAgg {
     sum:   DensityType,
     count: DensityType,

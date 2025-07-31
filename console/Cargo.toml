@@ -38,7 +38,7 @@ num = "0.4.3"
 
 
 [dependencies.bsxplorer2]
-path = "../bsxplorer2"
+version = "0.2.2"
 default-features = false
 features = ["performant", "compression", "tools"]
 

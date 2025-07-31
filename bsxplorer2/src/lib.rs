@@ -200,7 +200,6 @@
 //! }
 //! ```
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-
 #[ctor::ctor]
 fn init() {
     if let Ok(n) = std::env::var("BSX_NUM_THREADS") {

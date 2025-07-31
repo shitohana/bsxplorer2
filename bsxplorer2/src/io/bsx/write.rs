@@ -114,6 +114,6 @@ where
 impl<W: Write> Drop for BsxFileWriter<W> {
     /// Ensures resources are properly cleaned up when dropped.
     fn drop(&mut self) {
-        self.close().expect("Failed to close reader")
+        let _ = self.close();
     }
 }

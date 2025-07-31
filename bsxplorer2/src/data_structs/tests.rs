@@ -13,6 +13,17 @@ mod enums_tests {
         assert_eq!(Context::from_str("chg").unwrap(), Context::CHG);
         assert_eq!(Context::from_str("CHH").unwrap(), Context::CHH);
         assert_eq!(Context::from_str("chh").unwrap(), Context::CHH);
+        // Test fallback to CHH for any other string
+        assert_eq!(Context::from_str("unknown").unwrap(), Context::CHH);
+        assert_eq!(Context::from_str("").unwrap(), Context::CHH);
+        assert_eq!(Context::from_str("xyz").unwrap(), Context::CHH);
+    }
+
+    #[test]
+    fn test_context_display() {
+        assert_eq!(Context::CG.to_string(), "CG");
+        assert_eq!(Context::CHG.to_string(), "CHG");
+        assert_eq!(Context::CHH.to_string(), "CHH");
     }
 
     #[test]
@@ -24,6 +35,28 @@ mod enums_tests {
         assert_eq!(Option::<bool>::from(Context::CG), Some(true));
         assert_eq!(Option::<bool>::from(Context::CHG), Some(false));
         assert_eq!(Option::<bool>::from(Context::CHH), None);
+    }
+
+    #[test]
+    fn test_context_serialization() {
+        // Test JSON serialization/deserialization
+        let cg = Context::CG;
+        let serialized = serde_json::to_string(&cg).unwrap();
+        assert_eq!(serialized, "\"CG\"");
+        let deserialized: Context = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, Context::CG);
+
+        let chg = Context::CHG;
+        let serialized = serde_json::to_string(&chg).unwrap();
+        assert_eq!(serialized, "\"CHG\"");
+        let deserialized: Context = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, Context::CHG);
+
+        let chh = Context::CHH;
+        let serialized = serde_json::to_string(&chh).unwrap();
+        assert_eq!(serialized, "\"CHH\"");
+        let deserialized: Context = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, Context::CHH);
     }
 
     // --- Strand Tests ---
@@ -39,6 +72,13 @@ mod enums_tests {
     }
 
     #[test]
+    fn test_strand_display() {
+        assert_eq!(Strand::Forward.to_string(), "+");
+        assert_eq!(Strand::Reverse.to_string(), "-");
+        assert_eq!(Strand::None.to_string(), ".");
+    }
+
+    #[test]
     fn test_strand_ipc_encoded() {
         assert_eq!(Strand::from(Some(true)), Strand::Forward);
         assert_eq!(Strand::from(Some(false)), Strand::Reverse);
@@ -47,6 +87,51 @@ mod enums_tests {
         assert_eq!(Option::<bool>::from(Strand::Forward), Some(true));
         assert_eq!(Option::<bool>::from(Strand::Reverse), Some(false));
         assert_eq!(Option::<bool>::from(Strand::None), None);
+    }
+
+    #[test]
+    fn test_strand_from_bool() {
+        assert_eq!(Strand::from(true), Strand::Forward);
+        assert_eq!(Strand::from(false), Strand::Reverse);
+
+        assert_eq!(bool::from(Strand::Forward), true);
+        assert_eq!(bool::from(Strand::Reverse), false);
+        // Note: bool::from(Strand::None) would panic with unimplemented!()
+    }
+
+    #[test]
+    fn test_strand_from_char() {
+        assert_eq!(char::from(Strand::Forward), '+');
+        assert_eq!(char::from(Strand::Reverse), '-');
+        assert_eq!(char::from(Strand::None), '.');
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_strand_none_to_bool_panics() {
+        let _: bool = Strand::None.into();
+    }
+
+    #[test]
+    fn test_strand_serialization() {
+        // Test JSON serialization/deserialization
+        let forward = Strand::Forward;
+        let serialized = serde_json::to_string(&forward).unwrap();
+        assert_eq!(serialized, "\"+\"");
+        let deserialized: Strand = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, Strand::Forward);
+
+        let reverse = Strand::Reverse;
+        let serialized = serde_json::to_string(&reverse).unwrap();
+        assert_eq!(serialized, "\"-\"");
+        let deserialized: Strand = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, Strand::Reverse);
+
+        let none = Strand::None;
+        let serialized = serde_json::to_string(&none).unwrap();
+        assert_eq!(serialized, "\".\"");
+        let deserialized: Strand = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, Strand::None);
     }
 }
 
@@ -268,5 +353,287 @@ mod context_data_tests {
         .unwrap();
         assert_eq!(df_decoded.schema(), expected_df_decoded.schema());
         assert_eq!(df_decoded.height(), 0);
+    }
+}
+
+
+#[cfg(test)]
+mod methstats_tests {
+    use hashbrown::HashMap;
+    use assert_approx_eq::assert_approx_eq;
+    use rstest::rstest;
+
+    use crate::data_structs::enums::{
+        Context,
+        Strand,
+    };
+    use crate::data_structs::methstats::{
+        MethAgg,
+        RegionMethAgg,
+    };
+    use crate::data_structs::typedef::DensityType;
+
+    // --- MethAgg Tests ---
+
+    #[test]
+    fn test_meth_agg_new() {
+        let agg = MethAgg::new();
+        assert_approx_eq!(agg.sum(), 0.0);
+        assert_approx_eq!(agg.count(), 0.0);
+    }
+
+    #[test]
+    fn test_meth_agg_default() {
+        let agg = MethAgg::default();
+        assert_approx_eq!(agg.sum(), 0.0);
+        assert_approx_eq!(agg.count(), 0.0);
+    }
+
+    #[test]
+    fn test_meth_agg_from_tuple() {
+        let agg = MethAgg::from((5.0, 10.0));
+        assert_approx_eq!(agg.sum(), 5.0);
+        assert_approx_eq!(agg.count(), 10.0);
+    }
+
+    #[test]
+    fn test_meth_agg_add_density() {
+        let mut agg = MethAgg::new();
+        agg.add_density(0.8);
+        assert_approx_eq!(agg.sum(), 0.8);
+        assert_approx_eq!(agg.count(), 1.0);
+
+        agg.add_density(0.6);
+        assert_approx_eq!(agg.sum(), 1.4);
+        assert_approx_eq!(agg.count(), 2.0);
+    }
+
+    #[test]
+    fn test_meth_agg_finalize() {
+        let mut agg = MethAgg::new();
+        agg.add_density(0.8);
+        agg.add_density(0.6);
+        assert_approx_eq!(agg.finalize(), 0.7); // (0.8 + 0.6) / 2
+    }
+
+    #[test]
+    fn test_meth_agg_add_assign() {
+        let mut agg1 = MethAgg::from((2.0, 3.0));
+        let agg2 = MethAgg::from((4.0, 5.0));
+        agg1 += agg2;
+        assert_approx_eq!(agg1.sum(), 6.0);
+        assert_approx_eq!(agg1.count(), 8.0);
+    }
+
+    #[test]
+    fn test_meth_agg_add() {
+        let agg1 = MethAgg::from((2.0, 3.0));
+        let agg2 = MethAgg::from((4.0, 5.0));
+        let result = agg1 + agg2;
+        assert_approx_eq!(result.sum(), 6.0);
+        assert_approx_eq!(result.count(), 8.0);
+    }
+
+    // --- RegionMethAgg Tests ---
+
+    #[test]
+    fn test_region_meth_agg_new() {
+        let agg = RegionMethAgg::new();
+        assert!(agg.is_empty());
+        assert_eq!(agg.context().len(), 0);
+        assert_eq!(agg.strand().len(), 0);
+        assert_eq!(agg.coverage().len(), 0);
+    }
+
+    #[test]
+    fn test_region_meth_agg_default() {
+        let agg = RegionMethAgg::default();
+        assert!(agg.is_empty());
+    }
+
+    #[test]
+    fn test_region_meth_agg_full() {
+        let mut coverage = HashMap::new();
+        coverage.insert(10, 5);
+        let mut context = HashMap::new();
+        context.insert(Context::CG, MethAgg::from((8.0, 10.0)));
+        let mut strand = HashMap::new();
+        strand.insert(Strand::Forward, MethAgg::from((6.0, 8.0)));
+
+        let agg = RegionMethAgg::full(coverage.clone(), context.clone(), strand.clone());
+        assert!(!agg.is_empty());
+        assert_eq!(agg.coverage(), &coverage);
+        assert_eq!(agg.context(), &context);
+        assert_eq!(agg.strand(), &strand);
+    }
+
+    #[test]
+    fn test_region_meth_agg_add_cytosine() {
+        let mut agg = RegionMethAgg::new();
+
+        // Add cytosine with coverage
+        agg.add_cytosine(8.0, Some(10), Context::CG, Strand::Forward);
+
+        assert!(!agg.is_empty());
+        assert_eq!(agg.coverage().get(&10), Some(&1));
+
+        let context_agg = agg.context().get(&Context::CG).unwrap();
+        assert_approx_eq!(context_agg.sum(), 0.8); // 8.0 / 10
+        assert_approx_eq!(context_agg.count(), 1.0);
+
+        let strand_agg = agg.strand().get(&Strand::Forward).unwrap();
+        assert_approx_eq!(strand_agg.sum(), 0.8);
+        assert_approx_eq!(strand_agg.count(), 1.0);
+    }
+
+    #[test]
+    fn test_region_meth_agg_add_cytosine_no_coverage() {
+        let mut agg = RegionMethAgg::new();
+
+        // Add cytosine without coverage
+        agg.add_cytosine(5.0, None, Context::CHG, Strand::Reverse);
+
+        assert!(!agg.is_empty());
+        assert_eq!(agg.coverage().len(), 0); // No coverage recorded
+
+        let context_agg = agg.context().get(&Context::CHG).unwrap();
+        assert_approx_eq!(context_agg.sum(), 5.0); // 5.0 / 1 (default when None)
+        assert_approx_eq!(context_agg.count(), 1.0);
+
+        let strand_agg = agg.strand().get(&Strand::Reverse).unwrap();
+        assert_approx_eq!(strand_agg.sum(), 5.0);
+        assert_approx_eq!(strand_agg.count(), 1.0);
+    }
+
+    #[test]
+    fn test_region_meth_agg_multiple_cytosines() {
+        let mut agg = RegionMethAgg::new();
+
+        agg.add_cytosine(8.0, Some(10), Context::CG, Strand::Forward);
+        agg.add_cytosine(6.0, Some(10), Context::CG, Strand::Forward);
+        agg.add_cytosine(4.0, Some(5), Context::CHG, Strand::Reverse);
+
+        // Check coverage counts
+        assert_eq!(agg.coverage().get(&10), Some(&2));
+        assert_eq!(agg.coverage().get(&5), Some(&1));
+
+        // Check context aggregation
+        let cg_agg = agg.context().get(&Context::CG).unwrap();
+        assert_approx_eq!(cg_agg.sum(), 1.4); // (8.0/10) + (6.0/10) = 0.8 + 0.6
+        assert_approx_eq!(cg_agg.count(), 2.0);
+
+        let chg_agg = agg.context().get(&Context::CHG).unwrap();
+        assert_approx_eq!(chg_agg.sum(), 0.8); // 4.0/5
+        assert_approx_eq!(chg_agg.count(), 1.0);
+
+        // Check strand aggregation
+        let forward_agg = agg.strand().get(&Strand::Forward).unwrap();
+        assert_approx_eq!(forward_agg.sum(), 1.4); // 0.8 + 0.6
+        assert_approx_eq!(forward_agg.count(), 2.0);
+
+        let reverse_agg = agg.strand().get(&Strand::Reverse).unwrap();
+        assert_approx_eq!(reverse_agg.sum(), 0.8);
+        assert_approx_eq!(reverse_agg.count(), 1.0);
+    }
+
+    #[test]
+    fn test_region_meth_agg_finalize_context() {
+        let mut agg = RegionMethAgg::new();
+        agg.add_cytosine(8.0, Some(10), Context::CG, Strand::Forward);
+        agg.add_cytosine(6.0, Some(10), Context::CG, Strand::Forward);
+        agg.add_cytosine(4.0, Some(5), Context::CHG, Strand::Reverse);
+
+        let finalized = agg.finalize_context();
+        assert_approx_eq!(finalized.get(&Context::CG).unwrap(), &0.7); // 1.4 / 2.0
+        assert_approx_eq!(finalized.get(&Context::CHG).unwrap(), &0.8); // 0.8 / 1.0
+    }
+
+    #[test]
+    fn test_region_meth_agg_finalize_strand() {
+        let mut agg = RegionMethAgg::new();
+        agg.add_cytosine(8.0, Some(10), Context::CG, Strand::Forward);
+        agg.add_cytosine(6.0, Some(10), Context::CG, Strand::Forward);
+        agg.add_cytosine(4.0, Some(5), Context::CHG, Strand::Reverse);
+
+        let finalized = agg.finalize_strand();
+        assert_approx_eq!(finalized.get(&Strand::Forward).unwrap(), &0.7); // 1.4 / 2.0
+        assert_approx_eq!(finalized.get(&Strand::Reverse).unwrap(), &0.8); // 0.8 / 1.0
+    }
+
+    #[test]
+    fn test_region_meth_agg_add_assign() {
+        let mut agg1 = RegionMethAgg::new();
+        agg1.add_cytosine(8.0, Some(10), Context::CG, Strand::Forward);
+
+        let mut agg2 = RegionMethAgg::new();
+        agg2.add_cytosine(6.0, Some(10), Context::CG, Strand::Forward);
+        agg2.add_cytosine(4.0, Some(5), Context::CHG, Strand::Reverse);
+
+        agg1 += agg2;
+
+        // Check combined coverage
+        assert_eq!(agg1.coverage().get(&10), Some(&2));
+        assert_eq!(agg1.coverage().get(&5), Some(&1));
+
+        // Check combined context
+        let cg_agg = agg1.context().get(&Context::CG).unwrap();
+        assert_approx_eq!(cg_agg.sum(), 1.4); // 0.8 + 0.6
+        assert_approx_eq!(cg_agg.count(), 2.0);
+
+        let chg_agg = agg1.context().get(&Context::CHG).unwrap();
+        assert_approx_eq!(chg_agg.sum(), 0.8);
+        assert_approx_eq!(chg_agg.count(), 1.0);
+    }
+
+    #[test]
+    fn test_region_meth_agg_add() {
+        let mut agg1 = RegionMethAgg::new();
+        agg1.add_cytosine(8.0, Some(10), Context::CG, Strand::Forward);
+
+        let mut agg2 = RegionMethAgg::new();
+        agg2.add_cytosine(6.0, Some(10), Context::CG, Strand::Forward);
+
+        let result = agg1 + agg2;
+
+        let cg_agg = result.context().get(&Context::CG).unwrap();
+        assert_approx_eq!(cg_agg.sum(), 1.4); // 0.8 + 0.6
+        assert_approx_eq!(cg_agg.count(), 2.0);
+    }
+
+    #[rstest]
+    #[case(0.0, 0.0)]
+    #[case(5.0, 1.0)]
+    #[case(10.5, 3.5)]
+    fn test_meth_agg_with_various_values(
+        #[case] sum: DensityType,
+        #[case] count: DensityType,
+    ) {
+        let agg = MethAgg::from((sum, count));
+        assert_approx_eq!(agg.sum(), sum);
+        assert_approx_eq!(agg.count(), count);
+        if count > 0.0 {
+            assert_eq!(agg.finalize(), sum / count);
+        }
+    }
+
+    #[rstest]
+    #[case(Context::CG, Strand::Forward)]
+    #[case(Context::CHG, Strand::Reverse)]
+    #[case(Context::CHH, Strand::None)]
+    fn test_region_meth_agg_different_contexts_strands(
+        #[case] context: Context,
+        #[case] strand: Strand,
+    ) {
+        let mut agg = RegionMethAgg::new();
+        agg.add_cytosine(5.0, Some(10), context, strand);
+
+        assert!(agg.context().contains_key(&context));
+        assert!(agg.strand().contains_key(&strand));
+
+        let context_agg = agg.context().get(&context).unwrap();
+        assert_approx_eq!(context_agg.finalize(), 0.5); // 5.0 / 10
+
+        let strand_agg = agg.strand().get(&strand).unwrap();
+        assert_approx_eq!(strand_agg.finalize(), 0.5);
     }
 }
