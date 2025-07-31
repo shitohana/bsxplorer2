@@ -59,8 +59,8 @@ impl Hash for GffEntryAttributes {
 
 macro_rules! with_vec_field_fn {
     ($name: ident, $item: ty, $op: expr) => {
-        #[cfg_attr(coverage_nightly, coverage(off))]
         paste! {
+            #[cfg_attr(coverage_nightly, coverage(off))]
             pub fn [<with_$name>]<S: $item, I: IntoIterator<Item = S>>(
                 mut self,
                 values: I,
@@ -72,8 +72,8 @@ macro_rules! with_vec_field_fn {
     };
 
     ($name: ident, $type: ty) => {
-        #[cfg_attr(coverage_nightly, coverage(off))]
         paste! {
+            #[cfg_attr(coverage_nightly, coverage(off))]
             pub fn [<with_$name>]<I: IntoIterator<Item = $type>>(
                 mut self,
                 values: I,

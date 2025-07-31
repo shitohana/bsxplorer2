@@ -262,7 +262,7 @@ mod tests {
         // Test finding non-overlapping contigs
         let query_contig2 = Contig::new("chr1".into(), 200, 300, Strand::None);
         let result2 = index.find(&query_contig2);
-        assert_eq!(result2, None);
+        assert_eq!(result2, Some(vec![]));
 
         // Test finding contigs on different chromosomes
         let query_contig3 = Contig::new("chr2".into(), 50, 60, Strand::None);

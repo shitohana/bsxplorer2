@@ -55,7 +55,13 @@ new_key_type! {
     pub struct EntryId;
 }
 
-struct EntryTree {
+impl From<u64> for EntryId {
+    fn from(value: u64) -> Self {
+        KeyData::from_ffi(value).into()
+    }
+}
+
+pub struct EntryTree {
     tree:          Tree<EntryId>,
     tree_node_ids: HashMap<EntryId, Arc<NodeId>>,
     tree_root_id:  Arc<NodeId>,
@@ -76,7 +82,7 @@ impl Default for EntryTree {
 }
 
 impl EntryTree {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let mut tree = Tree::new();
         let tree_root = EntryId::from(KeyData::from_ffi(u64::MAX));
         let tree_root_node = Node::new(tree_root);
@@ -115,7 +121,7 @@ impl EntryTree {
             count += 1;
 
             if count == last_len && queue.len() >= last_len {
-                bail!("Some childs have unexistent parents")
+                bail!("Some children have unexistent parents")
             }
             else {
                 count = 0;
@@ -126,10 +132,11 @@ impl EntryTree {
         Ok(())
     }
 
-    fn insert_to_root(
+    pub fn insert_to_root<N: Into<EntryId>>(
         &mut self,
-        id: EntryId,
+        id: N,
     ) -> Result<(), NodeIdError> {
+        let id = id.into();
         if !self.tree_node_ids.contains_key(&id) {
             let node = Node::new(id);
             let node_id =
@@ -142,11 +149,14 @@ impl EntryTree {
         Ok(())
     }
 
-    fn insert_under(
+    pub fn insert_under<N: Into<EntryId>>(
         &mut self,
-        child_id: EntryId,
-        parent_id: EntryId,
+        child_id: N,
+        parent_id: N,
     ) -> anyhow::Result<()> {
+        let child_id = child_id.into();
+        let parent_id = parent_id.into();
+
         if !self.tree_node_ids.contains_key(&parent_id) {
             bail!("Parent id {:?} does not exist in the tree", parent_id)
         }
@@ -172,12 +182,16 @@ impl EntryTree {
         Ok(())
     }
 
-    fn remove(
+    pub fn remove<N: Into<EntryId> + Clone>(
         &mut self,
-        id: EntryId,
+        id: N,
     ) -> anyhow::Result<()> {
+        if let Some(children) = self.get_children(id.clone()) {
+            for child in children { self.remove(child)? }
+        }
+
         self.tree_node_ids
-            .remove(&id)
+            .remove(&id.into())
             .ok_or(anyhow!("Such id did not exist in a tree"))
             .and_then(|node_id| {
                 Arc::try_unwrap(node_id)
@@ -200,11 +214,11 @@ impl EntryTree {
             .map(|node_id| self.tree.get(&node_id).expect("Should not fail"))
     }
 
-    pub fn get_parent(
+    pub fn get_parent<N: Into<EntryId>>(
         &self,
-        child_id: EntryId,
+        child_id: N,
     ) -> Option<EntryId> {
-        self.get_node(child_id)
+        self.get_node(child_id.into())
             .and_then(Node::parent)
             .map(|parent_node_id| {
                 self.tree
@@ -215,11 +229,11 @@ impl EntryTree {
             })
     }
 
-    pub fn get_children(
+    pub fn get_children<N: Into<EntryId>>(
         &self,
-        parent_id: EntryId,
+        parent_id: N,
     ) -> Option<Vec<EntryId>> {
-        self.get_node(parent_id).map(|node| {
+        self.get_node(parent_id.into()).map(|node| {
             node.children()
                 .iter()
                 .map(|child_id| {
@@ -519,11 +533,11 @@ impl HcAnnotStore {
         &self,
         pattern: &str,
     ) -> Result<Vec<&GffEntry>, Box<dyn Error>> {
-        let regex_compliled = Regex::new(pattern)?;
+        let regex_compiled = Regex::new(pattern)?;
         Ok(self
             .entries
             .values()
-            .filter(|entry| regex_compliled.is_match(entry.id().as_str()))
+            .filter(|entry| regex_compiled.is_match(entry.id().as_str()))
             .collect())
     }
 
