@@ -12,9 +12,9 @@ use bsxplorer2::data_structs::batch::{
 use bsxplorer2::data_structs::coords::ContigIntervalMap;
 use bsxplorer2::data_structs::typedef::PosType;
 use bsxplorer2::prelude::*;
-use bsxplorer2::tools::dimred::merge::EqFloat;
 use bsxplorer2::tools::dimred::{
     pelt,
+    EqFloat,
     MethDataBinom,
 };
 use bsxplorer2::utils::{

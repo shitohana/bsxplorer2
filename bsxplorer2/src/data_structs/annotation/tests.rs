@@ -1,10 +1,13 @@
 use std::str::FromStr;
 
 use arcstr::ArcStr;
-use rstest::{fixture, rstest};
+use rstest::{
+    fixture,
+    rstest,
+};
 
-use super::*;
 use super::annot_store::EntryTree;
+use super::*;
 use crate::data_structs::annotation::gff_entry::RawGffEntry;
 use crate::data_structs::typedef::BsxSmallStr;
 
@@ -113,7 +116,7 @@ fn test_entry_tree_from_iter(entry_tree_entries: Vec<(EntryId, Option<EntryId>)>
     assert_eq!(children_of_3, vec![6.into()]);
 
     assert!(tree.get_children(4).unwrap().is_empty()); // Leaf node
-    assert!(tree.get_children(99).is_none());          // Non-existent entry
+    assert!(tree.get_children(99).is_none()); // Non-existent entry
 
     // Verify children of the internal root
     let mut children_of_internal_root = tree.get_children(u64::MAX).unwrap();
@@ -148,7 +151,8 @@ fn test_entry_tree_append_existing_parents(mut simple_entry_tree: EntryTree) {
     simple_entry_tree.append(vec![(9.into(), None)]).unwrap();
     assert_eq!(simple_entry_tree.get_parent(9), Some(u64::MAX.into()));
 
-    let mut children_of_internal_root = simple_entry_tree.get_children(u64::MAX).unwrap();
+    let mut children_of_internal_root =
+        simple_entry_tree.get_children(u64::MAX).unwrap();
     children_of_internal_root.sort();
     assert!(children_of_internal_root.contains(&1.into()));
     assert!(children_of_internal_root.contains(&9.into()));
@@ -244,8 +248,8 @@ fn test_entry_tree_remove(mut simple_entry_tree: EntryTree) {
     assert_eq!(simple_entry_tree.get_parent(3), None); // Child 3 should also be gone
     assert_eq!(simple_entry_tree.get_parent(6), None); // Child 6 should also be gone
 
-    // After removing user-defined root 1, the children of the internal `EntryId::MAX` root
-    // should be empty as 1 was its only child.
+    // After removing user-defined root 1, the children of the internal
+    // `EntryId::MAX` root should be empty as 1 was its only child.
     let children_of_internal_root = simple_entry_tree.get_children(u64::MAX).unwrap();
     assert!(children_of_internal_root.is_empty());
 }

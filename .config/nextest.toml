@@ -1,0 +1,11 @@
+[profile.ci]
+fail-fast = false
+default-filter = 'all()'
+
+[profile.unit]
+default-filter = 'kind(lib) & package(bsxplorer2)'
+fail-fast = true
+
+[profile.full]
+default-filter = 'all() & package(bsxplorer2)'
+fail-fast = true

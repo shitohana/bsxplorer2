@@ -2,8 +2,7 @@
 members = [
     "bsxplorer2",
     "console",
-    # Currently disabled
-    # "python"
+    "python"
     ]
 resolver = "2"
 default-members = ["bsxplorer2"]

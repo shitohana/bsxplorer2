@@ -16,9 +16,9 @@ use pyo3::exceptions::{
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
-use super::compression::PyCompression;
-use crate::types::batch::PyBsxBatch;
-use crate::types::report_schema::PyReportTypeSchema;
+use crate::io::compression::PyCompression;
+use crate::data_structs::batch::PyBsxBatch;
+use crate::data_structs::report_schema::PyReportTypeSchema;
 use crate::utils::FileOrFileLike;
 
 #[pyclass(name = "ReportReader", unsendable)]
@@ -122,24 +122,24 @@ pub struct PyReportWriter {
 impl PyReportWriter {
     #[new]
     #[pyo3(signature = (
-        file,
+        sink,
         schema,
         n_threads = 1,
         compression = None,
         compression_level = None
     ))]
     fn new(
-        file: FileOrFileLike,
+        sink: FileOrFileLike,
         schema: PyReportTypeSchema,
         n_threads: usize,
         compression: Option<PyCompression>,
         compression_level: Option<u32>,
     ) -> PyResult<Self> {
-        let file = file.get_writer()?;
+        let file = sink.get_writer()?;
         let sink = BufWriter::new(file);
 
         let comp_enum = Compression::from(
-            compression.unwrap_or_else(|| PyCompression(Compression::None)),
+            compression.unwrap_or_else(|| PyCompression::No),
         );
 
         let writer = RustReportWriter::try_new(
@@ -204,5 +204,18 @@ impl PyReportWriter {
             // for idempotency.
             Ok(())
         }
+    }
+
+    pub fn __enter__(slf: Py<Self>) -> Py<Self> {
+        slf
+    }
+
+    pub fn __exit__(
+        &mut self,
+        _exc_type: PyObject,
+        _exc_value: PyObject,
+        _traceback: PyObject,
+    ) -> PyResult<()> {
+        self.close()
     }
 }

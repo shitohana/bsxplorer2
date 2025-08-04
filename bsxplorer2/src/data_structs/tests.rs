@@ -359,8 +359,8 @@ mod context_data_tests {
 
 #[cfg(test)]
 mod methstats_tests {
-    use hashbrown::HashMap;
     use assert_approx_eq::assert_approx_eq;
+    use hashbrown::HashMap;
     use rstest::rstest;
 
     use crate::data_structs::enums::{
@@ -460,7 +460,8 @@ mod methstats_tests {
         let mut strand = HashMap::new();
         strand.insert(Strand::Forward, MethAgg::from((6.0, 8.0)));
 
-        let agg = RegionMethAgg::full(coverage.clone(), context.clone(), strand.clone());
+        let agg =
+            RegionMethAgg::full(coverage.clone(), context.clone(), strand.clone());
         assert!(!agg.is_empty());
         assert_eq!(agg.coverage(), &coverage);
         assert_eq!(agg.context(), &context);
@@ -545,7 +546,8 @@ mod methstats_tests {
 
         let finalized = agg.finalize_context();
         assert_approx_eq!(finalized.get(&Context::CG).unwrap(), &0.7); // 1.4 / 2.0
-        assert_approx_eq!(finalized.get(&Context::CHG).unwrap(), &0.8); // 0.8 / 1.0
+        assert_approx_eq!(finalized.get(&Context::CHG).unwrap(), &0.8); // 0.8 /
+                                                                        // 1.0
     }
 
     #[test]
