@@ -11,10 +11,10 @@ use pyo3_polars::error::PyPolarsErr;
 use pyo3_polars::PyDataFrame;
 
 use super::bsx::PyBsxFileReader;
-use crate::types::batch::PyBsxBatch;
-use crate::types::coords::PyContig;
-use crate::types::index::PyBatchIndex;
-use crate::types::utils::{
+use crate::data_structs::batch::PyBsxBatch;
+use crate::data_structs::coords::PyContig;
+use crate::data_structs::index::PyBatchIndex;
+use crate::data_structs::utils::{
     PyContext,
     PyStrand,
 };
@@ -108,7 +108,7 @@ impl PyRegionReader {
     fn query(
         &mut self,
         contig: PyContig,
-    ) -> PyResult<Option<PyDataFrame>> {
+    ) -> PyResult<Option<PyBsxBatch>> {
         let reader = &mut self.inner;
 
         let result = reader.query(contig.into(), None);
@@ -116,7 +116,7 @@ impl PyRegionReader {
         match result {
             Ok(Some(batch)) => {
                 let final_batch = apply_filters(batch, &self.filters);
-                Ok(Some(PyDataFrame(final_batch.into_inner())))
+                Ok(Some(final_batch.into()))
             },
             Ok(None) => Ok(None),
             Err(e) => Err(PyErr::from(e)),

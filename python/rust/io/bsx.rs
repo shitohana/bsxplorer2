@@ -11,7 +11,7 @@ use pyo3::exceptions::PyIOError;
 use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 
-use crate::types::batch::PyBsxBatch;
+use crate::data_structs::batch::PyBsxBatch;
 use crate::utils::{
     FileOrFileLike,
     SinkHandle,
@@ -84,11 +84,13 @@ impl PyBsxFileReader {
             .cache_batches(&batch_indices)
             .map_err(|e| PyPolarsErr::Polars(e).into())
     }
-
+    
+    #[getter]
     pub fn n_threads(&self) -> usize {
         self.reader.n_threads()
     }
-
+    
+    #[getter]
     pub fn blocks_total(&self) -> usize {
         self.reader.blocks_total()
     }

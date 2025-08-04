@@ -1,8 +1,8 @@
 pub use crate::data_structs::annotation::{
+    EntryTree,
     GffEntry,
     GffEntryAttributes,
-    EntryTree,
-    HcAnnotStore
+    HcAnnotStore,
 };
 pub use crate::data_structs::batch::{
     AggMethod,

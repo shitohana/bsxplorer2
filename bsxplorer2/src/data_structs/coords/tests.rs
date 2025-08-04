@@ -315,8 +315,9 @@ fn test_contig_display() {
     assert_eq!(format!("{}", contig), "chrX:1000-2000 (+)");
 }
 // --- IntervalMap Tests ---
-use super::interval_map::ContigIntervalMap;
 use hashbrown::HashMap;
+
+use super::interval_map::ContigIntervalMap;
 
 #[test]
 fn test_interval_map_from_breakpoints() {
@@ -324,7 +325,8 @@ fn test_interval_map_from_breakpoints() {
     breakpoints.insert("chr1", vec![(100u32, 1), (200u32, 2)]);
     breakpoints.insert("chr2", vec![(50u32, 3)]);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
 
     assert_eq!(interval_map.n_chr(), 2);
     assert_eq!(interval_map.n_intervals(), 3);
@@ -339,7 +341,8 @@ fn test_interval_map_from_breakpoints_empty() {
     let mut breakpoints = HashMap::new();
     breakpoints.insert("chr1", vec![] as Vec<(u32, i32)>);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
 
     assert_eq!(interval_map.n_chr(), 1);
     assert_eq!(interval_map.n_intervals(), 0);
@@ -351,7 +354,8 @@ fn test_interval_map_n_intervals() {
     breakpoints.insert("chr1", vec![(100u32, 1), (200u32, 2), (300u32, 3)]);
     breakpoints.insert("chr2", vec![(50u32, 4), (150u32, 5)]);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
 
     assert_eq!(interval_map.n_intervals(), 5);
 }
@@ -361,7 +365,8 @@ fn test_interval_map_into_inner() {
     let mut breakpoints = HashMap::new();
     breakpoints.insert("chr1", vec![(100u32, 1)]);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
     let inner = interval_map.into_inner();
 
     assert!(inner.contains_key("chr1"));
@@ -375,7 +380,8 @@ fn test_interval_map_n_chr() {
     breakpoints.insert("chr2", vec![(200u32, 2)]);
     breakpoints.insert("chrX", vec![(300u32, 3)]);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
 
     assert_eq!(interval_map.n_chr(), 3);
 }
@@ -386,7 +392,8 @@ fn test_interval_map_chr_names() {
     breakpoints.insert("chr1", vec![(100u32, 1)]);
     breakpoints.insert("chr2", vec![(200u32, 2)]);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
     let chr_names = interval_map.chr_names();
 
     assert_eq!(chr_names.len(), 2);
@@ -398,12 +405,14 @@ fn test_interval_map_chr_names() {
 fn test_interval_map_union() {
     let mut breakpoints1 = HashMap::new();
     breakpoints1.insert("chr1", vec![(100u32, 1)]);
-    let mut interval_map1: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints1);
+    let mut interval_map1: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints1);
 
     let mut breakpoints2 = HashMap::new();
     breakpoints2.insert("chr1", vec![(200u32, 2)]);
     breakpoints2.insert("chr2", vec![(50u32, 3)]);
-    let interval_map2: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints2);
+    let interval_map2: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints2);
 
     interval_map1.union(&interval_map2);
 
@@ -418,7 +427,8 @@ fn test_interval_map_get_breakpoints() {
     let mut breakpoints = HashMap::new();
     breakpoints.insert("chr1", vec![(100u32, 1), (200u32, 2)]);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
     let result_breakpoints = interval_map.get_breakpoints();
 
     assert_eq!(result_breakpoints.len(), 1);
@@ -434,7 +444,8 @@ fn test_interval_map_to_bed_records() {
     let mut breakpoints = HashMap::new();
     breakpoints.insert("chr1", vec![(100u32, 1), (200u32, 2)]);
 
-    let interval_map: ContigIntervalMap<i32> = ContigIntervalMap::from_breakpoints(breakpoints);
+    let interval_map: ContigIntervalMap<i32> =
+        ContigIntervalMap::from_breakpoints(breakpoints);
     let bed_records = interval_map.to_bed_records();
 
     assert_eq!(bed_records.len(), 2);

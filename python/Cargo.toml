@@ -1,5 +1,5 @@
 [package]
-name = "bsx2_native"
+name = "bsxplorer2-py"
 authors.workspace = true
 description.workspace = true
 license-file.workspace = true
@@ -12,20 +12,17 @@ readme.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
-name = "_native"
+name = "bsx2"
+path = "rust/lib.rs"
 
 [features]
 nightly = ["bsxplorer2/performant_nightly"]
 
 [dependencies]
-bsxplorer2 = { path = "../bsxplorer2", features = ["compression", "performant", "tools"] }
+bsxplorer2 = { version = "0.2.3", features = ["compression", "performant", "tools"] }
 pyo3 = { version = "=0.22.4", features = ["extension-module", "anyhow", "either"] }
 # We need to use the same version of polars as in the Rust code
-pyo3-polars = "=0.19.0"
+pyo3-polars = {version = "=0.19.0", features = ["dtype-full", "lazy"]}
 pyo3-file = "0.9.0"
-csv = "1.3.1"
 polars.workspace = true
-bio.workspace = true
-hashbrown.workspace = true
-itertools.workspace = true
 slotmap.workspace = true

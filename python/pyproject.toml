@@ -21,8 +21,8 @@ pytest = "^8.3.5"
 tqdm = "^4.67.1"
 
 [tool.maturin]
-python-source = "."
-module-name = "bsx2._native"
+python-source = "src"
+module-name = "bsx2._bsx2"
 features = ["nightly"]
 
 [build-system]

@@ -25,7 +25,7 @@ mod gff_entry;
 pub use annot_store::{
     EntryId,
     EntryTree,
-    HcAnnotStore
+    HcAnnotStore,
 };
 pub use gff_entry::{
     GffEntry,

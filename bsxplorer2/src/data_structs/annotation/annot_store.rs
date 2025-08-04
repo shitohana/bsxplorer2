@@ -187,7 +187,9 @@ impl EntryTree {
         id: N,
     ) -> anyhow::Result<()> {
         if let Some(children) = self.get_children(id.clone()) {
-            for child in children { self.remove(child)? }
+            for child in children {
+                self.remove(child)?
+            }
         }
 
         self.tree_node_ids

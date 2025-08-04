@@ -22,7 +22,7 @@ use slotmap::{
     KeyData,
 };
 
-use crate::types::coords::PyContig;
+use crate::data_structs::coords::PyContig;
 
 #[pyclass(name = "GffEntryAttributes")]
 #[derive(Debug, Clone)]
@@ -155,7 +155,7 @@ impl PyGffEntry {
             contig.seqname().to_string(),
             contig.start(),
             contig.end(),
-            contig.strand().to_string().as_str(),
+            contig.strand().into(),
         )
     }
 
@@ -197,7 +197,7 @@ impl PyGffEntry {
     }
 }
 
-#[pyclass(name = "AnnotStore")]
+#[pyclass(name = "HcAnnotStore")]
 pub struct PyAnnotStore {
     inner: HcAnnotStore,
 }
@@ -479,7 +479,7 @@ impl PyAnnotStore {
     }
 }
 
-#[pyclass]
+#[pyclass(name = "HcAnnotStoreIterator")]
 // Iterator now yields (u64 EntryId, GffEntry)
 pub struct PyAnnotStoreIterator {
     entries: Vec<(u64, GffEntry)>,

@@ -201,35 +201,17 @@ impl From<PyContig> for Contig {
 #[pymethods]
 impl PyContig {
     #[new]
-    #[pyo3(signature = (
-        seqname,
-        start,
-        end,
-        strand = "."
-    ))] // Default strand to "None" if not provided
     pub fn new(
         seqname: String,
         start: u32,
         end: u32,
-        strand: &str,
+        strand: PyStrand,
     ) -> PyResult<Self> {
         if start > end {
             return Err(PyValueError::new_err(
                 "Start position must be less than or equal to end position",
             ));
         }
-        let strand = match strand.to_lowercase().as_str() {
-            "+" | "forward" => PyStrand::Forward,
-            "-" | "reverse" => PyStrand::Reverse,
-            "." | "none" => PyStrand::Null,
-            _ => {
-                return Err(PyValueError::new_err(format!(
-                    "Invalid strand value: '{}'. Must be '+', '-', '.', 'Forward', \
-                     'Reverse', or 'None' (case-insensitive).",
-                    strand
-                )))
-            },
-        };
         Ok(Self {
             seqname,
             start,

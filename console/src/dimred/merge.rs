@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use bsxplorer2::data_structs::coords::ContigIntervalMap;
 use bsxplorer2::prelude::*;
-use bsxplorer2::tools::dimred::merge::{
+use bsxplorer2::tools::dimred::{
     merge_breakpoints,
     EqFloat,
     MergeType,

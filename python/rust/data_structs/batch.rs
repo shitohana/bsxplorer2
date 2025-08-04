@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use bsxplorer2::data_structs::batch::{
@@ -7,7 +6,6 @@ use bsxplorer2::data_structs::batch::{
     BsxBatchBuilder,
     BsxColumns,
 };
-use bsxplorer2::data_structs::typedef::DensityType;
 use bsxplorer2::data_structs::ContextData;
 use bsxplorer2::tools::dimred::SegmentAlgorithm;
 use bsxplorer2::utils::get_categorical_dtype;
@@ -30,11 +28,6 @@ use super::coords::{
 };
 use super::lazy::PyLazyBsxBatch;
 use super::report_schema::PyReportTypeSchema;
-use super::stats::PyMethylationStats;
-use super::utils::{
-    PyContext,
-    PyStrand,
-};
 
 #[pyclass(name = "BsxColumns", eq, eq_int)]
 #[derive(Clone, PartialEq, Eq)]
@@ -412,30 +405,6 @@ impl PyBsxBatch {
         self.inner.as_contig().map(|contig| contig.into())
     }
 
-    pub fn get_methylation_stats(&self) -> PyResult<PyMethylationStats> {
-        let rust_stats = self.inner.get_methylation_stats();
-        let py_stats = rust_stats.into();
-        Ok(py_stats)
-    }
-
-    pub fn get_coverage_dist(&self) -> PyResult<HashMap<u16, u32>> {
-        Ok(self.inner.get_coverage_dist().into_iter().collect())
-    }
-
-    pub fn get_context_stats(
-        &self
-    ) -> PyResult<HashMap<PyContext, (DensityType, u32)>> {
-        let rust_stats = self.inner.get_context_stats();
-        let py_stats = rust_stats.into_iter().map(|(k, v)| (k.into(), v)).collect();
-        Ok(py_stats)
-    }
-
-    pub fn get_strand_stats(&self) -> PyResult<HashMap<PyStrand, (DensityType, u32)>> {
-        let rust_stats = self.inner.get_strand_stats();
-        let py_stats = rust_stats.into_iter().map(|(k, v)| (k.into(), v)).collect();
-        Ok(py_stats)
-    }
-
     pub fn as_binom(
         &self,
         mean: f64,
@@ -503,6 +472,3 @@ impl PyBsxBatch {
         }
     }
 }
-
-// Removed PyEncodedBsxBatch, encode, and decode functions as they have no
-// corresponding Rust types/methods in the provided context.

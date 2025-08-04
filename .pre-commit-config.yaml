@@ -20,23 +20,17 @@ repos:
 
 - repo: local
   hooks:
-  - id: rust-linting
+  - id: rust-format
     name: rustfmt
-    description: Run cargo fmt on files included in the commit. rustfmt should be installed before-hand.
-    entry: cargo +nightly fmt --all --manifest-path ./bsxplorer2/Cargo.toml --
-    pass_filenames: true
-    types: [file, rust]
+    entry: just format
     language: system
 
 - repo: local
   hooks:
-  - id: cargo-nextest
-    description: Run cargo fmt on files included in the commit. cargo-nextest should be installed before-hand.
-    name: cargo nextest
-    entry: cargo nextest run --all-features
+  - id: rust-test
+    name: nextest
+    entry: just rs-test-fast
     language: system
-    types: [rust]
-    pass_filenames: false
 
 default_language_version:
   rust: stable

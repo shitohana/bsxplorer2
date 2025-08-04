@@ -1,9 +1,16 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 mod dbscan;
-mod segmentation;
 mod merge;
+mod segmentation;
 
-pub use segmentation::{
-    SegmentAlgorithm, SegmentationData, MethDataBinom, pelt
+pub use merge::{
+    merge_breakpoints,
+    EqFloat,
+    MergeType,
 };
-pub use merge::merge_breakpoints;
+pub use segmentation::{
+    pelt,
+    MethDataBinom,
+    SegmentAlgorithm,
+    SegmentationData,
+};
