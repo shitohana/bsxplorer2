@@ -176,7 +176,7 @@ impl EntryTree {
 
         let node = Node::new(child_id);
         let parent = unsafe { self.tree_node_ids.get(&parent_id).unwrap_unchecked() };
-        let node_id = self.tree.insert(node, InsertBehavior::UnderNode(&parent))?;
+        let node_id = self.tree.insert(node, InsertBehavior::UnderNode(parent))?;
 
         self.tree_node_ids.insert(child_id, node_id.into());
         Ok(())
@@ -213,7 +213,7 @@ impl EntryTree {
     ) -> Option<&Node<EntryId>> {
         self.tree_node_ids
             .get(&id)
-            .map(|node_id| self.tree.get(&node_id).expect("Should not fail"))
+            .map(|node_id| self.tree.get(node_id).expect("Should not fail"))
     }
 
     pub fn get_parent<N: Into<EntryId>>(
@@ -388,7 +388,7 @@ impl HcAnnotStore {
             .entries
             .iter()
             .filter(|(_id, entry)| selector(entry)) // Filter by entry content, not id
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k, v.clone()))
             .collect_vec();
 
         for (id, parent) in selected_entries {
@@ -471,7 +471,7 @@ impl HcAnnotStore {
                         gffid2entryid
                             .get(first_parent)
                             .ok_or(anyhow!("No such parent id {}", first_parent))
-                            .map(|(parent)| (id, Some(parent.clone())))
+                            .map(|(parent)| (id, Some(*parent)))
                     },
                     None => Ok((id, None)),
                 }
@@ -497,7 +497,7 @@ impl HcAnnotStore {
         let iter = self
             .entries
             .iter()
-            .map(|(id, entry)| (entry.contig().clone(), id.clone()));
+            .map(|(id, entry)| (entry.contig().clone(), id));
         let new_imap = ContigIntervalMap::from_iter(iter);
         imap.union(&new_imap);
 

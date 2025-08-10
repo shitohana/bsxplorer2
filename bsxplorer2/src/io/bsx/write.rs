@@ -61,7 +61,7 @@ where
         compression: Option<IpcCompression>,
     ) -> Result<Self> {
         let index = bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
-            format!("Failed to read FASTA index from {:?}", fai_path)
+            format!("Failed to read FASTA index from {fai_path:?}")
         })?;
 
         let chr_names = index
@@ -71,7 +71,7 @@ where
             .collect_vec();
 
         Self::try_new(sink, &chr_names, compression).with_context(|| {
-            format!("Failed to create writer from FASTA index at {:?}", fai_path)
+            format!("Failed to create writer from FASTA index at {fai_path:?}")
         })
     }
 
@@ -83,11 +83,11 @@ where
     ) -> Result<Self> {
         // Create index if it doesn't exist
         noodles_fasta::fs::index(fasta_path.clone())
-            .with_context(|| format!("Failed to index FASTA file {:?}", fasta_path))?;
+            .with_context(|| format!("Failed to index FASTA file {fasta_path:?}"))?;
 
         let index_path = format!("{}.fai", fasta_path.to_str().unwrap());
         Self::try_from_sink_and_fai(sink, index_path.into(), compression).with_context(
-            || format!("Failed to create writer from FASTA file {:?}", fasta_path),
+            || format!("Failed to create writer from FASTA file {fasta_path:?}"),
         )
     }
 

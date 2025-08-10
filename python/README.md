@@ -14,15 +14,13 @@
 * [ ] Clustering
 * [ ] Gene Body Methylation
 * [ ] Chromosome methylation analysis
-* [ ] Converters
+* [x] Converters
 
 ### For the v2
 
 * [x] IPC files interface
 * [x] IPC indexing interface
 * [x] DMR identification algorithm
-* [ ] Segmentation algorithm
-* [ ] Dimensionality reduction algorithm
-* [ ] Metagene constructor interface
-
-TODO: Add get function to AnnotMap
+* [x] Segmentation algorithm
+* [x] Dimensionality reduction algorithm
+* [x] Metagene constructor interface

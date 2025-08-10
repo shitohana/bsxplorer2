@@ -6,6 +6,7 @@ mod data_structs;
 mod utils;
 
 use pyo3::prelude::*;
+use utils::merge_metagene_values;
 
 #[pymodule]
 fn _bsx2(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -40,6 +41,8 @@ fn _bsx2(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<io::region::PyRegionReader>()?;
     m.add_class::<io::region::PyFilterOperation>()?;
     m.add_class::<io::region::PyRegionReaderIterator>()?;
+
+    m.add_function(wrap_pyfunction!(merge_metagene_values, m)?);
 
     Ok(())
 }

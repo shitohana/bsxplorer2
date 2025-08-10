@@ -48,7 +48,7 @@ impl PyGenomicPosition {
 
     fn __repr__(&self) -> String {
         format!(
-            "PyGenomicPosition(seqname='{}', position={})",
+            "GenomicPosition({}:{})",
             self.seqname, self.position
         )
     }
@@ -296,7 +296,7 @@ impl PyContig {
 
     fn __repr__(&self) -> String {
         format!(
-            "PyContig(seqname='{}', start={}, end={}, strand='{}')",
+            "Contig({}:{}-{}({}))",
             self.seqname,
             self.start,
             self.end,

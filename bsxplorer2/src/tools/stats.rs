@@ -59,9 +59,7 @@ where
         return 0.0;
     }
 
-    let r = numerator / denominator;
-
-    r
+    numerator / denominator
 }
 
 /// Represents an observation in the Mann-Whitney U test
@@ -215,8 +213,8 @@ mod tests {
         let (u, p) = mann_whitney_u(&group1, &group2);
         let (_uleft, pleft) = mann_whitney_u(&group2, &group1);
         assert_approx_eq!(pleft, p);
-        println!("Mann–Whitney U statistic: {:.3}", u);
-        println!("Two-tailed p–value: {:.5}", p);
+        println!("Mann–Whitney U statistic: {u:.3}");
+        println!("Two-tailed p–value: {p:.5}");
     }
 
     #[test]

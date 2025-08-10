@@ -337,7 +337,7 @@ impl BsxBatch {
 
         if !schemas_equal {
             Err(PolarsError::SchemaMismatch(
-                format!("{:?} != {:?}", res_schema, target_schema).into(),
+                format!("{res_schema:?} != {target_schema:?}").into(),
             ))
         }
         else {
@@ -547,11 +547,7 @@ impl BsxBatch {
             let result_in_slice =
                 search_slice.binary_search_by(|pos| pos.cmp(&target_pos));
 
-            let breakpoint_index_in_slice = match result_in_slice {
-                Ok(idx) => idx, // Found exact match
-                Err(idx) => idx, /* No exact match, idx is the insertion point
-                                  * (first element >= target) */
-            };
+            let breakpoint_index_in_slice = result_in_slice.unwrap_or_else(|idx| idx);
 
             // Convert the index in the slice back to an index in the original
             // 'positions' vector.
@@ -566,6 +562,25 @@ impl BsxBatch {
 
         debug_assert_eq!(breakpoints.len(), n_fragments - 1);
         self.partition(breakpoints, agg_fn.get_fn())
+    }
+
+    pub fn normalized(&self) -> (Vec<f64>, Vec<f64>) {
+        if let Some((start, end)) = self.first_pos().zip(self.last_pos()) {
+            let length = (end - start + 1) as f64;
+            let positions = self
+                .positions_vec()
+                .iter()
+                .map(|v| (*v - start) as f64 / length)
+                .collect();
+            let densities = self
+                .density()
+                .iter()
+                .map(|v| v.unwrap_or(f32::NAN) as f64)
+                .collect();
+            (positions, densities)
+        } else {
+            Default::default()
+        }
     }
 
     /// Partitions the batch based on the provided breakpoints and aggregates
@@ -757,7 +772,7 @@ impl BsxBatch {
     ) -> PolarsResult<()> {
         if matches!(column, BsxCol::Chr | BsxCol::Position) {
             return Err(PolarsError::InvalidOperation(
-                format!("Column {} cannot be set to null", column).into(),
+                format!("Column {column} cannot be set to null").into(),
             ));
         }
         if bitmap.len() != self.len() {

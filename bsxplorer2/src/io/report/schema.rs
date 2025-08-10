@@ -47,7 +47,7 @@ impl Display for ReportType {
             ReportType::BedGraph => String::from("bedgraph"),
             ReportType::Coverage => String::from("coverage"),
         };
-        write!(f, "{}", str)
+        write!(f, "{str}")
     }
 }
 

@@ -145,7 +145,7 @@ impl fmt::Display for GffEntryAttributes {
         let mut serialized = serde_json::to_string(self).unwrap();
         serialized.pop();
         serialized.remove(0);
-        write!(f, "{}", serialized)
+        write!(f, "{serialized}")
     }
 }
 
@@ -281,7 +281,7 @@ impl Serialize for GffEntryAttributes {
         }
         if let Some(id) = self.id.as_ref() {
             // No need to check 'first' here, ID is always first if present
-            write!(serialized, "ID={}", id).map_err(serde::ser::Error::custom)?;
+            write!(serialized, "ID={id}").map_err(serde::ser::Error::custom)?;
             first = false; // Mark that we've written the first attribute
         }
 
@@ -309,7 +309,7 @@ impl Serialize for GffEntryAttributes {
             }
             // Use write! for potentially better performance than format! +
             // push_str
-            write!(serialized, "{}={}", k, v).map_err(serde::ser::Error::custom)?;
+            write!(serialized, "{k}={v}").map_err(serde::ser::Error::custom)?;
         }
 
         serializer.serialize_str(&serialized)
@@ -354,7 +354,7 @@ where
     }
     else {
         s.parse::<f64>().map(Some).map_err(|e| {
-            serde::de::Error::custom(format!("Failed to parse f64: {}", e))
+            serde::de::Error::custom(format!("Failed to parse f64: {e}"))
         })
     }
 }
@@ -369,7 +369,7 @@ where
     else {
         s.parse::<u8>()
             .map(Some)
-            .map_err(|e| serde::de::Error::custom(format!("Failed to parse u8: {}", e)))
+            .map_err(|e| serde::de::Error::custom(format!("Failed to parse u8: {e}")))
     }
 }
 

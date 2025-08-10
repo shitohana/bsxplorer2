@@ -6,9 +6,9 @@ use bsxplorer2::io::bsx::{
     BsxFileReader,
     RegionReader,
 };
+use itertools::Itertools;
 use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
-use pyo3_polars::PyDataFrame;
 
 use super::bsx::PyBsxFileReader;
 use crate::data_structs::batch::PyBsxBatch;
@@ -193,6 +193,10 @@ impl PyRegionReader {
         contigs: Vec<PyContig>,
     ) -> PyResult<PyRegionReaderIterator> {
         let reader = self.inner.clone();
+        let contigs = self.inner.index()
+            .sort(contigs.into_iter().map_into())
+            .map_into()
+            .collect_vec();
 
         Ok(PyRegionReaderIterator {
             inner: reader,
