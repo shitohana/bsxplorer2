@@ -1,3 +1,4 @@
+use std::hash::DefaultHasher;
 use std::sync::Arc;
 
 use bsxplorer2::data_structs::batch::{
@@ -378,6 +379,25 @@ impl PyBsxBatch {
             .inner
             .partition(breakpoints, AggMethod::from(method).get_fn())?;
         Ok(result)
+    }
+
+    pub fn normalized(&self) -> (Vec<f64>, Vec<f64>) {
+        if let Some((start, end)) = self.inner.first_pos().zip(self.inner.last_pos()) {
+            let length = (end - start + 1) as f64;
+            let positions = self.inner
+                .positions_vec()
+                .iter()
+                .map(|v| (*v - start) as f64 / length)
+                .collect();
+            let densities = self.inner
+                .density()
+                .iter()
+                .map(|v| v.unwrap_or(f32::NAN) as f64)
+                .collect();
+            (positions, densities)
+        } else {
+            Default::default()
+        }
     }
 
     // Position / Contig methods

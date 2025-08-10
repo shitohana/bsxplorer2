@@ -1,14 +1,10 @@
-use std::fs::File;
-use std::io::{
-    Read,
-    Seek,
-    Write,
-};
-use std::os::fd::AsRawFd;
-
-use pyo3::exceptions::PyIOError;
+use polars::export::rayon::prelude::*;
+use pyo3::exceptions::{PyIOError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_file::PyFileLikeObject;
+use std::fs::File;
+use std::io::{Read, Seek, Write};
+use std::os::fd::AsRawFd;
 
 pub trait ReadHandle: Read + Seek + AsRawFd {}
 impl<T: Read + Seek + AsRawFd> ReadHandle for T {}
@@ -66,4 +62,27 @@ impl<'py> FromPyObject<'py> for FileOrFileLike {
         )?;
         Ok(FileOrFileLike::ROnlyFileLike(f))
     }
+}
+
+#[pyfunction]
+pub fn merge_metagene_values(
+    positions: Vec<Vec<f64>>,
+    densities: Vec<Vec<f64>>,
+) -> PyResult<(Vec<f64>, Vec<f64>)> {
+    if positions.len() != densities.len() {
+        return Err(PyValueError::new_err(
+            "Positions and densities arrays lengths differ",
+        ));
+    }
+    let zipped_positions = positions.concat();
+    let zipped_densities = densities.concat();
+    let mut zipped_points = zipped_positions
+        .into_iter()
+        .zip(zipped_densities.into_iter())
+        .collect::<Vec<_>>();
+    zipped_points.par_sort_unstable_by(|(p1, _d1), (p2, _d2)| {
+        p1.partial_cmp(p2).expect("Unexpected NaN")
+    });
+
+    Ok(itertools::multiunzip(zipped_points.into_iter()))
 }

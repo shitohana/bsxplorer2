@@ -17,14 +17,13 @@ use tempfile::NamedTempFile;
 
 #[fixture]
 fn test_bsxreader() -> BsxFileReader {
-    let reader = BsxFileReader::try_new(
+    BsxFileReader::try_new(
         File::open(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
         )
         .expect("Error opening test report file"),
     )
-    .expect("Failed to create reader");
-    reader
+    .expect("Failed to create reader")
 }
 
 #[rstest]

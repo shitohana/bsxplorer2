@@ -198,7 +198,7 @@ where
         self.chr_names()
             .iter()
             .sorted()
-            .map(|chr| {
+            .flat_map(|chr| {
                 let lapper = self.inner.get(chr).unwrap();
                 lapper.intervals.iter().map(|interval| {
                     let mut record = bio::io::bed::Record::new();
@@ -209,7 +209,6 @@ where
                     record
                 })
             })
-            .flatten()
             .collect()
     }
 }

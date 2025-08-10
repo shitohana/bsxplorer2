@@ -46,8 +46,7 @@ impl ReportWriter {
                 report_options.parse_options.quote_char.unwrap_or_default(),
             )
             .n_threads(n_threads)
-            .batched(&schema.schema())
-            .map_err(|e| e)?;
+            .batched(&schema.schema())?;
 
         Ok(Self { schema, writer })
     }
@@ -71,7 +70,7 @@ impl ReportWriter {
         &mut self,
         df: &DataFrame,
     ) -> PolarsResult<()> {
-        self.writer.write_batch(df).map_err(|e| e)
+        self.writer.write_batch(df)
     }
 
     pub fn finish(mut self) -> anyhow::Result<()> {

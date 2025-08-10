@@ -346,11 +346,7 @@ mod batch_tests {
             let search_slice = &positions[current_search_start_index..];
             let result_in_slice =
                 search_slice.binary_search_by(|pos| pos.cmp(&target_pos));
-            let breakpoint_index_in_slice = match result_in_slice {
-                Ok(idx) => idx,
-                Err(idx) => idx, /* Index where element *would* be inserted, i.e.,
-                                  * first element >= target */
-            };
+            let breakpoint_index_in_slice = result_in_slice.unwrap_or_else(|idx| idx);
 
             // Convert the index in the slice back to an index in the original
             // 'positions' vector.

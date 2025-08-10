@@ -58,7 +58,7 @@ mod inner {
                 Compression::Bzip2 => String::from("bzip2"),
                 Compression::Zip => String::from("zip"),
             };
-            write!(f, "{}", str)
+            write!(f, "{str}")
         }
     }
 

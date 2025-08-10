@@ -1,7 +1,7 @@
 #![allow(unused)]
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::io::Read;
 use std::process::exit;
 use std::str::FromStr;
@@ -57,18 +57,19 @@ pub enum MergeType {
     Dbscan(PosType, usize, PosType, AggMethod),
 }
 
-impl ToString for MergeType {
-    fn to_string(&self) -> String {
-        format!("{self:?}")
+impl Display for MergeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }
+
 
 impl FromStr for MergeType {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let split = s.split(":").collect_vec();
-        ensure!(split.len() > 0, "Empty string for merge type");
+        ensure!(!split.is_empty(), "Empty string for merge type");
         match split[0] {
             "full" => Ok(Self::Full),
             "dbscan" => {
@@ -135,7 +136,7 @@ fn partition_by_dist_chr(
         let last_vec = acc.last_mut().unwrap();
         if last_vec
             .last()
-            .map(|v| (*v as u32).abs_diff(new) <= max_dist)
+            .map(|v: &PosType| v.abs_diff(new) <= max_dist)
             .unwrap_or(true)
         {
             last_vec.push(new);
@@ -212,12 +213,12 @@ fn merge_signal(
     reference: Vec<PosType>,
     reference_values: Vec<EqFloat>,
 ) {
-    let zipped_values = vec![
+    let zipped_values = [
         vec![-1isize; new.len()],
         (0isize..reference_values.len() as isize).collect_vec(),
     ]
     .concat();
-    let zipped = vec![new, reference].concat();
+    let zipped = [new, reference].concat();
 
     let sorted_indices = {
         let mut indices = (0..zipped.len()).collect_vec();
@@ -362,7 +363,7 @@ fn interleave_single(
     }
 
     debug_assert_eq!(result.len(), reference.len() - 1);
-    debug_assert!(result.iter().all(|(_, v)| &0.0 <= v && v <= &1.0));
+    debug_assert!(result.iter().all(|(_, v)| (0.0..=1.0).contains(v)));
 
     result
 }
@@ -409,8 +410,7 @@ pub fn merge_breakpoints(
 
         let all_chr = intervals
             .iter()
-            .map(|imap| imap.chr_names())
-            .flatten()
+            .flat_map(|imap| imap.chr_names())
             .collect::<HashSet<_>>();
 
         interleaved

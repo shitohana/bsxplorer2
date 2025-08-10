@@ -139,13 +139,11 @@ fn test_report_writing_reading_roundtrip(
             current_original_chr = batch_chr;
             current_original_batch = Some(batch);
         }
+        else if let Some(ref mut cb) = current_original_batch {
+            cb.extend(&batch)?;
+        }
         else {
-            if let Some(ref mut cb) = current_original_batch {
-                cb.extend(&batch)?;
-            }
-            else {
-                current_original_batch = Some(batch);
-            }
+            current_original_batch = Some(batch);
         }
     }
     if let Some(completed_batch) = current_original_batch {
