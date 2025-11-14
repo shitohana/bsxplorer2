@@ -31,7 +31,7 @@ annot = HcAnnotStore.from_gff(gff_path)
 # 4) Настройка фильтров (опционально; важно для чистоты данных)
 try:
     rr.filter_coverage_gt(5)
-except Exception:
+except (AttributeError, TypeError, ValueError):
     pass
 
 # 5) Задаём произвольные сегменты (не привязаны к promoter/body/terminator)
@@ -72,7 +72,7 @@ contigs, _ = [], []
 try:
     from bsx2.plots.metagene import collect_contigs_from_hcannot
     contigs, _ = collect_contigs_from_hcannot(annot, feature_type=None, limit=20)
-except Exception as e:
+except (AttributeError, TypeError, ValueError, RuntimeError) as e:
     print("collect_contigs_from_hcannot failed:", e)
 
 if contigs:
@@ -81,11 +81,14 @@ if contigs:
     hv_box = box_plot(rr, contigs=contigs, segments=segs, agg_method=AggMethod.Mean)
     hv_violin = violin_plot(rr, contigs=contigs, segments=segs, agg_method=AggMethod.Mean)
 
-    assert isinstance(hv_curve, hv.Curve)
-    assert isinstance(hv_hm, hv.HeatMap)
-    assert isinstance(hv_box, hv.BoxWhisker)
-    assert isinstance(hv_violin, hv.Violin)
+    if not isinstance(hv_curve, hv.Curve):
+        raise TypeError("line_plot must return a holoviews Curve")
+    if not isinstance(hv_hm, hv.HeatMap):
+        raise TypeError("heatmap must return a holoviews HeatMap")
+    if not isinstance(hv_box, hv.BoxWhisker):
+        raise TypeError("box_plot must return a holoviews BoxWhisker")
+    if not isinstance(hv_violin, hv.Violin):
+        raise TypeError("violin_plot must return a holoviews Violin")
     print("HoloViews types OK")
 else:
     print("No contigs from annot; skipping HoloViews smoke")
-

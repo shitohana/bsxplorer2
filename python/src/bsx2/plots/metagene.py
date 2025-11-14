@@ -46,12 +46,12 @@ def _is_negative_strand(contig) -> bool:
         try:
             v = contig.strand_str
             val = v() if callable(v) else v
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             val = None
     if val is None and hasattr(contig, "strand"):
         try:
             val = str(contig.strand)
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             pass
     return str(val).strip() == "-"
 
@@ -82,7 +82,7 @@ def compute_discrete_regions(
         for batch in reader.iter_contigs(list(contigs)):
             try:
                 xs, ys = batch.discretise(total_bins, agg_method)
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 idx += 1
                 continue
             x = np.asarray(xs, dtype=np.float64)
@@ -100,7 +100,7 @@ def compute_discrete_regions(
                 if batch is None:
                     continue
                 xs, ys = batch.discretise(total_bins, agg_method)
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 continue
             x = np.asarray(xs, dtype=np.float64)
             y = np.asarray(ys, dtype=np.float64)
@@ -213,7 +213,10 @@ def _stack_for_heatmap(drd: DiscreteRegionData) -> Tuple[pd.DataFrame, int]:
 
 def heatmap(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
     """Теплокарта (regions × bins)."""
-    import holoviews as hv  # type: ignore
+    try:
+        import holoviews as hv  # type: ignore
+    except ModuleNotFoundError as e:
+        raise ImportError("holoviews is required for heatmap; install with 'pip install holoviews'") from e
     segments = segments or [Segment("region", 100)]
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
     df, n_bins = _stack_for_heatmap(drd)
@@ -230,7 +233,10 @@ def heatmap(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[S
 
 def box_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
     """Коробчатая диаграмма распределений по бинам."""
-    import holoviews as hv  # type: ignore
+    try:
+        import holoviews as hv  # type: ignore
+    except ModuleNotFoundError as e:
+        raise ImportError("holoviews is required for box_plot; install with 'pip install holoviews'") from e
     segments = segments or [Segment("region", 100)]
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
     mat, _ = drd.stack_matrix()
@@ -243,7 +249,10 @@ def box_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[
 
 def violin_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
     """Виолин‑плот распределений по бинам."""
-    import holoviews as hv  # type: ignore
+    try:
+        import holoviews as hv  # type: ignore
+    except ModuleNotFoundError as e:
+        raise ImportError("holoviews is required for violin_plot; install with 'pip install holoviews'") from e
     segments = segments or [Segment("region", 100)]
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
     mat, _ = drd.stack_matrix()
@@ -252,4 +261,3 @@ def violin_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequen
     n_regions, n_bins = mat.shape
     df = pd.DataFrame({"bin": np.tile(np.arange(n_bins), n_regions), "density": mat.reshape(-1)})
     return hv.Violin(df, kdims=["bin"], vdims=["density"])
-
