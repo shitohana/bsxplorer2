@@ -3,27 +3,82 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 import numpy as np
 
+# beartype: runtime type checking with value constraints
+try:
+    from beartype import beartype  # type: ignore
+    from beartype.vale import Is  # type: ignore
+    try:  # Python >=3.9 has typing.Annotated; fall back to typing_extensions
+        from typing import Annotated  # type: ignore
+    except Exception:  # pragma: no cover - platform variance
+        from typing_extensions import Annotated  # type: ignore
+except ModuleNotFoundError:  # graceful fallback if beartype is not installed
+    try:
+        from typing import Annotated  # type: ignore
+    except Exception:  # pragma: no cover
+        from typing_extensions import Annotated  # type: ignore
+
+    def beartype(obj):  # type: ignore
+        return obj
+
+    class Is:  # type: ignore
+        def __class_getitem__(cls, item):
+            # Return the predicate itself as metadata for Annotated; no-op without beartype
+            return item
+
+
+# Validators for arrays in [0, 1], 1D, and ordering where required
+def _is_1d_sorted_unit_positions(a: np.ndarray) -> bool:
+    if not isinstance(a, np.ndarray) or a.ndim != 1:
+        return False
+    if a.size == 0:
+        return True
+    if not np.issubdtype(a.dtype, np.number):
+        return False
+    if not np.all(np.isfinite(a)):
+        return False
+    if a.min() < 0.0 or a.max() > 1.0:
+        return False
+    if a.size > 1 and not np.all(a[:-1] <= a[1:]):
+        return False
+    return True
+
+
+def _is_1d_unit_density(a: np.ndarray) -> bool:
+    if not isinstance(a, np.ndarray) or a.ndim != 1:
+        return False
+    if a.size == 0:
+        return True
+    if not np.issubdtype(a.dtype, np.number):
+        return False
+    # Allow NaNs in densities but constrain finite values to [0, 1]
+    mask = ~np.isnan(a)
+    if mask.any():
+        v = a[mask]
+        if v.min() < 0.0 or v.max() > 1.0:
+            return False
+    return True
+
+
+Pos1D = Annotated[np.ndarray, Is[_is_1d_sorted_unit_positions]]
+Density1D = Annotated[np.ndarray, Is[_is_1d_unit_density]]
+
 try:
     import holoviews as hv  # type: ignore
 except ModuleNotFoundError:
     hv = None  # lazy-load in to_curve; raise on use if missing
 
 
+@beartype
 @dataclass
 class DiscreteRegionData:
     positions: List[np.ndarray] = field(default_factory=list)   # each: (n_bins,)
     densities: List[np.ndarray] = field(default_factory=list)   # each: (n_bins,)
     labels: List[Optional[str]] = field(default_factory=list)
 
-    def insert(self, positions: np.ndarray, densities: np.ndarray, label: Optional[str] = None) -> None:
-        if not isinstance(positions, np.ndarray) or not isinstance(densities, np.ndarray):
-            raise TypeError("positions and densities must be numpy.ndarray")
-        if positions.ndim != 1 or densities.ndim != 1:
-            raise ValueError("positions/densities must be 1D arrays")
+    @beartype
+    def insert(self, positions: Pos1D, densities: Density1D, label: Optional[str] = None) -> None:
         if len(positions) != len(densities):
             raise ValueError("length mismatch between positions and densities")
-        if len(positions) > 1 and not np.all(positions[:-1] <= positions[1:]):
-            raise ValueError("positions must be sorted in non-decreasing order")
         self.positions.append(positions.astype(np.float64, copy=False))
         self.densities.append(densities.astype(np.float64, copy=False))
         self.labels.append(label)
@@ -31,6 +86,7 @@ class DiscreteRegionData:
     def __len__(self) -> int:
         return len(self.positions)
 
+    @beartype
     def stack_matrix(self) -> Tuple[np.ndarray, List[str]]:
         if len(self) == 0:
             return np.empty((0, 0), dtype=np.float64), []
@@ -41,11 +97,10 @@ class DiscreteRegionData:
         row_labels = [lbl if lbl is not None else f"region_{i+1}" for i, lbl in enumerate(self.labels)]
         return mat, row_labels
 
+    @beartype
     def to_line_plot(self, agg_fn: Callable = np.nanmean) -> "LinePlotData":
         if len(self) == 0:
             return LinePlotData(np.empty(0), np.empty(0))
-        if not callable(agg_fn):
-            raise TypeError("agg_fn must be callable")
         x = self.positions[0].astype(np.float64, copy=False)
         mat, _ = self.stack_matrix()
         y_raw = agg_fn(mat, axis=0)
@@ -57,20 +112,17 @@ class DiscreteRegionData:
         return LinePlotData(x=x, y=y)
 
 
+@beartype
 @dataclass
 class LinePlotData:
-    x: np.ndarray
-    y: np.ndarray
+    x: Pos1D
+    y: Density1D
     x_ticks: List[float] = field(default_factory=list)
     x_labels: List[str] = field(default_factory=list)
     y_ticks: List[float] = field(default_factory=list)
     y_labels: List[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        if not isinstance(self.x, np.ndarray) or not isinstance(self.y, np.ndarray):
-            raise TypeError("x and y must be numpy.ndarray")
-        if self.x.ndim != 1 or self.y.ndim != 1:
-            raise ValueError("x and y must be 1D arrays")
         if len(self.x) != len(self.y):
             raise ValueError("x and y must have the same length")
         if self.x_labels and (len(self.x_ticks) != len(self.x_labels)):
@@ -78,9 +130,8 @@ class LinePlotData:
         if self.y_labels and (len(self.y_ticks) != len(self.y_labels)):
             raise ValueError("y_ticks and y_labels must have the same length when labels are provided")
 
-    def to_curve(self, x_shift: float = 0.0, y_shift: float = 0.0):
-        if not isinstance(x_shift, (int, float)) or not isinstance(y_shift, (int, float)):
-            raise TypeError("x_shift and y_shift must be numbers")
+    @beartype
+    def to_curve(self, x_shift: float | int = 0.0, y_shift: float | int = 0.0):
         if hv is None:
             import importlib
             try:
