@@ -176,7 +176,7 @@ def test_contig_methods():
     contig_class = x.Contig
     assert hasattr(contig_class, '__init__')
     # Create an instance to test instance methods
-    contig_instance = contig_class("chr1", 100, 200, "+")
+    contig_instance = contig_class("chr1", 100, 200, x.Strand.Forward)
     assert hasattr(contig_instance, 'seqname')
     assert hasattr(contig_instance, 'start')
     assert hasattr(contig_instance, 'end')
@@ -209,7 +209,7 @@ def test_gff_entry_methods():
     gff_entry_class = x.GffEntry
     assert hasattr(gff_entry_class, '__init__')
     # Create an instance to test instance methods
-    contig = x.Contig("chr1", 100, 200, "+")
+    contig = x.Contig("chr1", 100, 200, x.Strand.Forward)
     gff_entry_instance = gff_entry_class(contig, "test", "gene", 1.0, 0, "test_id")
     assert hasattr(gff_entry_instance, 'id')
     assert hasattr(gff_entry_instance, 'contig')

@@ -32,15 +32,12 @@ def _is_1d_sorted_unit_positions(a: np.ndarray) -> bool:
         return False
     if a.size == 0:
         return True
-    if not np.issubdtype(a.dtype, np.number):
+    if not np.issubdtype(a.dtype, np.number) or not np.all(np.isfinite(a)):
         return False
-    if not np.all(np.isfinite(a)):
-        return False
-    if a.min() < 0.0 or a.max() > 1.0:
-        return False
-    if a.size > 1 and not np.all(a[:-1] <= a[1:]):
-        return False
-    return True
+    return (
+        0.0 <= a.min() <= a.max() <= 1.0
+        and (a.size == 1 or np.all(a[:-1] <= a[1:]))  # sorted non-decreasing
+    )
 
 
 def _is_1d_unit_density(a: np.ndarray) -> bool:
@@ -48,15 +45,9 @@ def _is_1d_unit_density(a: np.ndarray) -> bool:
         return False
     if a.size == 0:
         return True
-    if not np.issubdtype(a.dtype, np.number):
+    if not np.issubdtype(a.dtype, np.number) or not np.all(np.isfinite(a)):
         return False
-    # Allow NaNs in densities but constrain finite values to [0, 1]
-    mask = ~np.isnan(a)
-    if mask.any():
-        v = a[mask]
-        if v.min() < 0.0 or v.max() > 1.0:
-            return False
-    return True
+    return 0.0 <= a.min() <= a.max() <= 1.0
 
 
 Pos1D = Annotated[np.ndarray, Is[_is_1d_sorted_unit_positions]]

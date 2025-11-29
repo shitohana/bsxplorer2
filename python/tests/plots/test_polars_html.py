@@ -13,7 +13,8 @@ def _make_drd(n_regions: int = 3, n_bins: int = 10) -> DiscreteRegionData:
     drd = DiscreteRegionData()
     x = np.linspace(0, 1, n_bins)
     for i in range(n_regions):
-        y = np.linspace(0, 1, n_bins) + 0.01 * i
+        # keep densities within [0, 1] to satisfy beartype validator
+        y = np.linspace(0, 1 - 0.01 * i, n_bins)
         drd.insert(x, y, f"r{i+1}")
     return drd
 
