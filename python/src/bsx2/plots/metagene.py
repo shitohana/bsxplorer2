@@ -76,39 +76,23 @@ def compute_discrete_regions(
 
     data = DiscreteRegionData()
     batches_iter = getattr(reader, "iter_contigs", None)
-    idx = 0
+    if not callable(batches_iter):
+        raise AttributeError("reader must implement iter_contigs(contigs)")
 
-    if callable(batches_iter):
-        for batch in reader.iter_contigs(list(contigs)):
-            try:
-                xs, ys = batch.discretise(total_bins, agg_method)
-            except (AttributeError, TypeError, ValueError):
-                idx += 1
-                continue
-            x = np.asarray(xs, dtype=np.float64)
-            y = np.asarray(ys, dtype=np.float64)
-            if reverse_negative and _is_negative_strand(contigs[idx]):
-                x = 1.0 - x[::-1]
-                y = y[::-1]
-            label = labels[idx] if labels and idx < len(labels) else None
-            data.insert(x, y, label)
-            idx += 1
-    else:
-        for idx, contig in enumerate(contigs):
-            try:
-                batch = reader.query(contig)
-                if batch is None:
-                    continue
-                xs, ys = batch.discretise(total_bins, agg_method)
-            except (AttributeError, TypeError, ValueError):
-                continue
-            x = np.asarray(xs, dtype=np.float64)
-            y = np.asarray(ys, dtype=np.float64)
-            if reverse_negative and _is_negative_strand(contig):
-                x = 1.0 - x[::-1]
-                y = y[::-1]
-            label = labels[idx] if labels and idx < len(labels) else None
-            data.insert(x, y, label)
+    contigs_list = list(contigs)
+    for idx, batch in enumerate(reader.iter_contigs(contigs_list)):
+        try:
+            xs, ys = batch.discretise(total_bins, agg_method)
+        except Exception:
+            continue
+        x = np.asarray(xs, dtype=np.float64)
+        y = np.asarray(ys, dtype=np.float64)
+        contig = contigs_list[idx] if idx < len(contigs_list) else None
+        if reverse_negative and contig is not None and _is_negative_strand(contig):
+            x = 1.0 - x[::-1]
+            y = y[::-1]
+        label = labels[idx] if labels and idx < len(labels) else None
+        data.insert(x, y, label)
 
     return data
 
