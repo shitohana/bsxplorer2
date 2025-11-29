@@ -195,9 +195,8 @@ def line_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence
     segments = segments or [Segment("region", 100)]
     bounds, names = segment_ticks(segments)
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
-    lp = drd.to_line_plot()
-    out = LinePlotData(x=lp.x, y=lp.y, x_ticks=bounds, x_labels=names)
-    return out.to_curve()
+    lp = LinePlotData.from_discrete(drd)
+    return LinePlotData(x=lp.x, y=lp.y, x_ticks=bounds, x_labels=names).to_curve()
 
 
 def _stack_for_heatmap(drd: DiscreteRegionData) -> Tuple[pd.DataFrame, int]:

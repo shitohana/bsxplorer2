@@ -88,20 +88,6 @@ class DiscreteRegionData:
         row_labels = [lbl if lbl is not None else f"region_{i+1}" for i, lbl in enumerate(self.labels)]
         return mat, row_labels
 
-    @beartype
-    def to_line_plot(self, agg_fn: Callable = np.nanmean) -> "LinePlotData":
-        if len(self) == 0:
-            return LinePlotData(np.empty(0), np.empty(0))
-        x = self.positions[0].astype(np.float64, copy=False)
-        mat, _ = self.stack_matrix()
-        y_raw = agg_fn(mat, axis=0)
-        if not isinstance(y_raw, np.ndarray):
-            y_raw = np.asarray(y_raw)
-        if y_raw.ndim != 1 or len(y_raw) != len(x):
-            raise ValueError("aggregated values must be a 1D array with the same length as positions")
-        y = y_raw.astype(np.float64, copy=False)
-        return LinePlotData(x=x, y=y)
-
 
 @beartype
 @dataclass
@@ -120,6 +106,21 @@ class LinePlotData:
             raise ValueError("x_ticks and x_labels must have the same length when labels are provided")
         if self.y_labels and (len(self.y_ticks) != len(self.y_labels)):
             raise ValueError("y_ticks and y_labels must have the same length when labels are provided")
+
+    @classmethod
+    @beartype
+    def from_discrete(cls, drd: "DiscreteRegionData", agg_fn: Callable = np.nanmean) -> "LinePlotData":
+        if len(drd) == 0:
+            return cls(np.empty(0), np.empty(0))
+        x = drd.positions[0].astype(np.float64, copy=False)
+        mat, _ = drd.stack_matrix()
+        y_raw = agg_fn(mat, axis=0)
+        if not isinstance(y_raw, np.ndarray):
+            y_raw = np.asarray(y_raw)
+        if y_raw.ndim != 1 or len(y_raw) != len(x):
+            raise ValueError("aggregated values must be a 1D array with the same length as positions")
+        y = y_raw.astype(np.float64, copy=False)
+        return cls(x=x, y=y)
 
     @beartype
     def to_curve(self, x_shift: float | int = 0.0, y_shift: float | int = 0.0):
