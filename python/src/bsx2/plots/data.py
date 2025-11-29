@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 import numpy as np
 
 # beartype: runtime type checking with value constraints
@@ -141,7 +141,7 @@ class LinePlotData:
         return cls(x=grid, y=y)
 
     @beartype
-    def to_curve(self, x_shift: float | int = 0.0, y_shift: float | int = 0.0):
+    def to_curve(self, x_shift: float | int = 0.0, y_shift: float | int = 0.0) -> Any:
         if hv is None:
             import importlib
             try:
