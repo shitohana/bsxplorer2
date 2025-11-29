@@ -1,4 +1,4 @@
-from src.bsx2 import _bsx2 as x
+from bsx2 import _bsx2 as x
 
 BsxFileReader = x.BsxFileReader
 IpcCompression = x.IpcCompression

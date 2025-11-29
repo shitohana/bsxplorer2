@@ -1,4 +1,4 @@
-from src.bsx2 import _bsx2 as x
+from bsx2 import _bsx2 as x
 
 Strand = x.Strand
 Context = x.Context

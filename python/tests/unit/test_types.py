@@ -1,6 +1,6 @@
 import pytest
 import polars as pl
-from src.bsx2.types import (
+from bsx2.types import (
     Strand, Context, BsxColumns, AggMethod, BsxBatch, ContextData,
     ReportTypeSchema, LazyBsxBatch, GenomicPosition, Contig,
     GffEntryAttributes, GffEntry, HcAnnotStore
