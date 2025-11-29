@@ -77,15 +77,34 @@ class DiscreteRegionData:
     def __len__(self) -> int:
         return len(self.positions)
 
+    def _stack_to_common_grid(self) -> Tuple[np.ndarray, List[str], np.ndarray]:
+        if len(self) == 0:
+            return np.empty((0, 0), dtype=np.float64), [], np.empty(0, dtype=np.float64)
+
+        # Choose a common grid by the maximum number of bins across regions (normalized 0..1)
+        target_bins = max(len(d) for d in self.densities)
+        if target_bins == 0:
+            return np.empty((len(self), 0), dtype=np.float64), [], np.empty(0, dtype=np.float64)
+        grid = np.linspace(0.0, 1.0, target_bins, dtype=np.float64)
+
+        rows = []
+        for pos, dens in zip(self.positions, self.densities):
+            if len(pos) == 0:
+                interp = np.zeros_like(grid)
+            elif len(pos) == 1:
+                interp = np.full_like(grid, float(dens[0]))
+            else:
+                # np.interp uses endpoints for out-of-range; positions are already sorted and within [0,1]
+                interp = np.interp(grid, pos, dens)
+            rows.append(interp.astype(np.float64, copy=False))
+
+        mat = np.vstack(rows)
+        row_labels = [lbl if lbl is not None else f"region_{i+1}" for i, lbl in enumerate(self.labels)]
+        return mat, row_labels, grid
+
     @beartype
     def stack_matrix(self) -> Tuple[np.ndarray, List[str]]:
-        if len(self) == 0:
-            return np.empty((0, 0), dtype=np.float64), []
-        n_bins = len(self.densities[0])
-        if not all(len(d) == n_bins for d in self.densities):
-            raise ValueError("all regions must have the same number of bins (n_bins)")
-        mat = np.vstack([d.astype(np.float64, copy=False) for d in self.densities])
-        row_labels = [lbl if lbl is not None else f"region_{i+1}" for i, lbl in enumerate(self.labels)]
+        mat, row_labels, _ = self._stack_to_common_grid()
         return mat, row_labels
 
 
@@ -112,15 +131,14 @@ class LinePlotData:
     def from_discrete(cls, drd: "DiscreteRegionData", agg_fn: Callable = np.nanmean) -> "LinePlotData":
         if len(drd) == 0:
             return cls(np.empty(0), np.empty(0))
-        x = drd.positions[0].astype(np.float64, copy=False)
-        mat, _ = drd.stack_matrix()
+        mat, _, grid = drd._stack_to_common_grid()
         y_raw = agg_fn(mat, axis=0)
         if not isinstance(y_raw, np.ndarray):
             y_raw = np.asarray(y_raw)
-        if y_raw.ndim != 1 or len(y_raw) != len(x):
+        if y_raw.ndim != 1 or len(y_raw) != len(grid):
             raise ValueError("aggregated values must be a 1D array with the same length as positions")
         y = y_raw.astype(np.float64, copy=False)
-        return cls(x=x, y=y)
+        return cls(x=grid, y=y)
 
     @beartype
     def to_curve(self, x_shift: float | int = 0.0, y_shift: float | int = 0.0):
