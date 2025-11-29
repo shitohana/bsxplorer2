@@ -16,6 +16,10 @@ class Segment:
     n_bins: int
 
 
+# По умолчанию один сегмент на 100 бинов
+_DEFAULT_SEGMENTS: tuple[Segment, ...] = (Segment("region", 100),)
+
+
 def segments_total_bins(segments: Sequence[Segment]) -> int:
     if not segments:
         raise ValueError("segments must not be empty")
@@ -60,14 +64,12 @@ def compute_discrete_regions(
     reader: _io.RegionReader,
     contigs: Sequence,
     *,
-    segments: Sequence[Segment] | None = None,
+    segments: Sequence[Segment] = _DEFAULT_SEGMENTS,
     agg_method=None,
     reverse_negative: bool = True,
     labels: Optional[Sequence[str]] = None,
 ) -> DiscreteRegionData:
     """Строит дискретные профили по списку регионов (Contig) с использованием BsxBatch.discretise()."""
-    if segments is None:
-        segments = [Segment("region", 100)]
     total_bins = segments_total_bins(segments)
 
     if agg_method is None:
@@ -154,7 +156,7 @@ def compute_from_annot(
     reader: _io.RegionReader,
     annot,
     *,
-    segments: Sequence[Segment] | None = None,
+    segments: Sequence[Segment] = _DEFAULT_SEGMENTS,
     agg_method=None,
     feature_type: Optional[str] = None,
     reverse_negative: bool = True,
@@ -176,7 +178,7 @@ def compute_from_annot(
 
 def line_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
     """Линейный метагенный профиль (HoloViews Curve)."""
-    segments = segments or [Segment("region", 100)]
+    segments = segments or _DEFAULT_SEGMENTS
     bounds, names = segment_ticks(segments)
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
     lp = LinePlotData.from_discrete(drd)
@@ -200,7 +202,7 @@ def heatmap(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[S
         import holoviews as hv  # type: ignore
     except ModuleNotFoundError as e:
         raise ImportError("holoviews is required for heatmap; install with 'pip install holoviews'") from e
-    segments = segments or [Segment("region", 100)]
+    segments = segments or _DEFAULT_SEGMENTS
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
     df, n_bins = _stack_for_heatmap(drd)
     if df.empty:
@@ -220,7 +222,7 @@ def box_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[
         import holoviews as hv  # type: ignore
     except ModuleNotFoundError as e:
         raise ImportError("holoviews is required for box_plot; install with 'pip install holoviews'") from e
-    segments = segments or [Segment("region", 100)]
+    segments = segments or _DEFAULT_SEGMENTS
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
     mat, _ = drd.stack_matrix()
     if mat.size == 0:
@@ -236,7 +238,7 @@ def violin_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequen
         import holoviews as hv  # type: ignore
     except ModuleNotFoundError as e:
         raise ImportError("holoviews is required for violin_plot; install with 'pip install holoviews'") from e
-    segments = segments or [Segment("region", 100)]
+    segments = segments or _DEFAULT_SEGMENTS
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
     mat, _ = drd.stack_matrix()
     if mat.size == 0:
