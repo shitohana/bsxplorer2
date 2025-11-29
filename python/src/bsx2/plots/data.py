@@ -1,6 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable
+
+try:  # Prefer beartype-aware typing to silence PEP585 warnings
+    from beartype.typing import List, Optional, Tuple  # type: ignore
+except Exception:  # pragma: no cover - fallback
+    from typing import List, Optional, Tuple  # type: ignore
 import numpy as np
 
 # beartype: runtime type checking with value constraints
