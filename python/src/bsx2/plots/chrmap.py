@@ -6,24 +6,25 @@ from typing import Iterable, List, Optional
 import numpy as np
 import polars as pl
 from beartype import beartype
+from scipy.signal import savgol_filter
 
 
 def _smooth_series(values: np.ndarray, window: int) -> np.ndarray:
-    """Simple moving average smoothing; if window <= 1, returns input."""
+    """Savitzky-Golay smoothing; if window <= 1 or too short, returns input."""
     if window is None or window <= 1:
         return values
-    window = int(window)
-    if window < 1:
+    n = values.shape[0]
+    if n < 3:
         return values
-    kernel = np.ones(window, dtype=np.float64) / window
-    # pad to keep length
-    pad = window // 2
-    padded = np.pad(values, pad_width=pad, mode="edge")
-    smoothed = np.convolve(padded, kernel, mode="valid")
-    # adjust length if even window
-    if smoothed.shape[0] > values.shape[0]:
-        smoothed = smoothed[: values.shape[0]]
-    return smoothed
+    window = int(window)
+    if window % 2 == 0:
+        window += 1  # savgol_filter needs an odd window length
+    # cap to available points while keeping window odd
+    window = min(window, n if n % 2 == 1 else n - 1)
+    if window < 3:
+        return values
+    polyorder = min(3, window - 1)
+    return savgol_filter(values, window_length=window, polyorder=polyorder, mode="interp")
 
 
 @dataclass(frozen=True)
