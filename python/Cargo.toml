@@ -2,13 +2,13 @@
 name = "bsxplorer2-py"
 authors.workspace = true
 description.workspace = true
-license-file.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 version.workspace = true
 edition.workspace = true
 readme.workspace = true
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib"]
