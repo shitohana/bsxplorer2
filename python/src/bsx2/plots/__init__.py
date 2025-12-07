@@ -11,6 +11,35 @@ from .metagene import (
     box_plot,
     violin_plot,
 )
+from .cluster import (
+    MethylationMatrix,
+    KMeansResult,
+    PCAResult,
+    LinkageResult,
+    prepare_matrix,
+    run_kmeans,
+    run_pca,
+    run_linkage,
+    reorder_matrix,
+    cluster_subset,
+    metagene_for_cluster,
+)
+from .cluster_vis import (
+    pca_scatter,
+    kmeans_centroids_heatmap,
+    heatmap_ordered,
+    dendrogram_plot,
+)
+from .chrmap import (
+    ChrLineData,
+    ChrBoxData,
+    prepare_chr_line_data,
+    prepare_chr_box_data,
+)
+from .chrmap_vis import (
+    chr_line_hv,
+    chr_box_hv,
+)
 from .polars_html import (
     line_html,
     heatmap_html,
@@ -34,6 +63,27 @@ __all__ = [
     "heatmap",
     "box_plot",
     "violin_plot",
+    "MethylationMatrix",
+    "KMeansResult",
+    "PCAResult",
+    "LinkageResult",
+    "prepare_matrix",
+    "run_kmeans",
+    "run_pca",
+    "run_linkage",
+    "reorder_matrix",
+    "cluster_subset",
+    "metagene_for_cluster",
+    "pca_scatter",
+    "kmeans_centroids_heatmap",
+    "heatmap_ordered",
+    "dendrogram_plot",
+    "ChrLineData",
+    "ChrBoxData",
+    "prepare_chr_line_data",
+    "prepare_chr_box_data",
+    "chr_line_hv",
+    "chr_box_hv",
     "line_html",
     "heatmap_html",
     "box_html",
