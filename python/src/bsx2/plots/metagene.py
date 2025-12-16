@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Sequence, Tuple
 
@@ -11,16 +12,23 @@ from bsx2.plots.data import DiscreteRegionData, LinePlotData
 
 @dataclass(frozen=True)
 class Segment:
-    """Сегмент метагена с именем и числом бинов."""
+    """Metagene segment definition (name + bin count)."""
+
     name: str
     n_bins: int
 
 
-# По умолчанию один сегмент на 100 бинов
 _DEFAULT_SEGMENTS: tuple[Segment, ...] = (Segment("region", 100),)
 
 
 def segments_total_bins(segments: Sequence[Segment]) -> int:
+    """Return total bin count for all segments.
+
+    Raises
+    ------
+    ValueError
+        If segments are empty or contain non-positive bin counts.
+    """
     if not segments:
         raise ValueError("segments must not be empty")
     if any(s.n_bins <= 0 for s in segments):
@@ -69,11 +77,28 @@ def compute_discrete_regions(
     reverse_negative: bool = True,
     labels: Optional[Sequence[str]] = None,
 ) -> DiscreteRegionData:
-    """Строит дискретные профили по списку регионов (Contig) с использованием BsxBatch.discretise()."""
+    """Compute discretised metagene profiles for contigs.
+
+    Parameters
+    ----------
+    reader
+        RegionReader that implements ``iter_contigs``.
+    contigs
+        Contigs to extract.
+    segments
+        Segmentation scheme (default single ``Segment("region", 100)``).
+    agg_method
+        Aggregation method for ``BsxBatch.discretise``.
+    reverse_negative
+        Flip negative-strand profiles if True.
+    labels
+        Optional labels for resulting regions.
+    """
     total_bins = segments_total_bins(segments)
 
     if agg_method is None:
         from importlib import import_module
+
         agg_method = getattr(import_module("bsx2._bsx2"), "AggMethod").Mean
 
     data = DiscreteRegionData()
@@ -93,6 +118,14 @@ def compute_discrete_regions(
         if reverse_negative and contig is not None and _is_negative_strand(contig):
             x = 1.0 - x[::-1]
             y = y[::-1]
+        # Clean only infinities; keep NaN as "no data"
+        if np.any(~np.isfinite(y)):
+            y = y.astype(float, copy=True)
+            y[~np.isfinite(y)] = np.nan
+        mask = np.isfinite(y)
+        if np.any(mask):
+            y = y.astype(float, copy=False)
+            y[mask] = np.clip(y[mask], 0.0, 1.0)
         label = labels[idx] if labels and idx < len(labels) else None
         data.insert(x, y, label)
 
@@ -106,7 +139,8 @@ def collect_contigs_from_hcannot(
     limit: Optional[int] = None,
     label_getter: Optional[Callable[[object, int], str]] = None,
 ) -> Tuple[List[object], List[str]]:
-    """Извлекает список Contig и метки из HcAnnotStore (совместимо с dev-вариантом API)."""
+    """Extract contigs and labels from an HcAnnotStore-like object."""
+
     def _default_label(entry, idx: int) -> str:
         for attr in ("id", "get_id"):
             v = getattr(entry, attr, None)
@@ -162,7 +196,7 @@ def compute_from_annot(
     reverse_negative: bool = True,
     labels: Optional[Sequence[str]] = None,
 ) -> DiscreteRegionData:
-    """Строит DiscreteRegionData из HcAnnotStore (фильтр по feature_type при необходимости)."""
+    """Build DiscreteRegionData from an annotation store."""
     contigs, auto_labels = collect_contigs_from_hcannot(annot, feature_type=feature_type)
     if labels is None:
         labels = auto_labels
@@ -177,7 +211,7 @@ def compute_from_annot(
 
 
 def line_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
-    """Линейный метагенный профиль (HoloViews Curve)."""
+    """HoloViews Curve for averaged metagene profile."""
     segments = segments or _DEFAULT_SEGMENTS
     bounds, names = segment_ticks(segments)
     drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
@@ -197,7 +231,7 @@ def _stack_for_heatmap(drd: DiscreteRegionData) -> Tuple[pd.DataFrame, int]:
 
 
 def heatmap(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
-    """Теплокарта (regions × bins)."""
+    """HoloViews HeatMap (regions x bins)."""
     try:
         import holoviews as hv  # type: ignore
     except ModuleNotFoundError as e:
@@ -217,7 +251,7 @@ def heatmap(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[S
 
 
 def box_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
-    """Коробчатая диаграмма распределений по бинам."""
+    """HoloViews BoxWhisker per-bin distributions."""
     try:
         import holoviews as hv  # type: ignore
     except ModuleNotFoundError as e:
@@ -233,7 +267,7 @@ def box_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[
 
 
 def violin_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
-    """Виолин‑плот распределений по бинам."""
+    """HoloViews Violin per-bin distributions."""
     try:
         import holoviews as hv  # type: ignore
     except ModuleNotFoundError as e:

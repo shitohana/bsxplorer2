@@ -41,6 +41,27 @@ class LinkageResult:
     order: np.ndarray  # leaf order, shape (n_regions,)
 
 
+def filter_constant_rows(mat: MethylationMatrix, *, eps: float = 1e-12) -> MethylationMatrix:
+    """Drop rows with no signal (all NaN/zero) or nearly constant after NaN-to-num."""
+    if mat.matrix.size == 0:
+        return mat
+    data = np.nan_to_num(mat.matrix, nan=0.0, posinf=0.0, neginf=0.0)
+    keep_mask = []
+    for row in data:
+        if not np.isfinite(row).any():
+            keep_mask.append(False)
+            continue
+        rng = row.max() - row.min()
+        std = row.std()
+        keep_mask.append(not ((rng < eps) or (std < eps)))
+    keep_mask = np.asarray(keep_mask, dtype=bool)
+    if not keep_mask.any():
+        return MethylationMatrix(matrix=np.empty((0, data.shape[1])), region_ids=[], bins=mat.bins)
+    new_data = data[keep_mask]
+    new_ids = [r for r, k in zip(mat.region_ids, keep_mask) if k]
+    return MethylationMatrix(matrix=new_data, region_ids=new_ids, bins=mat.bins)
+
+
 def prepare_matrix(
     drd: DiscreteRegionData,
     *,
@@ -79,22 +100,31 @@ def run_kmeans(
     random_state: int | None = None,
 ) -> KMeansResult:
     """Simple NumPy-based k-means (Lloyd) on prepared matrix."""
-    data = mat.matrix
+    # Filter out constant/empty rows first
+    mat = filter_constant_rows(mat)
+    data = np.nan_to_num(mat.matrix, nan=0.0, posinf=0.0, neginf=0.0)
     n_samples, n_features = data.shape
-    if n_clusters <= 0 or n_clusters > n_samples:
-        raise ValueError("n_clusters must be in [1, n_samples]")
     if n_samples == 0 or n_features == 0:
         raise ValueError("Empty matrix")
+    k_eff = min(max(1, n_clusters), n_samples)
+    if k_eff < 2:
+        raise ValueError("Not enough samples for k-means")
 
     rng = np.random.default_rng(random_state)
-    # k-means++ init (simplified)
-    centroids = np.empty((n_clusters, n_features), dtype=np.float64)
+    # k-means++ init (simplified) with NaN-safe probabilities
+    centroids = np.empty((k_eff, n_features), dtype=np.float64)
     centroids[0] = data[rng.integers(0, n_samples)]
     closest_dist_sq = np.full(n_samples, np.inf, dtype=np.float64)
-    for c in range(1, n_clusters):
+    for c in range(1, k_eff):
         dist_sq = np.sum((data[:, None, :] - centroids[None, :c, :]) ** 2, axis=2).min(axis=1)
         closest_dist_sq = np.minimum(closest_dist_sq, dist_sq)
-        probs = closest_dist_sq / closest_dist_sq.sum()
+        # Replace non-finite with zero and guard zero-sum
+        safe = np.nan_to_num(closest_dist_sq, nan=0.0, posinf=0.0, neginf=0.0)
+        total = safe.sum()
+        if total <= 0.0:
+            probs = np.full(n_samples, 1.0 / n_samples)
+        else:
+            probs = safe / total
         centroids[c] = data[rng.choice(n_samples, p=probs)]
 
     labels = np.zeros(n_samples, dtype=np.int32)
@@ -117,7 +147,7 @@ def run_kmeans(
             break
 
     inertia = float(np.sum((data - centroids[labels]) ** 2))
-    return KMeansResult(labels=labels, centroids=centroids, inertia=inertia, n_clusters=n_clusters)
+    return KMeansResult(labels=labels, centroids=centroids, inertia=inertia, n_clusters=k_eff)
 
 
 def run_pca(
@@ -128,7 +158,8 @@ def run_pca(
     scale: bool = False,
 ) -> PCAResult:
     """PCA via SVD; returns scores/loadings/explained variance."""
-    data = mat.matrix.astype(np.float64, copy=True)
+    mat = filter_constant_rows(mat)
+    data = np.nan_to_num(mat.matrix, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64, copy=False)
     if data.size == 0:
         raise ValueError("Empty matrix")
 
@@ -163,13 +194,18 @@ def run_linkage(
     """Hierarchical clustering via scipy; raises ImportError if scipy is unavailable."""
     try:
         import scipy.cluster.hierarchy as sch  # type: ignore
+        from scipy.spatial.distance import pdist  # type: ignore
     except ImportError as e:  # pragma: no cover - optional dependency
         raise ImportError("scipy is required for linkage") from e
 
-    data = mat.matrix
-    if data.size == 0:
-        raise ValueError("Empty matrix")
-    linkage = sch.linkage(data, method=method, metric=metric)
+    mat = filter_constant_rows(mat)
+    data = np.nan_to_num(mat.matrix, nan=0.0, posinf=0.0, neginf=0.0)
+    if data.shape[0] < 2:
+        raise ValueError("Not enough samples for linkage")
+    d = pdist(data, metric=metric)
+    if not np.isfinite(d).all():
+        d = np.nan_to_num(d, nan=0.0, posinf=0.0, neginf=0.0)
+    linkage = sch.linkage(d, method=method)
     order = sch.leaves_list(linkage)
     return LinkageResult(linkage=linkage, order=order)
 

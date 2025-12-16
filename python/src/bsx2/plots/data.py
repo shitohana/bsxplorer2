@@ -50,9 +50,14 @@ def _is_1d_unit_density(a: np.ndarray) -> bool:
         return False
     if a.size == 0:
         return True
-    if not np.issubdtype(a.dtype, np.number) or not np.all(np.isfinite(a)):
+    if not np.issubdtype(a.dtype, np.number):
         return False
-    return 0.0 <= a.min() <= a.max() <= 1.0
+    if np.isinf(a).any():
+        return False
+    finite = np.isfinite(a)
+    if not finite.any():
+        return True
+    return (a[finite] >= 0.0).all() and (a[finite] <= 1.0).all()
 
 
 Pos1D = Annotated[np.ndarray, Is[_is_1d_sorted_unit_positions]]
@@ -90,22 +95,25 @@ class DiscreteRegionData:
         target_bins = max(len(d) for d in self.densities)
         if target_bins == 0:
             return np.empty((len(self), 0), dtype=np.float64), [], np.empty(0, dtype=np.float64)
-        grid = np.linspace(0.0, 1.0, target_bins, dtype=np.float64)
+        # Bin edges and centers
+        edges = np.linspace(0.0, 1.0, target_bins + 1, dtype=np.float64)
+        centers = (edges[:-1] + edges[1:]) / 2.0
 
         rows = []
         for pos, dens in zip(self.positions, self.densities):
-            if len(pos) == 0:
-                interp = np.zeros_like(grid)
-            elif len(pos) == 1:
-                interp = np.full_like(grid, float(dens[0]))
-            else:
-                # np.interp uses endpoints for out-of-range; positions are already sorted and within [0,1]
-                interp = np.interp(grid, pos, dens)
-            rows.append(interp.astype(np.float64, copy=False))
+            # Simple binning: points whose coordinate falls into bin edges
+            binned = np.full(target_bins, np.nan, dtype=np.float64)
+            if len(pos) > 0:
+                idx = np.clip(np.digitize(pos, edges[1:-1], right=True), 0, target_bins - 1)
+                for b in range(target_bins):
+                    mask = idx == b
+                    if np.any(mask):
+                        binned[b] = float(np.mean(dens[mask]))
+            rows.append(binned)
 
         mat = np.vstack(rows)
         row_labels = [lbl if lbl is not None else f"region_{i+1}" for i, lbl in enumerate(self.labels)]
-        return mat, row_labels, grid
+        return mat, row_labels, centers
 
     @beartype
     def stack_matrix(self) -> Tuple[np.ndarray, List[str]]:
