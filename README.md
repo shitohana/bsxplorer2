@@ -202,3 +202,22 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) f
 ---
 
 Created by [shitohana](https://github.com/shitohana) - Empowering your DNA methylation research with speed and precision.
+
+## AW25 demo (quick check)
+
+From `python/`:
+
+```
+poetry install
+poetry run ruff check .
+poetry run pytest -q
+poetry run pytest -q -m end2end
+poetry run python scripts/demo_aw25.py --out-dir artifacts   # fast (limit=250)
+# for full dataset:
+# poetry run python scripts/demo_aw25.py --out-dir artifacts --full
+```
+
+Artifacts go to `python/artifacts/` with an `INDEX.md` that lists:
+- metagene classic/arbitrary (line/heatmap/box/violin)
+- clustering (PCA scatter, centroids heatmap, ordered heatmap, dendrogram)
+- chrmap (line + violin; skip with `--skip-chrmap`)
