@@ -68,6 +68,70 @@ try:
 except ModuleNotFoundError:
     hv = None  # lazy-load in to_curve; raise on use if missing
 
+@dataclass
+class MetageneData:
+    """Единый контейнер для метагенной матрицы и сегментов."""
+    matrix: np.ndarray
+    region_ids: List[str]
+    bins: np.ndarray
+    segments: List[Any]  # Segment, но избегаем циклического импорта
+
+    @classmethod
+    def from_discrete(cls, drd: "DiscreteRegionData", segments: List[Any], *, drop_nan_rows: bool = False) -> "MetageneData":
+        """Строит метагенную матрицу из DRD; можно выкинуть строки с NaN."""
+        mat, labels, grid = drd._stack_to_common_grid()
+        if drop_nan_rows and mat.size > 0:
+            finite_mask = np.isfinite(mat).all(axis=1)
+            mat = mat[finite_mask]
+            labels = [l for l, k in zip(labels, finite_mask) if k]
+        return cls(matrix=mat, region_ids=labels, bins=grid, segments=segments)
+
+    def line_profile(self, agg: str = "mean", *, as_percent: bool = False, drop_nan_rows: bool = False) -> tuple[np.ndarray, np.ndarray]:
+        data = self.matrix * (100.0 if as_percent else 1.0)
+        if drop_nan_rows and data.size > 0:
+            data = data[np.isfinite(data).any(axis=1)]
+        agg_map = {
+            "mean": np.nanmean,
+            "median": np.nanmedian,
+            "max": np.nanmax,
+            "min": np.nanmin,
+        }
+        fn = agg_map.get(agg)
+        if fn is None:
+            raise ValueError(f"Unsupported agg: {agg}")
+        y = fn(data, axis=0)
+        # если весь столбец NaN — заменяем на глобальное среднее
+        if np.isnan(y).any():
+            global_mean = np.nanmean(data) if np.isfinite(data).any() else 0.0
+            y = np.where(np.isnan(y), global_mean, y)
+        return self.bins, y
+
+    def dist_data(self, *, as_percent: bool = False, per_region: bool = False, drop_nan_rows: bool = False):
+        data = self.matrix * (100.0 if as_percent else 1.0)
+        if drop_nan_rows and data.size > 0:
+            data = data[np.isfinite(data).any(axis=1)]
+        if per_region:
+            out = []
+            for rid, row in zip(self.region_ids, data):
+                if np.isfinite(row).any():
+                    out.append((rid, float(np.nanmean(row))))
+            return out
+        out = []
+        for b_idx, col in enumerate(data.T):
+            for val in col:
+                if np.isfinite(val):
+                    out.append((b_idx, float(val)))
+        return out
+
+    def heatmap_data(self, *, as_percent: bool = False, drop_nan_rows: bool = False):
+        data = self.matrix * (100.0 if as_percent else 1.0)
+        regions = self.region_ids
+        if drop_nan_rows and data.size > 0:
+            mask = np.isfinite(data).any(axis=1)
+            data = data[mask]
+            regions = [r for r, k in zip(self.region_ids, mask) if k]
+        return data, self.region_ids, list(range(data.shape[1]))
+
 
 @beartype
 @dataclass
