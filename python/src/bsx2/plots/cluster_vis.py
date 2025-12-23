@@ -22,13 +22,16 @@ def pca_scatter(
     if scores.shape[1] < 2:
         raise ValueError("PCA scores must have at least 2 components for scatter")
     xs, ys = scores[:, 0], scores[:, 1]
-    df = {
-        "PC1": xs,
-        "PC2": ys,
-        "label": labels if labels is not None else [f"r{i}" for i in range(len(xs))],
-    }
-    if clusters is not None:
-        df["cluster"] = list(clusters)
+    n = len(xs)
+    lbls = list(labels) if labels is not None else [f"r{i}" for i in range(n)]
+    if len(lbls) != n:
+        lbls = lbls[:n]
+    clusters_use = list(clusters) if clusters is not None else None
+    if clusters_use is not None and len(clusters_use) != n:
+        clusters_use = clusters_use[:n]
+    df = {"PC1": xs, "PC2": ys, "label": lbls}
+    if clusters_use is not None:
+        df["cluster"] = clusters_use
     fig = px.scatter(df, x="PC1", y="PC2", color="cluster" if clusters is not None else None, hover_name="label")
     if pca.explained_variance is not None and len(pca.explained_variance) >= 2:
         total_var = np.sum(pca.explained_variance)

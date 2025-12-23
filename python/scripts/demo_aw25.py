@@ -12,7 +12,7 @@ import numpy as np
 import polars as pl
 
 from bsx2.io import RegionReader
-from bsx2._bsx2 import AggMethod, HcAnnotStore
+from bsx2._bsx2 import AggMethod, HcAnnotStore, BsxFileReader
 from bsx2.plots import Segment, collect_contigs_from_hcannot, compute_discrete_regions
 from bsx2.plots.cluster import prepare_matrix, run_kmeans, run_linkage, run_pca
 from bsx2.plots.cluster_vis import (
@@ -31,7 +31,8 @@ from bsx2.plots.polars_html import (
 from bsx2.plots.chrmap import prepare_chr_box_data, prepare_chr_line_data
 from bsx2.plots.chrmap_vis import chr_box_hv, chr_line_hv
 
-hv.extension("bokeh", logo=False)
+# Используем plotly backend по умолчанию для единого стека
+hv.extension("plotly", logo=False)
 
 
 def _sorted_contigs(
@@ -55,12 +56,13 @@ def _save_html(path: Path, content: str) -> None:
 def _metagene_set(
     name: str,
     segments: Sequence[Segment],
-    rr: RegionReader,
+    bsx_path: Path,
     annot: HcAnnotStore,
     *,
     out_dir: Path,
     limit: int | None,
 ) -> None:
+    rr = RegionReader(str(bsx_path))
     line = line_html_from_annot(
         rr,
         annot,
@@ -106,34 +108,44 @@ def _metagene_set(
 
 
 def _cluster_artifacts(
-    rr: RegionReader,
+    bsx_path: Path,
     contigs: Sequence[object],
     labels: Sequence[str],
     segments: Sequence[Segment],
     *,
     out_dir: Path,
+    seed: int,
 ) -> None:
+    rr = RegionReader(str(bsx_path))
+    contig_to_label = {id(c): lbl for c, lbl in zip(contigs, labels)}
+    contigs_sorted = rr.index().sort(list(contigs))
+    labels_sorted = [contig_to_label.get(id(c), "") for c in contigs_sorted]
     drd = compute_discrete_regions(
         rr,
-        contigs,
+        contigs_sorted,
         segments=segments,
         agg_method=AggMethod.Mean,
         reverse_negative=True,
-        labels=labels,
+        labels=labels_sorted,
     )
     mat = prepare_matrix(drd, norm="zscore")
-    km = run_kmeans(mat, n_clusters=4, random_state=42)
+    km = run_kmeans(mat, n_clusters=4, random_state=seed)
     pca = run_pca(mat, n_components=3)
     _save_html(out_dir / "cluster_pca_scatter.html", pca_scatter(pca, labels=mat.region_ids, clusters=km.labels))
     _save_html(out_dir / "cluster_centroids_heatmap.html", kmeans_centroids_heatmap(km, bins=mat.bins))
     order = None
     try:
-        link = run_linkage(mat)
+        from bsx2.plots.cluster import filter_constant_rows
+
+        mat_link = filter_constant_rows(mat, drop_nan_rows=False, nan_fill=0.0)
+        link = run_linkage(mat_link, drop_nan_rows=False, nan_fill=0.0)
         order = link.order
-        _save_html(out_dir / "cluster_dendrogram.html", dendrogram_plot(link, labels=mat.region_ids))
+        _save_html(out_dir / "cluster_dendrogram.html", dendrogram_plot(link, labels=mat_link.region_ids))
+        _save_html(out_dir / "cluster_ordered_heatmap.html", heatmap_ordered(mat_link, order=order))
     except ImportError:
         print("scipy not available; skipping dendrogram")
-    _save_html(out_dir / "cluster_ordered_heatmap.html", heatmap_ordered(mat, order=order))
+    if order is None:
+        _save_html(out_dir / "cluster_ordered_heatmap.html", heatmap_ordered(mat, order=None))
 
 
 def _windows_from_bsx(
@@ -141,13 +153,27 @@ def _windows_from_bsx(
     *,
     window_size: int,
     max_batches: int | None,
+    max_chroms: int = 3,
 ) -> pl.DataFrame:
-    rr = RegionReader(str(bsx_path))
+    window_size = max(1, min(int(window_size), 1000))
+    rf = BsxFileReader(str(bsx_path))
     acc: List[pl.DataFrame] = []
-    for idx, batch in enumerate(rr):
+    seen = []
+    for idx, batch in enumerate(rf):
         if max_batches is not None and idx >= max_batches:
             break
-        df = batch.data().with_columns((pl.col("position") // window_size).alias("window"))
+        if batch is None:
+            continue
+        df = batch.data()
+        # filter by first N chromosomes seen
+        chr_col = df["chr"].cast(pl.Utf8)
+        if len(seen) < max_chroms:
+            new = [c for c in chr_col.unique().to_list() if c not in seen]
+            seen.extend(new)
+        df = df.filter(pl.col("chr").cast(pl.Utf8).is_in(seen[:max_chroms]))
+        if df.is_empty():
+            continue
+        df = df.with_columns((pl.col("position") // window_size).alias("window"))
         acc.append(
             df.group_by(["chr", "window"]).agg(
                 [
@@ -179,8 +205,8 @@ def _chrmap_artifacts(
 
     line_path = out_dir / "chrmap_line.html"
     box_path = out_dir / "chrmap_violin.html"
-    hv.save(line_plot, line_path, backend="bokeh", resources="cdn")
-    hv.save(box_plot, box_path, backend="bokeh", resources="cdn")
+    hv.save(line_plot, line_path, backend="plotly", resources="cdn")
+    hv.save(box_plot, box_path, backend="plotly", resources="cdn")
     print(f"Saved {line_path}")
     print(f"Saved {box_path}")
 
@@ -222,9 +248,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--limit", type=int, default=250, help="Limit number of regions for speed")
     p.add_argument("--full", action="store_true", help="Ignore limit and process all regions")
     p.add_argument("--windows", type=Path, default=None, help="Optional precomputed windows table for chrmap")
-    p.add_argument("--window-size", type=int, default=100_000, help="Window size for chrmap aggregation (bp)")
+    p.add_argument("--window-size", type=int, default=1_000, help="Window size for chrmap aggregation (bp)")
     p.add_argument("--max-batches", type=int, default=400, help="Max batches to read from BSX for chrmap fallback")
+    p.add_argument("--max-chroms", type=int, default=3, help="Max chromosomes to include in chrmap fallback")
     p.add_argument("--skip-chrmap", action="store_true", help="Skip chrmap generation")
+    p.add_argument("--seed", type=int, default=42, help="Random seed for clustering/determinism")
     return p.parse_args()
 
 
@@ -233,26 +261,31 @@ def main() -> None:
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    rr = RegionReader(str(args.bsx))
     annot = HcAnnotStore.from_gff(str(args.annot))
 
     limit = None if args.full else args.limit
     contigs, labels = _sorted_contigs(annot, limit=limit)
 
-    classic = [Segment("up", 25), Segment("body", 50), Segment("down", 25)]
+    # Сегменты по умолчанию ближе к статье: фланги короче, тело длиннее
+    classic = [Segment("up", 50), Segment("body", 200), Segment("down", 50)]
     arbitrary = [Segment("up", 10), Segment("exon_like", 30), Segment("gap", 5), Segment("down", 55)]
 
-    _metagene_set("classic", classic, rr, annot, out_dir=out_dir, limit=limit)
-    _metagene_set("arbitrary", arbitrary, rr, annot, out_dir=out_dir, limit=limit)
+    _metagene_set("classic", classic, args.bsx, annot, out_dir=out_dir, limit=limit)
+    _metagene_set("arbitrary", arbitrary, args.bsx, annot, out_dir=out_dir, limit=limit)
 
     # clustering on classic segments with deterministic labels
-    _cluster_artifacts(rr, contigs, labels, classic, out_dir=out_dir)
+    _cluster_artifacts(args.bsx, contigs, labels, classic, out_dir=out_dir, seed=args.seed)
 
     if not args.skip_chrmap:
         if args.windows is not None:
             df = pl.read_csv(args.windows) if args.windows.suffix.lower() in {".csv", ".tsv"} else pl.read_parquet(args.windows)
         else:
-            df = _windows_from_bsx(args.bsx, window_size=args.window_size, max_batches=None if args.full else args.max_batches)
+            df = _windows_from_bsx(
+                args.bsx,
+                window_size=args.window_size,
+                max_batches=None if args.full else args.max_batches,
+                max_chroms=args.max_chroms,
+            )
         if df.is_empty():
             print("No windows available; skipping chrmap")
         else:

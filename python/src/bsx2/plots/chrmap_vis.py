@@ -10,7 +10,7 @@ from bsx2.plots.chrmap import ChrLineData, ChrBoxData
 
 def chr_line_hv(line: ChrLineData, *, label: str | None = None) -> hv.Overlay:
     """Holoviews line + CI + chromosome borders. Returns an Overlay."""
-    curves = [hv.Curve((line.x, line.y), label=label or "density").opts(tools=["hover"], ylabel="Methylation density (%)")]
+    curves = [hv.Curve((line.x, line.y), label=label or "density").opts(ylabel="Methylation density (%)")]
     if line.lower is not None and line.upper is not None:
         area = hv.Area((line.x, line.lower, line.upper)).opts(alpha=0.2, color="lightgray")
         curves.append(area)
