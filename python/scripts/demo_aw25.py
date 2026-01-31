@@ -12,7 +12,7 @@ import numpy as np
 import polars as pl
 
 from bsx2.io import RegionReader
-from bsx2._bsx2 import AggMethod, HcAnnotStore, BsxFileReader
+from bsx2._bsx2 import AggMethod, HcAnnotStore, BsxFileReader, Context
 from bsx2.plots import Segment, collect_contigs_from_hcannot, compute_discrete_regions
 from bsx2.plots.cluster import prepare_matrix, run_kmeans, run_linkage, run_pca
 from bsx2.plots.cluster_vis import (
@@ -53,6 +53,19 @@ def _save_html(path: Path, content: str) -> None:
     print(f"Saved {path}")
 
 
+def _apply_contexts(rr: RegionReader, contexts: set[str] | None) -> None:
+    """Apply context filters to RegionReader if provided."""
+    if not contexts:
+        return
+    for ctx in contexts:
+        key = ctx.strip().upper()
+        if hasattr(Context, key):
+            try:
+                rr.filter_context(getattr(Context, key))
+            except Exception:
+                pass
+
+
 def _metagene_set(
     name: str,
     segments: Sequence[Segment],
@@ -61,22 +74,16 @@ def _metagene_set(
     *,
     out_dir: Path,
     limit: int | None,
+    contexts: set[str] | None = None,
+    skip_heatmap: bool = False,
 ) -> None:
     rr = RegionReader(str(bsx_path))
+    _apply_contexts(rr, contexts)
     line = line_html_from_annot(
         rr,
         annot,
         segments=list(segments),
         agg="mean",
-        agg_method=AggMethod.Mean,
-        feature_type=None,
-        limit=limit,
-        full_html=False,
-    )
-    heat = heatmap_html_from_annot(
-        rr,
-        annot,
-        segments=list(segments),
         agg_method=AggMethod.Mean,
         feature_type=None,
         limit=limit,
@@ -102,7 +109,17 @@ def _metagene_set(
     )
 
     _save_html(out_dir / f"metagene_{name}_line.html", line)
-    _save_html(out_dir / f"metagene_{name}_heatmap.html", heat)
+    if not skip_heatmap:
+        heat = heatmap_html_from_annot(
+            rr,
+            annot,
+            segments=list(segments),
+            agg_method=AggMethod.Mean,
+            feature_type=None,
+            limit=limit,
+            full_html=False,
+        )
+        _save_html(out_dir / f"metagene_{name}_heatmap.html", heat)
     _save_html(out_dir / f"metagene_{name}_box.html", box)
     _save_html(out_dir / f"metagene_{name}_violin.html", violin)
 
@@ -115,8 +132,10 @@ def _cluster_artifacts(
     *,
     out_dir: Path,
     seed: int,
+    contexts: set[str] | None = None,
 ) -> None:
     rr = RegionReader(str(bsx_path))
+    _apply_contexts(rr, contexts)
     contig_to_label = {id(c): lbl for c, lbl in zip(contigs, labels)}
     contigs_sorted = rr.index().sort(list(contigs))
     labels_sorted = [contig_to_label.get(id(c), "") for c in contigs_sorted]
@@ -154,9 +173,18 @@ def _windows_from_bsx(
     window_size: int,
     max_batches: int | None,
     max_chroms: int = 3,
+    contexts: set[str] | None = None,
 ) -> pl.DataFrame:
     window_size = max(1, min(int(window_size), 1000))
     rf = BsxFileReader(str(bsx_path))
+    if contexts:
+        for ctx in contexts:
+            key = ctx.strip().upper()
+            if hasattr(Context, key):
+                try:
+                    rf = rf.filter_context(getattr(Context, key))
+                except Exception:
+                    pass
     acc: List[pl.DataFrame] = []
     seen = []
     for idx, batch in enumerate(rf):
@@ -211,7 +239,13 @@ def _chrmap_artifacts(
     print(f"Saved {box_path}")
 
 
-def _write_index(out_dir: Path) -> None:
+def _write_index(
+    out_dir: Path,
+    *,
+    skip_heatmap: bool,
+    skip_chrmap: bool,
+    skip_cluster: bool,
+) -> None:
     lines = [
         "# AW25 demo artifacts",
         "",
@@ -237,6 +271,34 @@ def _write_index(out_dir: Path) -> None:
         "- chrmap_line.html",
         "- chrmap_violin.html",
     ]
+    if skip_heatmap:
+        lines = [
+            l for l in lines
+            if l not in {
+                "- metagene_classic_heatmap.html",
+                "- metagene_arbitrary_heatmap.html",
+            }
+        ]
+    if skip_cluster:
+        lines = [
+            l for l in lines
+            if l not in {
+                "## Clustering",
+                "- cluster_pca_scatter.html",
+                "- cluster_centroids_heatmap.html",
+                "- cluster_ordered_heatmap.html",
+                "- cluster_dendrogram.html",
+            }
+        ]
+    if skip_chrmap:
+        lines = [
+            l for l in lines
+            if l not in {
+                "## Chrmap",
+                "- chrmap_line.html",
+                "- chrmap_violin.html",
+            }
+        ]
     (out_dir / "INDEX.md").write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -252,12 +314,21 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--max-batches", type=int, default=400, help="Max batches to read from BSX for chrmap fallback")
     p.add_argument("--max-chroms", type=int, default=3, help="Max chromosomes to include in chrmap fallback")
     p.add_argument("--skip-chrmap", action="store_true", help="Skip chrmap generation")
+    p.add_argument("--skip-heatmap", action="store_true", help="Skip metagene heatmaps")
+    p.add_argument("--skip-cluster", action="store_true", help="Skip clustering artifacts")
     p.add_argument("--seed", type=int, default=42, help="Random seed for clustering/determinism")
+    p.add_argument(
+        "--contexts",
+        type=str,
+        default=None,
+        help="Comma-separated contexts to keep (e.g. CG,CHG,CHH)",
+    )
     return p.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+    ctx_set = {c.strip().upper() for c in args.contexts.split(',')} if args.contexts else None
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -270,11 +341,14 @@ def main() -> None:
     classic = [Segment("up", 50), Segment("body", 200), Segment("down", 50)]
     arbitrary = [Segment("up", 10), Segment("exon_like", 30), Segment("gap", 5), Segment("down", 55)]
 
-    _metagene_set("classic", classic, args.bsx, annot, out_dir=out_dir, limit=limit)
-    _metagene_set("arbitrary", arbitrary, args.bsx, annot, out_dir=out_dir, limit=limit)
+    _metagene_set("classic", classic, args.bsx, annot, out_dir=out_dir, limit=limit, contexts=ctx_set, skip_heatmap=args.skip_heatmap)
+    _metagene_set("arbitrary", arbitrary, args.bsx, annot, out_dir=out_dir, limit=limit, contexts=ctx_set, skip_heatmap=args.skip_heatmap)
 
     # clustering on classic segments with deterministic labels
-    _cluster_artifacts(args.bsx, contigs, labels, classic, out_dir=out_dir, seed=args.seed)
+    if args.skip_cluster:
+        print("Clustering skipped by flag")
+    else:
+        _cluster_artifacts(args.bsx, contigs, labels, classic, out_dir=out_dir, seed=args.seed, contexts=ctx_set)
 
     if not args.skip_chrmap:
         if args.windows is not None:
@@ -285,6 +359,7 @@ def main() -> None:
                 window_size=args.window_size,
                 max_batches=None if args.full else args.max_batches,
                 max_chroms=args.max_chroms,
+                contexts=ctx_set,
             )
         if df.is_empty():
             print("No windows available; skipping chrmap")
@@ -293,7 +368,12 @@ def main() -> None:
     else:
         print("Chrmap generation skipped by flag")
 
-    _write_index(out_dir)
+    _write_index(
+        out_dir,
+        skip_heatmap=args.skip_heatmap,
+        skip_chrmap=args.skip_chrmap,
+        skip_cluster=args.skip_cluster,
+    )
 
 
 if __name__ == "__main__":
