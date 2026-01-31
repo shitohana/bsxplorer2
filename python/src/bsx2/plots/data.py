@@ -138,14 +138,28 @@ class MetageneData:
 class DiscreteRegionData:
     positions: List[np.ndarray] = field(default_factory=list)   # each: (n_bins,)
     densities: List[np.ndarray] = field(default_factory=list)   # each: (n_bins,)
+    weights: List[Optional[np.ndarray]] = field(default_factory=list)
     labels: List[Optional[str]] = field(default_factory=list)
 
     @beartype
-    def insert(self, positions: Pos1D, densities: Density1D, label: Optional[str] = None) -> None:
+    def insert(
+        self,
+        positions: Pos1D,
+        densities: Density1D,
+        label: Optional[str] = None,
+        weights: Optional[np.ndarray] = None,
+    ) -> None:
         if len(positions) != len(densities):
             raise ValueError("length mismatch between positions and densities")
         self.positions.append(positions.astype(np.float64, copy=False))
         self.densities.append(densities.astype(np.float64, copy=False))
+        if weights is None:
+            self.weights.append(None)
+        else:
+            w = np.asarray(weights, dtype=np.float64)
+            if len(w) != len(densities):
+                raise ValueError("length mismatch between weights and densities")
+            self.weights.append(w)
         self.labels.append(label)
 
     def __len__(self) -> int:

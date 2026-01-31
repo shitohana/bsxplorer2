@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Sequence, Tuple
+import heapq
 
 import numpy as np
 import pandas as pd
@@ -52,6 +53,63 @@ def segment_ticks(segments: Sequence[Segment]) -> Tuple[List[float], List[str]]:
     return bounds, labels
 
 
+def _line_from_points(drd: DiscreteRegionData, segments: Sequence[Segment]) -> Tuple[np.ndarray, np.ndarray]:
+    bounds = segment_boundaries(segments)
+    total_bins = segments_total_bins(segments)
+    starts = np.array([0.0] + bounds[:-1], dtype=float)
+    ends = np.array(bounds, dtype=float)
+    seg_nbins = np.array([s.n_bins for s in segments], dtype=int)
+    seg_offsets = np.concatenate(([0], np.cumsum(seg_nbins)[:-1]))
+
+    centers = []
+    for s, start, end in zip(segments, starts, ends):
+        width = end - start
+        if width <= 0:
+            continue
+        idx = np.arange(s.n_bins, dtype=float)
+        centers.append(start + (idx + 0.5) / s.n_bins * width)
+    x_out = np.concatenate(centers) if centers else np.array([], dtype=float)
+
+    streams = []
+    for pos, dens in zip(drd.positions, drd.densities):
+        x = np.asarray(pos, dtype=float)
+        y = np.asarray(dens, dtype=float)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if not np.any(mask):
+            continue
+        pts = list(zip(x[mask].tolist(), y[mask].tolist()))
+        pts.sort(key=lambda t: t[0])
+        streams.append(pts)
+
+    if not streams:
+        return np.array([]), np.array([])
+
+    bins_values = [[] for _ in range(total_bins)]
+    for x, y in heapq.merge(*streams, key=lambda t: t[0]):
+        if x < 0.0 or x > 1.0:
+            continue
+        seg_idx = int(np.searchsorted(ends, x, side="right"))
+        seg_idx = min(seg_idx, len(ends) - 1)
+        width = ends[seg_idx] - starts[seg_idx]
+        if width <= 0:
+            continue
+        x_seg = (x - starts[seg_idx]) / width
+        local = int(x_seg * seg_nbins[seg_idx])
+        local = min(local, seg_nbins[seg_idx] - 1)
+        global_bin = int(seg_offsets[seg_idx] + local)
+        if 0 <= global_bin < total_bins:
+            bins_values[global_bin].append(y)
+
+    y_out = []
+    for vals in bins_values:
+        if not vals:
+            y_out.append(np.nan)
+            continue
+        y_out.append(float(np.nanmean(np.asarray(vals, dtype=float))))
+
+    return x_out, np.array(y_out, dtype=float)
+
+
 def _is_negative_strand(contig) -> bool:
     val = None
     if hasattr(contig, "strand_str"):
@@ -76,6 +134,10 @@ def compute_discrete_regions(
     agg_method=None,
     reverse_negative: bool = True,
     labels: Optional[Sequence[str]] = None,
+    mode: str = "discretise",
+    x_mode: str = "relative",
+    progress: bool = False,
+    progress_every: int = 1,
 ) -> DiscreteRegionData:
     """Compute discretised metagene profiles for contigs.
 
@@ -94,6 +156,15 @@ def compute_discrete_regions(
     labels
         Optional labels for resulting regions.
     """
+    try:
+        sorted_contigs = reader.index().sort(list(contigs))
+    except Exception:
+        sorted_contigs = list(contigs)
+    else:
+        if labels is not None:
+            id_to_label = {id(c): lbl for c, lbl in zip(contigs, labels)}
+            labels = [id_to_label.get(id(c)) for c in sorted_contigs]
+    contigs_list = sorted_contigs
     total_bins = segments_total_bins(segments)
 
     if agg_method is None:
@@ -106,18 +177,87 @@ def compute_discrete_regions(
     if not callable(batches_iter):
         raise AttributeError("reader must implement iter_contigs(contigs)")
 
-    contigs_list = list(contigs)
+    total = len(contigs_list)
+    step = progress_every if progress_every > 0 else 1
+
+    def _progress(idx: int) -> None:
+        if not progress or total <= 0:
+            return
+        if idx % step != 0 and idx + 1 != total:
+            return
+        width = 30
+        frac = (idx + 1) / total
+        filled = int(round(frac * width))
+        bar = "#" * filled + "-" * (width - filled)
+        print(f"\r[{bar}] {idx + 1}/{total}", end="", flush=True)
+        if idx + 1 == total:
+            print()
+
     for idx, batch in enumerate(reader.iter_contigs(contigs_list)):
-        try:
-            xs, ys = batch.discretise(total_bins, agg_method)
-        except Exception:
-            continue
-        x = np.asarray(xs, dtype=np.float64)
-        y = np.asarray(ys, dtype=np.float64)
         contig = contigs_list[idx] if idx < len(contigs_list) else None
-        if reverse_negative and contig is not None and _is_negative_strand(contig):
-            x = 1.0 - x[::-1]
-            y = y[::-1]
+        if mode == "raw":
+            if contig is None:
+                _progress(idx)
+                continue
+            start = getattr(contig, "start", None)
+            end = getattr(contig, "end", None)
+            if start is None or end is None or end <= start:
+                _progress(idx)
+                continue
+            try:
+                pos = np.asarray(batch.position().to_list(), dtype=np.float64)
+                dens = np.asarray(batch.density().to_list(), dtype=np.float64)
+                weights = np.asarray(batch.count_total().to_list(), dtype=np.float64)
+            except Exception:
+                _progress(idx)
+                continue
+            if pos.size == 0 or dens.size == 0:
+                _progress(idx)
+                continue
+            if weights.size != dens.size:
+                _progress(idx)
+                continue
+            if x_mode == "absolute":
+                x = pos - float(start)
+            else:
+                x = (pos - float(start)) / float(end - start)
+            y = dens
+            if reverse_negative and _is_negative_strand(contig):
+                if x_mode == "absolute":
+                    x = float(end - start) - x
+                else:
+                    x = 1.0 - x
+            mask = np.isfinite(x) & np.isfinite(y)
+            if x_mode != "absolute":
+                mask = mask & (x >= 0.0) & (x <= 1.0)
+            x = x[mask]
+            y = y[mask]
+            w = weights[mask]
+            if x.size == 0:
+                _progress(idx)
+                continue
+            order = np.argsort(x, kind="mergesort")
+            x = x[order]
+            y = y[order]
+            w = w[order]
+        else:
+            try:
+                if len(batch.data()) < 3:
+                    _progress(idx)
+                    continue
+            except Exception:
+                _progress(idx)
+                continue
+            try:
+                xs, ys = batch.discretise(total_bins, agg_method)
+            except Exception:
+                _progress(idx)
+                continue
+            x = np.asarray(xs, dtype=np.float64)
+            y = np.asarray(ys, dtype=np.float64)
+            if reverse_negative and contig is not None and _is_negative_strand(contig):
+                x = 1.0 - x[::-1]
+                y = y[::-1]
         # Clean only infinities; keep NaN as "no data"
         if np.any(~np.isfinite(y)):
             y = y.astype(float, copy=True)
@@ -127,7 +267,8 @@ def compute_discrete_regions(
             y = y.astype(float, copy=False)
             y[mask] = np.clip(y[mask], 0.0, 1.0)
         label = labels[idx] if labels and idx < len(labels) else None
-        data.insert(x, y, label)
+        data.insert(x, y, label, weights=w if mode == "raw" else None)
+        _progress(idx)
 
     return data
 
@@ -210,13 +351,28 @@ def compute_from_annot(
     )
 
 
-def line_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
+def line_plot(
+    reader: _io.RegionReader,
+    *,
+    contigs: Sequence,
+    segments: Sequence[Segment] | None = None,
+    agg_method=None,
+    mode: str = "raw",
+    x_mode: str = "relative",
+):
     """HoloViews Curve for averaged metagene profile."""
     segments = segments or _DEFAULT_SEGMENTS
     bounds, names = segment_ticks(segments)
-    drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
-    lp = LinePlotData.from_discrete(drd)
-    return LinePlotData(x=lp.x, y=lp.y, x_ticks=bounds, x_labels=names).to_curve()
+    drd = compute_discrete_regions(
+        reader,
+        contigs,
+        segments=segments,
+        agg_method=agg_method,
+        mode=mode,
+        x_mode=x_mode,
+    )
+    x, y = _line_from_points(drd, segments)
+    return LinePlotData(x=x, y=y, x_ticks=bounds, x_labels=names).to_curve()
 
 
 def _stack_for_heatmap(drd: DiscreteRegionData) -> Tuple[pd.DataFrame, int]:

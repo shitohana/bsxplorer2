@@ -26,7 +26,7 @@ import plotly.figure_factory as ff
 import polars as pl
 
 from bsx2.io import RegionReader
-from bsx2._bsx2 import HcAnnotStore, AggMethod
+from bsx2._bsx2 import HcAnnotStore, AggMethod, Context
 from bsx2.plots import Segment
 from bsx2.plots.metagene import compute_discrete_regions, collect_contigs_from_hcannot
 from bsx2.plots.polars_html import line_html, heatmap_html, box_html, violin_html
@@ -59,6 +59,19 @@ def save_html(text: str, path: pathlib.Path) -> None:
 
 def save_hv(plot, path: pathlib.Path) -> None:
     hv.save(plot, str(path))
+
+
+def apply_contexts(reader: RegionReader, contexts: set[str] | None) -> None:
+    """Apply context filters to RegionReader if provided."""
+    if not contexts:
+        return
+    for ctx in contexts:
+        key = ctx.strip().upper()
+        if hasattr(Context, key):
+            try:
+                reader.filter_context(getattr(Context, key))
+            except Exception:
+                pass
 
 
 def write_index(out_dir: pathlib.Path, entries: List[Tuple[str, str]], meta: dict) -> None:
@@ -331,11 +344,19 @@ def main() -> None:
     parser.add_argument("--out-dir", type=pathlib.Path, default=pathlib.Path("artifacts"), help="Output directory")
     parser.add_argument("--limit", type=int, default=300, help="Limit number of regions/contigs")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for clustering")
+    parser.add_argument(
+        "--contexts",
+        type=str,
+        default=None,
+        help="Comma-separated contexts to keep (e.g. CG,CHG,CHH)",
+    )
     args = parser.parse_args()
 
     ensure_dir(args.out_dir)
 
     reader, annot = load_sources(args.bsx, args.annot)
+    ctx_set = {c.strip().upper() for c in args.contexts.split(",")} if args.contexts else None
+    apply_contexts(reader, ctx_set)
     contigs, labels = get_contigs(annot, feature="gene", limit=args.limit)
     if not contigs:
         raise RuntimeError("No contigs found in annotation for feature 'gene'.")

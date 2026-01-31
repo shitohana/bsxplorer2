@@ -26,3 +26,6 @@ pyo3-polars = {version = "=0.19.0", features = ["dtype-full", "lazy"]}
 pyo3-file = "0.9.0"
 polars.workspace = true
 slotmap.workspace = true
+[profile.release]
+debug = true
+strip = "none"
