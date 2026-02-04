@@ -225,4 +225,6 @@ Notes:
 - `feature_type`: optional feature filter on annotations (e.g. "gene").
 - `limit`: optional limit on number of regions for faster preview.
 - `reverse_negative`: bool — reverse profiles for '-' strand (default True).
+- `add_flanks`: bool — add upstream/downstream flanks for genes as separate features (default False).
+- `flank_bp`: int — flank size in bp for add_flanks (default 2000).
 

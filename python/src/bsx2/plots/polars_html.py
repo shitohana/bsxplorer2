@@ -794,9 +794,23 @@ def _drd_from_annot(
     limit: int | None,
     mode: str = "discretise",
     x_mode: str = "relative",
+    add_flanks: bool = False,
+    flank_bp: int = 2000,
 ) -> DiscreteRegionData:
     if segments is None:
         segments = [Segment("region", 100)]
+    if add_flanks:
+        try:
+            ft_map = annot.get_feature_types()
+        except Exception:
+            ft_map = {}
+        gene_ids = ft_map.get("gene", []) if isinstance(ft_map, dict) else []
+        if gene_ids:
+            flank = int(abs(flank_bp))
+            if "upstream_gene" not in ft_map:
+                annot.add_flanks(gene_ids, -flank, "upstream_")
+            if "downstream_gene" not in ft_map:
+                annot.add_flanks(gene_ids, flank, "downstream_")
     contigs, auto_labels = collect_contigs_from_hcannot(annot, feature_type=feature_type, limit=limit)
     use_labels = labels if labels is not None else auto_labels
     return compute_discrete_regions(
@@ -822,6 +836,8 @@ def line_html_from_annot(
     reverse_negative: bool = True,
     labels: list[str] | None = None,
     limit: int | None = None,
+    add_flanks: bool = False,
+    flank_bp: int = 2000,
     order: Sequence[str] | None = None,
     as_percent: bool = True,
     agg_scope: str = "points",
@@ -844,6 +860,8 @@ def line_html_from_annot(
         limit=limit,
         mode=mode,
         x_mode=x_mode,
+        add_flanks=add_flanks,
+        flank_bp=flank_bp,
     )
     return line_html(
         drd,
@@ -872,6 +890,8 @@ def heatmap_html_from_annot(
     reverse_negative: bool = True,
     labels: list[str] | None = None,
     limit: int | None = None,
+    add_flanks: bool = False,
+    flank_bp: int = 2000,
     order: Sequence[str] | None = None,
     as_percent: bool = True,
     nan_policy: str = "drop",
@@ -894,6 +914,8 @@ def heatmap_html_from_annot(
         limit=limit,
         mode=mode,
         x_mode=x_mode,
+        add_flanks=add_flanks,
+        flank_bp=flank_bp,
     )
     return heatmap_html(
         drd,
@@ -921,6 +943,8 @@ def box_html_from_annot(
     reverse_negative: bool = True,
     labels: list[str] | None = None,
     limit: int | None = None,
+    add_flanks: bool = False,
+    flank_bp: int = 2000,
     per_region: bool = False,
     as_percent: bool = True,
     full_html: bool = False,
@@ -935,6 +959,8 @@ def box_html_from_annot(
         reverse_negative=reverse_negative,
         labels=labels,
         limit=limit,
+        add_flanks=add_flanks,
+        flank_bp=flank_bp,
     )
     return box_html(drd, segments=segments, as_percent=as_percent, per_region=per_region, full_html=full_html, include_js=include_js)
 
@@ -949,6 +975,8 @@ def violin_html_from_annot(
     reverse_negative: bool = True,
     labels: list[str] | None = None,
     limit: int | None = None,
+    add_flanks: bool = False,
+    flank_bp: int = 2000,
     per_region: bool = False,
     as_percent: bool = True,
     full_html: bool = False,
@@ -963,5 +991,7 @@ def violin_html_from_annot(
         reverse_negative=reverse_negative,
         labels=labels,
         limit=limit,
+        add_flanks=add_flanks,
+        flank_bp=flank_bp,
     )
     return violin_html(drd, segments=segments, as_percent=as_percent, per_region=per_region, full_html=full_html, include_js=include_js)
