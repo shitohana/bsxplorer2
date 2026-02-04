@@ -10,10 +10,7 @@
   * [x] LinePlot (HoloViews / Plotly HTML)
   * [x] HeatMap (HoloViews / Plotly HTML)
   * [x] BoxPlot (HoloViews / Plotly HTML)
-  * [ ] PCA
-* [ ] Clustering
 * [ ] Gene Body Methylation
-* [ ] Chromosome methylation analysis
 * [ ] Converters
 
 ### For the v2
@@ -135,13 +132,7 @@ open('line.html','w').write(html)
 
 ### Тестирование
 
-- Чистые преобразования (Polars): `python/tests/plots/test_polars_html.py`.
-- Интеграция с Rust дискретизацией: `python/tests/plots/test_integration_rust.py`.
-- End‑to‑end (iter_contigs + .bsx + .gff): `python/tests/plots/test_end2end_iter.py` (маркер `@pytest.mark.end2end`, тест пропускается, если данные не найдены).
 - Запуск:
-  - `pytest -q python/tests/plots/test_polars_html.py`
-  - `pytest -q python/tests/plots/test_integration_rust.py`
-  - `pytest -q python/tests/plots/test_end2end_iter.py`
 
 ### Используемые Библиотеки и Стиль
 
@@ -235,4 +226,3 @@ Notes:
 - `limit`: optional limit on number of regions for faster preview.
 - `reverse_negative`: bool — reverse profiles for '-' strand (default True).
 
-End-to-end examples for these wrappers are provided in tests and scripts.
