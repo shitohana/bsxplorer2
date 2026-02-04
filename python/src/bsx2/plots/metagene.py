@@ -292,6 +292,15 @@ def collect_contigs_from_hcannot(
         ft = getattr(entry, "feature_type", None)
         return f"{ft}_{idx}" if ft else f"entry_{idx}"
 
+    def _get_contig_start(contig) -> Optional[int]:
+        v = getattr(contig, "start", None)
+        if v is None:
+            return None
+        try:
+            return int(v() if callable(v) else v)
+        except (TypeError, ValueError):
+            return None
+
     label_getter = label_getter or _default_label
 
     entries = []
@@ -315,6 +324,9 @@ def collect_contigs_from_hcannot(
             getter = getattr(entry, "get_contig", None)
             contig = getter() if callable(getter) else None
         if contig is None:
+            continue
+        start = _get_contig_start(contig)
+        if start is not None and start < 1:
             continue
 
         label = label_getter(entry, idx)
