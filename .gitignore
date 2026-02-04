@@ -38,3 +38,5 @@ __pycache__/
 build/
 dist/
 python/build_dev.log
+
+artifacts*
