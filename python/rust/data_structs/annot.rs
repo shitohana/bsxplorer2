@@ -11,6 +11,7 @@ use bsxplorer2::data_structs::annotation::{
     HcAnnotStore,
 };
 use bsxplorer2::data_structs::coords::Contig;
+use bsxplorer2::data_structs::typedef::PosType;
 use pyo3::exceptions::{
     PyFileNotFoundError,
     PyRuntimeError,
@@ -390,6 +391,13 @@ impl PyAnnotStore {
             .collect();
 
         for (id, parent_entry) in selected_entries {
+            if flank < 0 {
+                let flank_abs = flank.unsigned_abs() as PosType;
+                if parent_entry.contig.start() <= flank_abs {
+                    continue;
+                }
+            }
+
             let (start, end) = if flank > 0 {
                 // Flank downstream (after end)
                 (
@@ -422,8 +430,14 @@ impl PyAnnotStore {
             let flank_attribute_id_str =
                 format!("{}_flank_{}", parent_entry.id(), flank);
 
+            let flank_contig = Contig::new(
+                parent_entry.contig.seqname().clone(),
+                start.position(),
+                end.position(),
+                parent_entry.contig.strand(),
+            );
             let flank_entry = GffEntry::new(
-                (start..end).into(),
+                flank_contig,
                 None,
                 Some(feature_type.into()),
                 None,
