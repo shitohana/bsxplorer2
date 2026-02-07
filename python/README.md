@@ -101,7 +101,13 @@ import holoviews as hv; hv.extension('matplotlib')
 rr = RegionReader('/path/to/report.bsx')
 contigs = [Contig('chr1', 100_000, 120_000, '+')]
 segs = [Segment('up', 25), Segment('body', 50), Segment('down', 25)]
-curve = line_plot(rr, contigs=contigs, segments=segs, agg_method=AggMethod.Mean)
+curve = line_plot(
+    rr,
+    contigs=contigs,
+    segments=segs,
+    agg_method=AggMethod.Mean,
+    smooth={"method": "savgol", "window_length": 9, "polyorder": 2},
+)
 ```
 
 **Plotly HTML (из аннотаций)**
