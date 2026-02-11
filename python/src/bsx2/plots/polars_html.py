@@ -14,6 +14,10 @@ from bsx2.plots.metagene import (
     compute_discrete_regions,
     collect_contigs_from_hcannot,
     collect_parts_from_hcannot,
+    combine_parts_drd,
+    _coerce_smooth_config,
+    _apply_savgol_smoothing,
+    _clip_profile,
 )
 
 
@@ -65,6 +69,8 @@ def _bin_points_windows(
         raise ValueError("nan_policy must be 'drop', 'zero', or 'keep'")
     if value_mode not in {"density", "weighted"}:
         raise ValueError("value_mode must be 'density' or 'weighted'")
+    if value_mode == "weighted" and weights is None:
+        raise ValueError("value_mode='weighted' requires weights")
 
     bins_values = [[] for _ in range(n_windows)]
     bins_weighted_sum = np.zeros(n_windows, dtype=float)
@@ -252,7 +258,16 @@ def line_df(
     if max_nan_frac is not None and mat.size > 0:
         keep = np.mean(~np.isfinite(mat), axis=1) <= max_nan_frac
         mat = mat[keep]
-    y_out = np.nanmean(mat, axis=0) if agg == "mean" else np.nanmedian(mat, axis=0)
+    if agg == "mean":
+        y_out = np.nanmean(mat, axis=0)
+    elif agg == "median":
+        y_out = np.nanmedian(mat, axis=0)
+    elif agg == "max":
+        y_out = np.nanmax(mat, axis=0)
+    elif agg == "min":
+        y_out = np.nanmin(mat, axis=0)
+    else:
+        raise ValueError("agg must be one of: mean, median, max, min")
     if x_mode == "absolute":
         if lengths:
             scale = float(np.median(np.asarray(lengths)))
@@ -391,7 +406,14 @@ def dist_df(
             if np.isfinite(v):
                 rows.append((b, float(v), lbl if lbl is not None else f"region_{len(rows)+1}"))
     return rows
-def _segment_decor(fig, segments: list[Segment] | None, *, annotate_tss_tes: bool = False, x_mode: str = "rel") -> None:
+def _segment_decor(
+    fig,
+    segments: list[Segment] | None,
+    *,
+    annotate_tss_tes: bool = False,
+    x_mode: str = "rel",
+    x_values: Optional[Sequence[float]] = None,
+) -> None:
     """Применить границы сегментов/тики к plotly Figure."""
     if not segments:
         return
@@ -408,7 +430,27 @@ def _segment_decor(fig, segments: list[Segment] | None, *, annotate_tss_tes: boo
         centers.append(mid)
         labels.append(seg.name)
         cum = end
-    scale = (lambda v: v / total) if x_mode == "rel" else float
+    if x_mode == "rel":
+        scale = lambda v: v / total
+    elif x_mode == "bin":
+        scale = float
+    elif x_mode == "abs":
+        vals = np.asarray(x_values if x_values is not None else [], dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size >= 2:
+            vals.sort()
+            diffs = np.diff(vals)
+            step = float(np.nanmedian(diffs)) if diffs.size else 0.0
+            if np.isfinite(step) and step > 0 and total > 0:
+                total_span = (vals[-1] - vals[0]) + step
+                factor = total_span / float(total)
+                scale = lambda v: v * factor
+            else:
+                scale = lambda v: v / total
+        else:
+            scale = lambda v: v / total
+    else:
+        raise ValueError("x_mode must be 'rel', 'bin', or 'abs'")
     shapes = []
     for b in boundaries[:-1]:
         xb = scale(b)
@@ -443,6 +485,8 @@ def line_html(
     full_html: bool = False,
     include_js: str = "cdn",
     title: Optional[str] = None,
+    smooth: dict | int | None = None,
+    connectgaps: bool = False,
 ) -> str:
     _hv_init()
     x, y = line_df(
@@ -459,8 +503,21 @@ def line_html(
         value_mode=value_mode,
         max_nan_frac=max_nan_frac,
     )
+    if smooth is not None and y.size > 0:
+        total_bins = segments_total_bins(segments) if segments else int(y.size)
+        smooth_cfg = _coerce_smooth_config(smooth, total_bins=total_bins)
+        if smooth_cfg is not None:
+            y_scaled = y.astype(float, copy=True)
+            if as_percent:
+                y_scaled = y_scaled / 100.0
+            y_scaled = _apply_savgol_smoothing(y_scaled, smooth_cfg, segments=segments)
+            y_scaled = _clip_profile(y_scaled)
+            y = y_scaled * (100.0 if as_percent else 1.0)
     if x.size == 0 or y.size == 0:
-        return hv.render(hv.Curve([]), backend="plotly").to_html(full_html=full_html, include_plotlyjs=include_js)
+        return _ensure_plotly(hv.render(hv.Curve([]), backend="plotly")).to_html(
+            full_html=full_html,
+            include_plotlyjs=include_js,
+        )
     x_label = "Metagene position (relative)" if x_mode == "relative" else "Metagene position (bp)"
     curve = hv.Curve((x, y), kdims="relative position", vdims="density").opts(
         xlabel=x_label,
@@ -468,8 +525,11 @@ def line_html(
         show_legend=False,
     )
     fig = _ensure_plotly(hv.render(curve, backend="plotly"))
+    if connectgaps:
+        fig.update_traces(connectgaps=True)
     annotate = bool(segments) and any(s.name.lower() == "body" for s in segments)
-    _segment_decor(fig, segments, annotate_tss_tes=annotate, x_mode="rel")
+    decor_mode = "rel" if x_mode == "relative" else "abs"
+    _segment_decor(fig, segments, annotate_tss_tes=annotate, x_mode=decor_mode, x_values=x)
     fig.update_layout(
         height=600,
         width=1000,
@@ -517,7 +577,10 @@ def heatmap_html(
             max_nan_frac=max_nan_frac,
         )
         if y.size == 0:
-            return hv.render(hv.Curve([]), backend="plotly").to_html(full_html=full_html, include_plotlyjs=include_js)
+            return _ensure_plotly(hv.render(hv.Curve([]), backend="plotly")).to_html(
+                full_html=full_html,
+                include_plotlyjs=include_js,
+            )
         z = np.asarray(y, dtype=float)[None, :]
         regions = [f"{agg} profile"]
         bins = list(range(len(y)))
@@ -536,7 +599,10 @@ def heatmap_html(
             max_nan_frac=max_nan_frac,
         )
     if z.size == 0:
-        return hv.render(hv.Curve([]), backend="plotly").to_html(full_html=full_html, include_plotlyjs=include_js)
+        return _ensure_plotly(hv.render(hv.Curve([]), backend="plotly")).to_html(
+            full_html=full_html,
+            include_plotlyjs=include_js,
+        )
     max_regions = 800
     if len(regions) > max_regions:
         regions = regions[:max_regions]
@@ -549,7 +615,8 @@ def heatmap_html(
     )
     fig = _ensure_plotly(hv.render(hm, backend="plotly"))
     annotate = bool(segments) and any(s.name.lower() == "body" for s in segments)
-    _segment_decor(fig, segments, annotate_tss_tes=annotate, x_mode="bin")
+    decor_mode = "rel" if x_mode == "relative" else "abs"
+    _segment_decor(fig, segments, annotate_tss_tes=annotate, x_mode=decor_mode, x_values=bins)
     fig.update_layout(
         xaxis_title="Metagene position (relative)" if x_mode == "relative" else "Metagene position (bp)",
         yaxis_title="Feature",
@@ -705,7 +772,10 @@ def _drd_from_annot(
     parts: Sequence[str] | None = None,
 ) -> DiscreteRegionData:
     if segments is None:
-        segments = [Segment("region", 100)]
+        if combine_parts:
+            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+        else:
+            segments = [Segment("region", 100)]
     if add_flanks:
         try:
             ft_map = annot.get_feature_types()
@@ -725,7 +795,7 @@ def _drd_from_annot(
             raise ValueError("combine_parts=True requires x_mode='relative'")
         parts_order = list(parts) if parts is not None else ["upstream_gene", "gene", "downstream_gene"]
         parts_data = collect_parts_from_hcannot(annot, parts=parts_order, limit=limit)
-        merged = DiscreteRegionData()
+        drd_map: dict[str, DiscreteRegionData] = {}
         for part in parts_order:
             contigs, auto_labels = parts_data.get(part, ([], []))
             if not contigs:
@@ -740,11 +810,10 @@ def _drd_from_annot(
                 mode=mode,
                 x_mode=x_mode,
             )
-            merged.positions.extend(drd_part.positions)
-            merged.densities.extend(drd_part.densities)
-            merged.weights.extend(drd_part.weights)
-            merged.labels.extend(drd_part.labels)
-        return merged
+            drd_map[part] = drd_part
+        if not drd_map:
+            return DiscreteRegionData()
+        return combine_parts_drd(drd_map, segments=segments, parts_order=parts_order)
 
     contigs, auto_labels = collect_contigs_from_hcannot(annot, feature_type=feature_type, limit=limit)
     use_labels = labels if labels is not None else auto_labels
@@ -766,7 +835,7 @@ def line_html_from_annot(
     *,
     segments: list[Segment] | None = None,
     n_windows: Optional[int] = None,
-    agg: str = "median",
+    agg: str | None = None,
     agg_method=None,
     feature_type: str | None = None,
     reverse_negative: bool = True,
@@ -779,14 +848,46 @@ def line_html_from_annot(
     order: Sequence[str] | None = None,
     as_percent: bool = True,
     agg_scope: str = "points",
-    nan_policy: str = "drop",
+    nan_policy: str | None = None,
     mode: str = "raw",
     x_mode: str = "relative",
-    value_mode: str = "density",
+    value_mode: str | None = None,
     max_nan_frac: Optional[float] = None,
     full_html: bool = False,
     include_js: str = "cdn",
+    smooth: dict | int | None = None,
+    connectgaps: bool = False,
+    bsx1_compat: bool = False,
 ) -> str:
+    if bsx1_compat:
+        combine_parts = True
+        if segments is None:
+            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+        elif len(segments) != 3:
+            raise ValueError("bsx1_compat requires exactly 3 segments (up/body/down)")
+        if value_mode is None:
+            value_mode = "weighted"
+        elif value_mode != "weighted":
+            raise ValueError("bsx1_compat requires value_mode='weighted'")
+        if agg is None:
+            agg = "mean"
+        elif agg != "mean":
+            raise ValueError("bsx1_compat requires agg='mean'")
+        if nan_policy is None:
+            nan_policy = "keep"
+        elif nan_policy != "keep":
+            raise ValueError("bsx1_compat requires nan_policy='keep'")
+        if smooth is None:
+            smooth = 50
+        connectgaps = True
+    else:
+        if value_mode is None:
+            value_mode = "density"
+        if agg is None:
+            agg = "median"
+        if nan_policy is None:
+            nan_policy = "drop"
+
     drd = _drd_from_annot(
         reader,
         annot,
@@ -817,6 +918,8 @@ def line_html_from_annot(
         max_nan_frac=max_nan_frac,
         full_html=full_html,
         include_js=include_js,
+        smooth=smooth,
+        connectgaps=connectgaps,
     )
 
 

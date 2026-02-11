@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import defaultdict, deque
 from typing import Callable, List, Optional, Sequence, Tuple
 import heapq
 
@@ -53,7 +54,14 @@ def segment_ticks(segments: Sequence[Segment]) -> Tuple[List[float], List[str]]:
     return bounds, labels
 
 
-def _line_from_points(drd: DiscreteRegionData, segments: Sequence[Segment]) -> Tuple[np.ndarray, np.ndarray]:
+def _line_from_points(
+    drd: DiscreteRegionData,
+    segments: Sequence[Segment],
+    *,
+    value_mode: str = "density",
+) -> Tuple[np.ndarray, np.ndarray]:
+    if value_mode not in {"density", "weighted"}:
+        raise ValueError("value_mode must be 'density' or 'weighted'")
     bounds = segment_boundaries(segments)
     total_bins = segments_total_bins(segments)
     starts = np.array([0.0] + bounds[:-1], dtype=float)
@@ -71,21 +79,36 @@ def _line_from_points(drd: DiscreteRegionData, segments: Sequence[Segment]) -> T
     x_out = np.concatenate(centers) if centers else np.array([], dtype=float)
 
     streams = []
-    for pos, dens in zip(drd.positions, drd.densities):
+    weights_iter = drd.weights if drd.weights else [None] * len(drd.positions)
+    for pos, dens, w in zip(drd.positions, drd.densities, weights_iter):
         x = np.asarray(pos, dtype=float)
         y = np.asarray(dens, dtype=float)
         mask = np.isfinite(x) & np.isfinite(y)
+        w_arr = None
+        if value_mode == "weighted":
+            if w is None:
+                raise ValueError("value_mode='weighted' requires weights for all points")
+            w_arr = np.asarray(w, dtype=float)
+            mask = mask & np.isfinite(w_arr) & (w_arr > 0)
         if not np.any(mask):
             continue
-        pts = list(zip(x[mask].tolist(), y[mask].tolist()))
+        if w_arr is None:
+            pts = list(zip(x[mask].tolist(), y[mask].tolist(), [None] * int(np.count_nonzero(mask))))
+        else:
+            pts = list(zip(x[mask].tolist(), y[mask].tolist(), w_arr[mask].tolist()))
         pts.sort(key=lambda t: t[0])
         streams.append(pts)
 
     if not streams:
         return np.array([]), np.array([])
 
-    bins_values = [[] for _ in range(total_bins)]
-    for x, y in heapq.merge(*streams, key=lambda t: t[0]):
+    if value_mode == "weighted":
+        bins_weighted_sum = np.zeros(total_bins, dtype=float)
+        bins_weighted_total = np.zeros(total_bins, dtype=float)
+    else:
+        bins_values = [[] for _ in range(total_bins)]
+
+    for x, y, w in heapq.merge(*streams, key=lambda t: t[0]):
         if x < 0.0 or x > 1.0:
             continue
         seg_idx = int(np.searchsorted(ends, x, side="right"))
@@ -98,7 +121,19 @@ def _line_from_points(drd: DiscreteRegionData, segments: Sequence[Segment]) -> T
         local = min(local, seg_nbins[seg_idx] - 1)
         global_bin = int(seg_offsets[seg_idx] + local)
         if 0 <= global_bin < total_bins:
-            bins_values[global_bin].append(y)
+            if value_mode == "weighted":
+                if w is None or not np.isfinite(w) or w <= 0:
+                    continue
+                bins_weighted_sum[global_bin] += float(y) * float(w)
+                bins_weighted_total[global_bin] += float(w)
+            else:
+                bins_values[global_bin].append(y)
+
+    if value_mode == "weighted":
+        y_out = np.full(total_bins, np.nan, dtype=float)
+        mask = bins_weighted_total > 0
+        y_out[mask] = bins_weighted_sum[mask] / bins_weighted_total[mask]
+        return x_out, y_out
 
     y_out = []
     for vals in bins_values:
@@ -330,14 +365,42 @@ def compute_discrete_regions(
     labels
         Optional labels for resulting regions.
     """
+    def _v(val):
+        try:
+            return val() if callable(val) else val
+        except Exception:
+            return None
+
+    def _contig_key(c):
+        seq = _v(getattr(c, "seqname", None))
+        start = _v(getattr(c, "start", None))
+        end = _v(getattr(c, "end", None))
+        strand = getattr(c, "strand_str", None)
+        if strand is not None:
+            strand = _v(strand)
+        else:
+            strand = _v(getattr(c, "strand", None))
+        return (
+            str(seq),
+            int(start) if start is not None else None,
+            int(end) if end is not None else None,
+            str(strand),
+        )
+
     try:
         sorted_contigs = reader.index().sort(list(contigs))
     except Exception:
         sorted_contigs = list(contigs)
     else:
         if labels is not None:
-            id_to_label = {id(c): lbl for c, lbl in zip(contigs, labels)}
-            labels = [id_to_label.get(id(c)) for c in sorted_contigs]
+            buckets: dict[tuple, deque] = defaultdict(deque)
+            for c, lbl in zip(contigs, labels):
+                buckets[_contig_key(c)].append(lbl)
+            new_labels = []
+            for c in sorted_contigs:
+                q = buckets.get(_contig_key(c))
+                new_labels.append(q.popleft() if q else None)
+            labels = new_labels
     contigs_list = sorted_contigs
     total_bins = segments_total_bins(segments)
 
@@ -347,9 +410,10 @@ def compute_discrete_regions(
         agg_method = getattr(import_module("bsx2._bsx2"), "AggMethod").Mean
 
     data = DiscreteRegionData()
+    query_fn = getattr(reader, "query", None)
     batches_iter = getattr(reader, "iter_contigs", None)
-    if not callable(batches_iter):
-        raise AttributeError("reader must implement iter_contigs(contigs)")
+    if not callable(query_fn) and not callable(batches_iter):
+        raise AttributeError("reader must implement query(contig) or iter_contigs(contigs)")
 
     total = len(contigs_list)
     step = progress_every if progress_every > 0 else 1
@@ -367,8 +431,45 @@ def compute_discrete_regions(
         if idx + 1 == total:
             print()
 
-    for idx, batch in enumerate(reader.iter_contigs(contigs_list)):
-        contig = contigs_list[idx] if idx < len(contigs_list) else None
+    if callable(query_fn):
+        contig_iter = list(enumerate(contigs_list))
+        batch_iter = None
+        last_seqname = None
+    else:
+        contig_iter = list(enumerate(contigs_list))
+        batch_iter = reader.iter_contigs(contigs_list)
+
+    for idx, contig in contig_iter:
+        if callable(query_fn):
+            seqname = getattr(contig, "seqname", None)
+            try:
+                seqname = seqname() if callable(seqname) else seqname
+            except Exception:
+                seqname = None
+            if seqname is not None and seqname != last_seqname:
+                try:
+                    reset_fn = getattr(reader, "reset", None)
+                    if callable(reset_fn):
+                        reset_fn()
+                except Exception:
+                    pass
+                last_seqname = seqname
+            try:
+                batch = query_fn(contig)
+            except Exception:
+                _progress(idx)
+                continue
+            if batch is None:
+                _progress(idx)
+                continue
+        else:
+            try:
+                batch = next(batch_iter)
+            except StopIteration:
+                break
+            except Exception:
+                _progress(idx)
+                continue
         if mode != "raw":
             raise ValueError("Only mode='raw' is supported (discretise mode removed)")
         if mode == "raw":
@@ -403,7 +504,8 @@ def compute_discrete_regions(
                     x = float(end - start) - x
                 else:
                     x = 1.0 - x
-            mask = np.isfinite(x) & np.isfinite(y)
+            # Keep NaN in y as "no data"; drop only non-finite x here.
+            mask = np.isfinite(x)
             if x_mode != "absolute":
                 mask = mask & (x >= 0.0) & (x <= 1.0)
             x = x[mask]
@@ -489,7 +591,7 @@ def collect_contigs_from_hcannot(
         if contig is None:
             continue
         start = _get_contig_start(contig)
-        if start is not None and start < 1:
+        if start is not None and start < 0:
             continue
 
         label = label_getter(entry, idx)
@@ -628,7 +730,7 @@ def collect_parts_from_hcannot(
         if contig is None:
             continue
         start = _get_contig_start(contig)
-        if start is not None and start < 1:
+        if start is not None and start < 0:
             continue
 
         if ft == "gene":
@@ -669,7 +771,8 @@ def combine_parts_drd(
     labels_all: set[str] = set()
     for part, drd in drd_map.items():
         lookup: dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
-        for pos, dens, w, lbl in zip(drd.positions, drd.densities, drd.weights, drd.labels):
+        weights_iter = drd.weights if drd.weights else [None] * len(drd.positions)
+        for pos, dens, w, lbl in zip(drd.positions, drd.densities, weights_iter, drd.labels):
             if lbl is None:
                 continue
             lookup[lbl] = (np.asarray(pos, dtype=float), np.asarray(dens, dtype=float), w)
@@ -741,6 +844,8 @@ def line_plot(
     mode: str = "raw",
     x_mode: str = "relative",
     smooth: dict | int | None = None,
+    value_mode: str | None = None,
+    bsx1_compat: bool = False,
 ):
     """HoloViews Curve for averaged metagene profile.
 
@@ -756,7 +861,33 @@ def line_plot(
           - per_segment: bool (default False)
           - cval: float (optional, for mode="constant")
         - int (legacy): number of windows; 0 disables smoothing.
+
+    value_mode
+        Aggregation mode for binning points. "density" = unweighted mean of
+        density values. "weighted" = weighted mean using count_total as weights
+        (equivalent to sum(count_m) / sum(count_total)).
+
+    bsx1_compat
+        If True, apply BSXplorer1-like defaults (unless explicitly overridden):
+        - segments: [up=100, body=200, down=100]
+        - value_mode: "weighted"
+        - smooth: 50 (post)
     """
+    if bsx1_compat:
+        if segments is None:
+            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+        elif len(segments) != 3:
+            raise ValueError("bsx1_compat requires exactly 3 segments (up/body/down)")
+        if value_mode is None:
+            value_mode = "weighted"
+        elif value_mode != "weighted":
+            raise ValueError("bsx1_compat requires value_mode='weighted'")
+        if smooth is None:
+            smooth = 50
+    else:
+        if value_mode is None:
+            value_mode = "density"
+
     segments = segments or _DEFAULT_SEGMENTS
     bounds, names = segment_ticks(segments)
     smooth_cfg = _coerce_smooth_config(smooth, total_bins=segments_total_bins(segments))
@@ -781,7 +912,7 @@ def line_plot(
             y_sm = _clip_profile(y_sm)
             smoothed.insert(np.asarray(pos, dtype=float), y_sm, lbl, weights=w)
         drd = smoothed
-    x, y = _line_from_points(drd, segments)
+    x, y = _line_from_points(drd, segments, value_mode=value_mode)
     if smooth_cfg is not None and smooth_cfg.get("apply", "post") == "post":
         y = _apply_savgol_smoothing(np.asarray(y, dtype=float), smooth_cfg, segments=segments)
         y = _clip_profile(y)
