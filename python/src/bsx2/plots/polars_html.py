@@ -358,8 +358,33 @@ def heatmap_df(
         bins = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
         bins = bins * scale
     else:
-        bins = list(range(n_windows))
+        bins = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
     return mat, labels, bins
+
+
+def _rank_compress(z_sorted: np.ndarray, rank_rows: int, *, fill: float | None = 0.0) -> np.ndarray:
+    """BSX1-style rank compression: mean over finite values per bucket; fill only empty bins."""
+    if z_sorted.ndim != 2:
+        return z_sorted
+    n_rows, n_bins = z_sorted.shape
+    if n_rows == 0:
+        return np.empty((0, n_bins), dtype=float)
+    rows = max(int(rank_rows), 1)
+    sums = np.zeros((rows, n_bins), dtype=float)
+    cnts = np.zeros((rows, n_bins), dtype=np.int32)
+    for i in range(n_rows):
+        ridx = int(i * rows / n_rows)
+        row = z_sorted[i]
+        finite = np.isfinite(row)
+        if np.any(finite):
+            sums[ridx, finite] += row[finite]
+            cnts[ridx, finite] += 1
+    if fill is None:
+        out = np.full((rows, n_bins), np.nan, dtype=float)
+    else:
+        out = np.full((rows, n_bins), float(fill), dtype=float)
+    np.divide(sums, cnts, out=out, where=(cnts > 0))
+    return out
 
 
 
@@ -469,70 +494,64 @@ def _segment_decor(
 
 def line_html(
     drd: DiscreteRegionData,
-    agg: str = "median",
     *,
     segments: list[Segment] | None = None,
     n_windows: Optional[int] = None,
-    order: Sequence[str] | None = None,
-    as_percent: bool = True,
-    nan_fill: Optional[float] = None,
-    agg_scope: str = "points",
-    nan_policy: str = "drop",
-    x_mode: str = "relative",
-    value_mode: str = "density",
-    max_nan_frac: Optional[float] = None,
-    drop_nan_rows: bool = False,
+    smooth: dict | int | None = 50,
     full_html: bool = False,
     include_js: str = "cdn",
     title: Optional[str] = None,
-    smooth: dict | int | None = None,
-    connectgaps: bool = False,
+    width: int | None = None,
+    height: int | None = None,
 ) -> str:
+    """BSX1-style line: weighted mean, relative axis, up/body/down."""
     _hv_init()
+    if segments is None:
+        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+    if n_windows is None:
+        n_windows = segments_total_bins(segments)
+
     x, y = line_df(
         drd,
-        agg=agg,
+        agg="mean",
         segments=segments,
         n_windows=n_windows,
-        as_percent=as_percent,
-        order=order,
-        nan_fill=nan_fill,
-        agg_scope=agg_scope,
-        nan_policy=nan_policy,
-        x_mode=x_mode,
-        value_mode=value_mode,
-        max_nan_frac=max_nan_frac,
+        as_percent=False,
+        order=None,
+        nan_fill=None,
+        agg_scope="points",
+        nan_policy="keep",
+        x_mode="relative",
+        value_mode="weighted",
+        max_nan_frac=None,
     )
+
     if smooth is not None and y.size > 0:
-        total_bins = segments_total_bins(segments) if segments else int(y.size)
+        total_bins = segments_total_bins(segments)
         smooth_cfg = _coerce_smooth_config(smooth, total_bins=total_bins)
         if smooth_cfg is not None:
             y_scaled = y.astype(float, copy=True)
-            if as_percent:
-                y_scaled = y_scaled / 100.0
             y_scaled = _apply_savgol_smoothing(y_scaled, smooth_cfg, segments=segments)
             y_scaled = _clip_profile(y_scaled)
-            y = y_scaled * (100.0 if as_percent else 1.0)
+            y = y_scaled
+
     if x.size == 0 or y.size == 0:
         return _ensure_plotly(hv.render(hv.Curve([]), backend="plotly")).to_html(
             full_html=full_html,
             include_plotlyjs=include_js,
         )
-    x_label = "Metagene position (relative)" if x_mode == "relative" else "Metagene position (bp)"
+
     curve = hv.Curve((x, y), kdims="relative position", vdims="density").opts(
-        xlabel=x_label,
-        ylabel=f"{agg} density" + (" (%)" if as_percent else ""),
+        xlabel="Metagene position (relative)",
+        ylabel="Mean methylation density",
         show_legend=False,
     )
     fig = _ensure_plotly(hv.render(curve, backend="plotly"))
-    if connectgaps:
-        fig.update_traces(connectgaps=True)
-    annotate = bool(segments) and any(s.name.lower() == "body" for s in segments)
-    decor_mode = "rel" if x_mode == "relative" else "abs"
-    _segment_decor(fig, segments, annotate_tss_tes=annotate, x_mode=decor_mode, x_values=x)
+    annotate = True
+    _segment_decor(fig, segments, annotate_tss_tes=annotate, x_mode="rel", x_values=x)
     fig.update_layout(
-        height=600,
-        width=1000,
+        height=600 if height is None else int(height),
+        width=1000 if width is None else int(width),
         margin=dict(l=70, r=30, t=60, b=70),
         title=title or "Metagene profile - Line",
     )
@@ -543,87 +562,105 @@ def heatmap_html(
     drd: DiscreteRegionData,
     *,
     segments: list[Segment] | None = None,
-    n_windows: Optional[int] = None,
-    order: Sequence[str] | None = None,
-    as_percent: bool = True,
-    nan_fill: Optional[float] = None,
-    agg: str = "median",
-    nan_policy: str = "drop",
-    x_mode: str = "relative",
-    heatmap_mode: str = "genes",
-    value_mode: str = "density",
-    max_nan_frac: Optional[float] = None,
-    drop_nan_rows: bool = False,
+    n_windows: int | None = None,
+    rank_rows: int = 100,
+    rank_score: str = "mean",
+    sort_order: str = "desc",
+    colorscale: str = "Viridis",
+    empty_bin_fill: float = 0.0,
     full_html: bool = False,
     include_js: str = "cdn",
     title: Optional[str] = None,
+    width: int | None = None,
+    height: int | None = None,
+    vmax_q: float | None = 0.995,
 ) -> str:
+    """BSX1-style ranked heatmap (no modes)."""
     _hv_init()
-    if heatmap_mode not in {"genes", "aggregate"}:
-        raise ValueError("heatmap_mode must be 'genes' or 'aggregate'")
-    if heatmap_mode == "aggregate":
-        x, y = line_df(
-            drd,
-            agg=agg,
-            segments=segments,
-            n_windows=n_windows,
-            as_percent=as_percent,
-            order=order,
-            nan_fill=nan_fill,
-            agg_scope="genes",
-            nan_policy=nan_policy,
-            x_mode=x_mode,
-            value_mode=value_mode,
-            max_nan_frac=max_nan_frac,
-        )
-        if y.size == 0:
-            return _ensure_plotly(hv.render(hv.Curve([]), backend="plotly")).to_html(
-                full_html=full_html,
-                include_plotlyjs=include_js,
-            )
-        z = np.asarray(y, dtype=float)[None, :]
-        regions = [f"{agg} profile"]
-        bins = list(range(len(y)))
-    else:
-        z, regions, bins = heatmap_df(
-            drd,
-            segments=segments,
-            n_windows=n_windows,
-            as_percent=as_percent,
-            order=order,
-            nan_fill=nan_fill,
-            agg=agg,
-            nan_policy=nan_policy,
-            x_mode=x_mode,
-            value_mode=value_mode,
-            max_nan_frac=max_nan_frac,
-        )
-    if z.size == 0:
-        return _ensure_plotly(hv.render(hv.Curve([]), backend="plotly")).to_html(
-            full_html=full_html,
-            include_plotlyjs=include_js,
-        )
-    max_regions = 800
-    if len(regions) > max_regions:
-        regions = regions[:max_regions]
-        z = z[:max_regions, :]
-    data = [(b, r, z[i, j]) for i, r in enumerate(regions) for j, b in enumerate(bins) if np.isfinite(z[i, j]) or np.isnan(z[i, j])]
-    hm = hv.HeatMap(data, kdims=["bin", "region"], vdims=["density"]).opts(
-        colorbar=True,
-        colorbar_opts={"title": "density (%)" if as_percent else "density"},
-        invert_yaxis=True,
+    if rank_score not in {"mean", "body_mean"}:
+        raise ValueError("rank_score must be 'mean' or 'body_mean'")
+    if sort_order not in {"asc", "desc"}:
+        raise ValueError("sort_order must be 'asc' or 'desc'")
+    if segments is None:
+        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+    if n_windows is None:
+        n_windows = segments_total_bins(segments)
+
+    z, _, bins = heatmap_df(
+        drd,
+        segments=segments,
+        n_windows=n_windows,
+        as_percent=False,
+        order=None,
+        nan_fill=None,
+        agg="mean",
+        nan_policy="keep",
+        x_mode="relative",
+        value_mode="weighted",
+        max_nan_frac=None,
     )
-    fig = _ensure_plotly(hv.render(hm, backend="plotly"))
-    annotate = bool(segments) and any(s.name.lower() == "body" for s in segments)
-    decor_mode = "rel" if x_mode == "relative" else "abs"
-    _segment_decor(fig, segments, annotate_tss_tes=annotate, x_mode=decor_mode, x_values=bins)
+    if z.size == 0:
+        return go.Figure().to_html(full_html=full_html, include_plotlyjs=include_js)
+
+    if rank_score == "body_mean":
+        bins_arr = np.asarray(bins, dtype=float)
+        bounds = segment_boundaries(segments)
+        b0, b1 = bounds[0], bounds[1]
+        mask = (bins_arr >= b0) & (bins_arr < b1)
+    else:
+        mask = np.ones(z.shape[1], dtype=bool)
+
+    denom = float(np.sum(mask) + 1.0)
+    scores = np.nansum(z[:, mask], axis=1) / denom
+    order_idx = np.argsort(scores)
+    if sort_order == "desc":
+        order_idx = order_idx[::-1]
+    z = z[order_idx]
+
+    z = _rank_compress(z, rank_rows, fill=empty_bin_fill)
+    regions = [str(i) for i in range(z.shape[0])]
+
+    z_vis = np.asarray(z, dtype=float)
+    zmin = 0.0
+    zmax = 1.0
+    if vmax_q is not None:
+        vals = z_vis[np.isfinite(z_vis)]
+        if vals.size:
+            zmax = float(np.nanquantile(vals, vmax_q))
+            if not np.isfinite(zmax) or zmax <= zmin:
+                zmax = 1.0
+
+    n_bins = int(z_vis.shape[1])
+    fig_width = width if width is not None else max(900, min(1400, 2 * n_bins))
+    fig_height = height if height is not None else max(
+        550, min(900, 5 * int(z_vis.shape[0]))
+    )
+
+    x_plot = np.arange(n_bins, dtype=int)
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=z_vis,
+            x=x_plot,
+            y=regions,
+            colorscale=colorscale,
+            zmin=zmin,
+            zmax=zmax,
+            zsmooth=False,
+            xgap=0,
+            ygap=0,
+            hoverongaps=False,
+            colorbar=dict(title="Methylation density"),
+        )
+    )
+    fig.update_yaxes(autorange="reversed", showticklabels=False)
+    _segment_decor(fig, segments, annotate_tss_tes=True, x_mode="bin", x_values=bins)
     fig.update_layout(
-        xaxis_title="Metagene position (relative)" if x_mode == "relative" else "Metagene position (bp)",
-        yaxis_title="Feature",
-        height=700,
-        width=1000,
-        margin=dict(l=90, r=30, t=60, b=90),
-        title=title or "Metagene profile - Heatmap",
+        title=title or "Metagene profile - Heatmap (BSX1 ranked)",
+        width=fig_width,
+        height=fig_height,
+        margin=dict(l=70, r=30, t=60, b=70),
+        xaxis_title="Position (bin)",
+        yaxis_title="Rank",
     )
     return fig.to_html(full_html=full_html, include_plotlyjs=include_js)
 
@@ -785,9 +822,13 @@ def _drd_from_annot(
         if gene_ids:
             flank = int(abs(flank_bp))
             if "upstream_gene" not in ft_map:
-                annot.add_flanks(gene_ids, -flank, "upstream_")
+                r = annot.add_flanks(gene_ids, -flank, "upstream_")
+                if r is not None:
+                    annot = r
             if "downstream_gene" not in ft_map:
-                annot.add_flanks(gene_ids, flank, "downstream_")
+                r = annot.add_flanks(gene_ids, flank, "downstream_")
+                if r is not None:
+                    annot = r
     if combine_parts:
         if mode != "raw":
             raise ValueError("combine_parts=True requires mode='raw'")
@@ -834,92 +875,44 @@ def line_html_from_annot(
     annot,
     *,
     segments: list[Segment] | None = None,
-    n_windows: Optional[int] = None,
-    agg: str | None = None,
-    agg_method=None,
-    feature_type: str | None = None,
-    reverse_negative: bool = True,
-    labels: list[str] | None = None,
-    limit: int | None = None,
     add_flanks: bool = False,
     flank_bp: int = 2000,
-    combine_parts: bool = False,
-    parts: Sequence[str] | None = None,
-    order: Sequence[str] | None = None,
-    as_percent: bool = True,
-    agg_scope: str = "points",
-    nan_policy: str | None = None,
-    mode: str = "raw",
-    x_mode: str = "relative",
-    value_mode: str | None = None,
-    max_nan_frac: Optional[float] = None,
+    smooth: dict | int | None = 50,
     full_html: bool = False,
     include_js: str = "cdn",
-    smooth: dict | int | None = None,
-    connectgaps: bool = False,
-    bsx1_compat: bool = False,
+    title: Optional[str] = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> str:
-    if bsx1_compat:
-        combine_parts = True
-        if segments is None:
-            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
-        elif len(segments) != 3:
-            raise ValueError("bsx1_compat requires exactly 3 segments (up/body/down)")
-        if value_mode is None:
-            value_mode = "weighted"
-        elif value_mode != "weighted":
-            raise ValueError("bsx1_compat requires value_mode='weighted'")
-        if agg is None:
-            agg = "mean"
-        elif agg != "mean":
-            raise ValueError("bsx1_compat requires agg='mean'")
-        if nan_policy is None:
-            nan_policy = "keep"
-        elif nan_policy != "keep":
-            raise ValueError("bsx1_compat requires nan_policy='keep'")
-        if smooth is None:
-            smooth = 50
-        connectgaps = True
-    else:
-        if value_mode is None:
-            value_mode = "density"
-        if agg is None:
-            agg = "median"
-        if nan_policy is None:
-            nan_policy = "drop"
-
+    """BSX1-style line from annotation: weighted mean, relative axis, up/body/down."""
+    if segments is None:
+        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
     drd = _drd_from_annot(
         reader,
         annot,
         segments=segments,
-        agg_method=agg_method,
-        feature_type=feature_type,
-        reverse_negative=reverse_negative,
-        labels=labels,
-        limit=limit,
-        mode=mode,
-        x_mode=x_mode,
+        agg_method=None,
+        feature_type=None,
+        reverse_negative=True,
+        labels=None,
+        limit=None,
+        mode="raw",
+        x_mode="relative",
         add_flanks=add_flanks,
         flank_bp=flank_bp,
-        combine_parts=combine_parts,
-        parts=parts,
+        combine_parts=True,
+        parts=None,
     )
     return line_html(
         drd,
-        agg=agg,
         segments=segments,
-        n_windows=n_windows,
-        order=order,
-        as_percent=as_percent,
-        agg_scope=agg_scope,
-        nan_policy=nan_policy,
-        x_mode=x_mode,
-        value_mode=value_mode,
-        max_nan_frac=max_nan_frac,
+        n_windows=segments_total_bins(segments),
+        smooth=smooth,
         full_html=full_html,
         include_js=include_js,
-        smooth=smooth,
-        connectgaps=connectgaps,
+        title=title,
+        width=width,
+        height=height,
     )
 
 
@@ -928,58 +921,53 @@ def heatmap_html_from_annot(
     annot,
     *,
     segments: list[Segment] | None = None,
-    n_windows: Optional[int] = None,
-    agg: str = "median",
-    agg_method=None,
-    feature_type: str | None = None,
-    reverse_negative: bool = True,
-    labels: list[str] | None = None,
-    limit: int | None = None,
     add_flanks: bool = False,
     flank_bp: int = 2000,
-    combine_parts: bool = False,
-    parts: Sequence[str] | None = None,
-    order: Sequence[str] | None = None,
-    as_percent: bool = True,
-    nan_policy: str = "drop",
-    mode: str = "raw",
-    x_mode: str = "relative",
-    heatmap_mode: str = "genes",
-    value_mode: str = "density",
-    max_nan_frac: Optional[float] = None,
+    rank_rows: int = 100,
+    rank_score: str = "mean",
+    sort_order: str = "desc",
+    colorscale: str = "Viridis",
+    vmax_q: float | None = 0.995,
     full_html: bool = False,
     include_js: str = "cdn",
+    title: Optional[str] = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> str:
+    """BSX1-style ranked heatmap from annotation (no modes)."""
+    if segments is None:
+        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
     drd = _drd_from_annot(
         reader,
         annot,
         segments=segments,
-        agg_method=agg_method,
-        feature_type=feature_type,
-        reverse_negative=reverse_negative,
-        labels=labels,
-        limit=limit,
-        mode=mode,
-        x_mode=x_mode,
+        agg_method=None,
+        feature_type=None,
+        reverse_negative=True,
+        labels=None,
+        limit=None,
+        mode="raw",
+        x_mode="relative",
         add_flanks=add_flanks,
         flank_bp=flank_bp,
-        combine_parts=combine_parts,
-        parts=parts,
+        combine_parts=True,
+        parts=None,
     )
     return heatmap_html(
         drd,
         segments=segments,
-        n_windows=n_windows,
-        order=order,
-        as_percent=as_percent,
-        agg=agg,
-        nan_policy=nan_policy,
-        x_mode=x_mode,
-        heatmap_mode=heatmap_mode,
-        value_mode=value_mode,
-        max_nan_frac=max_nan_frac,
+        n_windows=segments_total_bins(segments),
+        rank_rows=rank_rows,
+        rank_score=rank_score,
+        sort_order=sort_order,
+        colorscale=colorscale,
+        empty_bin_fill=0.0,
+        vmax_q=vmax_q,
         full_html=full_html,
         include_js=include_js,
+        title=title,
+        width=width,
+        height=height,
     )
 
 
