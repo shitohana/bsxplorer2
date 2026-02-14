@@ -3,13 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections import defaultdict, deque
 from typing import Callable, List, Optional, Sequence, Tuple
-import heapq
 
 import numpy as np
-import pandas as pd
 
 from bsx2 import io as _io
-from bsx2.plots.data import DiscreteRegionData, LinePlotData
+from bsx2.plots.data import DiscreteRegionData
 
 
 @dataclass(frozen=True)
@@ -46,77 +44,6 @@ def segment_boundaries(segments: Sequence[Segment]) -> List[float]:
         cum += s.n_bins
         bounds.append(cum / total)
     return bounds
-
-
-def segment_ticks(segments: Sequence[Segment]) -> Tuple[List[float], List[str]]:
-    bounds = segment_boundaries(segments)
-    labels = [s.name for s in segments]
-    return bounds, labels
-
-
-def _line_from_points(
-    drd: DiscreteRegionData,
-    segments: Sequence[Segment],
-    *,
-    value_mode: str = "density",
-) -> Tuple[np.ndarray, np.ndarray]:
-    if value_mode != "density":
-        raise ValueError("value_mode must be 'density'")
-    bounds = segment_boundaries(segments)
-    total_bins = segments_total_bins(segments)
-    starts = np.array([0.0] + bounds[:-1], dtype=float)
-    ends = np.array(bounds, dtype=float)
-    seg_nbins = np.array([s.n_bins for s in segments], dtype=int)
-    seg_offsets = np.concatenate(([0], np.cumsum(seg_nbins)[:-1]))
-
-    centers = []
-    for s, start, end in zip(segments, starts, ends):
-        width = end - start
-        if width <= 0:
-            continue
-        idx = np.arange(s.n_bins, dtype=float)
-        centers.append(start + (idx + 0.5) / s.n_bins * width)
-    x_out = np.concatenate(centers) if centers else np.array([], dtype=float)
-
-    streams = []
-    for pos, dens in zip(drd.positions, drd.densities):
-        x = np.asarray(pos, dtype=float)
-        y = np.asarray(dens, dtype=float)
-        mask = np.isfinite(x) & np.isfinite(y)
-        if not np.any(mask):
-            continue
-        pts = list(zip(x[mask].tolist(), y[mask].tolist()))
-        pts.sort(key=lambda t: t[0])
-        streams.append(pts)
-
-    if not streams:
-        return np.array([]), np.array([])
-
-    bins_values = [[] for _ in range(total_bins)]
-
-    for x, y in heapq.merge(*streams, key=lambda t: t[0]):
-        if x < 0.0 or x > 1.0:
-            continue
-        seg_idx = int(np.searchsorted(ends, x, side="right"))
-        seg_idx = min(seg_idx, len(ends) - 1)
-        width = ends[seg_idx] - starts[seg_idx]
-        if width <= 0:
-            continue
-        x_seg = (x - starts[seg_idx]) / width
-        local = int(x_seg * seg_nbins[seg_idx])
-        local = min(local, seg_nbins[seg_idx] - 1)
-        global_bin = int(seg_offsets[seg_idx] + local)
-        if 0 <= global_bin < total_bins:
-            bins_values[global_bin].append(y)
-
-    y_out = []
-    for vals in bins_values:
-        if not vals:
-            y_out.append(np.nan)
-            continue
-        y_out.append(float(np.nanmean(np.asarray(vals, dtype=float))))
-
-    return x_out, np.array(y_out, dtype=float)
 
 
 def _make_odd(n: int) -> int:
@@ -202,7 +129,7 @@ def _savgol_filter_1d(y: np.ndarray, cfg: dict) -> np.ndarray:
     try:
         from scipy.signal import savgol_filter  # type: ignore
     except ModuleNotFoundError as e:
-        raise ImportError("scipy is required for Savitzky–Golay smoothing") from e
+        raise ImportError("scipy is required for Savitzky-Golay smoothing") from e
 
     window_length = int(cfg["window_length"])
     polyorder = int(cfg["polyorder"])
@@ -267,10 +194,10 @@ def _apply_savgol_smoothing(
 
     if cfg.get("per_segment"):
         if not segments:
-            raise ValueError("per_segment=True требует segments")
+            raise ValueError("per_segment=True requires segments")
         seg_nbins = [s.n_bins for s in segments]
         if sum(seg_nbins) != y.size:
-            raise ValueError("per_segment=True требует профиль длиной total_bins")
+            raise ValueError("per_segment=True requires profile length equal to total_bins")
         out = []
         offset = 0
         for idx, n in enumerate(seg_nbins):
@@ -314,15 +241,12 @@ def compute_discrete_regions(
     contigs: Sequence,
     *,
     segments: Sequence[Segment] = _DEFAULT_SEGMENTS,
-    agg_method=None,
     reverse_negative: bool = True,
     labels: Optional[Sequence[str]] = None,
-    mode: str = "raw",
-    x_mode: str = "relative",
     progress: bool = False,
     progress_every: int = 1,
 ) -> DiscreteRegionData:
-    """Compute discretised metagene profiles for contigs.
+    """Compute relative metagene profiles (0..1) for contigs.
 
     Parameters
     ----------
@@ -332,8 +256,6 @@ def compute_discrete_regions(
         Contigs to extract.
     segments
         Segmentation scheme (default single ``Segment("region", 100)``).
-    agg_method
-        Aggregation method for ``BsxBatch.discretise``.
     reverse_negative
         Flip negative-strand profiles if True.
     labels
@@ -376,12 +298,7 @@ def compute_discrete_regions(
                 new_labels.append(q.popleft() if q else None)
             labels = new_labels
     contigs_list = sorted_contigs
-    total_bins = segments_total_bins(segments)
-
-    if agg_method is None:
-        from importlib import import_module
-
-        agg_method = getattr(import_module("bsx2._bsx2"), "AggMethod").Mean
+    segments_total_bins(segments)
 
     data = DiscreteRegionData()
     query_fn = getattr(reader, "query", None)
@@ -444,52 +361,37 @@ def compute_discrete_regions(
             except Exception:
                 _progress(idx)
                 continue
-        if mode != "raw":
-            raise ValueError("Only mode='raw' is supported (discretise mode removed)")
-        if mode == "raw":
-            if contig is None:
-                _progress(idx)
-                continue
-            start = getattr(contig, "start", None)
-            end = getattr(contig, "end", None)
-            if start is None or end is None or end <= start:
-                _progress(idx)
-                continue
-            try:
-                pos = np.asarray(batch.position().to_list(), dtype=np.float64)
-                dens = np.asarray(batch.density().to_list(), dtype=np.float64)
-            except Exception:
-                _progress(idx)
-                continue
-            if pos.size == 0 or dens.size == 0:
-                _progress(idx)
-                continue
-            if x_mode == "absolute":
-                x = pos - float(start)
-            else:
-                x = (pos - float(start)) / float(end - start)
-            y = dens
-            if reverse_negative and _is_negative_strand(contig):
-                if x_mode == "absolute":
-                    x = float(end - start) - x
-                else:
-                    x = 1.0 - x
-            # Keep NaN in y as "no data"; drop only non-finite x here.
-            mask = np.isfinite(x)
-            if x_mode != "absolute":
-                mask = mask & (x >= 0.0) & (x <= 1.0)
-            x = x[mask]
-            y = y[mask]
-            if x.size == 0:
-                _progress(idx)
-                continue
-            order = np.argsort(x, kind="mergesort")
-            x = x[order]
-            y = y[order]
-        else:
-            # unreachable due to guard above
+        if contig is None:
             _progress(idx)
             continue
+        start = getattr(contig, "start", None)
+        end = getattr(contig, "end", None)
+        if start is None or end is None or end <= start:
+            _progress(idx)
+            continue
+        try:
+            pos = np.asarray(batch.position().to_list(), dtype=np.float64)
+            dens = np.asarray(batch.density().to_list(), dtype=np.float64)
+        except Exception:
+            _progress(idx)
+            continue
+        if pos.size == 0 or dens.size == 0:
+            _progress(idx)
+            continue
+        x = (pos - float(start)) / float(end - start)
+        y = dens
+        if reverse_negative and _is_negative_strand(contig):
+            x = 1.0 - x
+        # Keep NaN in y as "no data"; drop only non-finite/out-of-range x.
+        mask = np.isfinite(x) & (x >= 0.0) & (x <= 1.0)
+        x = x[mask]
+        y = y[mask]
+        if x.size == 0:
+            _progress(idx)
+            continue
+        order = np.argsort(x, kind="mergesort")
+        x = x[order]
+        y = y[order]
         # Clean only infinities; keep NaN as "no data"
         if np.any(~np.isfinite(y)):
             y = y.astype(float, copy=True)
@@ -767,172 +669,3 @@ def combine_parts_drd(
         y_all = np.concatenate(ys)
         out.insert(x_all, y_all, lbl)
     return out
-
-
-def compute_from_annot(
-    reader: _io.RegionReader,
-    annot,
-    *,
-    segments: Sequence[Segment] = _DEFAULT_SEGMENTS,
-    agg_method=None,
-    feature_type: Optional[str] = None,
-    reverse_negative: bool = True,
-    labels: Optional[Sequence[str]] = None,
-) -> DiscreteRegionData:
-    """Build DiscreteRegionData from an annotation store."""
-    contigs, auto_labels = collect_contigs_from_hcannot(annot, feature_type=feature_type)
-    if labels is None:
-        labels = auto_labels
-    return compute_discrete_regions(
-        reader,
-        contigs,
-        segments=segments,
-        agg_method=agg_method,
-        reverse_negative=reverse_negative,
-        labels=labels,
-    )
-
-
-def line_plot(
-    reader: _io.RegionReader,
-    *,
-    contigs: Sequence,
-    segments: Sequence[Segment] | None = None,
-    agg_method=None,
-    mode: str = "raw",
-    x_mode: str = "relative",
-    smooth: dict | int | None = None,
-    value_mode: str | None = None,
-    bsx1_compat: bool = False,
-):
-    """HoloViews Curve for averaged metagene profile.
-
-    smooth
-        Optional Savitzky–Golay smoothing configuration. Accepts:
-        - dict with keys:
-          - method: "savgol" (required)
-          - window_length: int (odd, >=3)
-          - polyorder: int (>=0, < window_length)
-          - apply: "post" or "pre" (default "post")
-          - mode: "interp" | "nearest" | "mirror" | "constant" | "wrap" (default "interp")
-          - nan_policy: "interp" | "mask" | "raise" (default "interp")
-          - per_segment: bool (default False)
-          - cval: float (optional, for mode="constant")
-        - int (legacy): number of windows; 0 disables smoothing.
-
-    value_mode
-        Aggregation mode for binning points. Only "density" is supported.
-
-    bsx1_compat
-        If True, apply BSXplorer1-like defaults (unless explicitly overridden):
-        - segments: [up=100, body=200, down=100]
-        - value_mode: "density"
-        - smooth: 50 (post)
-    """
-    if bsx1_compat:
-        if segments is None:
-            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
-        elif len(segments) != 3:
-            raise ValueError("bsx1_compat requires exactly 3 segments (up/body/down)")
-        if value_mode is None:
-            value_mode = "density"
-        elif value_mode != "density":
-            raise ValueError("bsx1_compat requires value_mode='density'")
-        if smooth is None:
-            smooth = 50
-    else:
-        if value_mode is None:
-            value_mode = "density"
-
-    segments = segments or _DEFAULT_SEGMENTS
-    bounds, names = segment_ticks(segments)
-    smooth_cfg = _coerce_smooth_config(smooth, total_bins=segments_total_bins(segments))
-    if smooth_cfg is not None:
-        apply_mode = smooth_cfg.get("apply", "post")
-        if apply_mode not in {"pre", "post"}:
-            raise ValueError("smooth.apply must be 'pre' or 'post'")
-    drd = compute_discrete_regions(
-        reader,
-        contigs,
-        segments=segments,
-        agg_method=agg_method,
-        mode=mode,
-        x_mode=x_mode,
-    )
-    if smooth_cfg is not None and smooth_cfg.get("apply", "post") == "pre":
-        if smooth_cfg.get("per_segment") and mode == "raw":
-            raise ValueError("per_segment=True не поддерживается для mode='raw' с apply='pre'")
-        smoothed = DiscreteRegionData()
-        for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
-            y_sm = _apply_savgol_smoothing(np.asarray(dens, dtype=float), smooth_cfg, segments=segments)
-            y_sm = _clip_profile(y_sm)
-            smoothed.insert(np.asarray(pos, dtype=float), y_sm, lbl)
-        drd = smoothed
-    x, y = _line_from_points(drd, segments, value_mode=value_mode)
-    if smooth_cfg is not None and smooth_cfg.get("apply", "post") == "post":
-        y = _apply_savgol_smoothing(np.asarray(y, dtype=float), smooth_cfg, segments=segments)
-        y = _clip_profile(y)
-    return LinePlotData(x=x, y=y, x_ticks=bounds, x_labels=names).to_curve()
-
-
-def _stack_for_heatmap(drd: DiscreteRegionData) -> Tuple[pd.DataFrame, int]:
-    mat, row_labels = drd.stack_matrix()
-    if mat.size == 0:
-        return pd.DataFrame(columns=["bin", "region", "density"]), 0
-    n_regions, n_bins = mat.shape
-    df = pd.DataFrame(
-        {"bin": np.tile(np.arange(n_bins, dtype=int), n_regions), "region": np.repeat(row_labels, n_bins), "density": mat.reshape(-1)}
-    )
-    return df, n_bins
-
-
-def heatmap(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
-    """HoloViews HeatMap (regions x bins)."""
-    try:
-        import holoviews as hv  # type: ignore
-    except ModuleNotFoundError as e:
-        raise ImportError("holoviews is required for heatmap; install with 'pip install holoviews'") from e
-    segments = segments or _DEFAULT_SEGMENTS
-    drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
-    df, n_bins = _stack_for_heatmap(drd)
-    if df.empty:
-        return hv.HeatMap([])
-    hm = hv.HeatMap(df, kdims=["bin", "region"], vdims=["density"]).opts(invert_yaxis=True, colorbar=True)
-    bounds, names = segment_ticks(segments)
-    if n_bins > 0 and bounds:
-        xticks = [(int(round(b * (n_bins - 1))), label) for b, label in zip(bounds[:-1], names[:-1])]
-        if xticks:
-            hm = hm.opts(xticks=xticks)
-    return hm
-
-
-def box_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
-    """HoloViews BoxWhisker per-bin distributions."""
-    try:
-        import holoviews as hv  # type: ignore
-    except ModuleNotFoundError as e:
-        raise ImportError("holoviews is required for box_plot; install with 'pip install holoviews'") from e
-    segments = segments or _DEFAULT_SEGMENTS
-    drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
-    mat, _ = drd.stack_matrix()
-    if mat.size == 0:
-        return hv.BoxWhisker([])
-    n_regions, n_bins = mat.shape
-    df = pd.DataFrame({"bin": np.tile(np.arange(n_bins), n_regions), "density": mat.reshape(-1)})
-    return hv.BoxWhisker(df, kdims=["bin"], vdims=["density"])
-
-
-def violin_plot(reader: _io.RegionReader, *, contigs: Sequence, segments: Sequence[Segment] | None = None, agg_method=None):
-    """HoloViews Violin per-bin distributions."""
-    try:
-        import holoviews as hv  # type: ignore
-    except ModuleNotFoundError as e:
-        raise ImportError("holoviews is required for violin_plot; install with 'pip install holoviews'") from e
-    segments = segments or _DEFAULT_SEGMENTS
-    drd = compute_discrete_regions(reader, contigs, segments=segments, agg_method=agg_method)
-    mat, _ = drd.stack_matrix()
-    if mat.size == 0:
-        return hv.Violin([])
-    n_regions, n_bins = mat.shape
-    df = pd.DataFrame({"bin": np.tile(np.arange(n_bins), n_regions), "density": mat.reshape(-1)})
-    return hv.Violin(df, kdims=["bin"], vdims=["density"])
