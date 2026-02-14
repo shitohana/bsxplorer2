@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
 
 try:  # Prefer beartype-aware typing to silence PEP585 warnings
     from beartype.typing import List, Optional  # type: ignore
@@ -63,11 +62,6 @@ def _is_1d_unit_density(a: np.ndarray) -> bool:
 Pos1D = Annotated[np.ndarray, Is[_is_1d_sorted_unit_positions]]
 Density1D = Annotated[np.ndarray, Is[_is_1d_unit_density]]
 
-try:
-    import holoviews as hv  # type: ignore
-except ModuleNotFoundError:
-    hv = None  # lazy-load in to_curve; raise on use if missing
-
 
 @beartype
 @dataclass
@@ -88,46 +82,3 @@ class DiscreteRegionData:
         self.positions.append(positions.astype(np.float64, copy=False))
         self.densities.append(densities.astype(np.float64, copy=False))
         self.labels.append(label)
-
-@beartype
-@dataclass
-class LinePlotData:
-    x: Pos1D
-    y: Density1D
-    x_ticks: List[float] = field(default_factory=list)
-    x_labels: List[str] = field(default_factory=list)
-    y_ticks: List[float] = field(default_factory=list)
-    y_labels: List[str] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        if len(self.x) != len(self.y):
-            raise ValueError("x and y must have the same length")
-        if self.x_labels and (len(self.x_ticks) != len(self.x_labels)):
-            raise ValueError("x_ticks and x_labels must have the same length when labels are provided")
-        if self.y_labels and (len(self.y_ticks) != len(self.y_labels)):
-            raise ValueError("y_ticks and y_labels must have the same length when labels are provided")
-
-    @beartype
-    def to_curve(self, x_shift: float | int = 0.0, y_shift: float | int = 0.0) -> Any:
-        if hv is None:
-            import importlib
-            try:
-                globals()["hv"] = importlib.import_module("holoviews")
-            except ModuleNotFoundError as e:
-                raise ImportError("holoviews is required to create curves; install with 'pip install holoviews'") from e
-        # Re-read possible imported hv from globals
-        local_hv = globals().get("hv")
-        if local_hv is None:
-            raise RuntimeError("Failed to import holoviews")
-        curve = local_hv.Curve((self.x + x_shift, self.y + y_shift))
-        if self.x_ticks:
-            if self.x_labels:
-                curve = curve.opts(xticks=list(zip([t + x_shift for t in self.x_ticks], self.x_labels)))
-            else:
-                curve = curve.opts(xticks=[t + x_shift for t in self.x_ticks])
-        if self.y_ticks:
-            if self.y_labels:
-                curve = curve.opts(yticks=list(zip([t + y_shift for t in self.y_ticks], self.y_labels)))
-            else:
-                curve = curve.opts(yticks=[t + y_shift for t in self.y_ticks])
-        return curve
