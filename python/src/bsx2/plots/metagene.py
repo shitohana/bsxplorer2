@@ -60,8 +60,8 @@ def _line_from_points(
     *,
     value_mode: str = "density",
 ) -> Tuple[np.ndarray, np.ndarray]:
-    if value_mode not in {"density", "weighted"}:
-        raise ValueError("value_mode must be 'density' or 'weighted'")
+    if value_mode != "density":
+        raise ValueError("value_mode must be 'density'")
     bounds = segment_boundaries(segments)
     total_bins = segments_total_bins(segments)
     starts = np.array([0.0] + bounds[:-1], dtype=float)
@@ -79,36 +79,22 @@ def _line_from_points(
     x_out = np.concatenate(centers) if centers else np.array([], dtype=float)
 
     streams = []
-    weights_iter = drd.weights if drd.weights else [None] * len(drd.positions)
-    for pos, dens, w in zip(drd.positions, drd.densities, weights_iter):
+    for pos, dens in zip(drd.positions, drd.densities):
         x = np.asarray(pos, dtype=float)
         y = np.asarray(dens, dtype=float)
         mask = np.isfinite(x) & np.isfinite(y)
-        w_arr = None
-        if value_mode == "weighted":
-            if w is None:
-                raise ValueError("value_mode='weighted' requires weights for all points")
-            w_arr = np.asarray(w, dtype=float)
-            mask = mask & np.isfinite(w_arr) & (w_arr > 0)
         if not np.any(mask):
             continue
-        if w_arr is None:
-            pts = list(zip(x[mask].tolist(), y[mask].tolist(), [None] * int(np.count_nonzero(mask))))
-        else:
-            pts = list(zip(x[mask].tolist(), y[mask].tolist(), w_arr[mask].tolist()))
+        pts = list(zip(x[mask].tolist(), y[mask].tolist()))
         pts.sort(key=lambda t: t[0])
         streams.append(pts)
 
     if not streams:
         return np.array([]), np.array([])
 
-    if value_mode == "weighted":
-        bins_weighted_sum = np.zeros(total_bins, dtype=float)
-        bins_weighted_total = np.zeros(total_bins, dtype=float)
-    else:
-        bins_values = [[] for _ in range(total_bins)]
+    bins_values = [[] for _ in range(total_bins)]
 
-    for x, y, w in heapq.merge(*streams, key=lambda t: t[0]):
+    for x, y in heapq.merge(*streams, key=lambda t: t[0]):
         if x < 0.0 or x > 1.0:
             continue
         seg_idx = int(np.searchsorted(ends, x, side="right"))
@@ -121,19 +107,7 @@ def _line_from_points(
         local = min(local, seg_nbins[seg_idx] - 1)
         global_bin = int(seg_offsets[seg_idx] + local)
         if 0 <= global_bin < total_bins:
-            if value_mode == "weighted":
-                if w is None or not np.isfinite(w) or w <= 0:
-                    continue
-                bins_weighted_sum[global_bin] += float(y) * float(w)
-                bins_weighted_total[global_bin] += float(w)
-            else:
-                bins_values[global_bin].append(y)
-
-    if value_mode == "weighted":
-        y_out = np.full(total_bins, np.nan, dtype=float)
-        mask = bins_weighted_total > 0
-        y_out[mask] = bins_weighted_sum[mask] / bins_weighted_total[mask]
-        return x_out, y_out
+            bins_values[global_bin].append(y)
 
     y_out = []
     for vals in bins_values:
@@ -484,14 +458,10 @@ def compute_discrete_regions(
             try:
                 pos = np.asarray(batch.position().to_list(), dtype=np.float64)
                 dens = np.asarray(batch.density().to_list(), dtype=np.float64)
-                weights = np.asarray(batch.count_total().to_list(), dtype=np.float64)
             except Exception:
                 _progress(idx)
                 continue
             if pos.size == 0 or dens.size == 0:
-                _progress(idx)
-                continue
-            if weights.size != dens.size:
                 _progress(idx)
                 continue
             if x_mode == "absolute":
@@ -510,14 +480,12 @@ def compute_discrete_regions(
                 mask = mask & (x >= 0.0) & (x <= 1.0)
             x = x[mask]
             y = y[mask]
-            w = weights[mask]
             if x.size == 0:
                 _progress(idx)
                 continue
             order = np.argsort(x, kind="mergesort")
             x = x[order]
             y = y[order]
-            w = w[order]
         else:
             # unreachable due to guard above
             _progress(idx)
@@ -531,7 +499,7 @@ def compute_discrete_regions(
             y = y.astype(float, copy=False)
             y[mask] = np.clip(y[mask], 0.0, 1.0)
         label = labels[idx] if labels and idx < len(labels) else None
-        data.insert(x, y, label, weights=w if mode == "raw" else None)
+        data.insert(x, y, label)
         _progress(idx)
 
     return data
@@ -767,15 +735,14 @@ def combine_parts_drd(
     starts = [0.0, bounds[0], bounds[1]]
     ends = [bounds[0], bounds[1], bounds[2]]
 
-    by_part: dict[str, dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]] = {}
+    by_part: dict[str, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
     labels_all: set[str] = set()
     for part, drd in drd_map.items():
-        lookup: dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
-        weights_iter = drd.weights if drd.weights else [None] * len(drd.positions)
-        for pos, dens, w, lbl in zip(drd.positions, drd.densities, weights_iter, drd.labels):
+        lookup: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
             if lbl is None:
                 continue
-            lookup[lbl] = (np.asarray(pos, dtype=float), np.asarray(dens, dtype=float), w)
+            lookup[lbl] = (np.asarray(pos, dtype=float), np.asarray(dens, dtype=float))
             labels_all.add(lbl)
         by_part[part] = lookup
 
@@ -783,31 +750,22 @@ def combine_parts_drd(
     for lbl in sorted(labels_all):
         xs = []
         ys = []
-        ws = []
-        weights_ok = True
         for idx, part in enumerate(parts_order):
             lookup = by_part.get(part, {})
             if lbl not in lookup:
                 continue
-            x, y, w = lookup[lbl]
+            x, y = lookup[lbl]
             width = ends[idx] - starts[idx]
             if width <= 0:
                 continue
             x_mapped = starts[idx] + x * width
             xs.append(x_mapped)
             ys.append(y)
-            if w is None:
-                weights_ok = False
-            ws.append(w)
         if not xs:
             continue
         x_all = np.concatenate(xs)
         y_all = np.concatenate(ys)
-        if weights_ok and ws:
-            w_all = np.concatenate([np.asarray(w, dtype=float) for w in ws if w is not None])
-        else:
-            w_all = None
-        out.insert(x_all, y_all, lbl, weights=w_all)
+        out.insert(x_all, y_all, lbl)
     return out
 
 
@@ -863,14 +821,12 @@ def line_plot(
         - int (legacy): number of windows; 0 disables smoothing.
 
     value_mode
-        Aggregation mode for binning points. "density" = unweighted mean of
-        density values. "weighted" = weighted mean using count_total as weights
-        (equivalent to sum(count_m) / sum(count_total)).
+        Aggregation mode for binning points. Only "density" is supported.
 
     bsx1_compat
         If True, apply BSXplorer1-like defaults (unless explicitly overridden):
         - segments: [up=100, body=200, down=100]
-        - value_mode: "weighted"
+        - value_mode: "density"
         - smooth: 50 (post)
     """
     if bsx1_compat:
@@ -879,9 +835,9 @@ def line_plot(
         elif len(segments) != 3:
             raise ValueError("bsx1_compat requires exactly 3 segments (up/body/down)")
         if value_mode is None:
-            value_mode = "weighted"
-        elif value_mode != "weighted":
-            raise ValueError("bsx1_compat requires value_mode='weighted'")
+            value_mode = "density"
+        elif value_mode != "density":
+            raise ValueError("bsx1_compat requires value_mode='density'")
         if smooth is None:
             smooth = 50
     else:
@@ -907,10 +863,10 @@ def line_plot(
         if smooth_cfg.get("per_segment") and mode == "raw":
             raise ValueError("per_segment=True не поддерживается для mode='raw' с apply='pre'")
         smoothed = DiscreteRegionData()
-        for pos, dens, w, lbl in zip(drd.positions, drd.densities, drd.weights, drd.labels):
+        for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
             y_sm = _apply_savgol_smoothing(np.asarray(dens, dtype=float), smooth_cfg, segments=segments)
             y_sm = _clip_profile(y_sm)
-            smoothed.insert(np.asarray(pos, dtype=float), y_sm, lbl, weights=w)
+            smoothed.insert(np.asarray(pos, dtype=float), y_sm, lbl)
         drd = smoothed
     x, y = _line_from_points(drd, segments, value_mode=value_mode)
     if smooth_cfg is not None and smooth_cfg.get("apply", "post") == "post":

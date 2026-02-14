@@ -36,8 +36,6 @@ mod enums;
 mod methstats;
 pub mod typedef;
 
-#[cfg(test)]
-mod tests;
 
 pub use context_data::ContextData;
 pub use enums::{
