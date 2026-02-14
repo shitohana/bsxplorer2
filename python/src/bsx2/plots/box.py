@@ -6,8 +6,40 @@ import holoviews as hv
 import numpy as np
 
 from bsx2.plots.data import DiscreteRegionData
-from bsx2.plots.metagene import Segment
-from ._html_common import _drd_from_annot, _ensure_plotly, _hv_init, dist_df
+from bsx2.plots.metagene import Segment, segments_total_bins
+from ._html_common import _bin_points_windows, _drd_from_annot, _ensure_plotly, _hv_init
+
+
+def _dist_rows(
+    drd: DiscreteRegionData,
+    *,
+    as_percent: bool = False,
+    nan_fill: Optional[float] = None,
+    segments: list[Segment] | None = None,
+    n_windows: Optional[int] = None,
+    nan_policy: str = "drop",
+):
+    if n_windows is None:
+        n_windows = segments_total_bins(segments) if segments else 40
+    rows = []
+    for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
+        x = np.asarray(pos, dtype=float)
+        y = np.asarray(dens, dtype=float)
+        if as_percent:
+            y = y * 100.0
+        if nan_fill is not None:
+            y = np.where(np.isnan(y), nan_fill, y)
+        binned = _bin_points_windows(
+            x,
+            y,
+            n_windows=n_windows,
+            agg="mean",
+            nan_policy=nan_policy,
+        )
+        for b, v in enumerate(binned):
+            if np.isfinite(v):
+                rows.append((b, float(v), lbl if lbl is not None else f"region_{len(rows)+1}"))
+    return rows
 
 
 def box_html(
@@ -44,7 +76,7 @@ def box_html(
             data.append((label, float(np.nanmean(y))))
         kdims = ["region"]
     else:
-        dist = dist_df(
+        dist = _dist_rows(
             drd,
             as_percent=as_percent,
             nan_fill=nan_fill,

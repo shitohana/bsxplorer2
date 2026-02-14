@@ -8,12 +8,47 @@ import plotly.graph_objects as go
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import Segment, segment_boundaries, segments_total_bins
 from ._html_common import (
+    _bin_points_windows,
     _drd_from_annot,
     _hv_init,
     _rank_compress,
     _segment_decor_bin,
-    heatmap_df,
 )
+
+
+def _heatmap_matrix(
+    drd: DiscreteRegionData,
+    *,
+    segments: list[Segment] | None = None,
+    n_windows: Optional[int] = None,
+    nan_fill: Optional[float] = None,
+):
+    if n_windows is None:
+        n_windows = segments_total_bins(segments) if segments else 40
+
+    rows = []
+    labels = []
+    for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
+        x = np.asarray(pos, dtype=float)
+        y = np.asarray(dens, dtype=float)
+        if nan_fill is not None:
+            y = np.where(np.isnan(y), nan_fill, y)
+        row = _bin_points_windows(
+            x,
+            y,
+            n_windows=n_windows,
+            agg="mean",
+            nan_policy="keep",
+        )
+        rows.append(row)
+        labels.append(lbl if lbl is not None else f"region_{len(labels)+1}")
+
+    if not rows:
+        return np.empty((0, 0)), [], []
+
+    mat = np.vstack(rows)
+    bins = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
+    return mat, labels, bins
 
 
 def heatmap_html(
@@ -43,7 +78,7 @@ def heatmap_html(
     if n_windows is None:
         n_windows = segments_total_bins(segments)
 
-    z, _, bins = heatmap_df(
+    z, _, bins = _heatmap_matrix(
         drd,
         segments=segments,
         n_windows=n_windows,

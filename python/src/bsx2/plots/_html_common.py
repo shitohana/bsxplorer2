@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Sequence
-import heapq
+from typing import Callable, Optional, Sequence
 
 import holoviews as hv
 import numpy as np
@@ -26,36 +25,6 @@ def _ensure_plotly(fig):
     if isinstance(fig, go.Figure):
         return fig
     return go.Figure(fig)
-
-
-def discrete_to_long(
-    drd: DiscreteRegionData,
-    *,
-    as_percent: bool = False,
-    nan_fill: Optional[float] = None,
-) -> List[tuple]:
-    rows: List[tuple] = []
-    for ridx, (pos, dens, lbl) in enumerate(zip(drd.positions, drd.densities, drd.labels)):
-        region = lbl if lbl else f"region_{ridx+1}"
-        vals = np.asarray(dens, dtype=float)
-        if as_percent:
-            vals = vals * 100.0
-        vals[~np.isfinite(vals)] = np.nan
-        if nan_fill is not None:
-            vals = np.where(np.isnan(vals), nan_fill, vals)
-        bins = np.arange(len(vals), dtype=int)
-        for b, x, v in zip(bins, pos, vals):
-            rows.append((region, int(b), float(x), float(v)))
-    return rows
-
-
-# Backwards compatibility: old aliases.
-discrete_to_long_pl = discrete_to_long_pd = (
-    lambda drd, as_percent=False, nan_fill=None: np.array(
-        discrete_to_long(drd, as_percent=as_percent, nan_fill=nan_fill),
-        dtype=object,
-    )
-)
 
 
 def _bin_points_windows(
@@ -108,81 +77,6 @@ def _bin_points_windows(
     return np.asarray(out, dtype=float)
 
 
-def line_df(
-    drd: DiscreteRegionData,
-    *,
-    segments: list[Segment] | None = None,
-    n_windows: Optional[int] = None,
-    nan_fill: Optional[float] = None,
-):
-    if n_windows is None:
-        n_windows = segments_total_bins(segments) if segments else 40
-    x_out = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
-
-    streams = []
-    for pos, dens in zip(drd.positions, drd.densities):
-        x = np.asarray(pos, dtype=float)
-        y = np.asarray(dens, dtype=float)
-        if nan_fill is not None:
-            y = np.where(np.isnan(y), nan_fill, y)
-        pts = list(zip(x.tolist(), y.tolist()))
-        pts.sort(key=lambda t: t[0])
-        streams.append(pts)
-
-    if not streams:
-        return np.array([]), np.array([])
-
-    merged = heapq.merge(*streams, key=lambda t: t[0])
-    xs = []
-    ys = []
-    for x, y in merged:
-        xs.append(x)
-        ys.append(y)
-    y_out = _bin_points_windows(
-        np.asarray(xs),
-        np.asarray(ys),
-        n_windows=n_windows,
-        agg="mean",
-        nan_policy="keep",
-    )
-    return x_out, y_out
-
-
-def heatmap_df(
-    drd: DiscreteRegionData,
-    *,
-    segments: list[Segment] | None = None,
-    n_windows: Optional[int] = None,
-    nan_fill: Optional[float] = None,
-):
-    if n_windows is None:
-        n_windows = segments_total_bins(segments) if segments else 40
-
-    rows = []
-    labels = []
-    for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
-        x = np.asarray(pos, dtype=float)
-        y = np.asarray(dens, dtype=float)
-        if nan_fill is not None:
-            y = np.where(np.isnan(y), nan_fill, y)
-        row = _bin_points_windows(
-            x,
-            y,
-            n_windows=n_windows,
-            agg="mean",
-            nan_policy="keep",
-        )
-        rows.append(row)
-        labels.append(lbl if lbl is not None else f"region_{len(labels)+1}")
-
-    if not rows:
-        return np.empty((0, 0)), [], []
-
-    mat = np.vstack(rows)
-    bins = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
-    return mat, labels, bins
-
-
 def _rank_compress(z_sorted: np.ndarray, rank_rows: int, *, fill: float | None = 0.0) -> np.ndarray:
     if z_sorted.ndim != 2:
         return z_sorted
@@ -205,38 +99,6 @@ def _rank_compress(z_sorted: np.ndarray, rank_rows: int, *, fill: float | None =
         out = np.full((rows, n_bins), float(fill), dtype=float)
     np.divide(sums, cnts, out=out, where=(cnts > 0))
     return out
-
-
-def dist_df(
-    drd: DiscreteRegionData,
-    *,
-    as_percent: bool = False,
-    nan_fill: Optional[float] = None,
-    segments: list[Segment] | None = None,
-    n_windows: Optional[int] = None,
-    nan_policy: str = "drop",
-):
-    if n_windows is None:
-        n_windows = segments_total_bins(segments) if segments else 40
-    rows = []
-    for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
-        x = np.asarray(pos, dtype=float)
-        y = np.asarray(dens, dtype=float)
-        if as_percent:
-            y = y * 100.0
-        if nan_fill is not None:
-            y = np.where(np.isnan(y), nan_fill, y)
-        binned = _bin_points_windows(
-            x,
-            y,
-            n_windows=n_windows,
-            agg="mean",
-            nan_policy=nan_policy,
-        )
-        for b, v in enumerate(binned):
-            if np.isfinite(v):
-                rows.append((b, float(v), lbl if lbl is not None else f"region_{len(rows)+1}"))
-    return rows
 
 
 def _segment_decor(

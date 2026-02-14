@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from typing import Optional
+import heapq
 
 import holoviews as hv
+import numpy as np
 
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import (
@@ -13,12 +15,52 @@ from bsx2.plots.metagene import (
     segments_total_bins,
 )
 from ._html_common import (
+    _bin_points_windows,
     _drd_from_annot,
     _ensure_plotly,
     _hv_init,
     _segment_decor_rel,
-    line_df,
 )
+
+
+def _line_profile(
+    drd: DiscreteRegionData,
+    *,
+    segments: list[Segment] | None = None,
+    n_windows: Optional[int] = None,
+    nan_fill: Optional[float] = None,
+):
+    if n_windows is None:
+        n_windows = segments_total_bins(segments) if segments else 40
+    x_out = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
+
+    streams = []
+    for pos, dens in zip(drd.positions, drd.densities):
+        x = np.asarray(pos, dtype=float)
+        y = np.asarray(dens, dtype=float)
+        if nan_fill is not None:
+            y = np.where(np.isnan(y), nan_fill, y)
+        pts = list(zip(x.tolist(), y.tolist()))
+        pts.sort(key=lambda t: t[0])
+        streams.append(pts)
+
+    if not streams:
+        return np.array([]), np.array([])
+
+    merged = heapq.merge(*streams, key=lambda t: t[0])
+    xs = []
+    ys = []
+    for x, y in merged:
+        xs.append(x)
+        ys.append(y)
+    y_out = _bin_points_windows(
+        np.asarray(xs),
+        np.asarray(ys),
+        n_windows=n_windows,
+        agg="mean",
+        nan_policy="keep",
+    )
+    return x_out, y_out
 
 
 def line_html(
@@ -39,7 +81,7 @@ def line_html(
     if n_windows is None:
         n_windows = segments_total_bins(segments)
 
-    x, y = line_df(
+    x, y = _line_profile(
         drd,
         segments=segments,
         n_windows=n_windows,
