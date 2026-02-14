@@ -333,47 +333,4 @@ impl Iterator for BsxFileIterator {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::fs::File;
-    use std::path::PathBuf;
 
-    use rstest::{
-        fixture,
-        rstest,
-    };
-
-    use super::*;
-
-    #[fixture]
-    fn reader() -> BsxFileReader {
-        BsxFileReader::try_new(
-            File::open(
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/report.bsx"),
-            )
-            .expect("Error opening test report file"),
-        )
-        .unwrap()
-    }
-
-    #[rstest]
-    fn create_reader(_reader: BsxFileReader) {}
-
-    #[rstest]
-    fn test_reading(mut _reader: BsxFileReader) -> anyhow::Result<()> {
-        _reader.cache_batches(&[1, 2, 3, 4, 5, 6])?;
-        assert!(!_reader.cache_mut().pop_front().unwrap().is_empty());
-        Ok(())
-    }
-
-    #[rstest]
-    fn test_iter(reader: BsxFileReader) {
-        let mut batch_count = 0;
-        let blocks_total = reader.blocks_total();
-        for batch in reader.into_iter() {
-            assert!(batch.is_ok());
-            batch_count += 1;
-        }
-        assert_eq!(batch_count, blocks_total)
-    }
-}

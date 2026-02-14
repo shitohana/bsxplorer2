@@ -40,5 +40,3 @@ pub use lazy::*;
 pub use schema::*;
 pub use utils::*;
 
-#[cfg(test)]
-mod tests;

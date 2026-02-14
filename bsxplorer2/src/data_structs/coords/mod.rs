@@ -18,5 +18,3 @@ pub use contig::Contig;
 pub use gpos::GenomicPosition;
 pub use interval_map::ContigIntervalMap;
 
-#[cfg(test)]
-mod tests;

@@ -67,26 +67,15 @@ def _bin_points_windows(
         raise ValueError("n_windows must be > 0")
     if nan_policy not in {"drop", "zero", "keep"}:
         raise ValueError("nan_policy must be 'drop', 'zero', or 'keep'")
-    if value_mode not in {"density", "weighted"}:
-        raise ValueError("value_mode must be 'density' or 'weighted'")
-    if value_mode == "weighted" and weights is None:
-        raise ValueError("value_mode='weighted' requires weights")
+    if value_mode != "density":
+        raise ValueError("value_mode must be 'density'")
 
     bins_values = [[] for _ in range(n_windows)]
-    bins_weighted_sum = np.zeros(n_windows, dtype=float)
-    bins_weighted_total = np.zeros(n_windows, dtype=float)
-    for i, (x, y) in enumerate(zip(x_vals, y_vals)):
+    for x, y in zip(x_vals, y_vals):
         if not np.isfinite(x):
             continue
         if x < 0.0 or x > 1.0:
             continue
-        w = None
-        if weights is not None:
-            if i >= len(weights):
-                continue
-            w = float(weights[i])
-            if not np.isfinite(w) or w <= 0:
-                continue
         if nan_policy == "zero" and not np.isfinite(y):
             y = 0.0
         if nan_policy == "drop" and not np.isfinite(y):
@@ -95,23 +84,7 @@ def _bin_points_windows(
         if idx == n_windows:
             idx = n_windows - 1
         if 0 <= idx < n_windows:
-            if value_mode == "weighted":
-                if not np.isfinite(y):
-                    if nan_policy == "zero":
-                        y = 0.0
-                    else:
-                        continue
-                w_use = 1.0 if w is None else w
-                bins_weighted_sum[idx] += float(y) * w_use
-                bins_weighted_total[idx] += w_use
-            else:
-                bins_values[idx].append(y)
-
-    if value_mode == "weighted":
-        out = np.full(n_windows, np.nan, dtype=float)
-        mask = bins_weighted_total > 0
-        out[mask] = bins_weighted_sum[mask] / bins_weighted_total[mask]
-        return out
+            bins_values[idx].append(y)
 
     out = []
     for vals in bins_values:
@@ -176,12 +149,9 @@ def line_df(
     if agg_scope == "points":
         streams = []
         lengths = []
-        for pos, dens, w in zip(drd.positions, drd.densities, drd.weights or [None] * len(drd.positions)):
+        for pos, dens in zip(drd.positions, drd.densities):
             x = np.asarray(pos, dtype=float)
             y = np.asarray(dens, dtype=float)
-            weights = None
-            if w is not None:
-                weights = np.asarray(w, dtype=float)
             if as_percent:
                 y = y * 100.0
             if nan_fill is not None:
@@ -190,10 +160,7 @@ def line_df(
             if length is not None:
                 lengths.append(length)
             x = x_rel
-            if weights is None:
-                pts = list(zip(x.tolist(), y.tolist(), [None] * len(x)))
-            else:
-                pts = list(zip(x.tolist(), y.tolist(), weights.tolist()))
+            pts = list(zip(x.tolist(), y.tolist()))
             pts.sort(key=lambda t: t[0])
             streams.append(pts)
 
@@ -203,18 +170,12 @@ def line_df(
         merged = heapq.merge(*streams, key=lambda t: t[0])
         xs = []
         ys = []
-        ws = []
-        for x, y, w in merged:
+        for x, y in merged:
             xs.append(x)
             ys.append(y)
-            ws.append(w)
-        w_arr = None
-        if any(w is not None for w in ws):
-            w_arr = np.asarray([0.0 if w is None else w for w in ws], dtype=float)
         y_out = _bin_points_windows(
             np.asarray(xs),
             np.asarray(ys),
-            weights=w_arr,
             n_windows=n_windows,
             agg=agg,
             nan_policy=nan_policy,
@@ -228,12 +189,9 @@ def line_df(
 
     rows = []
     lengths = []
-    for pos, dens, w in zip(drd.positions, drd.densities, drd.weights or [None] * len(drd.positions)):
+    for pos, dens in zip(drd.positions, drd.densities):
         x = np.asarray(pos, dtype=float)
         y = np.asarray(dens, dtype=float)
-        weights = None
-        if w is not None:
-            weights = np.asarray(w, dtype=float)
         if as_percent:
             y = y * 100.0
         if nan_fill is not None:
@@ -245,7 +203,6 @@ def line_df(
             _bin_points_windows(
                 x_rel,
                 y,
-                weights=weights,
                 n_windows=n_windows,
                 agg=agg,
                 nan_policy=nan_policy,
@@ -314,17 +271,13 @@ def heatmap_df(
     rows = []
     labels = []
     lengths = []
-    for pos, dens, w, lbl in zip(
+    for pos, dens, lbl in zip(
         drd.positions,
         drd.densities,
-        drd.weights or [None] * len(drd.positions),
         drd.labels,
     ):
         x = np.asarray(pos, dtype=float)
         y = np.asarray(dens, dtype=float)
-        weights = None
-        if w is not None:
-            weights = np.asarray(w, dtype=float)
         if as_percent:
             y = y * 100.0
         if nan_fill is not None:
@@ -335,7 +288,6 @@ def heatmap_df(
         row = _bin_points_windows(
             x_rel,
             y,
-            weights=weights,
             n_windows=n_windows,
             agg=agg,
             nan_policy=nan_policy,
@@ -403,17 +355,13 @@ def dist_df(
     if n_windows is None:
         n_windows = segments_total_bins(segments) if segments else 40
     rows = []
-    for pos, dens, w, lbl in zip(
+    for pos, dens, lbl in zip(
         drd.positions,
         drd.densities,
-        drd.weights or [None] * len(drd.positions),
         drd.labels,
     ):
         x = np.asarray(pos, dtype=float)
         y = np.asarray(dens, dtype=float)
-        weights = None
-        if w is not None:
-            weights = np.asarray(w, dtype=float)
         if as_percent:
             y = y * 100.0
         if nan_fill is not None:
@@ -421,7 +369,6 @@ def dist_df(
         binned = _bin_points_windows(
             x,
             y,
-            weights=weights,
             n_windows=n_windows,
             agg="mean",
             nan_policy=nan_policy,
@@ -504,7 +451,7 @@ def line_html(
     width: int | None = None,
     height: int | None = None,
 ) -> str:
-    """BSX1-style line: weighted mean, relative axis, up/body/down."""
+    """BSX1-style line: mean density, relative axis, up/body/down."""
     _hv_init()
     if segments is None:
         segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
@@ -522,7 +469,7 @@ def line_html(
         agg_scope="points",
         nan_policy="keep",
         x_mode="relative",
-        value_mode="weighted",
+        value_mode="density",
         max_nan_frac=None,
     )
 
@@ -596,7 +543,7 @@ def heatmap_html(
         agg="mean",
         nan_policy="keep",
         x_mode="relative",
-        value_mode="weighted",
+        value_mode="density",
         max_nan_frac=None,
     )
     if z.size == 0:
@@ -884,7 +831,7 @@ def line_html_from_annot(
     width: int | None = None,
     height: int | None = None,
 ) -> str:
-    """BSX1-style line from annotation: weighted mean, relative axis, up/body/down."""
+    """BSX1-style line from annotation: mean density, relative axis, up/body/down."""
     if segments is None:
         segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
     drd = _drd_from_annot(
