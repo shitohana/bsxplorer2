@@ -55,15 +55,37 @@ def _bin_points_windows(
             continue
         arr = np.asarray(vals, dtype=float)
         if agg == "mean":
-            fn = np.mean if nan_policy in {"keep", "zero"} else np.nanmean
-            out.append(float(fn(arr)))
+            if nan_policy == "drop":
+                out.append(float(np.nanmean(arr)))
+            elif nan_policy == "zero":
+                out.append(float(np.mean(arr)))
+            else:
+                finite = np.isfinite(arr)
+                out.append(float(np.mean(arr[finite])) if finite.any() else np.nan)
         elif agg == "median":
-            fn = np.median if nan_policy in {"keep", "zero"} else np.nanmedian
-            out.append(float(fn(arr)))
+            if nan_policy == "drop":
+                out.append(float(np.nanmedian(arr)))
+            elif nan_policy == "zero":
+                out.append(float(np.median(arr)))
+            else:
+                finite = np.isfinite(arr)
+                out.append(float(np.median(arr[finite])) if finite.any() else np.nan)
         elif agg == "max":
-            out.append(float(np.nanmax(arr)) if nan_policy == "drop" else float(np.max(arr)))
+            if nan_policy == "drop":
+                out.append(float(np.nanmax(arr)))
+            elif nan_policy == "zero":
+                out.append(float(np.max(arr)))
+            else:
+                finite = np.isfinite(arr)
+                out.append(float(np.max(arr[finite])) if finite.any() else np.nan)
         elif agg == "min":
-            out.append(float(np.nanmin(arr)) if nan_policy == "drop" else float(np.min(arr)))
+            if nan_policy == "drop":
+                out.append(float(np.nanmin(arr)))
+            elif nan_policy == "zero":
+                out.append(float(np.min(arr)))
+            else:
+                finite = np.isfinite(arr)
+                out.append(float(np.min(arr[finite])) if finite.any() else np.nan)
         else:
             raise ValueError(f"Unsupported agg: {agg}")
     return np.asarray(out, dtype=float)
