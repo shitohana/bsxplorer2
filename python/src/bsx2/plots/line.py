@@ -16,7 +16,6 @@ from bsx2.plots.metagene import (
 )
 from ._html_common import (
     _bin_points_windows,
-    _drd_from_annot,
     _ensure_plotly,
     _hv_init,
     _segment_decor_rel,
@@ -119,43 +118,3 @@ def line_html(
     return fig.to_html(full_html=full_html, include_plotlyjs=include_js)
 
 
-def line_html_from_annot(
-    reader,
-    annot,
-    *,
-    segments: list[Segment] | None = None,
-    add_flanks: bool = False,
-    flank_bp: int = 2000,
-    smooth: dict | int | None = 50,
-    full_html: bool = False,
-    include_js: str = "cdn",
-    title: Optional[str] = None,
-    width: int | None = None,
-    height: int | None = None,
-) -> str:
-    if segments is None:
-        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
-    drd = _drd_from_annot(
-        reader,
-        annot,
-        segments=segments,
-        feature_type=None,
-        reverse_negative=True,
-        labels=None,
-        limit=None,
-        add_flanks=add_flanks,
-        flank_bp=flank_bp,
-        combine_parts=True,
-        parts=None,
-    )
-    return line_html(
-        drd,
-        segments=segments,
-        n_windows=segments_total_bins(segments),
-        smooth=smooth,
-        full_html=full_html,
-        include_js=include_js,
-        title=title,
-        width=width,
-        height=height,
-    )

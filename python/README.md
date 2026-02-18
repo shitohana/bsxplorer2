@@ -71,7 +71,6 @@ TODO: Add get function to AnnotMap
   - `heatmap_html(drd, ...) -> str`
   - `box_html(drd, ...) -> str`
   - `violin_html(drd, ...) -> str`
-  - Обёртки “из аннотаций”: `*_html_from_annot(reader, annot, ...)`.
 
 ### API Обзор
 
@@ -86,7 +85,6 @@ TODO: Add get function to AnnotMap
   - HoloViews: `line_plot`, `heatmap`, `box_plot`, `violin_plot`
 - HTML: `bsx2.plots.polars_html`
   - `line_html/heatmap_html/box_html/violin_html`
-  - `line_html_from_annot/heatmap_html_from_annot/box_html_from_annot/violin_html_from_annot`
 
 ### Примеры (Кратко)
 
@@ -114,27 +112,31 @@ curve = line_plot(
 
 ```python
 from bsx2.io import RegionReader
-from bsx2._bsx2 import HcAnnotStore, AggMethod
-from bsx2.plots import Segment
-from bsx2.plots.polars_html import line_html_from_annot
+from bsx2._bsx2 import HcAnnotStore
+from bsx2.plots import Segment, compute_from_annot
+from bsx2.plots.polars_html import line_html
 
 rr = RegionReader('/path/to/report.bsx')
 annot = HcAnnotStore.from_gff('/path/to/annot.gff')
 segs = [Segment('up', 25), Segment('body', 50), Segment('down', 25)]
-html = line_html_from_annot(rr, annot, segments=segs, agg='mean', agg_method=AggMethod.Mean, limit=100)
+drd = compute_from_annot(rr, annot, segments=segs, limit=100, combine_parts=True)
+html = line_html(drd, segments=segs)
 open('line.html','w').write(html)
 ```
 
-### Quick Reference: from_annot_to_html
+### Quick Reference: compute_from_annot
 
 - `reader`: RegionReader над `.bsx`.
 - `annot`: HcAnnotStore (from_gff/from_bed).
-- `segments`: `list[Segment]`, по умолчанию `[Segment('region', 100)]`.
-- `agg_method`: `AggMethod` — агрегирование по сайтам внутри бинов (Mean/Median/Max/Min).
-- `agg` (только `line_html*`): агрегация по регионам при построении линии (`'mean'|'median'|'max'|'min'`).
-- `feature_type`: фильтрация аннотации (например, `'gene'`).
+- `segments`: `list[Segment]`, по умолчанию `[Segment('region', 100)]` (или `up/body/down` при `combine_parts=True`).
+- `feature_type`: фильтрация аннотации (например, `'gene'`, применяется при `combine_parts=False`).
 - `limit`: ограничение числа регионов (для превью/ускорения).
 - `reverse_negative`: инверсия профиля для `'-'` (по умолчанию `True`).
+- `labels`: явные подписи регионов (если `None`, используются авто‑лейблы).
+- `add_flanks`: добавить фланки gene (up/down) через `annot.add_flanks`.
+- `flank_bp`: размер фланков в bp.
+- `combine_parts`: собрать BSX1‑стиль (up/body/down) по генам.
+- `parts`: порядок частей при `combine_parts=True`.
 
 ### Тестирование
 
@@ -175,40 +177,39 @@ hm = heatmap(rr, contigs=contigs, segments=segs, agg_method=AggMethod.Mean)
 # curve/hm are HoloViews objects
 ```
 
-### Build metagene from HcAnnotStore (HoloViews)
+### Build metagene from HcAnnotStore (DiscreteRegionData)
 
 ```python
 from bsx2.io import RegionReader
-from bsx2._bsx2 import HcAnnotStore, AggMethod
-from bsx2.plots import Segment, compute_from_annot, line_plot
+from bsx2._bsx2 import HcAnnotStore
+from bsx2.plots import Segment, compute_from_annot
+from bsx2.plots.polars_html import line_html
 
 rr = RegionReader("/path/to/file.bsx")
 annot = HcAnnotStore()  # or load from GFF/BED depending on your pipeline
 
 segs = [Segment("up", 25), Segment("body", 50), Segment("down", 25)]
-drd = compute_from_annot(rr, annot, segments=segs, agg_method=AggMethod.Mean, feature_type=None)
-curve = line_plot(rr, contigs=[...], segments=segs)  # or render from drd using polars_html
+drd = compute_from_annot(rr, annot, segments=segs, feature_type="gene", combine_parts=True)
+html = line_html(drd, segments=segs)
 ```
 
 ### Plotly HTML (standalone)
 
 ```python
-from bsx2.plots import (
-    Segment,
-    line_html_from_annot, heatmap_html_from_annot,
-    box_html_from_annot, violin_html_from_annot,
-)
+from bsx2.plots import Segment, compute_from_annot
+from bsx2.plots.polars_html import line_html, heatmap_html, box_html, violin_html
 from bsx2.io import RegionReader
-from bsx2._bsx2 import HcAnnotStore, AggMethod
+from bsx2._bsx2 import HcAnnotStore
 
 rr = RegionReader("/path/to/file.bsx")
 annot = HcAnnotStore()
 segs = [Segment("up", 25), Segment("body", 50), Segment("down", 25)]
 
-html_line = line_html_from_annot(rr, annot, segments=segs, agg="mean", agg_method=AggMethod.Mean)
-html_heat = heatmap_html_from_annot(rr, annot, segments=segs, agg_method=AggMethod.Mean)
-html_box = box_html_from_annot(rr, annot, segments=segs, agg_method=AggMethod.Mean)
-html_violin = violin_html_from_annot(rr, annot, segments=segs, agg_method=AggMethod.Mean)
+drd = compute_from_annot(rr, annot, segments=segs, combine_parts=True)
+html_line = line_html(drd, segments=segs)
+html_heat = heatmap_html(drd, segments=segs)
+html_box = box_html(drd, segments=segs, per_region=True)
+html_violin = violin_html(drd, segments=segs, per_region=True)
 
 open("line.html", "w").write(html_line)
 open("heatmap.html", "w").write(html_heat)
@@ -221,16 +222,17 @@ Notes:
 - Data prep is independent from visualization; you can take DiscreteRegionData and render via HoloViews or Plotly.
 - For large cohorts use Plotly HTML generation (no Python runtime needed to view).
 
-### Quick reference: from_annot_to_html parameters
+### Quick reference: compute_from_annot parameters
 
 - `reader`: RegionReader over your .bsx file.
 - `annot`: HcAnnotStore (e.g. from_gff/from_bed).
-- `segments`: list[Segment] — arbitrary segmentation, e.g. [Segment("up",25), Segment("body",50), Segment("down",25)]. If omitted, defaults to [Segment("region", 100)].
-- `agg_method`: AggMethod — how to aggregate densities inside bins (Mean/Median/Max/Min).
-- `agg` (line_html only): string key for aggregation over regions ("mean"/"median"/"max"/"min").
-- `feature_type`: optional feature filter on annotations (e.g. "gene").
+- `segments`: list[Segment] — arbitrary segmentation, e.g. [Segment("up",25), Segment("body",50), Segment("down",25)]. If omitted, defaults to [Segment("region", 100)] (or up/body/down when `combine_parts=True`).
+- `feature_type`: optional feature filter on annotations (e.g. "gene"; used when `combine_parts=False`).
 - `limit`: optional limit on number of regions for faster preview.
 - `reverse_negative`: bool — reverse profiles for '-' strand (default True).
+- `labels`: optional explicit labels to use for regions.
 - `add_flanks`: bool — add upstream/downstream flanks for genes as separate features (default False).
 - `flank_bp`: int — flank size in bp for add_flanks (default 2000).
+- `combine_parts`: bool — build BSX1-style metagene (up/body/down) per gene.
+- `parts`: optional parts order when `combine_parts=True`.
 

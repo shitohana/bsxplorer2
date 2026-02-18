@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence
+from typing import Callable
 
 import holoviews as hv
 import numpy as np
 import plotly.graph_objects as go
 
-from bsx2.plots.data import DiscreteRegionData
-from bsx2.plots.metagene import (
-    Segment,
-    combine_parts_drd,
-    collect_contigs_from_hcannot,
-    collect_parts_from_hcannot,
-    compute_discrete_regions,
-    segments_total_bins,
-)
+from bsx2.plots.metagene import Segment, segments_total_bins
 
 
 def _hv_init() -> None:
@@ -149,67 +141,3 @@ def _segment_decor_bin(fig, segments: list[Segment] | None, *, annotate_tss_tes:
     _segment_decor(fig, segments, annotate_tss_tes=annotate_tss_tes, scale=float)
 
 
-def _drd_from_annot(
-    reader,
-    annot,
-    *,
-    segments: list[Segment] | None,
-    feature_type: str | None,
-    reverse_negative: bool,
-    labels: list[str] | None,
-    limit: int | None,
-    add_flanks: bool = False,
-    flank_bp: int = 2000,
-    combine_parts: bool = False,
-    parts: Sequence[str] | None = None,
-) -> DiscreteRegionData:
-    if segments is None:
-        if combine_parts:
-            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
-        else:
-            segments = [Segment("region", 100)]
-    if add_flanks:
-        try:
-            ft_map = annot.get_feature_types()
-        except Exception:
-            ft_map = {}
-        gene_ids = ft_map.get("gene", []) if isinstance(ft_map, dict) else []
-        if gene_ids:
-            flank = int(abs(flank_bp))
-            if "upstream_gene" not in ft_map:
-                r = annot.add_flanks(gene_ids, -flank, "upstream_")
-                if r is not None:
-                    annot = r
-            if "downstream_gene" not in ft_map:
-                r = annot.add_flanks(gene_ids, flank, "downstream_")
-                if r is not None:
-                    annot = r
-    if combine_parts:
-        parts_order = list(parts) if parts is not None else ["upstream_gene", "gene", "downstream_gene"]
-        parts_data = collect_parts_from_hcannot(annot, parts=parts_order, limit=limit)
-        drd_map: dict[str, DiscreteRegionData] = {}
-        for part in parts_order:
-            contigs, auto_labels = parts_data.get(part, ([], []))
-            if not contigs:
-                continue
-            drd_part = compute_discrete_regions(
-                reader,
-                contigs,
-                segments=segments,
-                reverse_negative=reverse_negative,
-                labels=auto_labels,
-            )
-            drd_map[part] = drd_part
-        if not drd_map:
-            return DiscreteRegionData()
-        return combine_parts_drd(drd_map, segments=segments, parts_order=parts_order)
-
-    contigs, auto_labels = collect_contigs_from_hcannot(annot, feature_type=feature_type, limit=limit)
-    use_labels = labels if labels is not None else auto_labels
-    return compute_discrete_regions(
-        reader,
-        contigs,
-        segments=segments,
-        reverse_negative=reverse_negative,
-        labels=use_labels,
-    )

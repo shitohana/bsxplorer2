@@ -9,7 +9,6 @@ from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import Segment, segment_boundaries, segments_total_bins
 from ._html_common import (
     _bin_points_windows,
-    _drd_from_annot,
     _hv_init,
     _rank_compress,
     _segment_decor_bin,
@@ -148,52 +147,3 @@ def heatmap_html(
     return fig.to_html(full_html=full_html, include_plotlyjs=include_js)
 
 
-def heatmap_html_from_annot(
-    reader,
-    annot,
-    *,
-    segments: list[Segment] | None = None,
-    add_flanks: bool = False,
-    flank_bp: int = 2000,
-    rank_rows: int = 100,
-    rank_score: str = "mean",
-    sort_order: str = "desc",
-    colorscale: str = "Viridis",
-    vmax_q: float | None = 0.995,
-    full_html: bool = False,
-    include_js: str = "cdn",
-    title: Optional[str] = None,
-    width: int | None = None,
-    height: int | None = None,
-) -> str:
-    if segments is None:
-        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
-    drd = _drd_from_annot(
-        reader,
-        annot,
-        segments=segments,
-        feature_type=None,
-        reverse_negative=True,
-        labels=None,
-        limit=None,
-        add_flanks=add_flanks,
-        flank_bp=flank_bp,
-        combine_parts=True,
-        parts=None,
-    )
-    return heatmap_html(
-        drd,
-        segments=segments,
-        n_windows=segments_total_bins(segments),
-        rank_rows=rank_rows,
-        rank_score=rank_score,
-        sort_order=sort_order,
-        colorscale=colorscale,
-        empty_bin_fill=0.0,
-        vmax_q=vmax_q,
-        full_html=full_html,
-        include_js=include_js,
-        title=title,
-        width=width,
-        height=height,
-    )

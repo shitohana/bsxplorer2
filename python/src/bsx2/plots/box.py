@@ -7,7 +7,7 @@ import numpy as np
 
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import Segment, segments_total_bins
-from ._html_common import _bin_points_windows, _drd_from_annot, _ensure_plotly, _hv_init
+from ._html_common import _bin_points_windows, _ensure_plotly, _hv_init
 
 
 def _dist_rows(
@@ -102,44 +102,3 @@ def box_html(
     return fig.to_html(full_html=full_html, include_plotlyjs=include_js)
 
 
-def box_html_from_annot(
-    reader,
-    annot,
-    *,
-    segments: list[Segment] | None = None,
-    n_windows: Optional[int] = None,
-    nan_fill: Optional[float] = None,
-    nan_policy: str = "drop",
-    feature_type: str | None = None,
-    reverse_negative: bool = True,
-    labels: list[str] | None = None,
-    limit: int | None = None,
-    add_flanks: bool = False,
-    flank_bp: int = 2000,
-    per_region: bool = False,
-    as_percent: bool = True,
-    full_html: bool = False,
-    include_js: str = "cdn",
-) -> str:
-    drd = _drd_from_annot(
-        reader,
-        annot,
-        segments=segments,
-        feature_type=feature_type,
-        reverse_negative=reverse_negative,
-        labels=labels,
-        limit=limit,
-        add_flanks=add_flanks,
-        flank_bp=flank_bp,
-    )
-    return box_html(
-        drd,
-        segments=segments,
-        n_windows=n_windows,
-        as_percent=as_percent,
-        nan_fill=nan_fill,
-        nan_policy=nan_policy,
-        per_region=per_region,
-        full_html=full_html,
-        include_js=include_js,
-    )

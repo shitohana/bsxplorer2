@@ -669,3 +669,77 @@ def combine_parts_drd(
         y_all = np.concatenate(ys)
         out.insert(x_all, y_all, lbl)
     return out
+
+
+def compute_from_annot(
+    reader: _io.RegionReader,
+    annot,
+    *,
+    segments: list[Segment] | None = None,
+    feature_type: str | None = None,
+    reverse_negative: bool = True,
+    labels: list[str] | None = None,
+    limit: int | None = None,
+    add_flanks: bool = False,
+    flank_bp: int = 2000,
+    combine_parts: bool = False,
+    parts: Sequence[str] | None = None,
+) -> DiscreteRegionData:
+    """Build DiscreteRegionData from an annotation store.
+
+    When ``combine_parts=True`` this will build a BSX1-like metagene by
+    collecting gene parts (upstream/gene/downstream) and stitching them
+    into a single profile per gene.
+    """
+    if segments is None:
+        if combine_parts:
+            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+        else:
+            segments = [Segment("region", 100)]
+
+    if add_flanks:
+        try:
+            ft_map = annot.get_feature_types()
+        except Exception:
+            ft_map = {}
+        gene_ids = ft_map.get("gene", []) if isinstance(ft_map, dict) else []
+        if gene_ids:
+            flank = int(abs(flank_bp))
+            if "upstream_gene" not in ft_map:
+                r = annot.add_flanks(gene_ids, -flank, "upstream_")
+                if r is not None:
+                    annot = r
+            if "downstream_gene" not in ft_map:
+                r = annot.add_flanks(gene_ids, flank, "downstream_")
+                if r is not None:
+                    annot = r
+
+    if combine_parts:
+        parts_order = list(parts) if parts is not None else ["upstream_gene", "gene", "downstream_gene"]
+        parts_data = collect_parts_from_hcannot(annot, parts=parts_order, limit=limit)
+        drd_map: dict[str, DiscreteRegionData] = {}
+        for part in parts_order:
+            contigs, auto_labels = parts_data.get(part, ([], []))
+            if not contigs:
+                continue
+            drd_part = compute_discrete_regions(
+                reader,
+                contigs,
+                segments=segments,
+                reverse_negative=reverse_negative,
+                labels=auto_labels,
+            )
+            drd_map[part] = drd_part
+        if not drd_map:
+            return DiscreteRegionData()
+        return combine_parts_drd(drd_map, segments=segments, parts_order=parts_order)
+
+    contigs, auto_labels = collect_contigs_from_hcannot(annot, feature_type=feature_type, limit=limit)
+    use_labels = labels if labels is not None else auto_labels
+    return compute_discrete_regions(
+        reader,
+        contigs,
+        segments=segments,
+        reverse_negative=reverse_negative,
+        labels=use_labels,
+    )
