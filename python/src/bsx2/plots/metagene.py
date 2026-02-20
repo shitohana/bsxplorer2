@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import defaultdict, deque
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple, cast
 
 import numpy as np
 
 from bsx2 import io as _io
+from bsx2.guards import (
+    require_nan_policy_compatible,
+    require_per_segment_profile,
+    require_savgol_filter,
+    resolve_reader_accessors,
+)
 from bsx2.plots.data import DiscreteRegionData
+from bsx2.validation import validate_segments, validate_smoothing
 
 
 @dataclass(frozen=True)
@@ -29,11 +36,7 @@ def segments_total_bins(segments: Sequence[Segment]) -> int:
     ValueError
         If segments are empty or contain non-positive bin counts.
     """
-    if not segments:
-        raise ValueError("segments must not be empty")
-    if any(s.n_bins <= 0 for s in segments):
-        raise ValueError("each segment n_bins must be > 0")
-    return sum(s.n_bins for s in segments)
+    return validate_segments(segments)
 
 
 def segment_boundaries(segments: Sequence[Segment]) -> List[float]:
@@ -46,53 +49,12 @@ def segment_boundaries(segments: Sequence[Segment]) -> List[float]:
     return bounds
 
 
-def _make_odd(n: int) -> int:
-    if n % 2 == 0:
-        return n + 1
-    return n
-
-
 def _coerce_smooth_config(
     smooth: dict | int | None,
     *,
     total_bins: int,
 ) -> dict | None:
-    if smooth is None:
-        return None
-    if isinstance(smooth, bool):
-        raise ValueError("smooth must be a dict, int, or None")
-    if isinstance(smooth, int):
-        if smooth == 0:
-            return None
-        if smooth < 0:
-            raise ValueError("smooth int must be >= 0")
-        window_length = _make_odd(max(3, total_bins // smooth))
-        return {
-            "method": "savgol",
-            "window_length": window_length,
-            "polyorder": 2,
-            "apply": "post",
-            "mode": "interp",
-            "nan_policy": "interp",
-            "per_segment": False,
-        }
-    if not isinstance(smooth, dict):
-        raise ValueError("smooth must be a dict, int, or None")
-
-    method = smooth.get("method")
-    if method != "savgol":
-        raise ValueError("smooth.method must be 'savgol'")
-    cfg = {
-        "method": method,
-        "window_length": smooth.get("window_length"),
-        "polyorder": smooth.get("polyorder"),
-        "apply": smooth.get("apply", "post"),
-        "mode": smooth.get("mode", "interp"),
-        "nan_policy": smooth.get("nan_policy", "interp"),
-        "per_segment": smooth.get("per_segment", False),
-        "cval": smooth.get("cval"),
-    }
-    return cfg
+    return validate_smoothing(smooth, total_bins=total_bins)
 
 
 def _validate_savgol_config(
@@ -101,35 +63,11 @@ def _validate_savgol_config(
     series_len: int,
     label: str = "series",
 ) -> None:
-    window_length = cfg.get("window_length")
-    polyorder = cfg.get("polyorder")
-    mode = cfg.get("mode", "interp")
-
-    if not isinstance(window_length, int) or window_length < 3:
-        raise ValueError("smooth.window_length must be an odd integer >= 3")
-    if window_length % 2 == 0:
-        raise ValueError("smooth.window_length must be an odd integer")
-    if not isinstance(polyorder, int) or polyorder < 0:
-        raise ValueError("smooth.polyorder must be an integer >= 0")
-    if polyorder >= window_length:
-        raise ValueError("smooth.polyorder must be < smooth.window_length")
-
-    if mode not in {"interp", "nearest", "mirror", "constant", "wrap"}:
-        raise ValueError("smooth.mode must be one of: interp, nearest, mirror, constant, wrap")
-    if cfg.get("nan_policy") not in {"interp", "mask", "raise"}:
-        raise ValueError("smooth.nan_policy must be one of: interp, mask, raise")
-
-    if mode == "interp" and window_length > series_len:
-        raise ValueError(
-            f"smooth.window_length ({window_length}) must be <= {label} length ({series_len}) when mode='interp'"
-        )
+    validate_smoothing(cfg, series_len=series_len, label=label)
 
 
 def _savgol_filter_1d(y: np.ndarray, cfg: dict) -> np.ndarray:
-    try:
-        from scipy.signal import savgol_filter  # type: ignore
-    except ModuleNotFoundError as e:
-        raise ImportError("scipy is required for Savitzky-Golay smoothing") from e
+    savgol_filter = require_savgol_filter()
 
     window_length = int(cfg["window_length"])
     polyorder = int(cfg["polyorder"])
@@ -139,8 +77,7 @@ def _savgol_filter_1d(y: np.ndarray, cfg: dict) -> np.ndarray:
     _validate_savgol_config(cfg, series_len=len(y))
 
     nan_policy = cfg.get("nan_policy", "interp")
-    if nan_policy == "raise" and np.isnan(y).any():
-        raise ValueError("NaN values present; use nan_policy='interp' or 'mask'")
+    require_nan_policy_compatible(y, nan_policy=nan_policy)
 
     if y.size == 0:
         return y
@@ -193,11 +130,7 @@ def _apply_savgol_smoothing(
         return y
 
     if cfg.get("per_segment"):
-        if not segments:
-            raise ValueError("per_segment=True requires segments")
-        seg_nbins = [s.n_bins for s in segments]
-        if sum(seg_nbins) != y.size:
-            raise ValueError("per_segment=True requires profile length equal to total_bins")
+        seg_nbins = require_per_segment_profile(segments, profile_len=y.size)
         out = []
         offset = 0
         for idx, n in enumerate(seg_nbins):
@@ -301,10 +234,7 @@ def compute_discrete_regions(
     segments_total_bins(segments)
 
     data = DiscreteRegionData()
-    query_fn = getattr(reader, "query", None)
-    batches_iter = getattr(reader, "iter_contigs", None)
-    if not callable(query_fn) and not callable(batches_iter):
-        raise AttributeError("reader must implement query(contig) or iter_contigs(contigs)")
+    query_fn, iter_contigs_fn = resolve_reader_accessors(reader)
 
     total = len(contigs_list)
     step = progress_every if progress_every > 0 else 1
@@ -322,16 +252,16 @@ def compute_discrete_regions(
         if idx + 1 == total:
             print()
 
-    if callable(query_fn):
+    if query_fn is not None:
         contig_iter = list(enumerate(contigs_list))
         batch_iter = None
         last_seqname = None
     else:
         contig_iter = list(enumerate(contigs_list))
-        batch_iter = reader.iter_contigs(contigs_list)
+        batch_iter = cast(Callable[[list[object]], object], iter_contigs_fn)(contigs_list)
 
     for idx, contig in contig_iter:
-        if callable(query_fn):
+        if query_fn is not None:
             seqname = getattr(contig, "seqname", None)
             try:
                 seqname = seqname() if callable(seqname) else seqname
@@ -631,8 +561,7 @@ def combine_parts_drd(
     segments: Sequence[Segment],
     parts_order: Sequence[str],
 ) -> DiscreteRegionData:
-    if len(segments) != 3:
-        raise ValueError("combined metagene requires exactly 3 segments (up/body/down)")
+    validate_segments(segments, expected_len=3)
     bounds = segment_boundaries(segments)
     starts = [0.0, bounds[0], bounds[1]]
     ends = [bounds[0], bounds[1], bounds[2]]
@@ -696,6 +625,11 @@ def compute_from_annot(
             segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
         else:
             segments = [Segment("region", 100)]
+    validate_segments(
+        segments,
+        expected_len=3 if combine_parts else None,
+        flank_bp=flank_bp,
+    )
 
     if add_flanks:
         try:

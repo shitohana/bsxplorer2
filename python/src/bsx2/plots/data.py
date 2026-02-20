@@ -6,6 +6,8 @@ try:  # Prefer beartype-aware typing to silence PEP585 warnings
 except Exception:  # pragma: no cover - fallback
     from typing import List, Optional  # type: ignore
 import numpy as np
+from bsx2.guards import require_equal_length
+from bsx2.validation import validate_matrix_shape
 
 # beartype: runtime type checking with value constraints
 try:
@@ -32,7 +34,9 @@ except ModuleNotFoundError:  # graceful fallback if beartype is not installed
 
 # Validators for arrays in [0, 1], 1D, and ordering where required
 def _is_1d_sorted_unit_positions(a: np.ndarray) -> bool:
-    if not isinstance(a, np.ndarray) or a.ndim != 1:
+    try:
+        a = validate_matrix_shape(a, 1, name="positions")
+    except ValueError:
         return False
     if a.size == 0:
         return True
@@ -45,7 +49,9 @@ def _is_1d_sorted_unit_positions(a: np.ndarray) -> bool:
 
 
 def _is_1d_unit_density(a: np.ndarray) -> bool:
-    if not isinstance(a, np.ndarray) or a.ndim != 1:
+    try:
+        a = validate_matrix_shape(a, 1, name="densities")
+    except ValueError:
         return False
     if a.size == 0:
         return True
@@ -77,8 +83,15 @@ class DiscreteRegionData:
         densities: Density1D,
         label: Optional[str] = None,
     ) -> None:
-        if len(positions) != len(densities):
-            raise ValueError("length mismatch between positions and densities")
+        positions = validate_matrix_shape(positions, 1, name="positions")
+        densities = validate_matrix_shape(densities, 1, name="densities")
+        require_equal_length(
+            positions,
+            densities,
+            left_name="positions",
+            right_name="densities",
+            message="length mismatch between positions and densities",
+        )
         self.positions.append(positions.astype(np.float64, copy=False))
         self.densities.append(densities.astype(np.float64, copy=False))
         self.labels.append(label)
