@@ -7,6 +7,7 @@ import numpy as np
 
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import Segment, segments_total_bins
+from bsx2.validation import validate_n_windows, validate_nan_policy
 from ._html_common import _bin_points_windows, _ensure_plotly, _hv_init
 
 
@@ -21,6 +22,8 @@ def _dist_rows(
 ):
     if n_windows is None:
         n_windows = segments_total_bins(segments) if segments else 40
+    else:
+        n_windows = validate_n_windows(n_windows)
     rows = []
     for pos, dens, lbl in zip(drd.positions, drd.densities, drd.labels):
         x = np.asarray(pos, dtype=float)
@@ -56,9 +59,8 @@ def box_html(
     title: Optional[str] = None,
 ) -> str:
     _hv_init()
+    validate_nan_policy(nan_policy)
     if per_region:
-        if nan_policy not in {"drop", "zero", "keep"}:
-            raise ValueError("nan_policy must be 'drop', 'zero', or 'keep'")
         data = []
         for dens, lbl in zip(drd.densities, drd.labels):
             y = np.asarray(dens, dtype=float)
@@ -100,5 +102,4 @@ def box_html(
         xaxis_title=("Region" if per_region else "Metagene position (relative)"),
     )
     return fig.to_html(full_html=full_html, include_plotlyjs=include_js)
-
 

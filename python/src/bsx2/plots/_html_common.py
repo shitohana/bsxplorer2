@@ -6,7 +6,15 @@ import holoviews as hv
 import numpy as np
 import plotly.graph_objects as go
 
+from bsx2.guards import require_equal_length
 from bsx2.plots.metagene import Segment, segments_total_bins
+from bsx2.validation import (
+    validate_matrix_shape,
+    validate_n_windows,
+    validate_nan_policy,
+    validate_segments,
+    validate_window_agg,
+)
 
 
 def _hv_init() -> None:
@@ -27,10 +35,12 @@ def _bin_points_windows(
     agg: str,
     nan_policy: str,
 ) -> np.ndarray:
-    if n_windows <= 0:
-        raise ValueError("n_windows must be > 0")
-    if nan_policy not in {"drop", "zero", "keep"}:
-        raise ValueError("nan_policy must be 'drop', 'zero', or 'keep'")
+    x_vals = validate_matrix_shape(x_vals, 1, name="x_vals")
+    y_vals = validate_matrix_shape(y_vals, 1, name="y_vals")
+    require_equal_length(x_vals, y_vals, left_name="x_vals", right_name="y_vals")
+    n_windows = validate_n_windows(n_windows)
+    validate_nan_policy(nan_policy)
+    agg = validate_window_agg(agg)
 
     bins_values = [[] for _ in range(n_windows)]
     for x, y in zip(x_vals, y_vals):
@@ -86,8 +96,6 @@ def _bin_points_windows(
             else:
                 finite = np.isfinite(arr)
                 out.append(float(np.min(arr[finite])) if finite.any() else np.nan)
-        else:
-            raise ValueError(f"Unsupported agg: {agg}")
     return np.asarray(out, dtype=float)
 
 
@@ -124,6 +132,7 @@ def _segment_decor(
 ) -> None:
     if not segments:
         return
+    validate_segments(segments)
     boundaries = []
     centers = []
     labels = []
@@ -161,5 +170,3 @@ def _segment_decor_rel(fig, segments: list[Segment] | None, *, annotate_tss_tes:
 
 def _segment_decor_bin(fig, segments: list[Segment] | None, *, annotate_tss_tes: bool = False) -> None:
     _segment_decor(fig, segments, annotate_tss_tes=annotate_tss_tes, scale=float)
-
-

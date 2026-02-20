@@ -7,6 +7,7 @@ import holoviews as hv
 import numpy as np
 
 from bsx2.plots.data import DiscreteRegionData
+from bsx2.validation import validate_n_windows
 from bsx2.plots.metagene import (
     Segment,
     _apply_savgol_smoothing,
@@ -31,6 +32,8 @@ def _line_profile(
 ):
     if n_windows is None:
         n_windows = segments_total_bins(segments) if segments else 40
+    else:
+        n_windows = validate_n_windows(n_windows)
     x_out = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
 
     streams = []

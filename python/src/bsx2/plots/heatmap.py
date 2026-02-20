@@ -7,6 +7,12 @@ import plotly.graph_objects as go
 
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import Segment, segment_boundaries, segments_total_bins
+from bsx2.validation import (
+    validate_n_windows,
+    validate_positive_int,
+    validate_rank_score,
+    validate_sort_order,
+)
 from ._html_common import (
     _bin_points_windows,
     _hv_init,
@@ -24,6 +30,8 @@ def _heatmap_matrix(
 ):
     if n_windows is None:
         n_windows = segments_total_bins(segments) if segments else 40
+    else:
+        n_windows = validate_n_windows(n_windows)
 
     rows = []
     labels = []
@@ -68,14 +76,15 @@ def heatmap_html(
     vmax_q: float | None = 0.995,
 ) -> str:
     _hv_init()
-    if rank_score not in {"mean", "body_mean"}:
-        raise ValueError("rank_score must be 'mean' or 'body_mean'")
-    if sort_order not in {"asc", "desc"}:
-        raise ValueError("sort_order must be 'asc' or 'desc'")
+    rank_score = validate_rank_score(rank_score)
+    sort_order = validate_sort_order(sort_order)
+    rank_rows = validate_positive_int(rank_rows, name="rank_rows")
     if segments is None:
         segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
     if n_windows is None:
         n_windows = segments_total_bins(segments)
+    else:
+        n_windows = validate_n_windows(n_windows)
 
     z, _, bins = _heatmap_matrix(
         drd,
