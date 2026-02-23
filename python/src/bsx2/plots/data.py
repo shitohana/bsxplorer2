@@ -160,8 +160,6 @@ class DiscreteRegionData:
         densities: Density1D,
         label: Optional[str] = None,
     ) -> None:
-        positions = validate_matrix_shape(positions, 1, name="positions")
-        densities = validate_matrix_shape(densities, 1, name="densities")
         require_equal_length(
             positions,
             densities,
@@ -169,6 +167,13 @@ class DiscreteRegionData:
             right_name="densities",
             message="length mismatch between positions and densities",
         )
-        self.positions.append(positions.astype(np.float64, copy=False))
-        self.densities.append(densities.astype(np.float64, copy=False))
+
+        pos = np.asarray(positions, dtype=np.float64)
+        den = np.asarray(densities, dtype=np.float64)
+
+        pos.setflags(write=False)
+        den.setflags(write=False)
+
+        self.positions.append(pos)
+        self.densities.append(den)
         self.labels.append(label)
