@@ -84,6 +84,7 @@ def line_plot(
     width: int | None = None,
     height: int | None = None,
 ) -> hv.Curve:
+    agg = validate_window_agg(agg)
     if segments is None:
         segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
     if n_windows is None:
