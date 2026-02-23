@@ -28,7 +28,7 @@ def _ensure_plotly(fig):
     return go.Figure(fig)
 
 
-def _bin_points_windows(
+def _bin_points_windows_fast(
     x_vals: np.ndarray,
     y_vals: np.ndarray,
     *,
@@ -43,57 +43,57 @@ def _bin_points_windows(
     nan_policy = validate_nan_policy(nan_policy)
     agg = validate_window_agg(agg)
 
-    bins_values = [[] for _ in range(n_windows)]
-    for x, y in zip(x_vals, y_vals):
-        if nan_policy is NanPolicy.ZERO and not np.isfinite(y):
-            y = 0.0
-        if nan_policy is NanPolicy.DROP and not np.isfinite(y):
-            continue
-        idx = int(x * n_windows)
-        if idx == n_windows:
-            idx = n_windows - 1
-        if 0 <= idx < n_windows:
-            bins_values[idx].append(y)
+    x = np.asarray(x_vals, dtype=np.float64)
+    y = np.asarray(y_vals, dtype=np.float64)
 
-    out = []
-    for vals in bins_values:
-        if not vals:
-            out.append(np.nan)
-            continue
-        arr = np.asarray(vals, dtype=float)
-        if agg == "mean":
-            if nan_policy == "drop":
-                out.append(float(np.nanmean(arr)))
-            elif nan_policy == "zero":
-                out.append(float(np.mean(arr)))
-            else:
-                finite = np.isfinite(arr)
-                out.append(float(np.mean(arr[finite])) if finite.any() else np.nan)
-        elif agg == "median":
-            if nan_policy == "drop":
-                out.append(float(np.nanmedian(arr)))
-            elif nan_policy == "zero":
-                out.append(float(np.median(arr)))
-            else:
-                finite = np.isfinite(arr)
-                out.append(float(np.median(arr[finite])) if finite.any() else np.nan)
-        elif agg == "max":
-            if nan_policy == "drop":
-                out.append(float(np.nanmax(arr)))
-            elif nan_policy == "zero":
-                out.append(float(np.max(arr)))
-            else:
-                finite = np.isfinite(arr)
-                out.append(float(np.max(arr[finite])) if finite.any() else np.nan)
-        elif agg == "min":
-            if nan_policy == "drop":
-                out.append(float(np.nanmin(arr)))
-            elif nan_policy == "zero":
-                out.append(float(np.min(arr)))
-            else:
-                finite = np.isfinite(arr)
-                out.append(float(np.min(arr[finite])) if finite.any() else np.nan)
-    return np.asarray(out, dtype=float)
+    # NaN/Inf handling once
+    if nan_policy is NanPolicy.ZERO:
+        y = np.where(np.isfinite(y), y, 0.0)
+    else:  # KEEP / DROP -> same effective behavior as in your code
+        m = np.isfinite(y)
+        x = x[m]
+        y = y[m]
+
+    out = np.full(n_windows, np.nan, dtype=np.float64)
+    if y.size == 0:
+        return out
+
+    # x is assumed in [0, 1]; x == 1 maps to last bin
+    idx = (x * n_windows).astype(np.int64)
+    idx[idx == n_windows] = n_windows - 1
+
+    # Counts are useful for all aggs (to restore NaN on empty bins)
+    counts = np.bincount(idx, minlength=n_windows)
+
+    if agg == "mean":
+        sums = np.bincount(idx, weights=y, minlength=n_windows)
+        nonempty = counts > 0
+        out[nonempty] = sums[nonempty] / counts[nonempty]
+        return out
+
+    if agg == "min":
+        tmp = np.full(n_windows, np.inf, dtype=np.float64)
+        np.minimum.at(tmp, idx, y)
+        tmp[counts == 0] = np.nan
+        return tmp
+
+    if agg == "max":
+        tmp = np.full(n_windows, -np.inf, dtype=np.float64)
+        np.maximum.at(tmp, idx, y)
+        tmp[counts == 0] = np.nan
+        return tmp
+
+    if agg == "median":
+        # Median is harder to vectorize efficiently in pure NumPy.
+        cuts = np.flatnonzero(np.diff(idx)) + 1
+        y_groups = np.split(y, cuts)
+        bin_ids = idx[np.r_[0, cuts]]
+
+        for b, g in zip(bin_ids, y_groups):
+            out[int(b)] = float(np.median(g))
+        return out
+
+    raise ValueError(f"unsupported agg: {agg}")
 
 
 def _rank_compress(z_sorted: np.ndarray, rank_rows: int, *, fill: float | None = 0.0) -> np.ndarray:
