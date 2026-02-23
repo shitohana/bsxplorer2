@@ -74,14 +74,13 @@ def _savgol_filter_1d(y: np.ndarray, cfg: dict) -> np.ndarray:
     mode = cfg.get("mode", "interp")
     cval = cfg.get("cval", 0.0)
 
-    _validate_savgol_config(cfg, series_len=len(y))
-
-    nan_policy = cfg.get("nan_policy", "interp")
-    require_nan_policy_compatible(y, nan_policy=nan_policy)
 
     if y.size == 0:
         return y
 
+    nan_policy = cfg.get("nan_policy", "interp")
+    _validate_savgol_config(cfg, series_len=len(y))
+    require_nan_policy_compatible(y, nan_policy=nan_policy)
     if nan_policy == "interp":
         if np.all(np.isnan(y)):
             return y
@@ -133,9 +132,8 @@ def _apply_savgol_smoothing(
         seg_nbins = require_per_segment_profile(segments, profile_len=y.size)
         out = []
         offset = 0
-        for idx, n in enumerate(seg_nbins):
+        for n in seg_nbins:
             seg = y[offset : offset + n]
-            _validate_savgol_config(cfg, series_len=len(seg), label=f"segment {idx}")
             out.append(_savgol_filter_1d(seg, cfg))
             offset += n
         return np.concatenate(out) if out else y
@@ -187,8 +185,8 @@ def compute_discrete_regions(
         RegionReader that implements ``iter_contigs``.
     contigs
         Contigs to extract.
-    segments
-        Segmentation scheme (default single ``Segment("region", 100)``).
+    MetageneProfileSegments
+        Segmentation scheme (default single ``MetageneProfileSegment("region", 100)``).
     reverse_negative
         Flip negative-strand profiles if True.
     labels
@@ -231,7 +229,6 @@ def compute_discrete_regions(
                 new_labels.append(q.popleft() if q else None)
             labels = new_labels
     contigs_list = sorted_contigs
-    segments_total_bins(segments)
 
     data = DiscreteRegionData()
     query_fn, iter_contigs_fn = resolve_reader_accessors(reader)
