@@ -6,7 +6,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from bsx2.plots.data import DiscreteRegionData
-from bsx2.plots.metagene import Segment, segment_boundaries, segments_total_bins
+from bsx2.plots.metagene import MetageneProfileSegment, segment_boundaries, segments_total_bins
 from bsx2.validation import (
     validate_n_windows,
     validate_positive_int,
@@ -24,7 +24,7 @@ from ._common import (
 def _heatmap_matrix(
     drd: DiscreteRegionData,
     *,
-    segments: list[Segment] | None = None,
+    segments: list[MetageneProfileSegment] | None = None,
     n_windows: Optional[int] = None,
     nan_fill: Optional[float] = None,
 ):
@@ -61,7 +61,7 @@ def _heatmap_matrix(
 def heatmap_html(
     drd: DiscreteRegionData,
     *,
-    segments: list[Segment] | None = None,
+    segments: list[MetageneProfileSegment] | None = None,
     n_windows: int | None = None,
     rank_rows: int = 100,
     rank_score: str = "mean",
@@ -80,7 +80,7 @@ def heatmap_html(
     sort_order = validate_sort_order(sort_order)
     rank_rows = validate_positive_int(rank_rows, name="rank_rows")
     if segments is None:
-        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+        segments = [MetageneProfileSegment("up", 100), MetageneProfileSegment("body", 200), MetageneProfileSegment("down", 100)]
     if n_windows is None:
         n_windows = segments_total_bins(segments)
     else:

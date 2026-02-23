@@ -18,17 +18,17 @@ from bsx2.validation import validate_segments, validate_smoothing
 
 
 @dataclass(frozen=True)
-class Segment:
+class MetageneProfileSegment:
     """Metagene segment definition (name + bin count)."""
 
     name: str
     n_bins: int
 
 
-_DEFAULT_SEGMENTS: tuple[Segment, ...] = (Segment("region", 100),)
+_DEFAULT_SEGMENTS: tuple[MetageneProfileSegment, ...] = (MetageneProfileSegment("region", 100),)
 
 
-def segments_total_bins(segments: Sequence[Segment]) -> int:
+def segments_total_bins(segments: Sequence[MetageneProfileSegment]) -> int:
     """Return total bin count for all segments.
 
     Raises
@@ -39,7 +39,7 @@ def segments_total_bins(segments: Sequence[Segment]) -> int:
     return validate_segments(segments)
 
 
-def segment_boundaries(segments: Sequence[Segment]) -> List[float]:
+def segment_boundaries(segments: Sequence[MetageneProfileSegment]) -> List[float]:
     total = segments_total_bins(segments)
     cum = 0
     bounds: List[float] = []
@@ -122,7 +122,7 @@ def _apply_savgol_smoothing(
     y: np.ndarray,
     cfg: dict,
     *,
-    segments: Sequence[Segment] | None = None,
+    segments: Sequence[MetageneProfileSegment] | None = None,
 ) -> np.ndarray:
     if not isinstance(y, np.ndarray):
         y = np.asarray(y, dtype=float)
@@ -173,7 +173,7 @@ def compute_discrete_regions(
     reader: _io.RegionReader,
     contigs: Sequence,
     *,
-    segments: Sequence[Segment] = _DEFAULT_SEGMENTS,
+    segments: Sequence[MetageneProfileSegment] = _DEFAULT_SEGMENTS,
     reverse_negative: bool = True,
     labels: Optional[Sequence[str]] = None,
     progress: bool = False,
@@ -558,7 +558,7 @@ def collect_parts_from_hcannot(
 def combine_parts_drd(
     drd_map: dict[str, DiscreteRegionData],
     *,
-    segments: Sequence[Segment],
+    segments: Sequence[MetageneProfileSegment],
     parts_order: Sequence[str],
 ) -> DiscreteRegionData:
     validate_segments(segments, expected_len=3)
@@ -604,7 +604,7 @@ def compute_from_annot(
     reader: _io.RegionReader,
     annot,
     *,
-    segments: list[Segment] | None = None,
+    segments: list[MetageneProfileSegment] | None = None,
     feature_type: str | None = None,
     reverse_negative: bool = True,
     labels: list[str] | None = None,
@@ -622,9 +622,9 @@ def compute_from_annot(
     """
     if segments is None:
         if combine_parts:
-            segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+            segments = [MetageneProfileSegment("up", 100), MetageneProfileSegment("body", 200), MetageneProfileSegment("down", 100)]
         else:
-            segments = [Segment("region", 100)]
+            segments = [MetageneProfileSegment("region", 100)]
     validate_segments(
         segments,
         expected_len=3 if combine_parts else None,
