@@ -13,7 +13,7 @@ from bsx2.validation import (
     validate_rank_score,
     validate_sort_order,
 )
-from ._html_common import (
+from ._common import (
     _bin_points_windows,
     _hv_init,
     _rank_compress,

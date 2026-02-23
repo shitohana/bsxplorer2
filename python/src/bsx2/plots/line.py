@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from typing import Optional
-import heapq
-
 import holoviews as hv
 import numpy as np
-
+import warnings
 from bsx2.plots.data import DiscreteRegionData
-from bsx2.validation import validate_n_windows
+from bsx2.validation import validate_n_windows, validate_window_agg
 from bsx2.plots.metagene import (
     Segment,
     _apply_savgol_smoothing,
@@ -15,12 +13,7 @@ from bsx2.plots.metagene import (
     _coerce_smooth_config,
     segments_total_bins,
 )
-from ._html_common import (
-    _bin_points_windows,
-    _ensure_plotly,
-    _hv_init,
-    _segment_decor_rel,
-)
+from ._common import _bin_points_windows_fast
 
 
 def _line_profile(
@@ -29,55 +22,68 @@ def _line_profile(
     segments: list[Segment] | None = None,
     n_windows: Optional[int] = None,
     nan_fill: Optional[float] = None,
+    agg: str = "mean",
 ):
     if n_windows is None:
         n_windows = segments_total_bins(segments) if segments else 40
     else:
         n_windows = validate_n_windows(n_windows)
+
+    agg = validate_window_agg(agg)
+
     x_out = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
 
-    streams = []
+    xs_parts: list[np.ndarray] = []
+    ys_parts: list[np.ndarray] = []
+
     for pos, dens in zip(drd.positions, drd.densities):
-        x = np.asarray(pos, dtype=float)
-        y = np.asarray(dens, dtype=float)
+        x = np.asarray(pos, dtype=np.float64)
+        y = np.asarray(dens, dtype=np.float64)
+
+        if x.size == 0:
+            continue
+
         if nan_fill is not None:
+           
             y = np.where(np.isnan(y), nan_fill, y)
-        pts = list(zip(x.tolist(), y.tolist()))
-        pts.sort(key=lambda t: t[0])
-        streams.append(pts)
 
-    if not streams:
-        return np.array([]), np.array([])
+        xs_parts.append(x)
+        ys_parts.append(y)
 
-    merged = heapq.merge(*streams, key=lambda t: t[0])
-    xs = []
-    ys = []
-    for x, y in merged:
-        xs.append(x)
-        ys.append(y)
-    y_out = _bin_points_windows(
-        np.asarray(xs),
-        np.asarray(ys),
+    if not xs_parts:
+        empty = np.array([], dtype=np.float64)
+        return empty, empty
+
+
+    x_all = np.concatenate(xs_parts)
+    y_all = np.concatenate(ys_parts)
+
+    
+    if agg == "median":
+        order = np.argsort(x_all, kind="mergesort")  
+        x_all = x_all[order]
+        y_all = y_all[order]
+
+    y_out = _bin_points_windows_fast(
+        x_all,
+        y_all,
         n_windows=n_windows,
-        agg="mean",
+        agg=agg,
         nan_policy="keep",
     )
     return x_out, y_out
 
-
-def line_html(
+def line_plot(
     drd: DiscreteRegionData,
     *,
     segments: list[Segment] | None = None,
     n_windows: Optional[int] = None,
+    agg: str = "mean",
     smooth: dict | int | None = 50,
-    full_html: bool = False,
-    include_js: str = "cdn",
     title: Optional[str] = None,
     width: int | None = None,
     height: int | None = None,
-) -> str:
-    _hv_init()
+) -> hv.Curve:
     if segments is None:
         segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
     if n_windows is None:
@@ -88,9 +94,16 @@ def line_html(
         segments=segments,
         n_windows=n_windows,
         nan_fill=None,
+        agg=agg,
     )
-
-    if smooth is not None and y.size > 0:
+    if smooth is not None and agg in {"min", "max"}:
+        warnings.warn(
+            f"smooth={smooth!r} ignored for agg={agg!r}; smoothing is only applied to mean/median",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    # Smoothing is applied only to mean/median profiles.
+    if smooth is not None and y.size > 0 and agg in {"mean", "median"}:
         total_bins = segments_total_bins(segments)
         smooth_cfg = _coerce_smooth_config(smooth, total_bins=total_bins)
         if smooth_cfg is not None:
@@ -100,24 +113,20 @@ def line_html(
             y = y_scaled
 
     if x.size == 0 or y.size == 0:
-        return _ensure_plotly(hv.render(hv.Curve([]), backend="plotly")).to_html(
-            full_html=full_html,
-            include_plotlyjs=include_js,
-        )
+        curve = hv.Curve([])
+    else:
+        curve = hv.Curve((x, y), kdims="relative position", vdims="density")
 
-    curve = hv.Curve((x, y), kdims="relative position", vdims="density").opts(
+    opts_kwargs = dict(
         xlabel="Metagene position (relative)",
-        ylabel="Mean methylation density",
+        ylabel=f"{agg.capitalize()} methylation density",
         show_legend=False,
-    )
-    fig = _ensure_plotly(hv.render(curve, backend="plotly"))
-    _segment_decor_rel(fig, segments, annotate_tss_tes=True)
-    fig.update_layout(
-        height=600 if height is None else int(height),
-        width=1000 if width is None else int(width),
-        margin=dict(l=70, r=30, t=60, b=70),
         title=title or "Metagene profile - Line",
     )
-    return fig.to_html(full_html=full_html, include_plotlyjs=include_js)
+    if width is not None:
+        opts_kwargs["width"] = int(width)
+    if height is not None:
+        opts_kwargs["height"] = int(height)
 
+    return curve.opts(**opts_kwargs)
 

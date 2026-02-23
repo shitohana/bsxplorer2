@@ -8,7 +8,7 @@ import numpy as np
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import Segment, segments_total_bins
 from bsx2.validation import validate_n_windows, validate_nan_policy
-from ._html_common import _bin_points_windows, _ensure_plotly, _hv_init
+from ._common import _bin_points_windows, _ensure_plotly, _hv_init
 
 
 def _dist_rows(
