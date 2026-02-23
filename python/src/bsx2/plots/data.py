@@ -1,10 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 
-try:  # Prefer beartype-aware typing to silence PEP585 warnings
-    from beartype.typing import List, Optional  # type: ignore
-except Exception:  # pragma: no cover - fallback
-    from typing import List, Optional  # type: ignore
+from typing import List, Optional
+
 import numpy as np
 from bsx2.guards import require_equal_length
 from bsx2.validation import validate_matrix_shape
