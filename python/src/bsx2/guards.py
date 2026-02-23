@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, Sequence
 
-try:
-    import numpy as np  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - optional for non-plot usage
-    np = None  # type: ignore
+import numpy as np
 
 
 def require_equal_length(
