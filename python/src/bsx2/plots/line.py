@@ -7,7 +7,7 @@ import warnings
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.validation import validate_n_windows, validate_window_agg
 from bsx2.plots.metagene import (
-    Segment,
+    MetageneProfileSegment,
     _apply_savgol_smoothing,
     _clip_profile,
     _coerce_smooth_config,
@@ -19,7 +19,7 @@ from ._common import _bin_points_windows_fast
 def _line_profile(
     drd: DiscreteRegionData,
     *,
-    segments: list[Segment] | None = None,
+    segments: list[MetageneProfileSegment] | None = None,
     n_windows: Optional[int] = None,
     nan_fill: Optional[float] = None,
     agg: str = "mean",
@@ -76,7 +76,7 @@ def _line_profile(
 def line_plot(
     drd: DiscreteRegionData,
     *,
-    segments: list[Segment] | None = None,
+    segments: list[MetageneProfileSegment] | None = None,
     n_windows: Optional[int] = None,
     agg: str = "mean",
     smooth: dict | int | None = 50,
@@ -86,7 +86,7 @@ def line_plot(
 ) -> hv.Curve:
     agg = validate_window_agg(agg)
     if segments is None:
-        segments = [Segment("up", 100), Segment("body", 200), Segment("down", 100)]
+        segments = [MetageneProfileSegment("up", 100), MetageneProfileSegment("body", 200), MetageneProfileSegment("down", 100)]
     if n_windows is None:
         n_windows = segments_total_bins(segments)
 

@@ -1,5 +1,5 @@
 from .metagene import (
-    Segment,
+    MetageneProfileSegment,
     segments_total_bins,
     segment_boundaries,
     collect_contigs_from_hcannot,
@@ -12,7 +12,7 @@ from .box import box_html
 from .violin import violin_html
 
 __all__ = [
-    "Segment",
+    "MetageneProfileSegment",
     "segments_total_bins",
     "segment_boundaries",
     "collect_contigs_from_hcannot",

@@ -7,7 +7,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from bsx2.guards import require_equal_length
-from bsx2.plots.metagene import Segment, segments_total_bins
+from bsx2.plots.metagene import MetageneProfileSegment, segments_total_bins
 from bsx2.validation import (
     validate_matrix_shape,
     validate_n_windows,
@@ -135,7 +135,7 @@ def _rank_compress(z_sorted: np.ndarray, rank_rows: int, *, fill: float | None =
 
 def _segment_decor(
     fig,
-    segments: list[Segment] | None,
+    segments: list[MetageneProfileSegment] | None,
     *,
     annotate_tss_tes: bool = False,
     scale: Callable[[float], float],
@@ -171,12 +171,12 @@ def _segment_decor(
         fig.add_annotation(x=last, y=1.02, xref="x", yref="paper", text="TES", showarrow=False, font=dict(size=10))
 
 
-def _segment_decor_rel(fig, segments: list[Segment] | None, *, annotate_tss_tes: bool = False) -> None:
+def _segment_decor_rel(fig, segments: list[MetageneProfileSegment] | None, *, annotate_tss_tes: bool = False) -> None:
     if not segments:
         return
     total = float(segments_total_bins(segments))
     _segment_decor(fig, segments, annotate_tss_tes=annotate_tss_tes, scale=lambda v: v / total)
 
 
-def _segment_decor_bin(fig, segments: list[Segment] | None, *, annotate_tss_tes: bool = False) -> None:
+def _segment_decor_bin(fig, segments: list[MetageneProfileSegment] | None, *, annotate_tss_tes: bool = False) -> None:
     _segment_decor(fig, segments, annotate_tss_tes=annotate_tss_tes, scale=float)

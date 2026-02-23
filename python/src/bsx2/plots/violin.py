@@ -6,7 +6,7 @@ import holoviews as hv
 import numpy as np
 
 from bsx2.plots.data import DiscreteRegionData
-from bsx2.plots.metagene import Segment, segments_total_bins
+from bsx2.plots.metagene import MetageneProfileSegment, segments_total_bins
 from bsx2.validation import validate_n_windows, validate_nan_policy
 from ._common import _bin_points_windows, _ensure_plotly, _hv_init
 
@@ -16,7 +16,7 @@ def _dist_rows(
     *,
     as_percent: bool = False,
     nan_fill: Optional[float] = None,
-    segments: list[Segment] | None = None,
+    segments: list[MetageneProfileSegment] | None = None,
     n_windows: Optional[int] = None,
     nan_policy: str = "drop",
 ):
@@ -48,7 +48,7 @@ def _dist_rows(
 def violin_html(
     drd: DiscreteRegionData,
     *,
-    segments: list[Segment] | None = None,
+    segments: list[MetageneProfileSegment] | None = None,
     n_windows: Optional[int] = None,
     as_percent: bool = True,
     nan_fill: Optional[float] = None,
