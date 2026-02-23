@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from enum import StrEnum
 import math
 from typing import Sequence
 
@@ -8,7 +8,11 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional for non-plot usage
     np = None  # type: ignore
 
-_NAN_POLICIES = {"drop", "zero", "keep"}
+class NanPolicy(StrEnum):
+    KEEP = "keep"
+    ZERO = "zero"
+    DROP = "drop"
+
 _SMOOTH_MODES = {"interp", "nearest", "mirror", "constant", "wrap"}
 _SMOOTH_NAN_POLICIES = {"interp", "mask", "raise"}
 _CONTEXT_VALUES = {"CG", "CHG", "CHH"}
@@ -31,11 +35,10 @@ def _make_odd(n: int) -> int:
     return n + 1 if n % 2 == 0 else n
 
 
-def validate_nan_policy(nan_policy: str) -> str:
-    if nan_policy not in _NAN_POLICIES:
-        raise ValueError("nan_policy must be 'drop', 'zero', or 'keep'")
+def validate_nan_policy(nan_policy: object) -> NanPolicy:
+    if not isinstance(nan_policy, NanPolicy):
+        raise ValueError("nan_policy must be a NanPolicy value")
     return nan_policy
-
 
 def validate_positive_int(value: object, *, name: str, allow_zero: bool = False) -> int:
     if np is not None and isinstance(value, np.integer):

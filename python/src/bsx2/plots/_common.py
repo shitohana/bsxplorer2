@@ -14,6 +14,7 @@ from bsx2.validation import (
     validate_nan_policy,
     validate_segments,
     validate_window_agg,
+    NanPolicy,
 )
 
 
@@ -33,7 +34,7 @@ def _bin_points_windows(
     *,
     n_windows: int,
     agg: str,
-    nan_policy: str,
+    nan_policy: NanPolicy,
 ) -> np.ndarray:
     x_vals = validate_matrix_shape(x_vals, 1, name="x_vals")
     y_vals = validate_matrix_shape(y_vals, 1, name="y_vals")
@@ -48,9 +49,9 @@ def _bin_points_windows(
             continue
         if x < 0.0 or x > 1.0:
             continue
-        if nan_policy == "zero" and not np.isfinite(y):
+        if nan_policy is NanPolicy.ZERO and not np.isfinite(y):
             y = 0.0
-        if nan_policy == "drop" and not np.isfinite(y):
+        if nan_policy is NanPolicy.DROP and not np.isfinite(y):
             continue
         idx = int(x * n_windows)
         if idx == n_windows:
