@@ -40,15 +40,11 @@ def _bin_points_windows(
     y_vals = validate_matrix_shape(y_vals, 1, name="y_vals")
     require_equal_length(x_vals, y_vals, left_name="x_vals", right_name="y_vals")
     n_windows = validate_n_windows(n_windows)
-    validate_nan_policy(nan_policy)
+    nan_policy = validate_nan_policy(nan_policy)
     agg = validate_window_agg(agg)
 
     bins_values = [[] for _ in range(n_windows)]
     for x, y in zip(x_vals, y_vals):
-        if not np.isfinite(x):
-            continue
-        if x < 0.0 or x > 1.0:
-            continue
         if nan_policy is NanPolicy.ZERO and not np.isfinite(y):
             y = 0.0
         if nan_policy is NanPolicy.DROP and not np.isfinite(y):
