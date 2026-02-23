@@ -1,17 +1,14 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
 
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import  Annotated, List, Optional
 
 import numpy as np
-from bsx2.guards import require_equal_length
-from bsx2.validation import validate_matrix_shape
-
-# beartype: runtime type checking with value constraints
 from beartype import beartype
 from beartype.vale import Is
-from typing import Annotated
 
+from bsx2.guards import require_equal_length
+from bsx2.validation import validate_matrix_shape
 # Validators for arrays in [0, 1], 1D, and ordering where required
 def _is_1d_sorted_unit_positions(a: np.ndarray) -> bool:
     try:
