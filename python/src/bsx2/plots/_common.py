@@ -62,10 +62,8 @@ def _bin_points_windows_fast(
     idx = (x * n_windows).astype(np.int64)
     idx[idx == n_windows] = n_windows - 1
 
-    # Counts are useful for all aggs (to restore NaN on empty bins)
-    counts = np.bincount(idx, minlength=n_windows)
-
     if agg == "mean":
+        counts = np.bincount(idx, minlength=n_windows)
         sums = np.bincount(idx, weights=y, minlength=n_windows)
         nonempty = counts > 0
         out[nonempty] = sums[nonempty] / counts[nonempty]
@@ -74,13 +72,13 @@ def _bin_points_windows_fast(
     if agg == "min":
         tmp = np.full(n_windows, np.inf, dtype=np.float64)
         np.minimum.at(tmp, idx, y)
-        tmp[counts == 0] = np.nan
+        tmp[tmp == np.inf] = np.nan   # empty bins stayed untouched
         return tmp
 
     if agg == "max":
         tmp = np.full(n_windows, -np.inf, dtype=np.float64)
         np.maximum.at(tmp, idx, y)
-        tmp[counts == 0] = np.nan
+        tmp[tmp == -np.inf] = np.nan  # empty bins stayed untouched
         return tmp
 
     if agg == "median":
@@ -99,23 +97,38 @@ def _bin_points_windows_fast(
 def _rank_compress(z_sorted: np.ndarray, rank_rows: int, *, fill: float | None = 0.0) -> np.ndarray:
     if z_sorted.ndim != 2:
         return z_sorted
+
     n_rows, n_bins = z_sorted.shape
     if n_rows == 0:
         return np.empty((0, n_bins), dtype=float)
+
     rows = max(int(rank_rows), 1)
+
     sums = np.zeros((rows, n_bins), dtype=float)
     cnts = np.zeros((rows, n_bins), dtype=np.int32)
-    for i in range(n_rows):
-        ridx = int(i * rows / n_rows)
-        row = z_sorted[i]
-        finite = np.isfinite(row)
-        if np.any(finite):
-            sums[ridx, finite] += row[finite]
-            cnts[ridx, finite] += 1
+
+    k = np.arange(rows + 1, dtype=np.int64)
+    bounds = (k * n_rows + rows - 1) // rows  # ceil(k * n_rows / rows)
+
+    for b in range(rows):
+        s = int(bounds[b])
+        e = int(bounds[b + 1])
+        if s >= e:  
+            continue
+
+        block = z_sorted[s:e] 
+        finite = np.isfinite(block)
+        if not finite.any():
+            continue
+
+        sums[b] = np.where(finite, block, 0.0).sum(axis=0)
+        cnts[b] = finite.sum(axis=0, dtype=np.int32)
+
     if fill is None:
         out = np.full((rows, n_bins), np.nan, dtype=float)
     else:
         out = np.full((rows, n_bins), float(fill), dtype=float)
+
     np.divide(sums, cnts, out=out, where=(cnts > 0))
     return out
 
