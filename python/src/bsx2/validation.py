@@ -2,11 +2,9 @@ from __future__ import annotations
 from enum import StrEnum
 import math
 from typing import Sequence
+from bsx2 import Strand, Context, AggMethod
 
-try:
-    import numpy as np  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - optional for non-plot usage
-    np = None  # type: ignore
+import numpy as np
 
 class NanPolicy(StrEnum):
     KEEP = "keep"
@@ -15,19 +13,30 @@ class NanPolicy(StrEnum):
 
 _SMOOTH_MODES = {"interp", "nearest", "mirror", "constant", "wrap"}
 _SMOOTH_NAN_POLICIES = {"interp", "mask", "raise"}
-_CONTEXT_VALUES = {"CG", "CHG", "CHH"}
-_WINDOW_AGG_VALUES = {"mean", "median", "max", "min"}
 _RANK_SCORE_VALUES = {"mean", "body_mean"}
 _SORT_ORDER_VALUES = {"asc", "desc"}
-_STRAND_ALIASES = {
-    "+": "+",
-    "-": "-",
-    "both": "both",
-    "all": "both",
-    "forward": "+",
-    "reverse": "-",
-    "f": "+",
-    "r": "-",
+_CONTEXT_ALIASES: dict[str, Context] = {
+    "CG": Context.CG,
+    "CHG": Context.CHG,
+    "CHH": Context.CHH,
+}
+
+_STRAND_ALIASES: dict[str, Strand] = {
+    "+": Strand.Forward,
+    "-": Strand.Reverse,
+    "both": Strand.Null,
+    "all": Strand.Null,
+    "forward": Strand.Forward,
+    "reverse": Strand.Reverse,
+    "f": Strand.Forward,
+    "r": Strand.Reverse,
+}
+
+_WINDOW_AGG_ALIASES: dict[str, AggMethod] = {
+    "mean": AggMethod.Mean,
+    "median": AggMethod.Median,
+    "max": AggMethod.Max,
+    "min": AggMethod.Min,
 }
 
 
@@ -58,11 +67,17 @@ def validate_n_windows(n_windows: object) -> int:
     return validate_positive_int(n_windows, name="n_windows")
 
 
-def validate_window_agg(agg: object) -> str:
+def validate_window_agg(agg: object) -> AggMethod:
+    if isinstance(agg, AggMethod):
+        if agg is AggMethod.GeometricMean:
+            raise ValueError("agg must be one of: mean, median, max, min")
+        return agg
+
     text = str(agg).strip().lower()
-    if text not in _WINDOW_AGG_VALUES:
-        raise ValueError("agg must be one of: mean, median, max, min")
-    return text
+    try:
+        return _WINDOW_AGG_ALIASES[text]
+    except KeyError as e:
+        raise ValueError("agg must be one of: mean, median, max, min") from e
 
 
 def validate_rank_score(rank_score: object) -> str:
@@ -219,16 +234,22 @@ def validate_matrix_shape(
     return arr
 
 
-def _normalize_context_value(value: object) -> str:
+
+def _normalize_context_value(value: object) -> Context:
+    if isinstance(value, Context):
+        return value
+
     if hasattr(value, "name"):
         value = getattr(value, "name")
+
     text = str(value).strip().upper()
-    if text not in _CONTEXT_VALUES:
-        raise ValueError("context must be CG, CHG, CHH or a list of these values")
-    return text
+    try:
+        return _CONTEXT_ALIASES[text]
+    except KeyError as e:
+        raise ValueError("context must be CG, CHG, CHH or a list of these values") from e
 
 
-def validate_context(context: object) -> str | list[str]:
+def validate_context(context: object) -> Context | list[Context]:
     if isinstance(context, (list, tuple, set)):
         values = [_normalize_context_value(v) for v in context]
         if not values:
@@ -237,14 +258,18 @@ def validate_context(context: object) -> str | list[str]:
     return _normalize_context_value(context)
 
 
-def validate_strand(strand: object, *, allow_both: bool = True) -> str:
-    if hasattr(strand, "name"):
-        strand = getattr(strand, "name")
-    text = str(strand).strip().lower()
-    normalized = _STRAND_ALIASES.get(text)
-    if normalized is None:
-        raise ValueError("strand must be '+', '-', or 'both'")
-    if not allow_both and normalized == "both":
+def validate_strand(strand: object, *, allow_both: bool = True) -> Strand:
+    if isinstance(strand, Strand):
+        normalized = strand
+    else:
+        if hasattr(strand, "name"):
+            strand = getattr(strand, "name")
+        text = str(strand).strip().lower()
+        normalized = _STRAND_ALIASES.get(text)
+        if normalized is None:
+            raise ValueError("strand must be '+', '-', or 'both'")
+
+    if not allow_both and normalized is Strand.Null:
         raise ValueError("strand must be '+' or '-'")
     return normalized
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 import warnings
-
+from bsx2 import AggMethod
 import holoviews as hv
 import numpy as np
 
@@ -25,7 +25,7 @@ def _line_profile(
     segments: list[MetageneProfileSegment] | None = None,
     n_windows: Optional[int] = None,
     nan_policy: NanPolicy = NanPolicy.KEEP,
-    agg: str = "mean",
+    agg: AggMethod = AggMethod.Mean,
 ) -> tuple[np.ndarray, np.ndarray]:
     if n_windows is None:
         n_windows = segments_total_bins(segments) if segments else 40
@@ -54,7 +54,7 @@ def _line_profile(
     x_all = np.concatenate(xs_parts)
     y_all = np.concatenate(ys_parts)
 
-    if agg == "median":
+    if agg is AggMethod.Median:
         order = np.argsort(x_all, kind="mergesort")
         x_all = x_all[order]
         y_all = y_all[order]
@@ -73,7 +73,7 @@ def _line_profile(
 class LinePlotComposer:
     segments: list[MetageneProfileSegment] | None = None
     n_windows: Optional[int] = None
-    agg: str = "mean"
+    agg: AggMethod | str = "mean"
     nan_policy: NanPolicy = NanPolicy.KEEP
     smooth: dict | int | None = 50
     title: Optional[str] = None
@@ -133,7 +133,7 @@ class LinePlotComposer:
         )
 
 
-        if self.smooth is not None and y_vals.size > 0 and self.agg in {"min", "max"}:
+        if self.smooth is not None and y_vals.size > 0 and self.agg in {AggMethod.Min, AggMethod.Max}:
             warnings.warn(
                 f"smooth={self.smooth!r} ignored for agg={self.agg!r}; "
                 "smoothing is only applied to mean/median",
@@ -141,7 +141,7 @@ class LinePlotComposer:
                 stacklevel=2,
             )
 
-        if self._smooth_cfg is not None and y_vals.size > 0 and self.agg in {"mean", "median"}:
+        if self._smooth_cfg is not None and y_vals.size > 0 and self.agg in {AggMethod.Mean, AggMethod.Median}:
             y_scaled = y_vals.astype(float, copy=True)
             y_scaled = _apply_savgol_smoothing(y_scaled, self._smooth_cfg, segments=self.segments)
             y_scaled = _clip_profile(y_scaled)
@@ -162,7 +162,7 @@ class LinePlotComposer:
             curve = hv.Curve([])
             return curve.opts(
                 xlabel="Metagene position (relative)",
-                ylabel=f"{self.agg.capitalize()} methylation density",
+                ylabel=f"{self.agg.name.lower().capitalize()} methylation density",
                 show_legend=False,
                 title=self.title or "Metagene profile - Line",
                 **({} if self.width is None else {"width": int(self.width)}),
@@ -183,7 +183,7 @@ class LinePlotComposer:
 
         opts_kwargs = dict(
             xlabel="Metagene position (relative)",
-            ylabel=f"{self.agg.capitalize()} methylation density",
+            ylabel=f"{self.agg.name.lower().capitalize()} methylation density",
             show_legend=len(curves) > 1,
             title=self.title or "Metagene profile - Line",
         )

@@ -6,6 +6,8 @@ import holoviews as hv
 import numpy as np
 import plotly.graph_objects as go
 
+from bsx2 import AggMethod
+
 from bsx2.guards import require_equal_length
 from bsx2.plots.metagene import MetageneProfileSegment, segments_total_bins
 from bsx2.validation import (
@@ -33,7 +35,7 @@ def _bin_points_windows_fast(
     y_vals: np.ndarray,
     *,
     n_windows: int,
-    agg: str,
+    agg: AggMethod | str,
     nan_policy: NanPolicy,
 ) -> np.ndarray:
     x_vals = validate_matrix_shape(x_vals, 1, name="x_vals")
@@ -41,7 +43,7 @@ def _bin_points_windows_fast(
     require_equal_length(x_vals, y_vals, left_name="x_vals", right_name="y_vals")
     n_windows = validate_n_windows(n_windows)
     nan_policy = validate_nan_policy(nan_policy)
-    agg = validate_window_agg(agg)
+    agg = validate_window_agg(agg)  # now returns AggMethod
 
     x = np.asarray(x_vals, dtype=np.float64)
     y = np.asarray(y_vals, dtype=np.float64)
@@ -49,7 +51,7 @@ def _bin_points_windows_fast(
     # NaN/Inf handling once
     if nan_policy is NanPolicy.ZERO:
         y = np.where(np.isfinite(y), y, 0.0)
-    else:  # KEEP / DROP -> same effective behavior as in your code
+    else:  # KEEP / DROP -> same effective behavior as before
         m = np.isfinite(y)
         x = x[m]
         y = y[m]
@@ -62,27 +64,27 @@ def _bin_points_windows_fast(
     idx = (x * n_windows).astype(np.int64)
     idx[idx == n_windows] = n_windows - 1
 
-    if agg == "mean":
+    if agg is AggMethod.Mean:
         counts = np.bincount(idx, minlength=n_windows)
         sums = np.bincount(idx, weights=y, minlength=n_windows)
         nonempty = counts > 0
         out[nonempty] = sums[nonempty] / counts[nonempty]
         return out
 
-    if agg == "min":
+    if agg is AggMethod.Min:
         tmp = np.full(n_windows, np.inf, dtype=np.float64)
         np.minimum.at(tmp, idx, y)
         tmp[tmp == np.inf] = np.nan   # empty bins stayed untouched
         return tmp
 
-    if agg == "max":
+    if agg is AggMethod.Max:
         tmp = np.full(n_windows, -np.inf, dtype=np.float64)
         np.maximum.at(tmp, idx, y)
         tmp[tmp == -np.inf] = np.nan  # empty bins stayed untouched
         return tmp
 
-    if agg == "median":
-        # Median is harder to vectorize efficiently in pure NumPy.
+    if agg is AggMethod.Median:
+        # Median path relies on grouped equal-bin runs (caller sorts x for median when needed).
         cuts = np.flatnonzero(np.diff(idx)) + 1
         y_groups = np.split(y, cuts)
         bin_ids = idx[np.r_[0, cuts]]
