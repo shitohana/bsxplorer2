@@ -8,27 +8,9 @@ from bsx2.guards import require_equal_length
 from bsx2.validation import validate_matrix_shape
 
 # beartype: runtime type checking with value constraints
-try:
-    from beartype import beartype  # type: ignore
-    from beartype.vale import Is  # type: ignore
-    try:  # Python >=3.9 has typing.Annotated; fall back to typing_extensions
-        from typing import Annotated  # type: ignore
-    except Exception:  # pragma: no cover - platform variance
-        from typing_extensions import Annotated  # type: ignore
-except ModuleNotFoundError:  # graceful fallback if beartype is not installed
-    try:
-        from typing import Annotated  # type: ignore
-    except Exception:  # pragma: no cover
-        from typing_extensions import Annotated  # type: ignore
-
-    def beartype(obj):  # type: ignore
-        return obj
-
-    class Is:  # type: ignore
-        def __class_getitem__(cls, item):
-            # Return the predicate itself as metadata for Annotated; no-op without beartype
-            return item
-
+from beartype import beartype
+from beartype.vale import Is
+from typing import Annotated
 
 # Validators for arrays in [0, 1], 1D, and ordering where required
 def _is_1d_sorted_unit_positions(a: np.ndarray) -> bool:
