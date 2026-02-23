@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import  Annotated, List, Optional
+from typing import Annotated, Callable, List, Optional
 
 import numpy as np
 from beartype import beartype
@@ -177,3 +177,173 @@ class DiscreteRegionData:
         self.positions.append(pos)
         self.densities.append(den)
         self.labels.append(label)
+
+    @beartype
+    def clone(self, *, deep: bool = True) -> "DiscreteRegionData":
+        """
+        Clone container.
+
+        deep=True  -> copies arrays
+        deep=False -> reuses array objects (safe if arrays remain read-only)
+        """
+        out = DiscreteRegionData()
+
+        if deep:
+            out.positions = [np.array(p, dtype=np.float64, copy=True) for p in self.positions]
+            out.densities = [np.array(d, dtype=np.float64, copy=True) for d in self.densities]
+            for a in out.positions:
+                a.setflags(write=False)
+            for a in out.densities:
+                a.setflags(write=False)
+        else:
+            out.positions = list(self.positions)
+            out.densities = list(self.densities)
+
+        out.labels = list(self.labels)
+        return out
+
+    @beartype
+    def mean_density_per_region(self) -> np.ndarray:
+        """
+        Mean density for each region (ignores NaN).
+        Returns NaN for empty regions or regions with no finite values.
+        """
+        out = np.full(len(self.densities), np.nan, dtype=np.float64)
+
+        for i, d in enumerate(self.densities):
+            if d.size == 0:
+                continue
+            finite = np.isfinite(d)
+            if not np.any(finite):
+                continue
+            out[i] = float(np.mean(d[finite]))
+
+        return out
+
+    @beartype
+    def nan_counts(self) -> np.ndarray:
+        """
+        Number of NaN values in densities for each region.
+        """
+        out = np.zeros(len(self.densities), dtype=np.int64)
+        for i, d in enumerate(self.densities):
+            if d.size == 0:
+                out[i] = 0
+            else:
+                out[i] = int(np.isnan(d).sum())
+        return out
+
+    @beartype
+    def fill_nan(
+        self,
+        value: float = 0.0,
+        *,
+        in_place: bool = False,
+    ) -> "DiscreteRegionData":
+        """
+        Replace NaN in densities with a constant value.
+        Positions and labels are preserved.
+        """
+        target = self if in_place else self.clone(deep=False)
+
+        new_densities: list[np.ndarray] = []
+        for d in target.densities:
+            if d.size == 0 or not np.isnan(d).any():
+                # keep original reference (already read-only)
+                new_densities.append(d)
+                continue
+            d2 = np.asarray(np.where(np.isnan(d), value, d), dtype=np.float64)
+            d2.setflags(write=False)
+            new_densities.append(d2)
+
+        target.densities = new_densities
+        return target
+
+    @beartype
+    def filter(
+        self,
+        *,
+        labels: Optional[List[str]] = None,
+        predicate: Optional[Callable[[np.ndarray, np.ndarray, Optional[str], int], bool]] = None,
+        in_place: bool = False,
+    ) -> "DiscreteRegionData":
+        """
+        Filter regions by labels and/or predicate.
+
+        predicate signature:
+            (positions, densities, label, index) -> bool
+        """
+        label_set = set(labels) if labels is not None else None
+
+        keep_idx: list[int] = []
+        for i, (p, d, lbl) in enumerate(zip(self.positions, self.densities, self.labels)):
+            if label_set is not None and lbl not in label_set:
+                continue
+            if predicate is not None and not predicate(p, d, lbl, i):
+                continue
+            keep_idx.append(i)
+
+        target = self if in_place else DiscreteRegionData()
+
+        new_positions = [self.positions[i] for i in keep_idx]
+        new_densities = [self.densities[i] for i in keep_idx]
+        new_labels = [self.labels[i] for i in keep_idx]
+
+        if in_place:
+            self.positions = new_positions
+            self.densities = new_densities
+            self.labels = new_labels
+            return self
+
+        target.positions = new_positions
+        target.densities = new_densities
+        target.labels = new_labels
+        return target
+
+    @beartype
+    def sort(
+        self,
+        *,
+        by: str = "label",  # "label" | "mean_density" | "length"
+        reverse: bool = False,
+        in_place: bool = False,
+    ) -> "DiscreteRegionData":
+        """
+        Sort regions (stable sort) by label / mean_density / length.
+        """
+        if by not in {"label", "mean_density", "length"}:
+            raise ValueError("sort.by must be one of: 'label', 'mean_density', 'length'")
+
+        means = None
+        if by == "mean_density":
+            means = self.mean_density_per_region()
+
+        def _key(i: int):
+            if by == "label":
+                lbl = self.labels[i]
+                # None goes last by default in ascending
+                return (lbl is None, "" if lbl is None else str(lbl))
+            if by == "length":
+                return int(self.positions[i].size)
+            # by == "mean_density"
+            v = float(means[i])  # type: ignore[index]
+            # NaN goes last in ascending
+            return (np.isnan(v), v if np.isfinite(v) else 0.0)
+
+        order = sorted(range(len(self.positions)), key=_key, reverse=reverse)
+
+        target = self if in_place else DiscreteRegionData()
+        new_positions = [self.positions[i] for i in order]
+        new_densities = [self.densities[i] for i in order]
+        new_labels = [self.labels[i] for i in order]
+
+        if in_place:
+            self.positions = new_positions
+            self.densities = new_densities
+            self.labels = new_labels
+            return self
+
+        target.positions = new_positions
+        target.densities = new_densities
+        target.labels = new_labels
+        return target
