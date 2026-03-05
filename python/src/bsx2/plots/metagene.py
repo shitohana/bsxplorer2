@@ -197,7 +197,7 @@ def _to_np_float64(col) -> np.ndarray:
 
 def compute_discrete_regions(
     reader: RegionReader,
-    contigs: Sequence,
+    contigs: Sequence[Contig],
     *,
     segments: Sequence[MetageneProfileSegment] = _DEFAULT_SEGMENTS,
     reverse_negative: bool = True,
