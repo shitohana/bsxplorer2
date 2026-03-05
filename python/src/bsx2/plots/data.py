@@ -1,5 +1,6 @@
 from __future__ import annotations
 import copy
+from enum import StrEnum
 from dataclasses import dataclass, field
 from typing import Annotated, Callable, List, Optional, TypeAlias, cast
 
@@ -145,6 +146,12 @@ class SegmentData:
     densities: _StoredArray
     label: Optional[str]
     index: int
+
+
+class SortBy(StrEnum):
+    label = "label"
+    mean_density = "mean_density"
+    length = "length"
 
 
 @beartype
@@ -319,26 +326,23 @@ class DiscreteRegionData:
     def sort(
         self,
         *,
-        by: str = "label",  # "label" | "mean_density" | "length"
+        by: SortBy = SortBy.label,
         reverse: bool = False,
         in_place: bool = False,
     ) -> "DiscreteRegionData":
         """
         Sort regions (stable sort) by label / mean_density / length.
         """
-        if by not in {"label", "mean_density", "length"}:
-            raise ValueError("sort.by must be one of: 'label', 'mean_density', 'length'")
-
         means = None
-        if by == "mean_density":
+        if by is SortBy.mean_density:
             means = self.mean_density_per_region()
 
         def _key(i: int):
-            if by == "label":
+            if by is SortBy.label:
                 lbl = self.labels[i]
                 # None goes last by default in ascending
                 return (lbl is None, "" if lbl is None else str(lbl))
-            if by == "length":
+            if by is SortBy.length:
                 return int(self.positions[i].size)
             # by == "mean_density"
             v = float(means[i])  # type: ignore[index]
