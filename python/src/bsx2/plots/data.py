@@ -156,8 +156,8 @@ class DiscreteRegionData:
             message="length mismatch between positions and densities",
         )
 
-        pos = np.asarray(positions, dtype=np.float64)
-        den = np.asarray(densities, dtype=np.float64)
+        pos = positions
+        den = densities
 
         pos.setflags(write=False)
         den.setflags(write=False)
