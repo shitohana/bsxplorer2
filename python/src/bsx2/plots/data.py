@@ -56,9 +56,6 @@ def _is_unit_finite(a: np.ndarray) -> bool:
     - all values are finite
     - all values in [0, 1]
     """
-    if not _is_ndarray_1d(a):
-        return False
-
     if a.size == 0:
         return True
 
@@ -72,9 +69,6 @@ def _is_sorted_nondecreasing(a: np.ndarray) -> bool:
     """
     Non-decreasing order: a[i] <= a[i+1]
     """
-    if not _is_ndarray_1d(a):
-        return False
-
     if a.size <= 1:
         return True
 
@@ -92,9 +86,6 @@ def _has_no_inf(a: np.ndarray) -> bool:
     - +inf / -inf are prohibited
     - NaN is allowed
     """
-    if not _is_ndarray_1d(a):
-        return False
-
     if a.size == 0:
         return True
 
@@ -110,9 +101,6 @@ def _finite_values_in_unit(a: np.ndarray) -> bool:
     - check only finite values
     - if there are no finite values (e.g. all NaN), return True
     """
-    if not _is_ndarray_1d(a):
-        return False
-
     if a.size == 0:
         return True
 
