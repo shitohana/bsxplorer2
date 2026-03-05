@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Annotated, Callable, List, Optional
+from typing import Annotated, Callable, List, Optional, TypeAlias
 
 import numpy as np
 from beartype import beartype
@@ -133,12 +133,16 @@ Density1D = Annotated[
     Is[_is_densities_shape_1d] & Is[_has_no_inf] & Is[_finite_values_in_unit],
 ]
 
+# Internal container storage type: arrays are already validated at insert()
+# boundaries and then frozen via setflags(write=False).
+_StoredArray: TypeAlias = np.ndarray
+
 
 @beartype
 @dataclass
 class DiscreteRegionData:
-    positions: List[np.ndarray] = field(default_factory=list)   # each: (n_bins,)
-    densities: List[np.ndarray] = field(default_factory=list)   # each: (n_bins,)
+    positions: List[_StoredArray] = field(default_factory=list)   # each: (n_bins,)
+    densities: List[_StoredArray] = field(default_factory=list)   # each: (n_bins,)
     labels: List[Optional[str]] = field(default_factory=list)
 
     @beartype
@@ -156,14 +160,14 @@ class DiscreteRegionData:
             message="length mismatch between positions and densities",
         )
 
-        pos = positions
-        den = densities
+        positions.setflags(write=False)
+        densities.setflags(write=False)
 
-        pos.setflags(write=False)
-        den.setflags(write=False)
+        pos_stored: _StoredArray = positions
+        den_stored: _StoredArray = densities
 
-        self.positions.append(pos)
-        self.densities.append(den)
+        self.positions.append(pos_stored)
+        self.densities.append(den_stored)
         self.labels.append(label)
 
     @beartype
@@ -234,7 +238,7 @@ class DiscreteRegionData:
         """
         target = self if in_place else self.clone(deep=False)
 
-        new_densities: list[np.ndarray] = []
+        new_densities: list[_StoredArray] = []
         for d in target.densities:
             if d.size == 0 or not np.isnan(d).any():
                 # keep original reference (already read-only)
