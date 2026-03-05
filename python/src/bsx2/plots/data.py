@@ -1,7 +1,7 @@
 from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
-from typing import Annotated, Callable, List, Optional, TypeAlias
+from typing import Annotated, Callable, List, Optional, TypeAlias, cast
 
 import numpy as np
 from beartype import beartype
@@ -161,11 +161,23 @@ class DiscreteRegionData:
             message="length mismatch between positions and densities",
         )
 
-        positions.setflags(write=False)
-        densities.setflags(write=False)
+        self.insert_unchecked(positions, densities, label)
 
-        pos_stored: _StoredArray = positions
-        den_stored: _StoredArray = densities
+    def insert_unchecked(
+        self,
+        positions: object,
+        densities: object,
+        label: Optional[str] = None,
+    ) -> None:
+        """
+        Insert prevalidated arrays without contract checks.
+        Caller is responsible for shape/value invariants and length equality.
+        """
+        pos_stored = cast(_StoredArray, positions)
+        den_stored = cast(_StoredArray, densities)
+
+        pos_stored.setflags(write=False)
+        den_stored.setflags(write=False)
 
         self.positions.append(pos_stored)
         self.densities.append(den_stored)
