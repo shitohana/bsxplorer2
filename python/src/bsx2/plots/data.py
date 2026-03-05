@@ -139,6 +139,14 @@ Density1D = Annotated[
 _StoredArray: TypeAlias = np.ndarray
 
 
+@dataclass(frozen=True)
+class SegmentData:
+    positions: _StoredArray
+    densities: _StoredArray
+    label: Optional[str]
+    index: int
+
+
 @beartype
 @dataclass
 class DiscreteRegionData:
@@ -269,14 +277,14 @@ class DiscreteRegionData:
         self,
         *,
         labels: Optional[List[str]] = None,
-        predicate: Optional[Callable[[np.ndarray, np.ndarray, Optional[str], int], bool]] = None,
+        predicate: Optional[Callable[[SegmentData], bool]] = None,
         in_place: bool = False,
     ) -> "DiscreteRegionData":
         """
         Filter regions by labels and/or predicate.
 
         predicate signature:
-            (positions, densities, label, index) -> bool
+            (segment: SegmentData) -> bool
         """
         label_set = set(labels) if labels is not None else None
 
@@ -284,7 +292,9 @@ class DiscreteRegionData:
         for i, (p, d, lbl) in enumerate(zip(self.positions, self.densities, self.labels)):
             if label_set is not None and lbl not in label_set:
                 continue
-            if predicate is not None and not predicate(p, d, lbl, i):
+            if predicate is not None and not predicate(
+                SegmentData(positions=p, densities=d, label=lbl, index=i)
+            ):
                 continue
             keep_idx.append(i)
 
