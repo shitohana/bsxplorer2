@@ -1,4 +1,5 @@
 from __future__ import annotations
+import copy
 from dataclasses import dataclass, field
 from typing import Annotated, Callable, List, Optional, TypeAlias
 
@@ -181,8 +182,8 @@ class DiscreteRegionData:
         out = DiscreteRegionData()
 
         if deep:
-            out.positions = [np.array(p, dtype=np.float64, copy=True) for p in self.positions]
-            out.densities = [np.array(d, dtype=np.float64, copy=True) for d in self.densities]
+            out.positions = copy.deepcopy(self.positions)
+            out.densities = copy.deepcopy(self.densities)
             for a in out.positions:
                 a.setflags(write=False)
             for a in out.densities:
