@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import defaultdict, deque
-from typing import Callable, List, Optional, Sequence, Tuple, cast
+from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Tuple, cast
 
 import numpy as np
 from bsx2 import RegionReader
@@ -14,6 +14,9 @@ from bsx2.guards import (
 )
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.validation import validate_segments, validate_smoothing
+
+if TYPE_CHECKING:
+    from bsx2.types import Contig
 
 
 # ============================================================
@@ -158,7 +161,7 @@ def _clip_profile(y: np.ndarray) -> np.ndarray:
 # Strand helper
 # ============================================================
 
-def _is_negative_strand(contig) -> bool:
+def _is_negative_strand(contig: Contig) -> bool:
     val = None
     if hasattr(contig, "strand_str"):
         try:
