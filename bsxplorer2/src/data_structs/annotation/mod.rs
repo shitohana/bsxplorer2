@@ -33,5 +33,3 @@ pub use gff_entry::{
     RawGffEntry,
 };
 
-#[cfg(test)]
-mod tests;

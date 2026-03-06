@@ -23,3 +23,18 @@ profile.json.*
 examples
 # pixi environments
 .pixi
+# Python virtualenvs
+.venv*/
+venv*/
+env*/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# build/packaging
+*.egg-info/
+build/
+dist/
+python/build_dev.log

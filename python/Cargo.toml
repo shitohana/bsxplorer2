@@ -2,13 +2,13 @@
 name = "bsxplorer2-py"
 authors.workspace = true
 description.workspace = true
-license-file.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 version.workspace = true
 edition.workspace = true
 readme.workspace = true
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib"]
@@ -26,3 +26,6 @@ pyo3-polars = {version = "=0.19.0", features = ["dtype-full", "lazy"]}
 pyo3-file = "0.9.0"
 polars.workspace = true
 slotmap.workspace = true
+[profile.release]
+debug = true
+strip = "none"

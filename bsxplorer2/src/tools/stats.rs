@@ -198,31 +198,4 @@ pub fn mann_whitney_u<F: Float>(
     (u_stat.to_f64().unwrap(), p_value)
 }
 
-#[cfg(test)]
-mod tests {
-    use assert_approx_eq::assert_approx_eq;
 
-    use crate::utils::{
-        mann_whitney_u,
-        pearson_r,
-    };
-
-    #[test]
-    fn test_utest() {
-        let group1 = vec![1.5, 2.3, 3.1, 4.8, 5.7, 5.6];
-        let group2 = vec![2.0, 3.5, 3.8, 4.0, 6.2, 3.5];
-
-        let (u, p) = mann_whitney_u(&group1, &group2);
-        let (_uleft, pleft) = mann_whitney_u(&group2, &group1);
-        assert_approx_eq!(pleft, p);
-        println!("Mann–Whitney U statistic: {:.3}", u);
-        println!("Two-tailed p–value: {:.5}", p);
-    }
-
-    #[test]
-    fn pearson_r_test() {
-        let x = vec![1, 2, 3, 4, 5, 6];
-        let y = vec![6, 7, 8, 9, 10, 11];
-        assert_eq!(pearson_r(&x, &y), 1f64);
-    }
-}

@@ -214,14 +214,30 @@ impl PyRegionReaderIterator {
             let contig = self.contigs[self.current_index].clone();
             self.current_index += 1;
 
+            // Debug logging to help track crashes with filters/iter_contigs
+            eprintln!(
+                "[iter_contigs] idx={} filters={} contig={:?}",
+                self.current_index - 1,
+                self.filters.len(),
+                contig
+            );
+
             let result = self.inner.query(contig.into(), None);
             match result {
                 Ok(Some(batch)) => {
+                    eprintln!("[iter_contigs]   raw rows={}", batch.len());
                     let final_batch = apply_filters(batch, &self.filters);
+                    eprintln!("[iter_contigs]   filtered rows={}", final_batch.len());
                     Ok(Some(final_batch.into()))
                 },
-                Ok(None) => self.__next__(), // Skip to next contig if no data
-                Err(e) => Err(PyErr::from(e)),
+                Ok(None) => {
+                    eprintln!("[iter_contigs]   batch empty, skip");
+                    self.__next__() // Skip to next contig if no data
+                },
+                Err(e) => {
+                    eprintln!("[iter_contigs]   query error: {:?}", e);
+                    Err(PyErr::from(e))
+                },
             }
         }
         else {
