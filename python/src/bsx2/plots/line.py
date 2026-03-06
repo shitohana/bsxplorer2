@@ -8,7 +8,12 @@ import holoviews as hv
 import numpy as np
 
 from bsx2.plots.data import DiscreteRegionData
-from bsx2.validation import validate_n_windows, validate_window_agg
+from bsx2.validation import (
+    validate_n_windows,
+    validate_nan_policy,
+    validate_positive_int,
+    validate_window_agg,
+)
 from bsx2.plots.metagene import (
     MetageneProfileSegment,
     _apply_savgol_smoothing,
@@ -81,6 +86,7 @@ class LinePlotComposer:
     height: int | None = None
     _total_bins: int = field(init=False, repr=False)
     _smooth_cfg: object | None = field(init=False, repr=False, default=None)
+    _n_windows_auto: bool = field(init=False, repr=False, default=False)
     x: list[np.ndarray] = field(default_factory=list)
     y: list[np.ndarray] = field(default_factory=list)
     labels: list[str] = field(default_factory=list)
@@ -89,34 +95,75 @@ class LinePlotComposer:
     borders: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self.agg = validate_window_agg(self.agg)
-        
-        if self.segments is None:
-            self.segments = [
-                MetageneProfileSegment("up", 100),
-                MetageneProfileSegment("body", 200),
-                MetageneProfileSegment("down", 100),
-            ]
+        self.set_agg(self.agg)
+        self.set_nan_policy(self.nan_policy)
+        self._n_windows_auto = self.n_windows is None
+        self.set_segments(self.segments)
+        self.set_n_windows(None if self._n_windows_auto else self.n_windows)
+        self.set_smooth(self.smooth)
+        self.set_width(self.width)
+        self.set_height(self.height)
 
-        self._total_bins = segments_total_bins(self.segments)
+    @staticmethod
+    def _default_segments() -> list[MetageneProfileSegment]:
+        return [
+            MetageneProfileSegment("up", 100),
+            MetageneProfileSegment("body", 200),
+            MetageneProfileSegment("down", 100),
+        ]
 
-        if self.n_windows is None:
-            self.n_windows = self._total_bins
-        else:
-            self.n_windows = validate_n_windows(self.n_windows)
-
-        self._smooth_cfg = (
-            _coerce_smooth_config(self.smooth, total_bins=self._total_bins)
-            if self.smooth is not None
-            else None
-        )
-
+    def _refresh_borders(self) -> None:
         total = float(self._total_bins)
         cum = 0
         self.borders = []
         for seg in self.segments:
             cum += seg.n_bins
             self.borders.append(cum / total)
+
+    def _refresh_smooth_cfg(self) -> None:
+        self._smooth_cfg = (
+            _coerce_smooth_config(self.smooth, total_bins=self._total_bins)
+            if self.smooth is not None
+            else None
+        )
+
+    def set_segments(
+        self,
+        segments: list[MetageneProfileSegment] | None,
+    ) -> "LinePlotComposer":
+        self.segments = list(self._default_segments() if segments is None else segments)
+        self._total_bins = segments_total_bins(self.segments)
+        if self._n_windows_auto:
+            self.n_windows = self._total_bins
+        self._refresh_borders()
+        self._refresh_smooth_cfg()
+        return self
+
+    def set_n_windows(self, n_windows: Optional[int]) -> "LinePlotComposer":
+        self._n_windows_auto = n_windows is None
+        self.n_windows = self._total_bins if n_windows is None else validate_n_windows(n_windows)
+        return self
+
+    def set_agg(self, agg: AggMethod | str) -> "LinePlotComposer":
+        self.agg = validate_window_agg(agg)
+        return self
+
+    def set_nan_policy(self, nan_policy: NanPolicy) -> "LinePlotComposer":
+        self.nan_policy = validate_nan_policy(nan_policy)
+        return self
+
+    def set_smooth(self, smooth: dict | int | None) -> "LinePlotComposer":
+        self.smooth = smooth
+        self._refresh_smooth_cfg()
+        return self
+
+    def set_width(self, width: int | None) -> "LinePlotComposer":
+        self.width = None if width is None else validate_positive_int(width, name="width")
+        return self
+
+    def set_height(self, height: int | None) -> "LinePlotComposer":
+        self.height = None if height is None else validate_positive_int(height, name="height")
+        return self
 
     def add_data(
         self,
