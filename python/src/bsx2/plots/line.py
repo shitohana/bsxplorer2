@@ -189,7 +189,7 @@ class LinePlotComposer:
         )
 
 
-        if self.smooth is not None and y_vals.size > 0 and self.agg in {AggMethod.Min, AggMethod.Max}:
+        if self.smooth is not None and y_vals.size > 0 and self.agg in (AggMethod.Min, AggMethod.Max):
             warnings.warn(
                 f"smooth={self.smooth!r} ignored for agg={self.agg!r}; "
                 "smoothing is only applied to mean/median",
@@ -197,7 +197,7 @@ class LinePlotComposer:
                 stacklevel=2,
             )
 
-        if self._smooth_cfg is not None and y_vals.size > 0 and self.agg in {AggMethod.Mean, AggMethod.Median}:
+        if self._smooth_cfg is not None and y_vals.size > 0 and self.agg in (AggMethod.Mean, AggMethod.Median):
             y_scaled = y_vals.astype(float, copy=True)
             y_scaled = _apply_savgol_smoothing(y_scaled, self._smooth_cfg, segments=self.segments)
             y_scaled = _clip_profile(y_scaled)
