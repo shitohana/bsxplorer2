@@ -69,19 +69,19 @@ def _validate_savgol_config(
     validate_smoothing(cfg, series_len=series_len, label=label)
 
 
-def _savgol_filter_1d(y: np.ndarray, cfg: dict) -> np.ndarray:
+def _savgol_filter_1d(y: np.ndarray, **kwargs) -> np.ndarray:
     savgol_filter = require_savgol_filter()
 
     if y.size == 0:
         return y
 
-    window_length = int(cfg["window_length"])
-    polyorder = int(cfg["polyorder"])
-    mode = cfg.get("mode", "interp")
-    cval = cfg.get("cval", 0.0)
+    window_length = int(kwargs["window_length"])
+    polyorder = int(kwargs["polyorder"])
+    mode = kwargs.get("mode", "interp")
+    cval = kwargs.get("cval", 0.0)
 
-    nan_policy = cfg.get("nan_policy", "interp")
-    _validate_savgol_config(cfg, series_len=len(y))
+    nan_policy = kwargs.get("nan_policy", "interp")
+    _validate_savgol_config(kwargs, series_len=len(y))
     require_nan_policy_compatible(y, nan_policy=nan_policy)
 
     if nan_policy == "interp":
@@ -140,11 +140,11 @@ def _apply_savgol_smoothing(
         offset = 0
         for n in seg_nbins:
             seg = y[offset: offset + n]
-            out.append(_savgol_filter_1d(seg, cfg))
+            out.append(_savgol_filter_1d(seg, **cfg))
             offset += n
         return np.concatenate(out) if out else y
 
-    return _savgol_filter_1d(y, cfg)
+    return _savgol_filter_1d(y, **cfg)
 
 
 def _clip_profile(y: np.ndarray) -> np.ndarray:
