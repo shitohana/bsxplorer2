@@ -15,7 +15,6 @@ from bsx2.validation import (
     validate_n_windows,
     validate_nan_policy,
     validate_segments,
-    validate_window_agg,
     NanPolicy,
 )
 
@@ -35,7 +34,7 @@ def _bin_points_windows_fast(
     y_vals: np.ndarray,
     *,
     n_windows: int,
-    agg: AggMethod | str,
+    agg: AggMethod,
     nan_policy: NanPolicy,
 ) -> np.ndarray:
     x_vals = validate_matrix_shape(x_vals, 1, name="x_vals")
@@ -43,7 +42,6 @@ def _bin_points_windows_fast(
     require_equal_length(x_vals, y_vals, left_name="x_vals", right_name="y_vals")
     n_windows = validate_n_windows(n_windows)
     nan_policy = validate_nan_policy(nan_policy)
-    agg = validate_window_agg(agg)  # now returns AggMethod
 
     x = np.asarray(x_vals, dtype=np.float64)
     y = np.asarray(y_vals, dtype=np.float64)

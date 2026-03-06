@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+import holoviews as hv
 import numpy as np
-import plotly.graph_objects as go
+from bsx2 import AggMethod
 
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import (
@@ -20,8 +21,9 @@ from bsx2.validation import (
 )
 from ._common import (
     _bin_points_windows_fast,
+    _ensure_plotly,
+    _hv_init,
     _rank_compress,
-    _segment_decor_bin,
     NanPolicy,
 )
 
@@ -49,7 +51,7 @@ def _heatmap_matrix(
             x,
             y,
             n_windows=n_windows,
-            agg="mean",
+            agg=AggMethod.Mean,
             nan_policy=nan_policy,
         )
         rows.append(row)
@@ -138,9 +140,25 @@ class HeatmapPlotComposer:
         self.labels.extend(row_labels)
         return self
 
-    def finish(self) -> go.Figure:
+    def finish(self):
         if not self.z_parts:
-            return go.Figure()
+            return hv.Image(
+                np.full((1, 1), np.nan, dtype=np.float64),
+                bounds=(-0.5, -0.5, 0.5, 0.5),
+                kdims=["Position (bin)", "Rank"],
+                vdims=["Methylation density"],
+            ).opts(
+                cmap=self.colorscale,
+                colorbar=True,
+                clim=(0.0, 1.0),
+                invert_yaxis=True,
+                xlabel="Position (bin)",
+                ylabel="Rank",
+                yticks=[],
+                title=self.title or "Metagene profile - Heatmap (BSX1 ranked)",
+                **({} if self.width is None else {"width": int(self.width)}),
+                **({} if self.height is None else {"height": int(self.height)}),
+            )
 
         z = np.vstack(self.z_parts)
 
@@ -155,8 +173,6 @@ class HeatmapPlotComposer:
         z = z[order_idx]
 
         z = _rank_compress(z, self.rank_rows, fill=self.empty_bin_fill)
-        regions = [str(i) for i in range(z.shape[0])]
-
         z_vis = np.asarray(z, dtype=np.float64)
 
         zmin = 0.0
@@ -172,34 +188,51 @@ class HeatmapPlotComposer:
         fig_width = self.width if self.width is not None else max(900, min(1400, 2 * n_bins))
         fig_height = self.height if self.height is not None else max(550, min(900, 5 * int(z_vis.shape[0])))
 
-        x_plot = np.arange(n_bins, dtype=int)
-
-        fig = go.Figure(
-            data=go.Heatmap(
-                z=z_vis,
-                x=x_plot,
-                y=regions,
-                colorscale=self.colorscale,
-                zmin=zmin,
-                zmax=zmax,
-                zsmooth=False,
-                xgap=0,
-                ygap=0,
-                hoverongaps=False,
-                colorbar=dict(title="Methylation density"),
-            )
-        )
-        fig.update_yaxes(autorange="reversed", showticklabels=False)
-        _segment_decor_bin(fig, self.segments, annotate_tss_tes=True)
-        fig.update_layout(
+        heatmap = hv.Image(
+            z_vis,
+            bounds=(-0.5, -0.5, n_bins - 0.5, z_vis.shape[0] - 0.5),
+            kdims=["Position (bin)", "Rank"],
+            vdims=["Methylation density"],
+        ).opts(
+            cmap=self.colorscale,
+            colorbar=True,
+            clim=(zmin, zmax),
+            invert_yaxis=True,
+            xlabel="Position (bin)",
+            ylabel="Rank",
+            yticks=[],
             title=self.title or "Metagene profile - Heatmap (BSX1 ranked)",
             width=fig_width,
             height=fig_height,
-            margin=dict(l=70, r=30, t=60, b=70),
-            xaxis_title="Position (bin)",
-            yaxis_title="Rank",
+            xticks=[
+                ((start + end) / 2.0, seg.name)
+                for start, end, seg in zip(
+                    [0, *np.cumsum([seg.n_bins for seg in self.segments[:-1]])],
+                    np.cumsum([seg.n_bins for seg in self.segments]),
+                    self.segments,
+                )
+            ],
         )
-        return fig
+
+        plot = heatmap
+        cum = 0
+        for seg in self.segments[:-1]:
+            cum += seg.n_bins
+            plot *= hv.VLine(float(cum)).opts(line_dash="dashed", color="gray", line_width=1)
+
+        return plot
 
     def to_html(self, *, full_html: bool = False, include_js: str = "cdn") -> str:
-        return self.finish().to_html(full_html=full_html, include_plotlyjs=include_js)
+        _hv_init()
+        fig = _ensure_plotly(hv.render(self.finish(), backend="plotly"))
+        fig.update_layout(margin=dict(l=70, r=30, t=60, b=70))
+        fig.update_yaxes(autorange="reversed", showticklabels=False)
+        fig.update_traces(
+            zsmooth=False,
+            xgap=0,
+            ygap=0,
+            hoverongaps=False,
+            colorbar=dict(title="Methylation density"),
+            selector=dict(type="heatmap"),
+        )
+        return fig.to_html(full_html=full_html, include_plotlyjs=include_js)
