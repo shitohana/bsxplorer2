@@ -5,7 +5,7 @@ from collections import defaultdict, deque
 from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Tuple, cast
 
 import numpy as np
-from bsx2 import RegionReader
+from bsx2 import Contig, RegionReader
 from bsx2.guards import (
     require_nan_policy_compatible,
     require_per_segment_profile,
@@ -327,3 +327,482 @@ def compute_discrete_regions(
             )
 
     return data
+
+
+def _get_contig_start(contig: object) -> Optional[int]:
+    v = getattr(contig, "start", None)
+    if v is None:
+        return None
+    try:
+        return int(v() if callable(v) else v)
+    except (TypeError, ValueError):
+        return None
+
+
+def collect_contigs_from_hcannot(
+    annot: object,
+    *,
+    feature_type: Optional[str] = None,
+    limit: Optional[int] = None,
+    label_getter: Optional[Callable[[object, int], str]] = None,
+) -> Tuple[List[object], List[str]]:
+    def _default_label(entry: object, idx: int) -> str:
+        for attr in ("id", "get_id"):
+            v = getattr(entry, attr, None)
+            if v is None:
+                continue
+            try:
+                label = v() if callable(v) else v
+            except (TypeError, ValueError):
+                continue
+            if label:
+                return str(label)
+
+        ft = _entry_feature_type(entry)
+        return f"{ft}_{idx}" if ft else f"entry_{idx}"
+
+    label_getter = label_getter or _default_label
+
+    entries: List[Tuple[object, str]] = []
+    iterator_factory = getattr(annot, "iter", None)
+    iterator = iterator_factory() if callable(iterator_factory) else iter(annot)
+
+    idx = 0
+    while True:
+        try:
+            item = next(iterator)
+        except StopIteration:
+            break
+
+        entry = item[1] if isinstance(item, tuple) and len(item) == 2 else item
+
+        ft = _entry_feature_type(entry)
+        if feature_type and ft != feature_type:
+            continue
+
+        contig = getattr(entry, "contig", None)
+        if contig is None:
+            getter = getattr(entry, "get_contig", None)
+            contig = getter() if callable(getter) else None
+        if contig is None:
+            continue
+
+        start = _get_contig_start(contig)
+        if start is not None and start < 0:
+            continue
+
+        entries.append((contig, label_getter(entry, idx)))
+        idx += 1
+        if limit and idx >= limit:
+            break
+
+    contigs, labels = zip(*entries) if entries else ([], [])
+    return list(contigs), list(labels)
+
+
+def _entry_feature_type(entry: object) -> Optional[str]:
+    v = getattr(entry, "feature_type", None)
+    if v is not None:
+        try:
+            return str(v() if callable(v) else v)
+        except (TypeError, ValueError):
+            pass
+
+    getter = getattr(entry, "get_feature_type", None)
+    if callable(getter):
+        try:
+            return str(getter())
+        except (TypeError, ValueError):
+            return None
+
+    return None
+
+
+def _entry_id(entry: object) -> Optional[str]:
+    for attr in ("id", "get_id"):
+        v = getattr(entry, attr, None)
+        if v is None:
+            continue
+        try:
+            value = v() if callable(v) else v
+        except (TypeError, ValueError):
+            continue
+        if value:
+            return str(value)
+    return None
+
+
+def _entry_parents(entry: object) -> List[str]:
+    attrs = getattr(entry, "attributes", None)
+    if attrs is not None and callable(attrs):
+        try:
+            attrs = attrs()
+        except Exception:
+            attrs = None
+
+    if attrs is not None:
+        parent = getattr(attrs, "parent", None)
+        if parent is not None:
+            try:
+                parents = parent() if callable(parent) else parent
+            except Exception:
+                parents = None
+            if parents:
+                return [str(x) for x in parents]
+
+        getter = getattr(attrs, "get_parent", None)
+        if callable(getter):
+            try:
+                parents = getter()
+            except Exception:
+                parents = None
+            if parents:
+                return [str(x) for x in parents]
+
+    getter = getattr(entry, "get_attributes", None)
+    if callable(getter):
+        try:
+            attrs = getter()
+        except Exception:
+            attrs = None
+
+        if attrs is not None:
+            getter = getattr(attrs, "get_parent", None)
+            if callable(getter):
+                try:
+                    parents = getter()
+                except Exception:
+                    parents = None
+                if parents:
+                    return [str(x) for x in parents]
+
+            parent = getattr(attrs, "parent", None)
+            if parent is not None:
+                try:
+                    parents = parent() if callable(parent) else parent
+                except Exception:
+                    parents = None
+                if parents:
+                    return [str(x) for x in parents]
+
+    return []
+
+
+def _entry_contig(entry: object) -> Optional[Contig]:
+    contig = getattr(entry, "contig", None)
+    if contig is None:
+        getter = getattr(entry, "get_contig", None)
+        contig = getter() if callable(getter) else None
+    return cast(Optional[Contig], contig)
+
+
+def _make_flank_contig(
+    contig: Contig,
+    *,
+    flank_bp: int,
+    kind: str,
+) -> Optional[Contig]:
+    if flank_bp <= 0:
+        return None
+
+    start = int(getattr(contig, "start"))
+    end = int(getattr(contig, "end"))
+    strand = getattr(contig, "strand")
+    is_negative = _is_negative_strand(contig)
+
+    if kind == "upstream_gene":
+        if is_negative:
+            flank_start = end
+            flank_end = end + flank_bp
+        else:
+            flank_start = max(0, start - flank_bp)
+            flank_end = start
+    elif kind == "downstream_gene":
+        if is_negative:
+            flank_start = max(0, start - flank_bp)
+            flank_end = start
+        else:
+            flank_start = end
+            flank_end = end + flank_bp
+    else:
+        return None
+
+    if flank_end <= flank_start:
+        return None
+
+    return Contig(str(getattr(contig, "seqname")), flank_start, flank_end, strand)
+
+
+def _collect_gene_contigs(
+    annot: object,
+    *,
+    limit: Optional[int] = None,
+) -> Tuple[List[Contig], List[str]]:
+    contigs: List[Contig] = []
+    labels: List[str] = []
+
+    iterator_factory = getattr(annot, "iter", None)
+    iterator = iterator_factory() if callable(iterator_factory) else iter(annot)
+
+    for item in iterator:
+        entry = item[1] if isinstance(item, tuple) and len(item) == 2 else item
+        if _entry_feature_type(entry) != "gene":
+            continue
+
+        contig = _entry_contig(entry)
+        if contig is None:
+            continue
+
+        start = _get_contig_start(contig)
+        if start is not None and start < 0:
+            continue
+
+        label = _entry_id(entry)
+        if not label:
+            label = f"{contig.seqname}:{contig.start}-{contig.end}"
+
+        contigs.append(contig)
+        labels.append(label)
+
+        if limit and len(contigs) >= limit:
+            break
+
+    return contigs, labels
+
+
+def _collect_synthetic_flanks(
+    annot: object,
+    *,
+    flank_bp: int,
+    kind: str,
+    limit: Optional[int] = None,
+) -> Tuple[List[Contig], List[str]]:
+    gene_contigs, gene_labels = _collect_gene_contigs(annot, limit=limit)
+
+    contigs: List[Contig] = []
+    labels: List[str] = []
+    for gene_contig, gene_label in zip(gene_contigs, gene_labels):
+        flank_contig = _make_flank_contig(
+            gene_contig,
+            flank_bp=flank_bp,
+            kind=kind,
+        )
+        if flank_contig is None:
+            continue
+        contigs.append(flank_contig)
+        labels.append(gene_label)
+
+    return contigs, labels
+
+
+def collect_parts_from_hcannot(
+    annot: object,
+    *,
+    parts: Sequence[str],
+    limit: Optional[int] = None,
+) -> dict[str, tuple[list[object], list[str]]]:
+    parts_set = set(parts)
+    out: dict[str, list[tuple[object, str]]] = {part: [] for part in parts_set}
+
+    iterator_factory = getattr(annot, "iter", None)
+    iterator = iterator_factory() if callable(iterator_factory) else iter(annot)
+
+    gene_ids: List[str] = []
+    if "gene" in parts_set:
+        idx = 0
+        for item in iterator:
+            entry = item[1] if isinstance(item, tuple) and len(item) == 2 else item
+            if _entry_feature_type(entry) != "gene":
+                continue
+            gene_id = _entry_id(entry)
+            if not gene_id:
+                continue
+            gene_ids.append(gene_id)
+            idx += 1
+            if limit and idx >= limit:
+                break
+        allowed = set(gene_ids)
+    else:
+        allowed = None
+
+    iterator_factory = getattr(annot, "iter", None)
+    iterator = iterator_factory() if callable(iterator_factory) else iter(annot)
+
+    for item in iterator:
+        entry = item[1] if isinstance(item, tuple) and len(item) == 2 else item
+        ft = _entry_feature_type(entry)
+        if ft is None or ft not in parts_set:
+            continue
+
+        contig = getattr(entry, "contig", None)
+        if contig is None:
+            getter = getattr(entry, "get_contig", None)
+            contig = getter() if callable(getter) else None
+        if contig is None:
+            continue
+
+        start = _get_contig_start(contig)
+        if start is not None and start < 0:
+            continue
+
+        if ft == "gene":
+            gene_id = _entry_id(entry)
+        else:
+            parents = _entry_parents(entry)
+            gene_id = parents[0] if parents else None
+
+        if not gene_id:
+            continue
+        if allowed is not None and gene_id not in allowed:
+            continue
+
+        out[ft].append((contig, gene_id))
+
+    result: dict[str, tuple[list[object], list[str]]] = {}
+    for ft, items in out.items():
+        if not items:
+            result[ft] = ([], [])
+            continue
+        contigs, labels = zip(*items)
+        result[ft] = (list(contigs), list(labels))
+
+    return result
+
+
+def combine_parts_drd(
+    drd_map: dict[str, DiscreteRegionData],
+    *,
+    segments: Sequence[MetageneProfileSegment],
+    parts_order: Sequence[str],
+) -> DiscreteRegionData:
+    validate_segments(segments, expected_len=3)
+
+    bounds = segment_boundaries(segments)
+    starts = [0.0, bounds[0], bounds[1]]
+    ends = [bounds[0], bounds[1], bounds[2]]
+
+    by_part: dict[str, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+    labels_all: set[str] = set()
+
+    for part, drd in drd_map.items():
+        lookup: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        for pos, dens, label in zip(drd.positions, drd.densities, drd.labels):
+            if label is None:
+                continue
+            lookup[label] = (np.asarray(pos, dtype=float), np.asarray(dens, dtype=float))
+            labels_all.add(label)
+        by_part[part] = lookup
+
+    out = DiscreteRegionData()
+    for label in sorted(labels_all):
+        xs = []
+        ys = []
+        for idx, part in enumerate(parts_order):
+            lookup = by_part.get(part, {})
+            if label not in lookup:
+                continue
+            x, y = lookup[label]
+            width = ends[idx] - starts[idx]
+            if width <= 0:
+                continue
+            xs.append(starts[idx] + x * width)
+            ys.append(y)
+
+        if not xs:
+            continue
+
+        x_all = np.concatenate(xs)
+        y_all = np.concatenate(ys)
+        out.insert(x_all, y_all, label)
+
+    return out
+
+
+def compute_from_annot(
+    reader: RegionReader,
+    annot: object,
+    *,
+    segments: Optional[Sequence[MetageneProfileSegment]] = None,
+    feature_type: Optional[str] = None,
+    reverse_negative: bool = True,
+    labels: Optional[Sequence[str]] = None,
+    limit: Optional[int] = None,
+    add_flanks: bool = False,
+    flank_bp: int = 2000,
+    combine_parts: bool = False,
+    parts: Optional[Sequence[str]] = None,
+) -> DiscreteRegionData:
+    if segments is None:
+        if combine_parts:
+            segments = (
+                MetageneProfileSegment("up", 100),
+                MetageneProfileSegment("body", 200),
+                MetageneProfileSegment("down", 100),
+            )
+        else:
+            segments = _DEFAULT_SEGMENTS
+
+    validate_segments(
+        segments,
+        expected_len=3 if combine_parts else None,
+        flank_bp=flank_bp,
+    )
+
+    if combine_parts:
+        parts_order = list(parts) if parts is not None else ["upstream_gene", "gene", "downstream_gene"]
+
+        drd_map: dict[str, DiscreteRegionData] = {}
+        for part in parts_order:
+            if add_flanks and part in {"upstream_gene", "downstream_gene"}:
+                contigs, auto_labels = _collect_synthetic_flanks(
+                    annot,
+                    flank_bp=int(flank_bp),
+                    kind=part,
+                    limit=limit,
+                )
+            elif part == "gene":
+                contigs, auto_labels = _collect_gene_contigs(annot, limit=limit)
+            else:
+                contigs, auto_labels = collect_contigs_from_hcannot(
+                    annot,
+                    feature_type=part,
+                    limit=limit,
+                )
+            if not contigs:
+                continue
+            drd_map[part] = compute_discrete_regions(
+                reader,
+                contigs,
+                segments=segments,
+                reverse_negative=reverse_negative,
+                labels=auto_labels,
+            )
+
+        if not drd_map:
+            return DiscreteRegionData()
+
+        return combine_parts_drd(drd_map, segments=segments, parts_order=parts_order)
+
+    if add_flanks and feature_type in {"upstream_gene", "downstream_gene"}:
+        contigs, auto_labels = _collect_synthetic_flanks(
+            annot,
+            flank_bp=int(flank_bp),
+            kind=cast(str, feature_type),
+            limit=limit,
+        )
+    elif feature_type == "gene":
+        contigs, auto_labels = _collect_gene_contigs(annot, limit=limit)
+    else:
+        contigs, auto_labels = collect_contigs_from_hcannot(
+            annot,
+            feature_type=feature_type,
+            limit=limit,
+        )
+    use_labels = list(labels) if labels is not None else auto_labels
+    return compute_discrete_regions(
+        reader,
+        contigs,
+        segments=segments,
+        reverse_negative=reverse_negative,
+        labels=use_labels,
+    )
