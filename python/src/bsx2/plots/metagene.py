@@ -191,6 +191,27 @@ def _to_np_float64(col) -> np.ndarray:
     return np.asarray(col.to_list(), dtype=np.float64)
 
 
+def _insert_region_data(
+    data: DiscreteRegionData,
+    pos: np.ndarray,
+    dens: np.ndarray,
+    *,
+    contig: Contig,
+    start: int | float,
+    end: int | float,
+    label: Optional[str],
+    reverse_negative: bool,
+) -> None:
+    x = (pos - float(start)) / float(end - start)
+    y = dens
+
+    if reverse_negative and _is_negative_strand(contig):
+        x = 1.0 - x[::-1]
+        y = y[::-1]
+
+    data.insert_unchecked(x, y, label)
+
+
 # ============================================================
 # Main compute function (optimized)
 # ============================================================
@@ -218,10 +239,6 @@ def compute_discrete_regions(
 
     total = len(contigs_list)
     step = progress_every if progress_every > 0 else 1
-
-    np_isfinite = np.isfinite
-    np_argsort = np.argsort
-    np_clip = np.clip
 
     if query_fn is not None:
         last_seqname = None
@@ -260,37 +277,17 @@ def compute_discrete_regions(
             except Exception:
                 continue
 
-            if pos.size == 0 or dens.size == 0:
-                continue
-
-            x = (pos - float(start)) / float(end - start)
-            y = dens
-
-            if reverse_negative and _is_negative_strand(contig):
-                x = 1.0 - x
-
-            mask = np_isfinite(x) & (x >= 0.0) & (x <= 1.0)
-            x = x[mask]
-            y = y[mask]
-            if x.size == 0:
-                continue
-
-            if x.size >= 2 and not np.all(x[:-1] <= x[1:]):
-                order = np_argsort(x, kind="mergesort")
-                x = x[order]
-                y = y[order]
-
-            bad = ~np_isfinite(y)
-            if bad.any():
-                y = y.copy()
-                y[bad] = np.nan
-
-            good = np_isfinite(y)
-            if good.any():
-                np_clip(y, 0.0, 1.0, out=y, where=good)
-
             label = labels[idx] if labels and idx < len(labels) else None
-            data.insert(x, y, label)
+            _insert_region_data(
+                data,
+                pos,
+                dens,
+                contig=contig,
+                start=start,
+                end=end,
+                label=label,
+                reverse_negative=reverse_negative,
+            )
 
     else:
         batch_iter = cast(Callable[[list[object]], object], iter_contigs_fn)(contigs_list)
@@ -317,36 +314,16 @@ def compute_discrete_regions(
             except Exception:
                 continue
 
-            if pos.size == 0 or dens.size == 0:
-                continue
-
-            x = (pos - float(start)) / float(end - start)
-            y = dens
-
-            if reverse_negative and _is_negative_strand(contig):
-                x = 1.0 - x
-
-            mask = np_isfinite(x) & (x >= 0.0) & (x <= 1.0)
-            x = x[mask]
-            y = y[mask]
-            if x.size == 0:
-                continue
-
-            if x.size >= 2 and not np.all(x[:-1] <= x[1:]):
-                order = np_argsort(x, kind="mergesort")
-                x = x[order]
-                y = y[order]
-
-            bad = ~np_isfinite(y)
-            if bad.any():
-                y = y.copy()
-                y[bad] = np.nan
-
-            good = np_isfinite(y)
-            if good.any():
-                np_clip(y, 0.0, 1.0, out=y, where=good)
-
             label = labels[idx] if labels and idx < len(labels) else None
-            data.insert(x, y, label)
+            _insert_region_data(
+                data,
+                pos,
+                dens,
+                contig=contig,
+                start=start,
+                end=end,
+                label=label,
+                reverse_negative=reverse_negative,
+            )
 
     return data
