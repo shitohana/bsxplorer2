@@ -78,7 +78,7 @@ def _line_profile(
 class LinePlotComposer:
     segments: list[MetageneProfileSegment] | None = None
     n_windows: Optional[int] = None
-    agg: AggMethod | str = "mean"
+    agg: AggMethod = AggMethod.Mean
     nan_policy: NanPolicy = NanPolicy.KEEP
     smooth: dict | int | None = 50
     title: Optional[str] = None
@@ -144,7 +144,7 @@ class LinePlotComposer:
         self.n_windows = self._total_bins if n_windows is None else validate_n_windows(n_windows)
         return self
 
-    def set_agg(self, agg: AggMethod | str) -> "LinePlotComposer":
+    def set_agg(self, agg: AggMethod) -> "LinePlotComposer":
         self.agg = validate_window_agg(agg)
         return self
 
