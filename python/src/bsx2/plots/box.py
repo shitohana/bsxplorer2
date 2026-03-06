@@ -4,11 +4,12 @@ from typing import Optional
 
 import holoviews as hv
 import numpy as np
+from bsx2 import AggMethod
 
 from bsx2.plots.data import DiscreteRegionData
 from bsx2.plots.metagene import MetageneProfileSegment, segments_total_bins
 from bsx2.validation import validate_n_windows, validate_nan_policy
-from ._common import _bin_points_windows, _ensure_plotly, _hv_init
+from ._common import _bin_points_windows_fast, _ensure_plotly, _hv_init, NanPolicy
 
 
 def _dist_rows(
@@ -18,7 +19,7 @@ def _dist_rows(
     nan_fill: Optional[float] = None,
     segments: list[MetageneProfileSegment] | None = None,
     n_windows: Optional[int] = None,
-    nan_policy: str = "drop",
+    nan_policy: NanPolicy = NanPolicy.DROP,
 ):
     if n_windows is None:
         n_windows = segments_total_bins(segments) if segments else 40
@@ -32,11 +33,11 @@ def _dist_rows(
             y = y * 100.0
         if nan_fill is not None:
             y = np.where(np.isnan(y), nan_fill, y)
-        binned = _bin_points_windows(
+        binned = _bin_points_windows_fast(
             x,
             y,
             n_windows=n_windows,
-            agg="mean",
+            agg=AggMethod.Mean,
             nan_policy=nan_policy,
         )
         for b, v in enumerate(binned):
@@ -52,14 +53,14 @@ def box_html(
     n_windows: Optional[int] = None,
     as_percent: bool = True,
     nan_fill: Optional[float] = None,
-    nan_policy: str = "drop",
+    nan_policy: NanPolicy = NanPolicy.DROP,
     per_region: bool = False,
     full_html: bool = False,
     include_js: str = "cdn",
     title: Optional[str] = None,
 ) -> str:
     _hv_init()
-    validate_nan_policy(nan_policy)
+    nan_policy = validate_nan_policy(nan_policy)
     if per_region:
         data = []
         for dens, lbl in zip(drd.densities, drd.labels):
@@ -68,9 +69,9 @@ def box_html(
                 y = y * 100.0
             if nan_fill is not None:
                 y = np.where(np.isnan(y), nan_fill, y)
-            if nan_policy == "zero":
+            if nan_policy is NanPolicy.ZERO:
                 y = np.where(np.isnan(y), 0.0, y)
-            if nan_policy == "drop":
+            if nan_policy is NanPolicy.DROP:
                 y = y[np.isfinite(y)]
             if y.size == 0:
                 continue

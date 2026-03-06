@@ -21,7 +21,16 @@ from bsx2.plots.metagene import (
     _coerce_smooth_config,
     segments_total_bins,
 )
-from ._common import _bin_points_windows_fast, NanPolicy
+from ._common import _bin_points_windows_fast, _hv_init, NanPolicy
+
+
+def _agg_label(agg: AggMethod) -> str:
+    name = getattr(agg, "name", None)
+    if isinstance(name, str) and name:
+        token = name
+    else:
+        token = str(agg).rsplit(".", 1)[-1]
+    return token.lower().capitalize()
 
 
 def _line_profile(
@@ -78,7 +87,7 @@ def _line_profile(
 class LinePlotComposer:
     segments: list[MetageneProfileSegment] | None = None
     n_windows: Optional[int] = None
-    agg: AggMethod = AggMethod.Mean
+    agg: AggMethod = field(default_factory=lambda: AggMethod.Mean)
     nan_policy: NanPolicy = NanPolicy.KEEP
     smooth: dict | int | None = 50
     title: Optional[str] = None
@@ -204,12 +213,13 @@ class LinePlotComposer:
         return self
 
     def finish(self):
+        _hv_init()
 
         if not self.x:
             curve = hv.Curve([])
             return curve.opts(
                 xlabel="Metagene position (relative)",
-                ylabel=f"{self.agg.name.lower().capitalize()} methylation density",
+                ylabel=f"{_agg_label(self.agg)} methylation density",
                 show_legend=False,
                 title=self.title or "Metagene profile - Line",
                 **({} if self.width is None else {"width": int(self.width)}),
@@ -230,7 +240,7 @@ class LinePlotComposer:
 
         opts_kwargs = dict(
             xlabel="Metagene position (relative)",
-            ylabel=f"{self.agg.name.lower().capitalize()} methylation density",
+            ylabel=f"{_agg_label(self.agg)} methylation density",
             show_legend=len(curves) > 1,
             title=self.title or "Metagene profile - Line",
         )
