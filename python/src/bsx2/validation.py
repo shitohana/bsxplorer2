@@ -15,29 +15,6 @@ _SMOOTH_MODES = {"interp", "nearest", "mirror", "constant", "wrap"}
 _SMOOTH_NAN_POLICIES = {"interp", "mask", "raise"}
 _RANK_SCORE_VALUES = {"mean", "body_mean"}
 _SORT_ORDER_VALUES = {"asc", "desc"}
-_CONTEXT_ALIASES: dict[str, Context] = {
-    "CG": Context.CG,
-    "CHG": Context.CHG,
-    "CHH": Context.CHH,
-}
-
-_STRAND_ALIASES: dict[str, Strand] = {
-    "+": Strand.Forward,
-    "-": Strand.Reverse,
-    "both": Strand.Null,
-    "all": Strand.Null,
-    "forward": Strand.Forward,
-    "reverse": Strand.Reverse,
-    "f": Strand.Forward,
-    "r": Strand.Reverse,
-}
-
-_WINDOW_AGG_ALIASES: dict[str, AggMethod] = {
-    "mean": AggMethod.Mean,
-    "median": AggMethod.Median,
-    "max": AggMethod.Max,
-    "min": AggMethod.Min,
-}
 
 
 def _make_odd(n: int) -> int:
@@ -68,16 +45,12 @@ def validate_n_windows(n_windows: object) -> int:
 
 
 def validate_window_agg(agg: object) -> AggMethod:
-    if isinstance(agg, AggMethod):
-        if agg is AggMethod.GeometricMean:
-            raise ValueError("agg must be one of: mean, median, max, min")
-        return agg
-
-    text = str(agg).strip().lower()
-    try:
-        return _WINDOW_AGG_ALIASES[text]
-    except KeyError as e:
-        raise ValueError("agg must be one of: mean, median, max, min") from e
+    if not isinstance(agg, AggMethod) or agg is AggMethod.GeometricMean:
+        raise ValueError(
+            "agg must be one of: AggMethod.Mean, AggMethod.Median, "
+            "AggMethod.Max, AggMethod.Min"
+        )
+    return agg
 
 
 def validate_rank_score(rank_score: object) -> str:
@@ -234,44 +207,34 @@ def validate_matrix_shape(
     return arr
 
 
-
-def _normalize_context_value(value: object) -> Context:
-    if isinstance(value, Context):
-        return value
-
-    if hasattr(value, "name"):
-        value = getattr(value, "name")
-
-    text = str(value).strip().upper()
-    try:
-        return _CONTEXT_ALIASES[text]
-    except KeyError as e:
-        raise ValueError("context must be CG, CHG, CHH or a list of these values") from e
+def _validate_context_value(value: object) -> Context:
+    if not isinstance(value, Context):
+        raise ValueError(
+            "context must be a Context value or a list of Context values"
+        )
+    return value
 
 
 def validate_context(context: object) -> Context | list[Context]:
     if isinstance(context, (list, tuple, set)):
-        values = [_normalize_context_value(v) for v in context]
+        values = [_validate_context_value(v) for v in context]
         if not values:
             raise ValueError("context list must not be empty")
         return values
-    return _normalize_context_value(context)
+    return _validate_context_value(context)
 
 
 def validate_strand(strand: object, *, allow_both: bool = True) -> Strand:
-    if isinstance(strand, Strand):
-        normalized = strand
-    else:
-        if hasattr(strand, "name"):
-            strand = getattr(strand, "name")
-        text = str(strand).strip().lower()
-        normalized = _STRAND_ALIASES.get(text)
-        if normalized is None:
-            raise ValueError("strand must be '+', '-', or 'both'")
+    if not isinstance(strand, Strand):
+        raise ValueError(
+            "strand must be a Strand value"
+            if allow_both
+            else "strand must be Strand.Forward or Strand.Reverse"
+        )
 
-    if not allow_both and normalized is Strand.Null:
-        raise ValueError("strand must be '+' or '-'")
-    return normalized
+    if not allow_both and strand is Strand.Null:
+        raise ValueError("strand must be Strand.Forward or Strand.Reverse")
+    return strand
 
 
 def validate_min_coverage(
