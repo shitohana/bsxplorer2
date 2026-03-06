@@ -141,6 +141,7 @@ class HeatmapPlotComposer:
         return self
 
     def finish(self):
+        _hv_init()
         if not self.z_parts:
             return hv.Image(
                 np.full((1, 1), np.nan, dtype=np.float64),
@@ -154,7 +155,6 @@ class HeatmapPlotComposer:
                 invert_yaxis=True,
                 xlabel="Position (bin)",
                 ylabel="Rank",
-                yticks=[],
                 title=self.title or "Metagene profile - Heatmap (BSX1 ranked)",
                 **({} if self.width is None else {"width": int(self.width)}),
                 **({} if self.height is None else {"height": int(self.height)}),
@@ -200,7 +200,6 @@ class HeatmapPlotComposer:
             invert_yaxis=True,
             xlabel="Position (bin)",
             ylabel="Rank",
-            yticks=[],
             title=self.title or "Metagene profile - Heatmap (BSX1 ranked)",
             width=fig_width,
             height=fig_height,
@@ -218,7 +217,7 @@ class HeatmapPlotComposer:
         cum = 0
         for seg in self.segments[:-1]:
             cum += seg.n_bins
-            plot *= hv.VLine(float(cum)).opts(line_dash="dashed", color="gray", line_width=1)
+            plot *= hv.VLine(float(cum)).opts(line_dash="dash", line_color="gray", line_width=1)
 
         return plot
 
