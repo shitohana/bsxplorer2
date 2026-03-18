@@ -11,10 +11,24 @@ class NanPolicy(StrEnum):
     ZERO = "zero"
     DROP = "drop"
 
+
+class ChrEmptyPolicy(StrEnum):
+    NAN = "nan"
+    ZERO = "zero"
+    DROP = "drop"
+
+
+class ChrLineStat(StrEnum):
+    WEIGHTED_MEAN = "weighted_mean"
+    MEAN = "mean"
+
+
 _SMOOTH_MODES = {"interp", "nearest", "mirror", "constant", "wrap"}
 _SMOOTH_NAN_POLICIES = {"interp", "mask", "raise"}
 _RANK_SCORE_VALUES = {"mean", "body_mean"}
 _SORT_ORDER_VALUES = {"asc", "desc"}
+_CHR_EMPTY_POLICY_VALUES = {p.value for p in ChrEmptyPolicy}
+_CHR_LINE_STAT_VALUES = {p.value for p in ChrLineStat}
 
 
 def _make_odd(n: int) -> int:
@@ -42,6 +56,10 @@ def validate_positive_int(value: object, *, name: str, allow_zero: bool = False)
 
 def validate_n_windows(n_windows: object) -> int:
     return validate_positive_int(n_windows, name="n_windows")
+
+
+def validate_bin_size_bp(bin_size_bp: object) -> int:
+    return validate_positive_int(bin_size_bp, name="bin_size_bp")
 
 
 def validate_window_agg(agg: object) -> AggMethod:
@@ -222,6 +240,59 @@ def validate_context(context: object) -> Context | list[Context]:
             raise ValueError("context list must not be empty")
         return values
     return _validate_context_value(context)
+
+
+def validate_single_context(context: object) -> Context:
+    value = validate_context(context)
+    if isinstance(value, list):
+        if len(value) != 1:
+            raise ValueError("context must contain exactly one value")
+        return value[0]
+    return value
+
+
+def validate_chr_empty_policy(policy: object) -> ChrEmptyPolicy:
+    if isinstance(policy, ChrEmptyPolicy):
+        return policy
+    text = str(policy).strip().lower()
+    if text not in _CHR_EMPTY_POLICY_VALUES:
+        raise ValueError("empty_policy must be one of: nan, zero, drop")
+    return ChrEmptyPolicy(text)
+
+
+def validate_chr_line_stat(stat: object) -> ChrLineStat:
+    if isinstance(stat, ChrLineStat):
+        return stat
+    text = str(stat).strip().lower()
+    if text in {"weighted", "wmean"}:
+        text = ChrLineStat.WEIGHTED_MEAN.value
+    elif text in {"unweighted", "unweighted_mean", "site_mean"}:
+        text = ChrLineStat.MEAN.value
+    if text not in _CHR_LINE_STAT_VALUES:
+        raise ValueError(
+            "stat must be one of: weighted_mean, mean "
+            "(aliases: weighted, wmean, unweighted, unweighted_mean, site_mean)"
+        )
+    return ChrLineStat(text)
+
+
+def validate_chr_lengths(
+    chr_lengths: dict[str, int] | None,
+) -> dict[str, int] | None:
+    if chr_lengths is None:
+        return None
+    if not isinstance(chr_lengths, dict):
+        raise ValueError("chr_lengths must be a mapping {chr_name: length_bp}")
+
+    validated: dict[str, int] = {}
+    for seqname, length in chr_lengths.items():
+        if not isinstance(seqname, str) or not seqname.strip():
+            raise ValueError("chr_lengths keys must be non-empty strings")
+        validated[seqname] = validate_positive_int(
+            length,
+            name=f"chr_lengths[{seqname}]",
+        )
+    return validated
 
 
 def validate_strand(strand: object, *, allow_both: bool = True) -> Strand:
