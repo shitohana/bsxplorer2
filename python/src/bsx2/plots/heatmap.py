@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from beartype.typing import Optional
 
 import holoviews as hv
 import numpy as np

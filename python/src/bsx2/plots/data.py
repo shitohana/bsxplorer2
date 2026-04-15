@@ -2,7 +2,7 @@ from __future__ import annotations
 import copy
 from enum import StrEnum
 from dataclasses import dataclass, field
-from typing import Annotated, Callable, List, Optional, TypeAlias, cast
+from beartype.typing import Annotated, Callable, Optional, TypeAlias, cast
 
 import numpy as np
 from beartype import beartype
@@ -157,9 +157,9 @@ class SortBy(StrEnum):
 @beartype
 @dataclass
 class DiscreteRegionData:
-    positions: List[_StoredArray] = field(default_factory=list)   # each: (n_bins,)
-    densities: List[_StoredArray] = field(default_factory=list)   # each: (n_bins,)
-    labels: List[Optional[str]] = field(default_factory=list)
+    positions: list[_StoredArray] = field(default_factory=list)   # each: (n_bins,)
+    densities: list[_StoredArray] = field(default_factory=list)   # each: (n_bins,)
+    labels: list[Optional[str]] = field(default_factory=list)
 
     @beartype
     def insert(
@@ -283,7 +283,7 @@ class DiscreteRegionData:
     def filter(
         self,
         *,
-        labels: Optional[List[str]] = None,
+        labels: Optional[list[str]] = None,
         predicate: Optional[Callable[[SegmentData], bool]] = None,
         in_place: bool = False,
     ) -> "DiscreteRegionData":

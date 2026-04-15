@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import StrEnum
 import math
-from typing import Sequence
+from beartype.typing import Sequence
 from bsx2 import Strand, Context, AggMethod
 
 import numpy as np

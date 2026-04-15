@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 import warnings
-from typing import Iterable, Mapping, Optional
+from beartype.typing import Iterable, Mapping, Optional
 
 import holoviews as hv
 import numpy as np

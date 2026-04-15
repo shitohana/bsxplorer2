@@ -3,11 +3,13 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+from beartype import beartype
 
 from .config import NormalizationMode
 from .models import FeatureBin, GeneAnnotation, GeneProfileMatrix
 
 
+@beartype
 def coverage_weighted_ratio(
     count_m_sum: int,
     count_total_sum: int,
@@ -17,6 +19,7 @@ def coverage_weighted_ratio(
     return float(count_m_sum) / float(count_total_sum)
 
 
+@beartype
 def finalize_gene_profile_matrix(
     genes: list[GeneAnnotation],
     feature_bins: list[FeatureBin],
@@ -99,6 +102,7 @@ def finalize_gene_profile_matrix(
     )
 
 
+@beartype
 def zscore_columns(values: np.ndarray) -> np.ndarray:
     if values.ndim != 2:
         raise ValueError("values must be 2D")
@@ -109,6 +113,7 @@ def zscore_columns(values: np.ndarray) -> np.ndarray:
     return (values - col_means) / col_stds
 
 
+@beartype
 def zscore_rows(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     if values.ndim != 2:
         raise ValueError("values must be 2D")
@@ -122,6 +127,7 @@ def zscore_rows(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return (values - row_means) / row_stds, constant_mask
 
 
+@beartype
 def normalize_matrix(
     values: np.ndarray,
     mode: NormalizationMode,
