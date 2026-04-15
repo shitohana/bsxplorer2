@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from beartype import beartype
 from bsx2 import HcAnnotStore
 
 from .config import AnnotationFormat
 from .models import GeneAnnotation
 
 
+@beartype
 def infer_annotation_format(path: Path) -> AnnotationFormat:
     suffix = path.suffix.lower()
     if suffix in {".gff", ".gff3", ".gtf"}:
@@ -18,6 +20,7 @@ def infer_annotation_format(path: Path) -> AnnotationFormat:
     raise ValueError(f"Unsupported annotation format for path: {path}")
 
 
+@beartype
 def load_annotation_store(
     path: Path,
     annotation_format: AnnotationFormat | None = None,
@@ -123,6 +126,7 @@ def _contig_coord(contig, name: str) -> int | None:
     return None if value is None else int(value)
 
 
+@beartype
 def load_gene_annotations(
     path: Path,
     *,

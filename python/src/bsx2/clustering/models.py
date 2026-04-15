@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
+from beartype.typing import Any
 
 import numpy as np
+from beartype import beartype
 
 
+@beartype
 @dataclass(frozen=True, order=True)
 class GeneAnnotation:
     gene_id: str
@@ -28,6 +31,7 @@ class GeneAnnotation:
         return self.end - self.start
 
 
+@beartype
 @dataclass(frozen=True)
 class FeatureBin:
     feature_name: str
@@ -36,6 +40,7 @@ class FeatureBin:
     global_bin_index: int
 
 
+@beartype
 @dataclass(frozen=True)
 class ProfileBin:
     gene_id: str
@@ -53,6 +58,7 @@ class ProfileBin:
             raise ValueError("ProfileBin.end must be >= start")
 
 
+@beartype
 @dataclass
 class GeneProfileMatrix:
     genes: list[GeneAnnotation]
@@ -93,6 +99,7 @@ class GeneProfileMatrix:
         return [gene.gene_id for gene in self.genes]
 
 
+@beartype
 @dataclass
 class GeneClusterResult:
     feature_matrix: GeneProfileMatrix
@@ -120,3 +127,13 @@ class GeneClusterResult:
             raise ValueError("hierarchical_labels shape does not match feature matrix")
         if self.embedding.shape[0] != n_genes:
             raise ValueError("embedding row count does not match feature matrix")
+
+
+@beartype
+@dataclass
+class ClusterArtifacts:
+    tables: dict[str, Any]
+    plots: dict[str, Any]
+    metrics: dict[str, Any]
+    plot_data: dict[str, Any] = field(default_factory=dict)
+    paths: dict[str, Path] = field(default_factory=dict)

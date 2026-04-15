@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import defaultdict, deque
-from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Tuple, cast
+from typing import TYPE_CHECKING
+
+from beartype.typing import Callable, List, Optional, Sequence, Tuple, cast
 
 import numpy as np
 from bsx2 import Contig, RegionReader

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from beartype import beartype
 from bsx2 import Context
 
 
@@ -35,12 +36,28 @@ class HierarchicalLinkage(str, Enum):
     WARD = "ward"
 
 
+class TableFormat(str, Enum):
+    TSV = "tsv"
+    CSV = "csv"
+    PARQUET = "parquet"
+    JSON = "json"
+
+
+@beartype
 @dataclass(frozen=True)
 class ReadConfig:
     context: Context | None = None
     min_coverage: int = 5
 
 
+@beartype
+@dataclass(frozen=True)
+class BlockCacheConfig:
+    enabled: bool = False
+    cache_dir: Path | None = None
+
+
+@beartype
 @dataclass(frozen=True)
 class GeneProfileConfig:
     upstream_bp: int = 2_000
@@ -62,6 +79,7 @@ class GeneProfileConfig:
         return self.upstream_bins + self.body_bins + self.downstream_bins
 
 
+@beartype
 @dataclass(frozen=True)
 class BackendConfig:
     n_components: int = 2
@@ -72,24 +90,31 @@ class BackendConfig:
     tol: float = 1e-4
 
 
+@beartype
 @dataclass(frozen=True)
 class HierarchicalConfig:
     distance: HierarchicalDistance = HierarchicalDistance.CORRELATION
     linkage: HierarchicalLinkage = HierarchicalLinkage.AVERAGE
 
 
+@beartype
 @dataclass(frozen=True)
 class OutputConfig:
     output_dir: Path
     prefix: str = ""
+    table_formats: tuple[TableFormat, ...] = (TableFormat.TSV,)
+    write_table_files: bool = True
+    write_metrics_file: bool = True
 
 
+@beartype
 @dataclass(frozen=True)
 class ClusterConfig:
     bsx_path: Path
     annotation_path: Path
     annotation_format: AnnotationFormat | None = None
     read: ReadConfig = ReadConfig()
+    block_cache: BlockCacheConfig = BlockCacheConfig()
     gene_profile: GeneProfileConfig = GeneProfileConfig()
     backend: BackendConfig = BackendConfig()
     hierarchical: HierarchicalConfig = HierarchicalConfig()

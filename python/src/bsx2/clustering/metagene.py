@@ -4,10 +4,12 @@ import math
 
 import numpy as np
 import polars as pl
+from beartype import beartype
 
 from .models import GeneClusterResult
 
 
+@beartype
 def cluster_metagene_summary(
     result: GeneClusterResult,
 ) -> pl.DataFrame:

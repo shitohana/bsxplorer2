@@ -4,6 +4,7 @@ import math
 from time import perf_counter
 
 import numpy as np
+from beartype import beartype
 
 from .agg import normalize_matrix
 from .config import BackendConfig, ClusterConfig, ClusterSource
@@ -194,6 +195,7 @@ def _silhouette_score(
     return float(silhouettes.mean()), None
 
 
+@beartype
 def run_pca_kmeans(
     matrix: GeneProfileMatrix,
     config: BackendConfig,
@@ -249,6 +251,7 @@ def run_pca_kmeans(
     }
 
 
+@beartype
 def cluster_gene_profiles(
     matrix: GeneProfileMatrix,
     config: ClusterConfig,

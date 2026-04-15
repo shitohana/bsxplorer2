@@ -10,6 +10,7 @@ from .backend import cluster_gene_profiles
 from .config import (
     AnnotationFormat,
     BackendConfig,
+    BlockCacheConfig,
     ClusterConfig,
     ClusterSource,
     GeneProfileConfig,
@@ -19,6 +20,7 @@ from .config import (
     NormalizationMode,
     OutputConfig,
     ReadConfig,
+    TableFormat,
 )
 from .gene_profile import build_gene_profile_matrix
 from .io import write_cluster_outputs
@@ -65,6 +67,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Minimum per-cytosine coverage filter",
     )
+    parser.add_argument(
+        "--query-block-cache",
+        action="store_true",
+        help="Persist queried BSX blocks on disk and reuse them across runs",
+    )
+    parser.add_argument(
+        "--query-block-cache-dir",
+        default=None,
+        help="Optional directory for persistent queried-block cache",
+    )
     parser.add_argument("--upstream-bp", type=int, default=2000)
     parser.add_argument("--downstream-bp", type=int, default=2000)
     parser.add_argument("--upstream-bins", type=int, default=20)
@@ -102,6 +114,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-o", "--output", required=True, help="Output directory")
     parser.add_argument("--prefix", default="", help="Prefix for output files")
+    parser.add_argument(
+        "--table-format",
+        action="append",
+        choices=[fmt.value for fmt in TableFormat],
+        default=None,
+        help="Repeat to write multiple table formats; default is tsv",
+    )
+    parser.add_argument(
+        "--no-table-files",
+        action="store_true",
+        help="Do not write tabular outputs to disk",
+    )
+    parser.add_argument(
+        "--no-metrics-file",
+        action="store_true",
+        help="Do not write metrics.json to disk",
+    )
     return parser
 
 
@@ -114,6 +143,10 @@ def parse_args(argv: list[str] | None = None) -> ClusterConfig:
         read=ReadConfig(
             context=_parse_context(args.context),
             min_coverage=args.min_coverage,
+        ),
+        block_cache=BlockCacheConfig(
+            enabled=bool(args.query_block_cache or args.query_block_cache_dir),
+            cache_dir=None if args.query_block_cache_dir is None else Path(args.query_block_cache_dir),
         ),
         gene_profile=GeneProfileConfig(
             upstream_bp=args.upstream_bp,
@@ -143,6 +176,11 @@ def parse_args(argv: list[str] | None = None) -> ClusterConfig:
         output=OutputConfig(
             output_dir=Path(args.output),
             prefix=args.prefix,
+            table_formats=tuple(
+                TableFormat(fmt) for fmt in (args.table_format or [TableFormat.TSV.value])
+            ),
+            write_table_files=not args.no_table_files,
+            write_metrics_file=not args.no_metrics_file,
         ),
     )
 

@@ -16,6 +16,18 @@ from .chrline import (
     ChrLineTrack,
     compute_chr_line_data,
 )
+from .clustering import (
+    ClusterMetageneData,
+    GeneDendrogramData,
+    GeneDendrogramPlotComposer,
+    GeneEmbeddingData,
+    GeneEmbeddingPlotComposer,
+    build_cluster_metagene_data,
+    build_cluster_metagene_plot,
+    build_gene_dendrogram_data,
+    build_gene_embedding_data,
+    cluster_profile_segments,
+)
 from .box import box_html
 from .violin import violin_html
 
@@ -34,6 +46,16 @@ __all__ = [
     "ChrLineData",
     "compute_chr_line_data",
     "ChrLinePlotComposer",
+    "GeneEmbeddingData",
+    "GeneEmbeddingPlotComposer",
+    "GeneDendrogramData",
+    "GeneDendrogramPlotComposer",
+    "ClusterMetageneData",
+    "build_gene_embedding_data",
+    "build_gene_dendrogram_data",
+    "build_cluster_metagene_data",
+    "build_cluster_metagene_plot",
+    "cluster_profile_segments",
     "box_html",
     "violin_html",
 ]

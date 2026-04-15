@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from beartype.typing import Callable
 
 import holoviews as hv
 import numpy as np

@@ -3,12 +3,14 @@ from __future__ import annotations
 from time import perf_counter
 
 import numpy as np
+from beartype import beartype
 from scipy.cluster.hierarchy import fcluster, leaves_list, linkage
 from scipy.spatial.distance import pdist
 
 from .config import HierarchicalConfig, HierarchicalDistance, HierarchicalLinkage
 
 
+@beartype
 def run_hierarchical(
     values: np.ndarray,
     config: HierarchicalConfig,
