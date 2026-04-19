@@ -59,110 +59,37 @@ def _line_profile(
 
     x_out = (np.arange(n_windows, dtype=float) + 0.5) / float(n_windows)
 
-    if not drd.positions:
-        empty = np.array([], dtype=np.float64)
-        return empty, empty
+    xs_parts: list[np.ndarray] = []
+    ys_parts: list[np.ndarray] = []
 
-    if agg is AggMethod.Mean:
-        sums = np.zeros(n_windows, dtype=np.float64)
-        counts = np.zeros(n_windows, dtype=np.int64)
-        for pos, dens in zip(drd.positions, drd.densities, strict=True):
-            x = np.asarray(pos, dtype=np.float64)
-            y = np.asarray(dens, dtype=np.float64)
-            if x.size == 0:
-                continue
-            if nan_policy is NanPolicy.ZERO:
-                y = np.where(np.isfinite(y), y, 0.0)
-            else:
-                finite = np.isfinite(y)
-                if not np.any(finite):
-                    continue
-                x = x[finite]
-                y = y[finite]
-
-            idx = (x * n_windows).astype(np.int64)
-            idx[idx == n_windows] = n_windows - 1
-            counts += np.bincount(idx, minlength=n_windows)
-            sums += np.bincount(idx, weights=y, minlength=n_windows)
-
-        y_out = np.full(n_windows, np.nan, dtype=np.float64)
-        nonempty = counts > 0
-        y_out[nonempty] = sums[nonempty] / counts[nonempty]
-        return x_out, y_out
-
-    if agg in (AggMethod.Min, AggMethod.Max):
-        y_out = (
-            np.full(n_windows, np.inf, dtype=np.float64)
-            if agg is AggMethod.Min
-            else np.full(n_windows, -np.inf, dtype=np.float64)
-        )
-        touched = np.zeros(n_windows, dtype=bool)
-        for pos, dens in zip(drd.positions, drd.densities, strict=True):
-            x = np.asarray(pos, dtype=np.float64)
-            y = np.asarray(dens, dtype=np.float64)
-            if x.size == 0:
-                continue
-            if nan_policy is NanPolicy.ZERO:
-                y = np.where(np.isfinite(y), y, 0.0)
-            else:
-                finite = np.isfinite(y)
-                if not np.any(finite):
-                    continue
-                x = x[finite]
-                y = y[finite]
-
-            idx = (x * n_windows).astype(np.int64)
-            idx[idx == n_windows] = n_windows - 1
-            touched[idx] = True
-            if agg is AggMethod.Min:
-                np.minimum.at(y_out, idx, y)
-            else:
-                np.maximum.at(y_out, idx, y)
-
-        y_out[~touched] = np.nan
-        return x_out, y_out
-
-    total_points = 0
-    for dens in drd.densities:
-        y = np.asarray(dens, dtype=np.float64)
-        if nan_policy is NanPolicy.ZERO:
-            total_points += int(y.size)
-        else:
-            total_points += int(np.isfinite(y).sum())
-
-    if total_points == 0:
-        return x_out, np.full(n_windows, np.nan, dtype=np.float64)
-
-    x_all = np.empty(total_points, dtype=np.float64)
-    y_all = np.empty(total_points, dtype=np.float64)
-    offset = 0
     for pos, dens in zip(drd.positions, drd.densities, strict=True):
         x = np.asarray(pos, dtype=np.float64)
         y = np.asarray(dens, dtype=np.float64)
+
         if x.size == 0:
             continue
-        if nan_policy is NanPolicy.ZERO:
-            y = np.where(np.isfinite(y), y, 0.0)
-        else:
-            finite = np.isfinite(y)
-            if not np.any(finite):
-                continue
-            x = x[finite]
-            y = y[finite]
-        size = int(y.size)
-        x_all[offset: offset + size] = x
-        y_all[offset: offset + size] = y
-        offset += size
 
-    x_all = x_all[:offset]
-    y_all = y_all[:offset]
-    order = np.argsort(x_all, kind="mergesort")
+        xs_parts.append(x)
+        ys_parts.append(y)
+
+    if not xs_parts:
+        empty = np.array([], dtype=np.float64)
+        return empty, empty
+
+    x_all = np.concatenate(xs_parts)
+    y_all = np.concatenate(ys_parts)
+
+    if agg is AggMethod.Median:
+        order = np.argsort(x_all, kind="mergesort")
+        x_all = x_all[order]
+        y_all = y_all[order]
+
     y_out = _bin_points_windows_fast(
-        x_all[order],
-        y_all[order],
+        x_all,
+        y_all,
         n_windows=n_windows,
         agg=agg,
-        nan_policy=NanPolicy.KEEP,
+        nan_policy=nan_policy,
     )
     return x_out, y_out
 
@@ -199,7 +126,11 @@ class LinePlotComposer:
 
     @staticmethod
     def _default_segments() -> list[MetageneProfileSegment]:
-        return [MetageneProfileSegment("region", 100)]
+        return [
+            MetageneProfileSegment("up", 100),
+            MetageneProfileSegment("body", 200),
+            MetageneProfileSegment("down", 100),
+        ]
 
     def _refresh_borders(self) -> None:
         total = float(self._total_bins)

@@ -6,7 +6,7 @@ from beartype.typing import Optional
 from bsx2.validation import validate_positive_int
 
 from ..compute.data import DiscreteRegionData
-from ..compute.distribution import build_box_distribution_data
+from ..compute.distribution import DistributionMode, build_box_distribution_data
 from ..compute.metagene import MetageneProfileSegment
 from ._common import NanPolicy, _hv_init
 
@@ -20,6 +20,7 @@ def box_plot(
     nan_fill: Optional[float] = None,
     nan_policy: NanPolicy = NanPolicy.DROP,
     per_region: bool = False,
+    distribution_mode: DistributionMode = "windows",
     title: Optional[str] = None,
     width: int | None = None,
     height: int | None = None,
@@ -43,6 +44,10 @@ def box_plot(
         Policy controlling how NaN values are handled during distribution prep.
     per_region
         If `True`, summarize one value per region instead of per metagene bin.
+    distribution_mode
+        Grouping mode for metagene distributions. ``"windows"`` builds one box
+        per metagene window; ``"segments"`` summarizes one value per region in
+        each named segment.
     title
         Optional plot title.
     width, height
@@ -57,6 +62,7 @@ def box_plot(
         nan_fill=nan_fill,
         nan_policy=nan_policy,
         per_region=per_region,
+        distribution_mode=distribution_mode,
     )
 
     opts_kwargs = dict(
