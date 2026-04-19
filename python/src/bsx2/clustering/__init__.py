@@ -23,7 +23,14 @@ from .gene_profile import (
 )
 from .hierarchical import run_hierarchical
 from .metagene import cluster_metagene_summary
-from .models import ClusterArtifacts, FeatureBin, GeneAnnotation, GeneClusterResult, GeneProfileMatrix, ProfileBin
+from .models import (
+    ClusterArtifacts,
+    FeatureBin,
+    GeneAnnotation,
+    GeneClusterResult,
+    GeneProfileMatrix,
+    ProfileBin,
+)
 
 
 def build_cluster_artifacts(*args, **kwargs):

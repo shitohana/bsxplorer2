@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from beartype.typing import Any
 
 import numpy as np
 from beartype import beartype
+from beartype.typing import Any
 
 
 @beartype

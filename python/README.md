@@ -1,238 +1,320 @@
-# WIP
+# bsx2
 
-## Roadmap
+`bsx2` is the Python package for `bsxplorer2`: fast bisulfite sequencing data IO, normalized-region aggregation, clustering utilities, and HoloViews-based visualization.
 
-### From the v1
+## Status
 
-* [x] Report IO
-* [x] Metagene (Python layer)
-* [x] Plots
-  * [x] LinePlot (HoloViews / Plotly HTML)
-  * [x] HeatMap (HoloViews / Plotly HTML)
-  * [x] BoxPlot (HoloViews / Plotly HTML)
-* [ ] Gene Body Methylation
-* [ ] Converters
+Implemented in the current Python layer:
 
-### For the v2
+- report and `.bsx` IO
+- scaled aggregation from arbitrary regions
+- metagene aggregation from `RegionReader + HcAnnotStore`
+- HoloViews plots for normalized region and annotation-layout profiles:
+  - line plot
+  - heatmap
+  - box plot
+  - violin plot
+- clustering plots and helpers:
+  - PCA embedding plot
+  - hierarchical dendrogram
+  - cluster metagene summary
+- chromosome methylation map
 
-* [x] IPC files interface
-* [x] IPC indexing interface
-* [x] DMR identification algorithm
-* [ ] Segmentation algorithm
-* [ ] Dimensionality reduction algorithm
-* [x] Metagene constructor interface (RegionReader + HcAnnotStore)
+Out of scope for the public plotting API:
 
-TODO: Add get function to AnnotMap
+- built-in HTML helper generation
+- Plotly-specific wrapper modules from the old prototype
 
-## Metagene Visualization Interface — Design & Usage
+The plotting layer now returns HoloViews objects. Rendering, saving, and backend-specific export are left to the user.
 
-Ниже описано, как реализована визуализация метагена поверх backend‑возможностей `bsxplorer2` и как ей пользоваться на реальных `.bsx`/аннотациях.
+Further docs:
 
-### Цель
+- [Plotting support matrix](docs/plotting_support_matrix.md)
+- [Upgrade notes](docs/upgrade_notes.md)
+- [Performance notes](docs/performance_notes.md)
+- [Release notes](docs/release_notes_aw25.md)
+- [Code inventory summary](docs/code_inventory_summary.md)
+- [Manual acceptance checklist](docs/manual_acceptance_checklist.csv)
 
-- Создать интерфейс для графического представления результатов анализа `bsxplorer2`.
-- Воспользоваться чётким форматом данных `.bsx` и инструментами Rust для эффективной работы с метилированием.
-- Восстановить визуализацию метагена из v1: Line plot, Heat map, Box plot, Violin plot, без жёсткой привязки к схеме promoter/body/terminator.
+## Installation
 
-### Подход и Архитектура
+The project uses Poetry.
 
-- Разделение ответственности и прозрачность компонентов:
-  - Данные: `bsx2.plots.data.DiscreteRegionData`, `LinePlotData` — хранение дискретизированных профилей (x/y) и базовые преобразования.
-  - Вычисления: `bsx2.plots.metagene.compute_discrete_regions/compute_from_annot` — оркестрация чтения из Rust (`RegionReader`/`HcAnnotStore`), дискретизация посредством `BsxBatch.discretise`.
-  - Визуализация: два независимых слоя
-    - HoloViews (`line_plot`, `heatmap`, `box_plot`, `violin_plot`) — для интерактивной работы в ноутбуках.
-    - Polars + Plotly HTML (`line_html`, `heatmap_html`, `box_html`, `violin_html`) — для генерации standalone HTML.
-- Масштабируемость: чтение по регионам стримингом (`RegionReader.iter_contigs`), дискретизация и векторные агрегации (Rust + Polars).
-- Гибкость схемы метагена: сегменты произвольны, задаются списком `Segment(name, n_bins)`.
+```bash
+cd python
+poetry install
+```
 
-### Работа с Данными Rust (.bsx)
+## Development Commands
 
-- Источник: `.bsx` — бинарный формат Arrow IPC с индексом, доступ через `RegionReader`.
-- Чтение по регионам: `RegionReader.iter_contigs(contigs)` или `RegionReader.query(contig)`. Перед вычислениями можно применить фильтры: `filter_coverage_gt`, `filter_context`, `filter_strand`, `filter_pos_*`.
-- Дискретизация внутри региона (Rust): `BsxBatch.discretise(n_bins, AggMethod)` равномерно разбивает геномный отрезок на `n_bins` и агрегирует значения (Mean/Median/Max/Min).
-- Получение контуров из аннотаций: `HcAnnotStore.from_gff/.from_bed` + утилита `collect_contigs_from_hcannot`.
+Run tests:
 
-### Метаген из Произвольных Участков
+```bash
+cd python
+poetry run pytest tests
+```
 
-- Сегменты задаются пользователем: `segments = [Segment("up", 25), Segment("body", 50), Segment("down", 25)]` или любой иной набор.
-- Суммарное число бинов — `sum(s.n_bins)`, `discretise` даёт профили одинаковой длины для всех регионов.
-- Ориентация: для ‘-’ цепи профили зеркалируются (опционально), чтобы обеспечить согласованность направления.
+Run Ruff:
 
-### Графики
+```bash
+cd python
+poetry run ruff check src tests
+poetry run ruff format src tests
+```
 
-- HoloViews:
-  - `line_plot(reader, contigs=..., segments=..., agg_method=...) -> hv.Curve`
-  - `heatmap(...) -> hv.HeatMap`
-  - `box_plot(...) -> hv.BoxWhisker`
-  - `violin_plot(...) -> hv.Violin`
-  - Требуется `hv.extension('matplotlib')` или `'bokeh'` перед использованием `.opts`.
-- Plotly HTML (Polars):
-  - `line_html(drd, ...) -> str`
-  - `heatmap_html(drd, ...) -> str`
-  - `box_html(drd, ...) -> str`
-  - `violin_html(drd, ...) -> str`
+Run the clustering CLI:
 
-### API Обзор
+```bash
+cd python
+poetry run cluster-bsx --help
+```
 
-- Данные: `bsx2.plots.data`
-  - `DiscreteRegionData.insert(x: np.ndarray, y: np.ndarray, label: Optional[str])`
-  - `DiscreteRegionData.stack_matrix() -> (np.ndarray, list[str])`
-  - `LinePlotData.to_curve()` — преобразование в `hv.Curve`.
-- Вычисления: `bsx2.plots.metagene`
-  - `Segment(name: str, n_bins: int)`, `segments_total_bins`, `segment_boundaries`, `segment_ticks`
-  - `compute_discrete_regions(reader, contigs, *, segments, agg_method, ...) -> DiscreteRegionData`
-  - `compute_from_annot(reader, annot, *, feature_type, ...) -> DiscreteRegionData`
-  - HoloViews: `line_plot`, `heatmap`, `box_plot`, `violin_plot`
-- HTML: `bsx2.plots.polars_html`
-  - `line_html/heatmap_html/box_html/violin_html`
+For repeated clustering runs on the same BSX file, consider enabling the persistent
+query-block cache:
 
-### Примеры (Кратко)
+```bash
+cd python
+poetry run cluster-bsx ... --query-block-cache
+```
 
-**HoloViews (RegionReader + Contigs)**
+## Plotting API
+
+### Support matrix
+
+| Surface | Status | Notes |
+| --- | --- | --- |
+| `bsx2.viz` compute + HoloViews renderers | Supported | Main public plotting API |
+| `bsx2.plots` | Removed | Legacy prototype surface |
+
+See the full [plotting support matrix](docs/plotting_support_matrix.md) for the explicit contract.
+
+### Profile data preparation
+
+Use one of the data constructors first:
+
+- `bsx2.viz.compute_discrete_regions(...)`
+- `bsx2.viz.compute_from_annot(...)`
+
+Both return `DiscreteRegionData`, which can be rendered independently of how it was computed.
+
+`compute_discrete_regions(...)` scales each input region independently into the
+relative interval `[0, 1]` and aggregates signal by that shared coordinate. In
+other words, the ordinary arbitrary-region path is a scaled region profile, not
+an implicit `upstream/body/downstream` metagene unless you explicitly compose a
+segmented layout yourself.
+
+### Annotation layouts
+
+`compute_from_annot(...)` supports two modes:
+
+- single-part aggregation via `feature_type=...`
+- ordered multi-part aggregation via `layout=AnnotProfileLayout(...)`
+
+The `layout=` mode is the preferred path for annotation-driven metagenes. Supported
+`AnnotProfilePart.source` values are:
+
+- `"feature"`: resolve a specific annotation feature type per gene
+- `"gene"`: use the gene body itself
+- `"flank5"`: synthesize a 5' flank from the gene anchor
+- `"flank3"`: synthesize a 3' flank from the gene anchor
+
+Parts are collected gene-by-gene and concatenated in declared order, so the API is not
+restricted to `promoter/body/terminator`.
+
+### Profile plots
+
+Public plotting wrappers:
+
+- `bsx2.viz.line_plot(...) -> hv.Curve | hv.Overlay`
+- `bsx2.viz.heatmap(...) -> hv.Image | hv.Overlay`
+- `bsx2.viz.box_plot(...) -> hv.BoxWhisker`
+- `bsx2.viz.violin_plot(...) -> hv.Violin`
+
+### Clustering plots
+
+For `GeneClusterResult`:
+
+- `bsx2.viz.build_gene_embedding_data(...)`
+- `bsx2.viz.build_gene_dendrogram_data(...)`
+- `bsx2.viz.build_cluster_metagene_data(...)`
+- `bsx2.viz.cluster_metagene_plot(...)`
+- `bsx2.viz.GeneEmbeddingPlotComposer`
+- `bsx2.viz.GeneDendrogramPlotComposer`
+
+### Clustering performance
+
+The clustering pipeline is still usually dominated by selective BSX reads rather than
+PCA or KMeans. For larger retained gene sets:
+
+- enable `--query-block-cache` for repeated runs
+- use `--query-block-cache-mode uncompressed` if cache CPU becomes noticeable
+- use `--query-block-merge-gap-bp` to merge nearby gene spans into fewer region queries
+- expect exact hierarchical clustering and exact silhouette to become the first
+  quadratic backend steps
+- note that silhouette switches to sampled mode by default above `2,000` retained genes
+- note that hierarchical clustering switches away from full exact mode above `5,000`
+  retained genes unless the policy is overridden
+- note that PCA can switch from exact to truncated SVD in auto mode once the retained
+  matrix exceeds the configured size threshold
+- note that `tests/perf` runs only the `small` reference scenarios by default; set
+  `BSX2_RUN_PERF=1` to include `medium` and `large` non-regression perf smoke runs
+
+See [performance notes](docs/performance_notes.md) for the current scaling model and
+CLI knobs.
+
+### Chromosome methylation map
+
+Public chromosome-wide API:
+
+- `bsx2.viz.compute_chromosome_methylation_map_data(...)`
+- `bsx2.viz.build_chromosome_methylation_map(...)`
+- `bsx2.viz.chromosome_methylation_map(...)`
+
+`chromosome_methylation_map(...)` is the one-step wrapper. It computes chromosome-window aggregates and returns a HoloViews plot.
+
+### Export
+
+The preferred flow is:
+
+1. compute data with `bsx2.viz`
+2. render HoloViews objects
+3. save/export with the backend you actually need
+
+## Usage Examples
+
+### Scaled region profile from arbitrary contigs
 
 ```python
-from bsx2.io import RegionReader
-from bsx2._bsx2 import Contig, AggMethod
-from bsx2.plots import Segment, line_plot
-import holoviews as hv; hv.extension('matplotlib')
+from bsx2 import Contig, RegionReader, Strand
+from bsx2.viz import (
+    compute_discrete_regions,
+    heatmap,
+    line_plot,
+)
 
-rr = RegionReader('/path/to/report.bsx')
-contigs = [Contig('chr1', 100_000, 120_000, '+')]
-segs = [Segment('up', 25), Segment('body', 50), Segment('down', 25)]
-curve = line_plot(
-    rr,
-    contigs=contigs,
-    segments=segs,
-    agg_method=AggMethod.Mean,
-    smooth={"method": "savgol", "window_length": 9, "polyorder": 2},
+reader = RegionReader("/path/to/report.bsx")
+contigs = [
+    Contig("chr1", 100_000, 120_000, Strand.Forward),
+    Contig("chr2", 50_000, 70_000, Strand.Reverse),
+]
+
+drd = compute_discrete_regions(
+    reader,
+    contigs,
+)
+
+curve = line_plot(drd, name="sample")
+hm = heatmap(drd)
+```
+
+### Metagene from annotations
+
+```python
+from bsx2 import HcAnnotStore, RegionReader
+from bsx2.viz import (
+    AnnotProfileLayout,
+    AnnotProfilePart,
+    box_plot,
+    compute_from_annot,
+    violin_plot,
+)
+
+reader = RegionReader("/path/to/report.bsx")
+annot = HcAnnotStore.from_gff("/path/to/annot.gff")
+layout = AnnotProfileLayout(
+    (
+        AnnotProfilePart("promoter", 25, source="flank5", flank_bp=2000),
+        AnnotProfilePart("gene", 50, source="gene"),
+        AnnotProfilePart("terminator", 25, source="flank3", flank_bp=2000),
+    )
+)
+segments = list(layout.segments)
+
+drd = compute_from_annot(
+    reader,
+    annot,
+    layout=layout,
+    segments=segments,
+)
+
+box = box_plot(drd, segments=segments)
+violin = violin_plot(drd, segments=segments)
+```
+
+### Cluster metagene
+
+```python
+from bsx2.viz import cluster_metagene_plot
+
+plot = cluster_metagene_plot(
+    cluster_result,
+    cluster_ids=[0, 1],
 )
 ```
 
-**Plotly HTML (из аннотаций)**
+If you need the intermediate data object first:
 
 ```python
-from bsx2.io import RegionReader
-from bsx2._bsx2 import HcAnnotStore
-from bsx2.plots import Segment, compute_from_annot
-from bsx2.plots.polars_html import line_html
+from bsx2.viz import build_cluster_metagene_data, build_cluster_metagene_plot
 
-rr = RegionReader('/path/to/report.bsx')
-annot = HcAnnotStore.from_gff('/path/to/annot.gff')
-segs = [Segment('up', 25), Segment('body', 50), Segment('down', 25)]
-drd = compute_from_annot(rr, annot, segments=segs, limit=100, combine_parts=True)
-html = line_html(drd, segments=segs)
-open('line.html','w').write(html)
+data = build_cluster_metagene_data(cluster_result, cluster_ids=[0], collapse=False)
+plot = build_cluster_metagene_plot(data)
 ```
 
-### Quick Reference: compute_from_annot
-
-- `reader`: RegionReader над `.bsx`.
-- `annot`: HcAnnotStore (from_gff/from_bed).
-- `segments`: `list[Segment]`, по умолчанию `[Segment('region', 100)]` (или `up/body/down` при `combine_parts=True`).
-- `feature_type`: фильтрация аннотации (например, `'gene'`, применяется при `combine_parts=False`).
-- `limit`: ограничение числа регионов (для превью/ускорения).
-- `reverse_negative`: инверсия профиля для `'-'` (по умолчанию `True`).
-- `labels`: явные подписи регионов (если `None`, используются авто‑лейблы).
-- `add_flanks`: добавить фланки gene (up/down) через `annot.add_flanks`.
-- `flank_bp`: размер фланков в bp.
-- `combine_parts`: собрать BSX1‑стиль (up/body/down) по генам.
-- `parts`: порядок частей при `combine_parts=True`.
-
-### Тестирование
-
-- Запуск:
-
-### Используемые Библиотеки и Стиль
-
-- Визуализация: HoloViews (основной), Plotly (HTML без рантайма Python на стороне просмотра).
-- Табличные преобразования: Polars (+ PyArrow).
-- Валидация типов/структур: возможно подключение `beartype` для рантайм‑валидации (по желанию — `pip install beartype`) и аннотации функций.
-- Тесты: `pytest`.
-- Управление зависимостями: Poetry (`pyproject.toml`).
-- Стиль и форматирование: `ruff` (см. настройки v1), docstrings — стиль NumPy.
-
-### Масштабирование и Рекомендации
-
-- Для больших наборов обязательно использовать `RegionReader.iter_contigs` и фильтры покрытия/контекста для уменьшения NaN и ускорения.
-- Для headless‑отчётов предпочтителен Plotly HTML (`*_html*`), для ноутбуков — HoloViews.
-- `segments` — свободный выбор структуры, легко адаптировать под любые области интереса (TSS‑центрированные окна, body‑centric и т.д.).
-
-## Python usage (metagene & plots)
-
-Below snippets assume bsx2 is built and importable (see build instructions). The API keeps data prep separate from rendering and supports both HoloViews objects and Plotly HTML.
-
-### Build metagene from RegionReader + Contigs (HoloViews)
+### PCA and dendrogram plots
 
 ```python
-from bsx2.io import RegionReader
-from bsx2._bsx2 import Contig, AggMethod
-from bsx2.plots import Segment, line_plot, heatmap
+from bsx2.viz import (
+    GeneDendrogramPlotComposer,
+    GeneEmbeddingPlotComposer,
+    build_gene_dendrogram_data,
+    build_gene_embedding_data,
+)
 
-rr = RegionReader("/path/to/file.bsx")
-contigs = [Contig("chr1", 100_000, 120_000, "+"), Contig("chr2", 50_000, 70_000, "-")]
-segs = [Segment("up", 25), Segment("body", 50), Segment("down", 25)]
+embedding_data = build_gene_embedding_data(cluster_result)
+pca_plot = GeneEmbeddingPlotComposer().add_data(embedding_data).finish()
 
-curve = line_plot(rr, contigs=contigs, segments=segs, agg_method=AggMethod.Mean)
-hm = heatmap(rr, contigs=contigs, segments=segs, agg_method=AggMethod.Mean)
-# curve/hm are HoloViews objects
+dendrogram_data = build_gene_dendrogram_data(cluster_result)
+if dendrogram_data is not None:
+    dendrogram_plot = GeneDendrogramPlotComposer().add_data(dendrogram_data).finish()
 ```
 
-### Build metagene from HcAnnotStore (DiscreteRegionData)
+### Chromosome methylation map
 
 ```python
-from bsx2.io import RegionReader
-from bsx2._bsx2 import HcAnnotStore
-from bsx2.plots import Segment, compute_from_annot
-from bsx2.plots.polars_html import line_html
+from bsx2 import Context, RegionReader
+from bsx2.viz import chromosome_methylation_map
 
-rr = RegionReader("/path/to/file.bsx")
-annot = HcAnnotStore()  # or load from GFF/BED depending on your pipeline
+reader = RegionReader("/path/to/report.bsx")
 
-segs = [Segment("up", 25), Segment("body", 50), Segment("down", 25)]
-drd = compute_from_annot(rr, annot, segments=segs, feature_type="gene", combine_parts=True)
-html = line_html(drd, segments=segs)
+plot = chromosome_methylation_map(
+    reader,
+    context=Context.CG,
+    bin_size_bp=50_000,
+    chr_lengths={"chr1": 24_000_000, "chr2": 19_000_000},
+    name="sample",
+)
 ```
 
-### Plotly HTML (standalone)
+## Notes
 
-```python
-from bsx2.plots import Segment, compute_from_annot
-from bsx2.plots.polars_html import line_html, heatmap_html, box_html, violin_html
-from bsx2.io import RegionReader
-from bsx2._bsx2 import HcAnnotStore
+- `compute_discrete_regions(...)` produces a scaled region profile on a shared relative coordinate.
+- True multi-part profiles remain explicit: use `AnnotProfileLayout(...)` when you need promoter/gene/terminator style structure.
+- Data preparation and visualization are intentionally separated.
+- Smaller plotting components do not depend on parent structures beyond the data they receive.
+- HoloViews objects can be customized further with `.opts(...)`.
+- Built-in HTML helper generation is intentionally not part of the main `bsx2.viz` surface.
 
-rr = RegionReader("/path/to/file.bsx")
-annot = HcAnnotStore()
-segs = [Segment("up", 25), Segment("body", 50), Segment("down", 25)]
+## Example Scripts
 
-drd = compute_from_annot(rr, annot, segments=segs, combine_parts=True)
-html_line = line_html(drd, segments=segs)
-html_heat = heatmap_html(drd, segments=segs)
-html_box = box_html(drd, segments=segs, per_region=True)
-html_violin = violin_html(drd, segments=segs, per_region=True)
+- [examples/metagene_from_annot.py](examples/metagene_from_annot.py) builds line, heatmap, box, and violin plots from `RegionReader + HcAnnotStore`.
+- [examples/metagene_from_contigs.py](examples/metagene_from_contigs.py) shows arbitrary-region metagene computation from explicit contigs.
+- [examples/clustering_plots.py](examples/clustering_plots.py) builds PCA, dendrogram, and cluster metagene plots from a full clustering run.
+- [examples/chromosome_map.py](examples/chromosome_map.py) builds a chromosome methylation map.
 
-open("line.html", "w").write(html_line)
-open("heatmap.html", "w").write(html_heat)
-open("box.html", "w").write(html_box)
-open("violin.html", "w").write(html_violin)
-```
+## Style
 
-Notes:
-- Segments are arbitrary; you are not constrained to promoter/body/terminator.
-- Data prep is independent from visualization; you can take DiscreteRegionData and render via HoloViews or Plotly.
-- For large cohorts use Plotly HTML generation (no Python runtime needed to view).
-
-### Quick reference: compute_from_annot parameters
-
-- `reader`: RegionReader over your .bsx file.
-- `annot`: HcAnnotStore (e.g. from_gff/from_bed).
-- `segments`: list[Segment] — arbitrary segmentation, e.g. [Segment("up",25), Segment("body",50), Segment("down",25)]. If omitted, defaults to [Segment("region", 100)] (or up/body/down when `combine_parts=True`).
-- `feature_type`: optional feature filter on annotations (e.g. "gene"; used when `combine_parts=False`).
-- `limit`: optional limit on number of regions for faster preview.
-- `reverse_negative`: bool — reverse profiles for '-' strand (default True).
-- `labels`: optional explicit labels to use for regions.
-- `add_flanks`: bool — add upstream/downstream flanks for genes as separate features (default False).
-- `flank_bp`: int — flank size in bp for add_flanks (default 2000).
-- `combine_parts`: bool — build BSX1-style metagene (up/body/down) per gene.
-- `parts`: optional parts order when `combine_parts=True`.
-
+- runtime validation: `beartype`
+- tests: `pytest`
+- lint/format: `ruff`
+- docstrings: NumPy style

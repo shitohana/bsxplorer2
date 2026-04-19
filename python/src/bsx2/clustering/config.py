@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 
 from beartype import beartype
+
 from bsx2 import Context
 
 
@@ -25,6 +26,23 @@ class ClusterSource(str, Enum):
     HIERARCHICAL = "hierarchical"
 
 
+class SilhouetteMode(str, Enum):
+    EXACT = "exact"
+    SAMPLED = "sampled"
+    AUTO = "auto"
+
+
+class PcaSolver(str, Enum):
+    EXACT = "exact"
+    TRUNCATED = "truncated"
+    AUTO = "auto"
+
+
+class BlockCacheMode(str, Enum):
+    COMPRESSED = "compressed"
+    UNCOMPRESSED = "uncompressed"
+
+
 class HierarchicalDistance(str, Enum):
     EUCLIDEAN = "euclidean"
     CORRELATION = "correlation"
@@ -34,6 +52,13 @@ class HierarchicalLinkage(str, Enum):
     AVERAGE = "average"
     COMPLETE = "complete"
     WARD = "ward"
+
+
+class HierarchicalMode(str, Enum):
+    EXACT = "exact"
+    SUBSAMPLE = "subsample"
+    SKIP = "skip"
+    AUTO = "auto"
 
 
 class TableFormat(str, Enum):
@@ -48,6 +73,7 @@ class TableFormat(str, Enum):
 class ReadConfig:
     context: Context | None = None
     min_coverage: int = 5
+    query_block_merge_gap_bp: int = 0
 
 
 @beartype
@@ -55,6 +81,7 @@ class ReadConfig:
 class BlockCacheConfig:
     enabled: bool = False
     cache_dir: Path | None = None
+    mode: BlockCacheMode = BlockCacheMode.COMPRESSED
 
 
 @beartype
@@ -88,11 +115,27 @@ class BackendConfig:
     n_init: int = 8
     max_iter: int = 200
     tol: float = 1e-4
+    pca_solver: PcaSolver = PcaSolver.AUTO
+    pca_exact_max_matrix_size: int | None = 1_000_000
+
+
+@beartype
+@dataclass(frozen=True)
+class SilhouetteConfig:
+    enabled: bool = True
+    mode: SilhouetteMode = SilhouetteMode.AUTO
+    max_samples: int | None = 2_000
+    exact_max_genes: int | None = 2_000
+    seed: int = 0
 
 
 @beartype
 @dataclass(frozen=True)
 class HierarchicalConfig:
+    enabled: bool = True
+    max_genes: int | None = 5_000
+    mode: HierarchicalMode = HierarchicalMode.AUTO
+    subsample_genes: int | None = 2_000
     distance: HierarchicalDistance = HierarchicalDistance.CORRELATION
     linkage: HierarchicalLinkage = HierarchicalLinkage.AVERAGE
 
@@ -117,6 +160,7 @@ class ClusterConfig:
     block_cache: BlockCacheConfig = BlockCacheConfig()
     gene_profile: GeneProfileConfig = GeneProfileConfig()
     backend: BackendConfig = BackendConfig()
+    silhouette: SilhouetteConfig = SilhouetteConfig()
     hierarchical: HierarchicalConfig = HierarchicalConfig()
     cluster_source: ClusterSource = ClusterSource.KMEANS
     output: OutputConfig = OutputConfig(output_dir=Path("."))

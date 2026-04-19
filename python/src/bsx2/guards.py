@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from beartype.typing import Callable, Sequence
-
 import numpy as np
+from beartype.typing import Callable, Sequence
 
 
 def require_equal_length(
@@ -67,7 +66,7 @@ def require_single_choice(
 ) -> str:
     if isinstance(value, str):
         return value
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         if len(value) != 1:
             raise ValueError(f"{name} must be a single value: {allowed_hint}")
         if isinstance(value, set):

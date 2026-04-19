@@ -1,0 +1,10 @@
+area,scenario,status,evidence,notes
+viz,Arbitrary-contig metagene compute plus line and heatmap render,PASS,"examples/metagene_from_contigs.py; tests/viz/test_metagene_plot_api.py","Main compute-plus-render path is covered"
+viz,Annotation-driven metagene with layout-based assembly,PASS,"examples/metagene_from_annot.py; tests/viz/test_annot_layout_api.py","Preferred annotation API uses layout="
+viz,Annotation layout edge cases on strand handling and orphan parents,PASS,"tests/viz/test_annot_layout_api.py","Negative-strand flanks, orphan parents, and duplicate spans are covered"
+viz,Chromosome methylation map,PASS,"examples/chromosome_map.py; tests/viz/test_chrmap_api.py","One-step wrapper and compute API are covered"
+clustering,PCA embedding plus dendrogram plus cluster metagene,PASS,"examples/clustering_plots.py; tests/viz/test_cluster_metagene_api.py","Visualization layer is covered from clustering outputs"
+clustering,Hierarchical skip policy and scaling guidance,PASS,"tests/clustering/test_backend.py; tests/clustering/test_cli_io.py; docs/performance_notes.md","Large-n policy is explicit and tested"
+clustering,Block-cache reuse for repeated runs,PASS,"tests/clustering/test_gene_profile.py; docs/performance_notes.md","Persistent queried-block cache is documented and tested"
+quality,Full Python test suite,PASS,"pytest python/tests","55 passed at release pass"
+quality,Ruff lint on source tests and examples,PASS,"ruff check python/src python/tests python/examples","All checks passed at release pass"
