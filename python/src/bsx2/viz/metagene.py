@@ -11,6 +11,7 @@ from .compute.metagene import (
     segment_boundaries,
     segments_total_bins,
 )
+from .compute.metagene_layouts import build_annotation_metagene, build_manual_metagene
 
 __all__ = [
     "AnnotProfilePart",
@@ -22,6 +23,8 @@ __all__ = [
     "compose_layout_drd",
     "compute_discrete_regions",
     "compute_from_annot",
+    "build_annotation_metagene",
+    "build_manual_metagene",
     "segment_boundaries",
     "segments_total_bins",
 ]

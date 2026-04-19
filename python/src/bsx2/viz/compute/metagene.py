@@ -1143,7 +1143,9 @@ def compute_from_annot(
         if segments is None:
             segments = layout.segments
         validate_segments(segments)
-        return _compute_from_annot_layout(
+        from .metagene_layouts import build_annotation_metagene
+
+        return build_annotation_metagene(
             reader,
             annot,
             layout=layout,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from beartype.typing import Optional
+from beartype.typing import Literal, Optional
 
 from bsx2 import AggMethod
 from bsx2.validation import NanPolicy, validate_n_windows, validate_nan_policy
@@ -18,6 +18,16 @@ class DistributionPlotData:
     rows: list[tuple[str, float]]
     x_label: str
     y_label: str
+
+
+DistributionMode = Literal["windows", "segments"]
+
+
+def _validate_distribution_mode(value: str) -> DistributionMode:
+    mode = str(value).strip().lower()
+    if mode not in {"windows", "segments"}:
+        raise ValueError("distribution_mode must be 'windows' or 'segments'")
+    return mode  # type: ignore[return-value]
 
 
 def _region_label(
@@ -90,6 +100,58 @@ def _distribution_rows(
     return rows
 
 
+def _segment_distribution_rows(
+    drd: DiscreteRegionData,
+    *,
+    as_percent: bool,
+    nan_fill: Optional[float],
+    segments: list[MetageneProfileSegment] | None,
+    nan_policy: NanPolicy,
+) -> list[tuple[str, float]]:
+    if not segments:
+        raise ValueError("segments must be provided for distribution_mode='segments'")
+
+    total_bins = segments_total_bins(segments)
+    cum = 0
+    bounds: list[tuple[str, float, float]] = []
+    for segment in segments:
+        start = cum / total_bins
+        cum += segment.n_bins
+        end = cum / total_bins
+        bounds.append((segment.name, start, end))
+
+    rows: list[tuple[str, float]] = []
+    for pos, dens in zip(drd.positions, drd.densities):
+        x = np.asarray(pos, dtype=float)
+        y = np.asarray(dens, dtype=float)
+        if as_percent:
+            y = y * 100.0
+        if nan_fill is not None:
+            y = np.where(np.isnan(y), nan_fill, y)
+        if nan_policy is NanPolicy.ZERO:
+            y = np.where(np.isnan(y), 0.0, y)
+        if nan_policy is NanPolicy.DROP:
+            finite = np.isfinite(y)
+            x = x[finite]
+            y = y[finite]
+        if x.size == 0 or y.size == 0:
+            continue
+
+        for index, (name, start, end) in enumerate(bounds):
+            if index == len(bounds) - 1:
+                mask = (x >= start) & (x <= end)
+            else:
+                mask = (x >= start) & (x < end)
+            if not np.any(mask):
+                continue
+            value = y[mask]
+            finite = np.isfinite(value)
+            if not np.any(finite):
+                continue
+            rows.append((name, float(np.mean(value[finite]))))
+    return rows
+
+
 def _position_axis_label() -> str:
     return "Relative feature position"
 
@@ -103,8 +165,10 @@ def build_box_distribution_data(
     nan_fill: Optional[float] = None,
     nan_policy: NanPolicy = NanPolicy.DROP,
     per_region: bool = False,
+    distribution_mode: DistributionMode = "windows",
 ) -> DistributionPlotData:
     nan_policy = validate_nan_policy(nan_policy)
+    distribution_mode = _validate_distribution_mode(distribution_mode)
 
     if per_region:
         rows: list[tuple[str, float]] = []
@@ -119,6 +183,15 @@ def build_box_distribution_data(
                 continue
             rows.append((_region_label(label, index=index), float(np.nanmean(values))))
         x_label = "Region"
+    elif distribution_mode == "segments":
+        rows = _segment_distribution_rows(
+            drd,
+            as_percent=as_percent,
+            nan_fill=nan_fill,
+            segments=segments,
+            nan_policy=nan_policy,
+        )
+        x_label = "Metagene segment"
     else:
         rows = _distribution_rows(
             drd,
@@ -147,8 +220,10 @@ def build_violin_distribution_data(
     nan_fill: Optional[float] = None,
     nan_policy: NanPolicy = NanPolicy.DROP,
     per_region: bool = False,
+    distribution_mode: DistributionMode = "windows",
 ) -> DistributionPlotData:
     nan_policy = validate_nan_policy(nan_policy)
+    distribution_mode = _validate_distribution_mode(distribution_mode)
 
     if per_region:
         rows: list[tuple[str, float]] = []
@@ -165,6 +240,15 @@ def build_violin_distribution_data(
             region_label = _region_label(label, index=index)
             rows.extend((region_label, float(value)) for value in values)
         x_label = "Region"
+    elif distribution_mode == "segments":
+        rows = _segment_distribution_rows(
+            drd,
+            as_percent=as_percent,
+            nan_fill=nan_fill,
+            segments=segments,
+            nan_policy=nan_policy,
+        )
+        x_label = "Metagene segment"
     else:
         rows = _distribution_rows(
             drd,

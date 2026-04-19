@@ -10,8 +10,11 @@ if not hasattr(bsx2, "Context"):
     pytest.skip("bsx2 extension is unavailable", allow_module_level=True)
 
 viz = pytest.importorskip("bsx2.viz")
+viz_compute = pytest.importorskip("bsx2.viz.compute")
 plot_data = pytest.importorskip("bsx2.viz.data")
 
+build_box_distribution_data = viz_compute.build_box_distribution_data
+build_violin_distribution_data = viz_compute.build_violin_distribution_data
 DiscreteRegionData = plot_data.DiscreteRegionData
 MetageneProfileSegment = viz.MetageneProfileSegment
 box_plot = viz.box_plot
@@ -91,6 +94,54 @@ def test_public_violin_plot_wrapper_returns_violin() -> None:
 
     assert _is_holoviews_object(plot)
     assert plot.__class__.__name__ == "Violin"
+
+
+def test_box_distribution_mode_segments_groups_values_by_segment() -> None:
+    data = build_box_distribution_data(
+        _sample_drd(),
+        segments=_segments(),
+        as_percent=False,
+        distribution_mode="segments",
+    )
+
+    assert data.x_label == "Metagene segment"
+    grouped: dict[str, list[float]] = {}
+    for group, value in data.rows:
+        grouped.setdefault(group, []).append(value)
+
+    assert set(grouped) == {"up", "body", "down"}
+    np.testing.assert_allclose(sorted(grouped["up"]), [0.1, 0.25])
+    np.testing.assert_allclose(sorted(grouped["body"]), [0.35, 0.4])
+    np.testing.assert_allclose(sorted(grouped["down"]), [0.5, 0.575])
+
+
+def test_violin_distribution_mode_segments_groups_values_by_segment() -> None:
+    data = build_violin_distribution_data(
+        _sample_drd(),
+        segments=_segments(),
+        as_percent=False,
+        distribution_mode="segments",
+    )
+
+    assert data.x_label == "Metagene segment"
+    grouped: dict[str, list[float]] = {}
+    for group, value in data.rows:
+        grouped.setdefault(group, []).append(value)
+
+    assert set(grouped) == {"up", "body", "down"}
+    np.testing.assert_allclose(sorted(grouped["up"]), [0.1, 0.25])
+    np.testing.assert_allclose(sorted(grouped["body"]), [0.35, 0.4])
+    np.testing.assert_allclose(sorted(grouped["down"]), [0.5, 0.575])
+
+
+def test_distribution_mode_rejects_unknown_value() -> None:
+    with pytest.raises(ValueError, match="distribution_mode"):
+        build_box_distribution_data(
+            _sample_drd(),
+            segments=_segments(),
+            as_percent=False,
+            distribution_mode="bad",
+        )
 
 
 def test_public_surface_does_not_expose_html_helpers() -> None:

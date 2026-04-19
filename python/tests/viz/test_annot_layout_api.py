@@ -13,6 +13,8 @@ AnnotProfileLayout = viz.AnnotProfileLayout
 AnnotProfilePart = viz.AnnotProfilePart
 MetageneProfileSegment = viz.MetageneProfileSegment
 box_plot = viz.box_plot
+build_annotation_metagene = viz.build_annotation_metagene
+build_manual_metagene = viz.build_manual_metagene
 collect_layout_parts_from_hcannot = viz.collect_layout_parts_from_hcannot
 compute_from_annot = viz.compute_from_annot
 heatmap = viz.heatmap
@@ -143,6 +145,8 @@ def test_collect_layout_parts_from_hcannot_skips_missing_required_gene_parts() -
 def test_layout_composer_is_public_and_legacy_name_is_removed() -> None:
     assert hasattr(viz, "compose_layout_drd")
     assert not hasattr(viz, "combine_parts_drd")
+    assert hasattr(viz, "build_annotation_metagene")
+    assert hasattr(viz, "build_manual_metagene")
 
 
 def test_collect_layout_parts_from_hcannot_builds_flanks_for_negative_strand() -> None:
@@ -244,6 +248,29 @@ def test_compute_from_annot_layout_supports_arbitrary_parts() -> None:
     np.testing.assert_allclose(data.densities[0], np.array([0.10, 0.20, 0.30, 0.40]))
     np.testing.assert_allclose(data.positions[1], np.array([0.375, 0.625]))
     np.testing.assert_allclose(data.densities[1], np.array([0.25, 0.35]))
+
+
+def test_annotation_and_manual_metagene_builders_match() -> None:
+    annot, reader = _sample_annot()
+    layout = _sample_layout()
+
+    by_annotation = build_annotation_metagene(
+        reader,
+        annot,
+        layout=layout,
+    )
+    part_map = collect_layout_parts_from_hcannot(annot, layout=layout)
+    by_manual = build_manual_metagene(
+        reader,
+        part_map=part_map,
+        layout=layout,
+    )
+
+    assert by_annotation.labels == by_manual.labels == ["gene_1", "gene_2"]
+    for left, right in zip(by_annotation.positions, by_manual.positions):
+        np.testing.assert_allclose(left, right)
+    for left, right in zip(by_annotation.densities, by_manual.densities):
+        np.testing.assert_allclose(left, right)
 
 
 def test_compute_from_annot_layout_accepts_explicit_segments() -> None:

@@ -33,7 +33,11 @@ def _position_axis_label() -> str:
 
 
 def _default_segments() -> list[MetageneProfileSegment]:
-    return [MetageneProfileSegment("region", 100)]
+    return [
+        MetageneProfileSegment("up", 100),
+        MetageneProfileSegment("body", 200),
+        MetageneProfileSegment("down", 100),
+    ]
 
 
 def _show_segment_guides(segments: list[MetageneProfileSegment]) -> bool:

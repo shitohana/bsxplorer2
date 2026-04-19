@@ -33,6 +33,7 @@ from .metagene import (
     segment_boundaries,
     segments_total_bins,
 )
+from .metagene_layouts import build_annotation_metagene, build_manual_metagene
 from .windowing import _bin_points_windows_fast, _rank_compress
 
 __all__ = [
@@ -65,6 +66,8 @@ __all__ = [
     "compose_layout_drd",
     "compute_discrete_regions",
     "compute_from_annot",
+    "build_annotation_metagene",
+    "build_manual_metagene",
     "segment_boundaries",
     "segments_total_bins",
     "_bin_points_windows_fast",
