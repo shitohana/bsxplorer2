@@ -52,6 +52,17 @@ def violin_plot(
         Optional plot title.
     width, height
         Optional plot size in pixels.
+
+    Returns
+    -------
+    object
+        HoloViews violin plot object.
+
+    Notes
+    -----
+    For metagene interpretation, the primary grouped mode is
+    ``per_region=False``. In that mode the violin summarizes distributions
+    across the selected gene or region set by window or named segment.
     """
     _hv_init()
     data = build_violin_distribution_data(

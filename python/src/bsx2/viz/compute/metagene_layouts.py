@@ -74,6 +74,18 @@ def build_manual_metagene(
         omitted.
     reverse_negative
         Whether negative-strand contigs should be reversed before insertion.
+
+    Returns
+    -------
+    DiscreteRegionData
+        One composed metagene-compatible profile collection that can be passed
+        directly to the standard ``bsx2.viz`` render functions.
+
+    Notes
+    -----
+    This is the low-level layout entrypoint. Use it when the biological parts
+    are already known or prepared externally and you want full control over the
+    composition order.
     """
 
     resolved_parts, resolved_segments = _resolve_manual_layout(
@@ -119,6 +131,29 @@ def build_annotation_metagene(
 
     This is the high-level metagene entrypoint for AW25-style
     ``RegionReader + HcAnnotStore`` workflows.
+
+    Parameters
+    ----------
+    reader
+        Reader used to query methylation values from ``report.bsx``.
+    annot
+        Annotation store compatible with ``collect_layout_parts_from_hcannot``.
+    layout
+        Ordered layout describing the biological parts to resolve per gene.
+    segments
+        Optional explicit rendering segments. Defaults to the layout-derived
+        segments.
+    reverse_negative
+        Whether negative-strand features should be aligned to the shared
+        biological orientation.
+    limit
+        Optional cap on the number of genes collected from the annotation.
+
+    Returns
+    -------
+    DiscreteRegionData
+        Composed metagene-compatible profiles ready for line, heatmap, box,
+        violin, or downstream metagene renderers.
     """
 
     part_map = collect_layout_parts_from_hcannot(
