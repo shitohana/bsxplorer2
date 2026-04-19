@@ -1,5 +1,3 @@
-
-from . import _bsx2
 from ._bsx2 import (
     BsxFileReader,
     Compression,
@@ -14,9 +12,9 @@ from .types import (
     BatchIndex,
     BsxBatch,
     BsxColumns,
-    Contig,
     Context,
     ContextData,
+    Contig,
     GenomicPosition,
     GffEntry,
     GffEntryAttributes,

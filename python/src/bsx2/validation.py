@@ -1,10 +1,13 @@
 from __future__ import annotations
-from enum import StrEnum
+
 import math
-from beartype.typing import Sequence
-from bsx2 import Strand, Context, AggMethod
+from enum import StrEnum
 
 import numpy as np
+from beartype.typing import Sequence
+
+from bsx2 import AggMethod, Context, Strand
+
 
 class NanPolicy(StrEnum):
     KEEP = "keep"
@@ -172,10 +175,6 @@ def validate_segments(
         raise ValueError("segments must not be empty")
 
     if expected_len is not None and len(segments) != expected_len:
-        if expected_len == 3:
-            raise ValueError(
-                "combined metagene requires exactly 3 segments (up/body/down)"
-            )
         raise ValueError(f"segments must contain exactly {expected_len} items")
 
     total_bins = 0
@@ -189,7 +188,7 @@ def validate_segments(
         total_bins += n_bins
 
     if flank_bp is not None:
-        if isinstance(flank_bp, bool) or not isinstance(flank_bp, (int, float)):
+        if isinstance(flank_bp, bool) or not isinstance(flank_bp, int | float):
             raise ValueError("flank_bp must be >= 0")
         if flank_bp < 0:
             raise ValueError("flank_bp must be >= 0")
@@ -234,7 +233,7 @@ def _validate_context_value(value: object) -> Context:
 
 
 def validate_context(context: object) -> Context | list[Context]:
-    if isinstance(context, (list, tuple, set)):
+    if isinstance(context, list | tuple | set):
         values = [_validate_context_value(v) for v in context]
         if not values:
             raise ValueError("context list must not be empty")
@@ -313,7 +312,7 @@ def validate_min_coverage(
     *,
     integer: bool = False,
 ) -> int | float:
-    if isinstance(min_cov, bool) or not isinstance(min_cov, (int, float)):
+    if isinstance(min_cov, bool) or not isinstance(min_cov, int | float):
         raise ValueError("min_coverage must be >= 0")
     value = float(min_cov)
     if not math.isfinite(value) or value < 0:

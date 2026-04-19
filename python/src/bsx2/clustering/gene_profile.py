@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -13,8 +14,8 @@ from beartype import beartype
 
 from bsx2 import Contig, RegionReader, Strand
 
-from .agg import coverage_weighted_ratio, finalize_gene_profile_matrix
-from .config import ClusterConfig
+from .agg import finalize_gene_profile_matrix
+from .config import BlockCacheMode, ClusterConfig
 from .gene_annotation import load_gene_annotations
 from .models import FeatureBin, GeneAnnotation, GeneProfileMatrix, ProfileBin
 
@@ -46,6 +47,17 @@ class _PreparedRegionReader:
 class _CachedRegionReader:
     reader: RegionReader
     chr_order: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _MetageneIntervalTemplate:
+    total_bins: int
+    up_steps: np.ndarray
+    body_steps: np.ndarray
+    down_steps: np.ndarray
+    up_slice: slice
+    body_slice: slice
+    down_slice: slice
 
 
 # Process-local cache: reuses the Python RegionReader wrapper and its in-memory index.
@@ -127,19 +139,22 @@ def _read_query_block_cache(cache_path: Path):
 def _write_query_block_cache(
     cache_path: Path,
     block_arrays: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+    *,
+    mode: BlockCacheMode,
 ) -> bool:
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = cache_path.with_name(f"{cache_path.stem}.{uuid4().hex}.tmp.npz")
+        savez = np.savez_compressed if mode is BlockCacheMode.COMPRESSED else np.savez
         if block_arrays is None:
-            np.savez_compressed(
+            savez(
                 temp_path,
                 positions=np.empty(0, dtype=np.int64),
                 count_m=np.empty(0, dtype=np.int64),
                 count_total=np.empty(0, dtype=np.int64),
             )
         else:
-            np.savez_compressed(
+            savez(
                 temp_path,
                 positions=block_arrays[0],
                 count_m=block_arrays[1],
@@ -181,7 +196,11 @@ def _load_or_query_block_arrays(
     cache_write = False
     if config.block_cache.enabled and cache_path is not None:
         t_cache_write = perf_counter()
-        cache_write = _write_query_block_cache(cache_path, block_arrays)
+        cache_write = _write_query_block_cache(
+            cache_path,
+            block_arrays,
+            mode=config.block_cache.mode,
+        )
         cache_write_s = perf_counter() - t_cache_write
 
     return block_arrays, {
@@ -266,20 +285,31 @@ def _gene_profile_span(
     return max(gene.start - gp.downstream_bp, 0), gene.end + gp.upstream_bp
 
 
+def _collect_gene_profile_spans(
+    genes: list[GeneAnnotation],
+    config: ClusterConfig,
+) -> list[tuple[int, int]]:
+    return [_gene_profile_span(gene, config) for gene in genes]
+
+
 def _build_query_blocks(
     genes: list[GeneAnnotation],
     config: ClusterConfig,
+    *,
+    gene_spans: list[tuple[int, int]] | None = None,
 ) -> list[_QueryBlock]:
+    spans = _collect_gene_profile_spans(genes, config) if gene_spans is None else gene_spans
+    merge_gap_bp = max(config.read.query_block_merge_gap_bp, 0)
     spans_by_chrom: dict[str, list[tuple[int, int]]] = defaultdict(list)
-    for gene in genes:
-        spans_by_chrom[gene.chrom].append(_gene_profile_span(gene, config))
+    for gene, span in zip(genes, spans, strict=True):
+        spans_by_chrom[gene.chrom].append(span)
 
     blocks: list[_QueryBlock] = []
     for chrom in sorted(spans_by_chrom):
         spans = sorted(spans_by_chrom[chrom])
         current_start, current_end = spans[0]
         for start, end in spans[1:]:
-            if start <= current_end:
+            if start <= current_end + merge_gap_bp:
                 current_end = max(current_end, end)
             else:
                 blocks.append(_QueryBlock(chrom=chrom, start=current_start, end=current_end))
@@ -292,24 +322,35 @@ def _assign_genes_to_query_blocks(
     genes: list[GeneAnnotation],
     query_blocks: list[_QueryBlock],
     config: ClusterConfig,
+    *,
+    gene_spans: list[tuple[int, int]] | None = None,
 ) -> list[_AssignedQueryBlock]:
-    blocks_by_chrom: dict[str, list[tuple[int, _QueryBlock]]] = defaultdict(list)
+    spans = _collect_gene_profile_spans(genes, config) if gene_spans is None else gene_spans
+    blocks_by_chrom: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    grouped: dict[str, list[tuple[int, _QueryBlock]]] = defaultdict(list)
     for block_idx, block in enumerate(query_blocks):
-        blocks_by_chrom[block.chrom].append((block_idx, block))
+        grouped[block.chrom].append((block_idx, block))
+
+    for chrom, blocks in grouped.items():
+        block_indices = np.asarray([block_idx for block_idx, _ in blocks], dtype=np.int64)
+        block_starts = np.asarray([block.start for _, block in blocks], dtype=np.int64)
+        block_ends = np.asarray([block.end for _, block in blocks], dtype=np.int64)
+        blocks_by_chrom[chrom] = (block_indices, block_starts, block_ends)
 
     assignments: list[list[int]] = [[] for _ in query_blocks]
-    for gene_idx, gene in enumerate(genes):
-        span_start, span_end = _gene_profile_span(gene, config)
-        matched = False
-        for block_idx, block in blocks_by_chrom.get(gene.chrom, []):
-            if span_start >= block.start and span_end <= block.end:
-                assignments[block_idx].append(gene_idx)
-                matched = True
-                break
-        if not matched:
+    for gene_idx, (gene, (span_start, span_end)) in enumerate(zip(genes, spans, strict=True)):
+        block_arrays = blocks_by_chrom.get(gene.chrom)
+        if block_arrays is None:
             raise ValueError(
                 f"Gene {gene.gene_id} could not be assigned to any query block on {gene.chrom}"
             )
+        block_indices, block_starts, block_ends = block_arrays
+        candidate = int(np.searchsorted(block_starts, span_start, side="right") - 1)
+        if candidate < 0 or span_end > int(block_ends[candidate]):
+            raise ValueError(
+                f"Gene {gene.gene_id} could not be assigned to any query block on {gene.chrom}"
+            )
+        assignments[int(block_indices[candidate])].append(gene_idx)
 
     return [
         _AssignedQueryBlock(block=block, gene_indices=tuple(assignments[idx]))
@@ -395,13 +436,43 @@ def build_feature_bins(config: ClusterConfig) -> list[FeatureBin]:
     return feature_bins
 
 
+@lru_cache(maxsize=16)
+def _build_metagene_interval_template(
+    upstream_bins: int,
+    body_bins: int,
+    downstream_bins: int,
+) -> _MetageneIntervalTemplate:
+    up_slice = slice(0, upstream_bins)
+    body_slice = slice(upstream_bins, upstream_bins + body_bins)
+    down_slice = slice(upstream_bins + body_bins, upstream_bins + body_bins + downstream_bins)
+    return _MetageneIntervalTemplate(
+        total_bins=upstream_bins + body_bins + downstream_bins,
+        up_steps=np.arange(upstream_bins + 1, dtype=np.int64),
+        body_steps=np.arange(body_bins + 1, dtype=np.int64),
+        down_steps=np.arange(downstream_bins + 1, dtype=np.int64),
+        up_slice=up_slice,
+        body_slice=body_slice,
+        down_slice=down_slice,
+    )
+
+
+def _metagene_interval_template(config: ClusterConfig) -> _MetageneIntervalTemplate:
+    gp = config.gene_profile
+    return _build_metagene_interval_template(
+        gp.upstream_bins,
+        gp.body_bins,
+        gp.downstream_bins,
+    )
+
+
 def _integer_edges(start: int, end: int, n_bins: int) -> np.ndarray:
     if n_bins < 1:
         raise ValueError("n_bins must be >= 1")
-    edges = np.floor(np.linspace(start, end, n_bins + 1)).astype(np.int64)
-    edges[0] = start
-    edges[-1] = end
-    return np.maximum.accumulate(edges)
+    clipped_start = max(start, 0)
+    clipped_end = max(end, 0)
+    length = max(clipped_end - clipped_start, 0)
+    steps = np.arange(n_bins + 1, dtype=np.int64)
+    return clipped_start + ((length * steps) // n_bins)
 
 
 def _segment_profile_bins(
@@ -433,8 +504,38 @@ def _segment_profile_bins(
                 global_bin_index=global_offset + local_index,
                 feature_name=feature_name,
             )
-        )
+    )
     return bins
+
+
+def _metagene_segments(
+    gene: GeneAnnotation,
+    config: ClusterConfig,
+) -> tuple[tuple[str, int, int, int, int], ...]:
+    gp = config.gene_profile
+    if gene.strand == "+":
+        return (
+            ("up", max(gene.start - gp.upstream_bp, 0), gene.start, gp.upstream_bins, 0),
+            ("body", gene.start, gene.end, gp.body_bins, gp.upstream_bins),
+            (
+                "down",
+                gene.end,
+                gene.end + gp.downstream_bp,
+                gp.downstream_bins,
+                gp.upstream_bins + gp.body_bins,
+            ),
+        )
+    return (
+        ("up", gene.end, gene.end + gp.upstream_bp, gp.upstream_bins, 0),
+        ("body", gene.start, gene.end, gp.body_bins, gp.upstream_bins),
+        (
+            "down",
+            max(gene.start - gp.downstream_bp, 0),
+            gene.start,
+            gp.downstream_bins,
+            gp.upstream_bins + gp.body_bins,
+        ),
+    )
 
 
 @beartype
@@ -442,53 +543,136 @@ def build_metagene_bins(
     gene: GeneAnnotation,
     config: ClusterConfig,
 ) -> list[ProfileBin]:
-    gp = config.gene_profile
     chrom = gene.chrom
     bins: list[ProfileBin] = []
-
-    if gene.strand == "+":
-        upstream_region = (max(gene.start - gp.upstream_bp, 0), gene.start)
-        body_region = (gene.start, gene.end)
-        downstream_region = (gene.end, gene.end + gp.downstream_bp)
-    else:
-        upstream_region = (gene.end, gene.end + gp.upstream_bp)
-        body_region = (gene.start, gene.end)
-        downstream_region = (max(gene.start - gp.downstream_bp, 0), gene.start)
-
-    bins.extend(
-        _segment_profile_bins(
-            gene=gene,
-            chrom=chrom,
-            segment="up",
-            region_start=upstream_region[0],
-            region_end=upstream_region[1],
-            n_bins=gp.upstream_bins,
-            global_offset=0,
+    for segment, region_start, region_end, n_bins, global_offset in _metagene_segments(
+        gene,
+        config,
+    ):
+        bins.extend(
+            _segment_profile_bins(
+                gene=gene,
+                chrom=chrom,
+                segment=segment,
+                region_start=region_start,
+                region_end=region_end,
+                n_bins=n_bins,
+                global_offset=global_offset,
+            )
         )
-    )
-    bins.extend(
-        _segment_profile_bins(
-            gene=gene,
-            chrom=chrom,
-            segment="body",
-            region_start=body_region[0],
-            region_end=body_region[1],
-            n_bins=gp.body_bins,
-            global_offset=gp.upstream_bins,
-        )
-    )
-    bins.extend(
-        _segment_profile_bins(
-            gene=gene,
-            chrom=chrom,
-            segment="down",
-            region_start=downstream_region[0],
-            region_end=downstream_region[1],
-            n_bins=gp.downstream_bins,
-            global_offset=gp.upstream_bins + gp.body_bins,
-        )
-    )
     return bins
+
+
+def _fill_segment_interval_arrays(
+    starts_out: np.ndarray,
+    ends_out: np.ndarray,
+    *,
+    gene: GeneAnnotation,
+    region_start: int,
+    region_end: int,
+    n_bins: int,
+    global_offset: int,
+) -> None:
+    edges = _integer_edges(max(region_start, 0), max(region_end, 0), n_bins)
+    starts = edges[:-1]
+    ends = edges[1:]
+    if gene.strand == "-":
+        starts = starts[::-1]
+        ends = ends[::-1]
+    starts_out[global_offset: global_offset + n_bins] = starts
+    ends_out[global_offset: global_offset + n_bins] = ends
+
+
+def _fill_segment_interval_matrix(
+    starts_out: np.ndarray,
+    ends_out: np.ndarray,
+    *,
+    segment_slice: slice,
+    region_starts: np.ndarray,
+    region_ends: np.ndarray,
+    steps: np.ndarray,
+    reverse_mask: np.ndarray,
+) -> None:
+    n_bins = int(steps.size - 1)
+    if n_bins <= 0 or starts_out.shape[0] == 0:
+        return
+
+    safe_starts = np.maximum(region_starts.astype(np.int64, copy=False), 0)
+    safe_ends = np.maximum(region_ends.astype(np.int64, copy=False), 0)
+    lengths = np.maximum(safe_ends - safe_starts, 0)
+    edges = safe_starts[:, np.newaxis] + ((lengths[:, np.newaxis] * steps[np.newaxis, :]) // n_bins)
+    seg_starts = edges[:, :-1]
+    seg_ends = edges[:, 1:]
+
+    if np.any(reverse_mask):
+        seg_starts = seg_starts.copy()
+        seg_ends = seg_ends.copy()
+        seg_starts[reverse_mask] = seg_starts[reverse_mask, ::-1]
+        seg_ends[reverse_mask] = seg_ends[reverse_mask, ::-1]
+
+    starts_out[:, segment_slice] = seg_starts
+    ends_out[:, segment_slice] = seg_ends
+
+
+def _build_metagene_interval_matrices(
+    genes: list[GeneAnnotation],
+    config: ClusterConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    template = _metagene_interval_template(config)
+    n_genes = len(genes)
+    starts = np.empty((n_genes, template.total_bins), dtype=np.int64)
+    ends = np.empty((n_genes, template.total_bins), dtype=np.int64)
+    if n_genes == 0:
+        return starts, ends
+
+    gene_starts = np.asarray([gene.start for gene in genes], dtype=np.int64)
+    gene_ends = np.asarray([gene.end for gene in genes], dtype=np.int64)
+    reverse_mask = np.asarray([gene.strand == "-" for gene in genes], dtype=bool)
+    gp = config.gene_profile
+
+    up_region_starts = np.where(reverse_mask, gene_ends, np.maximum(gene_starts - gp.upstream_bp, 0))
+    up_region_ends = np.where(reverse_mask, gene_ends + gp.upstream_bp, gene_starts)
+    body_region_starts = gene_starts
+    body_region_ends = gene_ends
+    down_region_starts = np.where(reverse_mask, np.maximum(gene_starts - gp.downstream_bp, 0), gene_ends)
+    down_region_ends = np.where(reverse_mask, gene_starts, gene_ends + gp.downstream_bp)
+
+    _fill_segment_interval_matrix(
+        starts,
+        ends,
+        segment_slice=template.up_slice,
+        region_starts=up_region_starts,
+        region_ends=up_region_ends,
+        steps=template.up_steps,
+        reverse_mask=reverse_mask,
+    )
+    _fill_segment_interval_matrix(
+        starts,
+        ends,
+        segment_slice=template.body_slice,
+        region_starts=body_region_starts,
+        region_ends=body_region_ends,
+        steps=template.body_steps,
+        reverse_mask=reverse_mask,
+    )
+    _fill_segment_interval_matrix(
+        starts,
+        ends,
+        segment_slice=template.down_slice,
+        region_starts=down_region_starts,
+        region_ends=down_region_ends,
+        steps=template.down_steps,
+        reverse_mask=reverse_mask,
+    )
+    return starts, ends
+
+
+def _build_metagene_interval_arrays(
+    gene: GeneAnnotation,
+    config: ClusterConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    starts, ends = _build_metagene_interval_matrices([gene], config)
+    return starts[0], ends[0]
 
 
 def _prepare_block_cumsums(
@@ -503,28 +687,6 @@ def _prepare_block_cumsums(
     )
 
 
-def _interval_ratio(
-    positions: np.ndarray,
-    count_m_cumsum: np.ndarray,
-    count_total_cumsum: np.ndarray,
-    *,
-    start: int,
-    end: int,
-    min_bin_total_coverage: int,
-) -> float:
-    if end <= start:
-        return float("nan")
-    left = int(np.searchsorted(positions, start, side="left"))
-    right = int(np.searchsorted(positions, end, side="left"))
-    if right <= left:
-        return float("nan")
-    count_m_sum = int(count_m_cumsum[right] - count_m_cumsum[left])
-    count_total_sum = int(count_total_cumsum[right] - count_total_cumsum[left])
-    if count_total_sum < min_bin_total_coverage:
-        return float("nan")
-    return coverage_weighted_ratio(count_m_sum, count_total_sum)
-
-
 def _profile_gene(
     gene: GeneAnnotation,
     config: ClusterConfig,
@@ -535,16 +697,56 @@ def _profile_gene(
         return profile
 
     positions, count_m_cumsum, count_total_cumsum = block_cumsums
-    for profile_bin in build_metagene_bins(gene, config):
-        profile[profile_bin.global_bin_index] = _interval_ratio(
-            positions,
-            count_m_cumsum,
-            count_total_cumsum,
-            start=profile_bin.start,
-            end=profile_bin.end,
-            min_bin_total_coverage=config.gene_profile.min_bin_total_coverage,
-        )
+    starts, ends = _build_metagene_interval_arrays(gene, config)
+    left = np.searchsorted(positions, starts, side="left")
+    right = np.searchsorted(positions, ends, side="left")
+    valid = (ends > starts) & (right > left)
+    if not np.any(valid):
+        return profile
+
+    count_m_sum = count_m_cumsum[right] - count_m_cumsum[left]
+    count_total_sum = count_total_cumsum[right] - count_total_cumsum[left]
+    valid &= count_total_sum >= config.gene_profile.min_bin_total_coverage
+    if not np.any(valid):
+        return profile
+
+    profile[valid] = count_m_sum[valid].astype(float) / count_total_sum[valid].astype(float)
     return profile
+
+
+def _profile_genes_in_block(
+    genes: list[GeneAnnotation],
+    gene_indices: tuple[int, ...],
+    config: ClusterConfig,
+    block_cumsums: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+) -> np.ndarray:
+    profiles = np.full((len(gene_indices), config.gene_profile.total_bins), np.nan, dtype=float)
+    if block_cumsums is None or not gene_indices:
+        return profiles
+
+    positions, count_m_cumsum, count_total_cumsum = block_cumsums
+    block_genes = [genes[gene_idx] for gene_idx in gene_indices]
+    starts, ends = _build_metagene_interval_matrices(block_genes, config)
+    starts_flat = starts.reshape(-1)
+    ends_flat = ends.reshape(-1)
+
+    left = np.searchsorted(positions, starts_flat, side="left")
+    right = np.searchsorted(positions, ends_flat, side="left")
+    valid = (ends_flat > starts_flat) & (right > left)
+    if not np.any(valid):
+        return profiles
+
+    count_m_sum = count_m_cumsum[right] - count_m_cumsum[left]
+    count_total_sum = count_total_cumsum[right] - count_total_cumsum[left]
+    valid &= count_total_sum >= config.gene_profile.min_bin_total_coverage
+    if not np.any(valid):
+        return profiles
+
+    profiles_flat = profiles.reshape(-1)
+    profiles_flat[valid] = (
+        count_m_sum[valid].astype(float) / count_total_sum[valid].astype(float)
+    )
+    return profiles
 
 
 @beartype
@@ -567,10 +769,16 @@ def build_gene_profile_matrix(config: ClusterConfig) -> GeneProfileMatrix:
             "No overlapping genes found between annotation and BSX chromosomes"
         )
 
-    query_blocks = _build_query_blocks(genes, config)
+    gene_spans = _collect_gene_profile_spans(genes, config)
+    query_blocks = _build_query_blocks(genes, config, gene_spans=gene_spans)
     t_blocks = perf_counter()
     feature_bins = build_feature_bins(config)
-    assigned_blocks = _assign_genes_to_query_blocks(genes, query_blocks, config)
+    assigned_blocks = _assign_genes_to_query_blocks(
+        genes,
+        query_blocks,
+        config,
+        gene_spans=gene_spans,
+    )
     values = np.full((len(genes), len(feature_bins)), np.nan, dtype=float)
 
     t_query_blocks = 0.0
@@ -612,8 +820,13 @@ def build_gene_profile_matrix(config: ClusterConfig) -> GeneProfileMatrix:
             blocks_with_data += 1
 
         t_block_profile = perf_counter()
-        for gene_idx in assigned_block.gene_indices:
-            values[gene_idx] = _profile_gene(genes[gene_idx], config, block_cumsums)
+        block_profiles = _profile_genes_in_block(
+            genes,
+            assigned_block.gene_indices,
+            config,
+            block_cumsums,
+        )
+        values[np.asarray(assigned_block.gene_indices, dtype=np.int64)] = block_profiles
         t_profile_blocks += perf_counter() - t_block_profile
 
     t_values = perf_counter()
@@ -648,6 +861,7 @@ def build_gene_profile_matrix(config: ClusterConfig) -> GeneProfileMatrix:
                 "normalization": config.gene_profile.normalization.value,
             },
             "read_strategy": "region_reader_selective",
+            "materialization_strategy": "batched_query_block_profiles",
             "region_reader_cache": {
                 "mode": "process_local_python_cache",
                 "cache_hit": prepared_reader.cache_hit,
@@ -656,6 +870,7 @@ def build_gene_profile_matrix(config: ClusterConfig) -> GeneProfileMatrix:
             },
             "query_block_cache": {
                 "enabled": config.block_cache.enabled,
+                "mode": config.block_cache.mode.value,
                 "cache_dir": (
                     None
                     if not config.block_cache.enabled
@@ -664,6 +879,10 @@ def build_gene_profile_matrix(config: ClusterConfig) -> GeneProfileMatrix:
                 "hits": block_cache_hits,
                 "misses": block_cache_misses,
                 "writes": block_cache_writes,
+            },
+            "query_block_planning": {
+                "strategy": "chromosome_span_merge_with_gap",
+                "merge_gap_bp": config.read.query_block_merge_gap_bp,
             },
             "query_blocks": len(query_blocks),
             "query_blocks_with_data": blocks_with_data,

@@ -39,7 +39,8 @@ def finalize_gene_profile_matrix(
     if values.shape[1] == 0:
         raise ValueError("No metagene bins were collected")
 
-    gene_missing_rate = np.isnan(values).mean(axis=1)
+    nan_mask = np.isnan(values)
+    gene_missing_rate = nan_mask.mean(axis=1)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
         gene_variance = np.nanvar(values, axis=1)
@@ -53,10 +54,11 @@ def finalize_gene_profile_matrix(
 
     kept_genes = [gene for gene, keep in zip(genes, keep_genes, strict=True) if keep]
     kept_values = values[keep_genes]
+    kept_nan_mask = nan_mask[keep_genes]
     kept_gene_missing = gene_missing_rate[keep_genes]
     kept_gene_variance = gene_variance[keep_genes]
 
-    feature_missing_rate = np.isnan(kept_values).mean(axis=0)
+    feature_missing_rate = kept_nan_mask.mean(axis=0)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
         feature_variance = np.nanvar(kept_values, axis=0)
@@ -75,18 +77,21 @@ def finalize_gene_profile_matrix(
         if keep
     ]
     kept_values = kept_values[:, keep_features]
+    kept_nan_mask = kept_nan_mask[:, keep_features]
     kept_feature_missing = feature_missing_rate[keep_features]
     kept_feature_variance = feature_variance[keep_features]
 
-    col_means = np.nanmean(kept_values, axis=0)
-    if np.isnan(col_means).any():
-        raise ValueError("At least one retained metagene bin contains only missing values")
-    filled_values = np.where(np.isnan(kept_values), col_means, kept_values)
+    if np.any(kept_nan_mask):
+        col_means = np.nanmean(kept_values, axis=0)
+        if np.isnan(col_means).any():
+            raise ValueError("At least one retained metagene bin contains only missing values")
+        missing_rows, missing_cols = np.nonzero(kept_nan_mask)
+        kept_values[missing_rows, missing_cols] = col_means[missing_cols]
 
     return GeneProfileMatrix(
         genes=kept_genes,
         feature_bins=kept_feature_bins,
-        values=filled_values,
+        values=kept_values,
         gene_missing_rate=kept_gene_missing,
         gene_variance=kept_gene_variance,
         feature_missing_rate=kept_feature_missing,

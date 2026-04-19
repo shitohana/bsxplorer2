@@ -4,6 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from beartype import beartype
+
 from bsx2 import HcAnnotStore
 
 from .config import AnnotationFormat
@@ -97,7 +98,7 @@ def _entry_name(entry) -> str | None:
 def _normalize_attr_value(value) -> str | None:
     if value is None:
         return None
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         if not value:
             return None
         return str(value[0])

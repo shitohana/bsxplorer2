@@ -5,8 +5,11 @@ description = "A high-performance library for bisulfite sequencing data analysis
 authors = ["shitohana <kyudytskiy@gmail.com>"]
 readme = "README.md"
 
+[tool.poetry.scripts]
+cluster-bsx = "bsx2.clustering.cli:main"
+
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.14"
 polars = "^1.0.0"
 pyarrow = "*"
 numpy = ">=2.0"
@@ -20,6 +23,29 @@ beartype = "^0.18"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
 tqdm = "^4.67.1"
+ruff = "^0.11.8"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["src/bsx2/_bsx2.pyi"]
+
+[tool.ruff.lint]
+select = ["F", "I", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bsx2"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.pytest.ini_options]
+markers = [
+    "perf: synthetic performance smoke scenarios",
+]
 
 [tool.maturin]
 python-source = "src"

@@ -11,15 +11,20 @@ from .config import (
     AnnotationFormat,
     BackendConfig,
     BlockCacheConfig,
+    BlockCacheMode,
     ClusterConfig,
     ClusterSource,
     GeneProfileConfig,
     HierarchicalConfig,
     HierarchicalDistance,
     HierarchicalLinkage,
+    HierarchicalMode,
     NormalizationMode,
     OutputConfig,
+    PcaSolver,
     ReadConfig,
+    SilhouetteConfig,
+    SilhouetteMode,
     TableFormat,
 )
 from .gene_profile import build_gene_profile_matrix
@@ -41,7 +46,7 @@ def _parse_annotation_format(value: str | None) -> AnnotationFormat | None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="cluster_bsx",
+        prog="cluster-bsx",
         description=(
             "Cluster genes from a single BSX sample using metagene profiles, PCA, "
             "KMeans, and hierarchical clustering."
@@ -77,6 +82,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional directory for persistent queried-block cache",
     )
+    parser.add_argument(
+        "--query-block-cache-mode",
+        choices=[mode.value for mode in BlockCacheMode],
+        default=BlockCacheMode.COMPRESSED.value,
+        help="Persistent queried-block cache mode: compressed or uncompressed",
+    )
+    parser.add_argument(
+        "--query-block-merge-gap-bp",
+        type=int,
+        default=0,
+        help="Merge nearby gene profile spans into a shared query block when gaps are below this size",
+    )
     parser.add_argument("--upstream-bp", type=int, default=2000)
     parser.add_argument("--downstream-bp", type=int, default=2000)
     parser.add_argument("--upstream-bins", type=int, default=20)
@@ -98,6 +115,44 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--n-clusters", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--pca-solver",
+        choices=[solver.value for solver in PcaSolver],
+        default=PcaSolver.AUTO.value,
+        help="PCA backend: exact, truncated, or auto",
+    )
+    parser.add_argument(
+        "--pca-exact-max-matrix-size",
+        type=int,
+        default=1_000_000,
+        help=(
+            "Use exact PCA at or below this matrix size (n_genes * n_bins) in auto mode; "
+            "use 0 to disable the threshold"
+        ),
+    )
+    parser.add_argument(
+        "--no-silhouette",
+        action="store_true",
+        help="Disable silhouette scoring entirely",
+    )
+    parser.add_argument(
+        "--silhouette-mode",
+        choices=[mode.value for mode in SilhouetteMode],
+        default=SilhouetteMode.AUTO.value,
+        help="Silhouette execution policy: exact, sampled, or auto",
+    )
+    parser.add_argument(
+        "--silhouette-max-samples",
+        type=int,
+        default=2_000,
+        help="Maximum genes to sample for silhouette in sampled mode; use 0 to disable",
+    )
+    parser.add_argument(
+        "--silhouette-exact-max-genes",
+        type=int,
+        default=2_000,
+        help="Use exact silhouette at or below this retained gene count; use 0 to disable",
+    )
+    parser.add_argument(
         "--distance",
         choices=[distance.value for distance in HierarchicalDistance],
         default=HierarchicalDistance.CORRELATION.value,
@@ -106,6 +161,35 @@ def build_parser() -> argparse.ArgumentParser:
         "--linkage",
         choices=[linkage.value for linkage in HierarchicalLinkage],
         default=HierarchicalLinkage.AVERAGE.value,
+    )
+    parser.add_argument(
+        "--no-hierarchical",
+        action="store_true",
+        help="Disable hierarchical clustering and skip dendrogram/linkage outputs",
+    )
+    parser.add_argument(
+        "--hierarchical-mode",
+        choices=[mode.value for mode in HierarchicalMode],
+        default=HierarchicalMode.AUTO.value,
+        help="Hierarchical execution policy: exact, subsample, skip, or auto",
+    )
+    parser.add_argument(
+        "--hierarchical-max-genes",
+        type=int,
+        default=5_000,
+        help=(
+            "Skip hierarchical clustering when retained gene count exceeds this threshold; "
+            "use 0 to disable the threshold"
+        ),
+    )
+    parser.add_argument(
+        "--hierarchical-subsample-genes",
+        type=int,
+        default=2_000,
+        help=(
+            "Maximum genes to retain in subsampled hierarchical mode; use 0 to disable "
+            "subsampling fallback"
+        ),
     )
     parser.add_argument(
         "--cluster-source",
@@ -143,10 +227,12 @@ def parse_args(argv: list[str] | None = None) -> ClusterConfig:
         read=ReadConfig(
             context=_parse_context(args.context),
             min_coverage=args.min_coverage,
+            query_block_merge_gap_bp=max(args.query_block_merge_gap_bp, 0),
         ),
         block_cache=BlockCacheConfig(
             enabled=bool(args.query_block_cache or args.query_block_cache_dir),
             cache_dir=None if args.query_block_cache_dir is None else Path(args.query_block_cache_dir),
+            mode=BlockCacheMode(args.query_block_cache_mode),
         ),
         gene_profile=GeneProfileConfig(
             upstream_bp=args.upstream_bp,
@@ -167,8 +253,43 @@ def parse_args(argv: list[str] | None = None) -> ClusterConfig:
             n_components=args.n_components,
             n_clusters=args.n_clusters,
             seed=args.seed,
+            pca_solver=PcaSolver(args.pca_solver),
+            pca_exact_max_matrix_size=(
+                None
+                if args.pca_exact_max_matrix_size is None or args.pca_exact_max_matrix_size <= 0
+                else args.pca_exact_max_matrix_size
+            ),
+        ),
+        silhouette=SilhouetteConfig(
+            enabled=not args.no_silhouette,
+            mode=SilhouetteMode(args.silhouette_mode),
+            max_samples=(
+                None
+                if args.silhouette_max_samples is None or args.silhouette_max_samples <= 0
+                else args.silhouette_max_samples
+            ),
+            exact_max_genes=(
+                None
+                if args.silhouette_exact_max_genes is None
+                or args.silhouette_exact_max_genes <= 0
+                else args.silhouette_exact_max_genes
+            ),
+            seed=args.seed,
         ),
         hierarchical=HierarchicalConfig(
+            enabled=not args.no_hierarchical,
+            max_genes=(
+                None
+                if args.hierarchical_max_genes is None or args.hierarchical_max_genes <= 0
+                else args.hierarchical_max_genes
+            ),
+            mode=HierarchicalMode(args.hierarchical_mode),
+            subsample_genes=(
+                None
+                if args.hierarchical_subsample_genes is None
+                or args.hierarchical_subsample_genes <= 0
+                else args.hierarchical_subsample_genes
+            ),
             distance=HierarchicalDistance(args.distance),
             linkage=HierarchicalLinkage(args.linkage),
         ),
