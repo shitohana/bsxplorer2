@@ -225,6 +225,26 @@ def build_cluster_metagene_data(
 ) -> ClusterMetageneData:
     """
     Build metagene profiles for selected gene clusters.
+
+    Parameters
+    ----------
+    result
+        Gene clustering result containing the feature matrix, labels, and
+        feature-bin metadata.
+    cluster_ids
+        Optional subset of cluster identifiers to include.
+    gene_ids
+        Optional explicit subset of genes to include.
+    collapse
+        If `True`, collapse the selected genes into one combined profile. If
+        `False`, build one profile per selected cluster.
+    label
+        Optional label used when ``collapse=True``.
+
+    Returns
+    -------
+    ClusterMetageneData
+        Cluster-aware metagene profiles and labels ready for plotting.
     """
     profiles = DiscreteRegionData()
     values = np.asarray(result.feature_matrix.values, dtype=float)
@@ -294,6 +314,12 @@ def build_cluster_metagene_data(
 def build_gene_embedding_data(result: GeneClusterResult) -> GeneEmbeddingData:
     """
     Convert a clustering result into plot-ready PCA embedding data.
+
+    Returns
+    -------
+    GeneEmbeddingData
+        Embedding coordinates, gene metadata, and cluster labels aligned
+        row-by-row for the selected clustering result.
     """
     genes = result.feature_matrix.genes
     return GeneEmbeddingData(
@@ -313,6 +339,12 @@ def build_gene_embedding_data(result: GeneClusterResult) -> GeneEmbeddingData:
 def build_gene_dendrogram_data(result: GeneClusterResult) -> GeneDendrogramData | None:
     """
     Convert a clustering result into plot-ready dendrogram data.
+
+    Returns
+    -------
+    GeneDendrogramData | None
+        Dendrogram linkage and leaf ordering when hierarchical output is
+        available, otherwise `None`.
     """
     if result.linkage_matrix is None or result.leaf_order is None:
         return None

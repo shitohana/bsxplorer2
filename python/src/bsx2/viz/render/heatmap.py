@@ -283,6 +283,17 @@ def heatmap(
         Optional upper quantile used to derive the heatmap color limit.
     label_prefix
         Optional prefix applied to row labels before combining datasets.
+
+    Returns
+    -------
+    object
+        HoloViews heatmap-like object that can be rendered with the Plotly
+        backend.
+
+    Notes
+    -----
+    The heatmap is built by rebinding each discrete profile to a shared window
+    grid, ranking rows, and optionally compressing them to ``rank_rows``.
     """
     composer = HeatmapPlotComposer(
         segments=segments,

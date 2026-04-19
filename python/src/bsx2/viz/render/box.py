@@ -52,6 +52,17 @@ def box_plot(
         Optional plot title.
     width, height
         Optional plot size in pixels.
+
+    Returns
+    -------
+    object
+        HoloViews box-whisker plot object.
+
+    Notes
+    -----
+    For metagene interpretation, the primary grouped mode is
+    ``per_region=False``. In that mode distributions are aggregated across the
+    gene set by metagene window or named segment.
     """
     _hv_init()
     data = build_box_distribution_data(

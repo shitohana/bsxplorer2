@@ -29,6 +29,7 @@ The plotting layer now returns HoloViews objects. Rendering, saving, and backend
 
 Further docs:
 
+- [Sphinx documentation site](docs/build/html/index.html)
 - [Plotting support matrix](docs/plotting_support_matrix.md)
 - [Upgrade notes](docs/upgrade_notes.md)
 - [Performance notes](docs/performance_notes.md)
@@ -43,6 +44,14 @@ The project uses Poetry.
 ```bash
 cd python
 poetry install
+```
+
+To build the Sphinx documentation locally:
+
+```bash
+cd python
+pip install -r docs/requirements.txt
+PYTHONPATH=src sphinx-build -b html docs/source docs/build/html
 ```
 
 ## Development Commands

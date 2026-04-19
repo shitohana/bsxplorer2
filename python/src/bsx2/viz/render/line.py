@@ -21,6 +21,7 @@ from ..compute.metagene import (
     _apply_savgol_smoothing,
     _clip_profile,
     _coerce_smooth_config,
+    segment_boundaries,
     segments_total_bins,
 )
 from ..compute.windowing import _bin_points_windows_fast
@@ -42,6 +43,10 @@ def _profile_title() -> str:
 
 def _position_axis_label() -> str:
     return "Relative feature position"
+
+
+def _show_segment_guides(segments: list[MetageneProfileSegment]) -> bool:
+    return len(segments) > 1
 
 
 def _line_profile(
@@ -260,7 +265,25 @@ class LinePlotComposer:
         if self.height is not None:
             opts_kwargs["height"] = int(self.height)
 
-        return plot.opts(**opts_kwargs)
+        if _show_segment_guides(self.segments):
+            xticks = []
+            start = 0.0
+            for end, seg in zip(segment_boundaries(self.segments), self.segments, strict=True):
+                xticks.append(((start + end) / 2.0, seg.name))
+                start = end
+            opts_kwargs["xticks"] = xticks
+
+        plot = plot.opts(**opts_kwargs)
+        if not _show_segment_guides(self.segments):
+            return plot
+
+        for boundary in segment_boundaries(self.segments)[:-1]:
+            plot *= hv.VLine(float(boundary)).opts(
+                line_dash="dash",
+                line_color="gray",
+                line_width=1,
+            )
+        return plot
 
 
 def line_plot(
