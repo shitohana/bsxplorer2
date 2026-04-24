@@ -13,6 +13,12 @@ from .clustering import (
 )
 from .heatmap import HeatmapPlotComposer, heatmap
 from .line import LinePlotComposer, line_plot
+from .manhattan import (
+    ChromosomeManhattanPlotComposer,
+    ManhattanMethylationPlotComposer,
+    build_chromosome_manhattan_plot,
+    chromosome_manhattan_plot,
+)
 from .violin import violin_plot
 
 __all__ = [
@@ -20,6 +26,8 @@ __all__ = [
     "HeatmapPlotComposer",
     "ChrLinePlotComposer",
     "ChromosomeMethylationMapComposer",
+    "ChromosomeManhattanPlotComposer",
+    "ManhattanMethylationPlotComposer",
     "GeneEmbeddingPlotComposer",
     "GeneDendrogramPlotComposer",
     "line_plot",
@@ -27,7 +35,9 @@ __all__ = [
     "box_plot",
     "violin_plot",
     "build_chromosome_methylation_map",
+    "build_chromosome_manhattan_plot",
     "chromosome_methylation_map",
+    "chromosome_manhattan_plot",
     "build_cluster_metagene_plot",
     "cluster_metagene_plot",
 ]

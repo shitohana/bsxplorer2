@@ -10,9 +10,10 @@ import hashlib
 import json
 import os
 import re
-import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import holoviews as hv
@@ -20,38 +21,37 @@ import plotly.io as pio
 import streamlit as st
 from plotly.graph_objects import Figure
 
-from bsx2 import Context, HcAnnotStore, RegionReader
-from bsx2.clustering import (
-    AnnotationFormat,
-    BackendConfig,
-    BlockCacheConfig,
-    ClusterConfig,
-    ClusterSource,
-    GeneProfileConfig,
-    HierarchicalConfig,
-    OutputConfig,
-    ReadConfig,
-    build_gene_profile_matrix,
-    cluster_gene_profiles,
-)
+from bsx2 import Context, RegionReader
 from bsx2.viz import (
     AnnotProfileLayout,
     AnnotProfilePart,
     GeneDendrogramPlotComposer,
     GeneEmbeddingPlotComposer,
     box_plot,
-    build_annotation_metagene,
+    build_chromosome_manhattan_plot,
     build_chromosome_methylation_map,
-    build_cluster_metagene_data,
     build_cluster_metagene_plot,
-    build_gene_dendrogram_data,
-    build_gene_embedding_data,
-    build_manual_metagene,
-    collect_layout_parts_from_hcannot,
     compute_chromosome_methylation_map_data,
     heatmap,
     line_plot,
     violin_plot,
+)
+from bsx2.viz.compute.distribution import DistributionPlotData
+from bsx2.viz.compute.input_compat import (
+    SeqnameCompatibilityReport,
+    build_seqname_compatibility_report,
+)
+from bsx2.viz.compute.studio_workspaces import (
+    ManualRegionSpec,
+    build_studio_cluster_config,
+    cluster_dendrogram_family_key,
+    cluster_matrix_family_key,
+    cluster_plot_family_key,
+    metagene_family_key,
+    prepare_cluster_dendrogram_family,
+    prepare_cluster_family,
+    prepare_cluster_matrix_workspace,
+    prepare_metagene_family,
 )
 
 APP_VERSION = "aw25-studio-v2"
@@ -123,6 +123,16 @@ PLOT_SPECS: tuple[PlotSpec, ...] = (
         "AW25 · whole-genome chromosome methylation map",
         "Recommended review preset: context=CG, bin_size_bp=5000000.",
         "Shows that whole-genome methylation can be aggregated and rendered independently of the metagene and clustering pipelines.",
+    ),
+    PlotSpec(
+        "chromosome_manhattan",
+        "Chromosome methylation Manhattan plot",
+        "genome module",
+        "Genome-wide Manhattan-style scatter plot over chromosome methylation bins.",
+        420,
+        "Exploratory extension · genome-scale Manhattan plot",
+        "Recommended exploratory preset: context=CG, bin_size_bp=5000000, point_size=5.",
+        "Shows the same chromosome-binned methylation signal as the map, but as a point cloud that helps spot local outlier bins and chromosome-scale peaks.",
     ),
     PlotSpec(
         "gene_pca",
@@ -221,6 +231,16 @@ def _plot_specs(language: str) -> tuple[PlotSpec, ...]:
                 "Показывает, что полногеномное метилирование агрегируется и визуализируется независимо от metagene и clustering pipeline.",
             ),
             PlotSpec(
+                "chromosome_manhattan",
+                "Манхеттенский график метилирования по хромосомам",
+                "геномный модуль",
+                "Полногеномный Manhattan-style scatter plot по хромосомным methylation bins.",
+                420,
+                "Дополнительное расширение · genome-scale Manhattan plot",
+                "Рекомендуемый exploratory preset: context=CG, bin_size_bp=5000000, point_size=5.",
+                "Показывает тот же chromosome-binned methylation signal, что и карта, но как облако точек для поиска локальных outlier bins и пиков по хромосомам.",
+            ),
+            PlotSpec(
                 "gene_pca",
                 "PCA генов - метки KMeans",
                 "модуль embedding",
@@ -266,6 +286,83 @@ def _slugify(value: str) -> str:
     return slug or "plot"
 
 
+def _parse_manual_region_text(
+    raw: str,
+    *,
+    part_label: str,
+) -> list[ManualRegionSpec]:
+    rows: list[ManualRegionSpec] = []
+    for line_no, raw_line in enumerate(str(raw).splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = re.split(r"[\t ,;]+", line)
+        if len(fields) != 5:
+            raise ValueError(
+                f"{part_label}: expected 5 fields per line "
+                "(label chrom start end strand)"
+            )
+        label, seqname, start_text, end_text, strand = fields
+        try:
+            start = int(start_text)
+            end = int(end_text)
+        except ValueError as exc:
+            raise ValueError(
+                f"{part_label}: start/end must be integers on line {line_no}"
+            ) from exc
+        if start < 0 or end <= start:
+            raise ValueError(
+                f"{part_label}: require 0 <= start < end on line {line_no}"
+            )
+        if strand not in {"+", "-", ".", "*", "?", "null", "none"}:
+            raise ValueError(
+                f"{part_label}: unsupported strand {strand!r} on line {line_no}"
+            )
+        rows.append((label, seqname, start, end, strand))
+    return rows
+
+
+def _manual_part_specs_from_params(
+    params: dict[str, Any],
+) -> dict[str, list[ManualRegionSpec]] | None:
+    if params.get("assembly_mode") != "manual-composed":
+        return None
+    raw_up = str(params.get("manual_upstream_regions", "")).strip()
+    raw_body = str(params.get("manual_body_regions", "")).strip()
+    raw_down = str(params.get("manual_downstream_regions", "")).strip()
+    if not any([raw_up, raw_body, raw_down]):
+        return None
+    layout = _metagene_layout(
+        assembly_mode=params["assembly_mode"],
+        up_bins=params["up_bins"],
+        body_bins=params["body_bins"],
+        down_bins=params["down_bins"],
+        flank_bp=params["flank_bp"],
+    )
+    return {
+        layout.parts[0].name: _parse_manual_region_text(raw_up, part_label=layout.parts[0].name),
+        layout.parts[1].name: _parse_manual_region_text(raw_body, part_label=layout.parts[1].name),
+        layout.parts[2].name: _parse_manual_region_text(raw_down, part_label=layout.parts[2].name),
+    }
+
+
+def _promoter_focus_manual_defaults() -> dict[str, str]:
+    return {
+        "upstream": (
+            "gene_1\tNC_003070.9\t3231\t3631\t+\n"
+            "gene_2\tNC_003070.9\t9130\t9530\t-"
+        ),
+        "body": (
+            "gene_1\tNC_003070.9\t3631\t3931\t+\n"
+            "gene_2\tNC_003070.9\t8830\t9130\t-"
+        ),
+        "downstream": (
+            "gene_1\tNC_003070.9\t3931\t4531\t+\n"
+            "gene_2\tNC_003070.9\t8230\t8830\t-"
+        ),
+    }
+
+
 def _parse_context(value: str) -> Context:
     try:
         return getattr(Context, value.upper())
@@ -307,12 +404,7 @@ def _metagene_layout(
 
 
 @st.cache_resource(show_spinner=False)
-def _annot_store(annot_gff_path: str) -> HcAnnotStore:
-    return HcAnnotStore.from_gff(annot_gff_path)
-
-
-@st.cache_resource(show_spinner=False)
-def _manual_metagene_data(
+def _metagene_family_workspace(
     *,
     bsx_path: str,
     annot_gff_path: str,
@@ -323,8 +415,8 @@ def _manual_metagene_data(
     down_bins: int,
     flank_bp: int,
     limit_regions: int | None,
+    manual_part_specs: dict[str, list[ManualRegionSpec]] | None = None,
 ):
-    annot = _annot_store(annot_gff_path)
     layout = _metagene_layout(
         assembly_mode=assembly_mode,
         up_bins=up_bins,
@@ -332,79 +424,14 @@ def _manual_metagene_data(
         down_bins=down_bins,
         flank_bp=flank_bp,
     )
-    part_map = collect_layout_parts_from_hcannot(annot, layout=layout, limit=limit_regions)
-    drd = build_manual_metagene(
-        _new_reader(bsx_path, _parse_context(context_name)),
-        part_map=part_map,
-        layout=layout,
-    )
-    return drd, tuple(layout.segments)
-
-
-@st.cache_resource(show_spinner=False)
-def _annotation_metagene_data(
-    *,
-    bsx_path: str,
-    annot_gff_path: str,
-    context_name: str,
-    assembly_mode: str,
-    up_bins: int,
-    body_bins: int,
-    down_bins: int,
-    flank_bp: int,
-    limit_regions: int | None,
-):
-    annot = _annot_store(annot_gff_path)
-    layout = _metagene_layout(
-        assembly_mode=assembly_mode,
-        up_bins=up_bins,
-        body_bins=body_bins,
-        down_bins=down_bins,
-        flank_bp=flank_bp,
-    )
-    drd = build_annotation_metagene(
-        _new_reader(bsx_path, _parse_context(context_name)),
-        annot,
-        layout=layout,
-        limit=limit_regions,
-    )
-    return drd, tuple(layout.segments)
-
-
-def _metagene_data(
-    *,
-    assembly_mode: str,
-    bsx_path: str,
-    annot_gff_path: str,
-    context_name: str,
-    up_bins: int,
-    body_bins: int,
-    down_bins: int,
-    flank_bp: int,
-    limit_regions: int | None,
-):
-    if assembly_mode == "annotation-driven":
-        return _annotation_metagene_data(
-            bsx_path=bsx_path,
-            annot_gff_path=annot_gff_path,
-            context_name=context_name,
-            assembly_mode=assembly_mode,
-            up_bins=up_bins,
-            body_bins=body_bins,
-            down_bins=down_bins,
-            flank_bp=flank_bp,
-            limit_regions=limit_regions,
-        )
-    return _manual_metagene_data(
+    return prepare_metagene_family(
         bsx_path=bsx_path,
-        annot_gff_path=annot_gff_path,
-        context_name=context_name,
+        annot_path=annot_gff_path,
+        context=context_name,
         assembly_mode=assembly_mode,
-        up_bins=up_bins,
-        body_bins=body_bins,
-        down_bins=down_bins,
-        flank_bp=flank_bp,
+        layout=layout,
         limit_regions=limit_regions,
+        manual_part_specs=manual_part_specs,
     )
 
 
@@ -418,7 +445,16 @@ def _chromosome_map_data(*, bsx_path: str, context_name: str, bin_size_bp: int):
 
 
 @st.cache_resource(show_spinner=False)
-def _cluster_result(
+def _input_seqname_compatibility_report(
+    *,
+    bsx_path: str,
+    annot_gff_path: str,
+) -> SeqnameCompatibilityReport:
+    return build_seqname_compatibility_report(bsx_path, annot_gff_path)
+
+
+@st.cache_resource(show_spinner=False)
+def _cluster_matrix_workspace(
     *,
     bsx_path: str,
     annot_gff_path: str,
@@ -428,34 +464,99 @@ def _cluster_result(
     query_block_merge_gap_bp: int,
     n_clusters: int,
     seed: int,
-    hierarchical_enabled: bool,
     hierarchical_max_genes: int,
 ):
-    config = ClusterConfig(
-        bsx_path=Path(bsx_path),
-        annotation_path=Path(annot_gff_path),
-        annotation_format=AnnotationFormat.GFF,
-        read=ReadConfig(
-            context=_parse_context(context_name),
-            min_coverage=min_coverage,
-            query_block_merge_gap_bp=query_block_merge_gap_bp,
-        ),
-        block_cache=BlockCacheConfig(enabled=False),
-        gene_profile=GeneProfileConfig(limit_genes=limit_genes),
-        backend=BackendConfig(n_components=2, n_clusters=n_clusters, seed=seed),
-        hierarchical=HierarchicalConfig(
-            enabled=hierarchical_enabled,
-            max_genes=hierarchical_max_genes,
-        ),
-        cluster_source=ClusterSource.KMEANS,
-        output=OutputConfig(
-            output_dir=Path(tempfile.gettempdir()),
-            write_table_files=False,
-            write_metrics_file=False,
-        ),
+    config = build_studio_cluster_config(
+        bsx_path=bsx_path,
+        annot_path=annot_gff_path,
+        context=context_name,
+        limit_genes=limit_genes,
+        min_coverage=min_coverage,
+        query_block_merge_gap_bp=query_block_merge_gap_bp,
+        n_clusters=n_clusters,
+        seed=seed,
+        hierarchical_enabled=False,
+        hierarchical_max_genes=hierarchical_max_genes,
     )
-    matrix = build_gene_profile_matrix(config)
-    return cluster_gene_profiles(matrix, config)
+    return prepare_cluster_matrix_workspace(config)
+
+
+@st.cache_resource(show_spinner=False)
+def _cluster_family_workspace(
+    *,
+    bsx_path: str,
+    annot_gff_path: str,
+    context_name: str,
+    limit_genes: int | None,
+    min_coverage: int,
+    query_block_merge_gap_bp: int,
+    n_clusters: int,
+    seed: int,
+    hierarchical_max_genes: int,
+):
+    matrix_workspace = _cluster_matrix_workspace(
+        bsx_path=bsx_path,
+        annot_gff_path=annot_gff_path,
+        context_name=context_name,
+        limit_genes=limit_genes,
+        min_coverage=min_coverage,
+        query_block_merge_gap_bp=query_block_merge_gap_bp,
+        n_clusters=n_clusters,
+        seed=seed,
+        hierarchical_max_genes=hierarchical_max_genes,
+    )
+    config = build_studio_cluster_config(
+        bsx_path=bsx_path,
+        annot_path=annot_gff_path,
+        context=context_name,
+        limit_genes=limit_genes,
+        min_coverage=min_coverage,
+        query_block_merge_gap_bp=query_block_merge_gap_bp,
+        n_clusters=n_clusters,
+        seed=seed,
+        hierarchical_enabled=False,
+        hierarchical_max_genes=hierarchical_max_genes,
+    )
+    return prepare_cluster_family(matrix_workspace, config)
+
+
+@st.cache_resource(show_spinner=False)
+def _cluster_dendrogram_workspace(
+    *,
+    bsx_path: str,
+    annot_gff_path: str,
+    context_name: str,
+    limit_genes: int | None,
+    min_coverage: int,
+    query_block_merge_gap_bp: int,
+    n_clusters: int,
+    seed: int,
+    hierarchical_max_genes: int,
+):
+    matrix_workspace = _cluster_matrix_workspace(
+        bsx_path=bsx_path,
+        annot_gff_path=annot_gff_path,
+        context_name=context_name,
+        limit_genes=limit_genes,
+        min_coverage=min_coverage,
+        query_block_merge_gap_bp=query_block_merge_gap_bp,
+        n_clusters=n_clusters,
+        seed=seed,
+        hierarchical_max_genes=hierarchical_max_genes,
+    )
+    config = build_studio_cluster_config(
+        bsx_path=bsx_path,
+        annot_path=annot_gff_path,
+        context=context_name,
+        limit_genes=limit_genes,
+        min_coverage=min_coverage,
+        query_block_merge_gap_bp=query_block_merge_gap_bp,
+        n_clusters=n_clusters,
+        seed=seed,
+        hierarchical_enabled=True,
+        hierarchical_max_genes=hierarchical_max_genes,
+    )
+    return prepare_cluster_dendrogram_family(matrix_workspace, config)
 
 
 def _stable_json(value: Any) -> str:
@@ -464,6 +565,26 @@ def _stable_json(value: Any) -> str:
 
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _format_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "—"
+    seconds = max(float(seconds), 0.0)
+    if seconds < 60.0:
+        return f"{seconds:.1f}s"
+    minutes, remainder = divmod(seconds, 60.0)
+    if minutes < 60.0:
+        return f"{int(minutes)}m {remainder:04.1f}s"
+    hours, minutes = divmod(minutes, 60.0)
+    return f"{int(hours)}h {int(minutes)}m"
+
+
+def _estimate_remaining(elapsed: float, progress: float) -> float | None:
+    progress = max(0.0, min(float(progress), 1.0))
+    if progress <= 0.0 or progress >= 1.0:
+        return None
+    return elapsed * (1.0 - progress) / progress
 
 
 def _uploads_fingerprint(report_bytes: bytes, annot_bytes: bytes) -> str:
@@ -544,6 +665,11 @@ def _theme_tokens(theme_name: str) -> dict[str, str]:
             "button_hover_bg": "rgba(15,23,42,0.98)",
             "button_hover_text": "#e5edf7",
             "button_hover_border": "#60a5fa",
+            "button_border": "rgba(96,165,250,0.28)",
+            "button_shadow": "0 6px 18px rgba(2,6,23,0.24)",
+            "control_bg": "rgba(31,41,55,0.96)",
+            "control_text": "#e5edf7",
+            "control_border": "rgba(148,163,184,0.20)",
         }
     return {
         "plotly_template": "plotly_white",
@@ -573,11 +699,16 @@ def _theme_tokens(theme_name: str) -> dict[str, str]:
         "code_bg": "rgba(241,245,249,0.95)",
         "code_border": "rgba(203,213,225,0.84)",
         "shadow": "0 8px 24px rgba(15,23,42,0.06)",
-        "button_bg": "#ffffff",
-        "button_text": "#000000",
-        "button_hover_bg": "#ffffff",
-        "button_hover_text": "#000000",
+        "button_bg": "#e5e7eb",
+        "button_text": "#111827",
+        "button_hover_bg": "#d9dee7",
+        "button_hover_text": "#111827",
         "button_hover_border": "#2563eb",
+        "button_border": "rgba(71,85,105,0.42)",
+        "button_shadow": "0 2px 8px rgba(15,23,42,0.08)",
+        "control_bg": "#e5e7eb",
+        "control_text": "#111827",
+        "control_border": "rgba(100,116,139,0.42)",
     }
 
 
@@ -659,6 +790,146 @@ def _figure_to_standalone_html(fig: Figure, *, title: str) -> str:
     )
 
 
+def _distribution_plot(
+    data: DistributionPlotData,
+    *,
+    kind: str,
+    title: str,
+    width: int,
+    height: int,
+):
+    opts_kwargs = {
+        "xlabel": data.x_label,
+        "ylabel": data.y_label,
+        "show_legend": False,
+        "title": title,
+        "width": width,
+        "height": height,
+    }
+    if "(%)" in data.y_label:
+        opts_kwargs["ylim"] = (0, 100)
+    if kind == "box":
+        return hv.BoxWhisker(data.rows, kdims=["group"], vdims=["density"]).opts(**opts_kwargs)
+    return hv.Violin(data.rows, kdims=["group"], vdims=["density"]).opts(box=True, **opts_kwargs)
+
+
+def _workspace_registry() -> set[str]:
+    registry = st.session_state.setdefault("_aw25_workspace_registry", set())
+    if not isinstance(registry, set):
+        registry = set(registry)
+        st.session_state["_aw25_workspace_registry"] = registry
+    return registry
+
+
+def _remember_workspace(family_key: str) -> bool:
+    registry = _workspace_registry()
+    reused = family_key in registry
+    registry.add(family_key)
+    return reused
+
+
+def _plot_panel_state(plot_id: str) -> bool:
+    key = f"_aw25_panel_open_{plot_id}"
+    if key not in st.session_state:
+        st.session_state[key] = plot_id == "metagene_line"
+    return bool(st.session_state[key])
+
+
+def _toggle_plot_panel(plot_id: str) -> None:
+    key = f"_aw25_panel_open_{plot_id}"
+    st.session_state[key] = not _plot_panel_state(plot_id)
+
+
+def _plot_snapshot_registry() -> dict[str, dict[str, Any]]:
+    registry = st.session_state.setdefault("_aw25_plot_snapshots", {})
+    if not isinstance(registry, dict):
+        registry = {}
+        st.session_state["_aw25_plot_snapshots"] = registry
+    return registry
+
+
+def _store_plot_snapshot(
+    *,
+    plot_id: str,
+    fig: Figure,
+    params: dict[str, Any],
+    inputs_fingerprint: str,
+) -> None:
+    _plot_snapshot_registry()[plot_id] = {
+        "fig_json": fig.to_json(),
+        "height": int(fig.layout.height) if getattr(fig.layout, "height", None) else int(params.get("height", 480)),
+        "params": dict(params),
+        "inputs_fingerprint": inputs_fingerprint,
+    }
+
+
+def _get_plot_snapshot(plot_id: str) -> dict[str, Any] | None:
+    return _plot_snapshot_registry().get(plot_id)
+
+
+def _plot_family_key(
+    *,
+    plot_id: str,
+    bsx_path: Path,
+    annot_gff_path: Path,
+    params: dict[str, Any],
+) -> tuple[str, str] | None:
+    if plot_id in {"metagene_line", "metagene_heatmap", "segment_box", "segment_violin"}:
+        layout = _metagene_layout(
+            assembly_mode=params["assembly_mode"],
+            up_bins=params["up_bins"],
+            body_bins=params["body_bins"],
+            down_bins=params["down_bins"],
+            flank_bp=params["flank_bp"],
+        )
+        return (
+            "metagene",
+            metagene_family_key(
+                bsx_path=bsx_path,
+                annot_path=annot_gff_path,
+                context=params["context"],
+                assembly_mode=params["assembly_mode"],
+                layout=layout,
+                limit_regions=params["limit_regions"] or None,
+                manual_part_specs=_manual_part_specs_from_params(params),
+            ),
+        )
+
+    if plot_id in {"gene_pca", "cluster_metagene"}:
+        config = build_studio_cluster_config(
+            bsx_path=bsx_path,
+            annot_path=annot_gff_path,
+            context=params["context"],
+            limit_genes=params["limit_genes"] or None,
+            min_coverage=params["min_coverage"],
+            query_block_merge_gap_bp=params["query_block_merge_gap_bp"],
+            n_clusters=params["n_clusters"],
+            seed=params["seed"],
+            hierarchical_enabled=False,
+            hierarchical_max_genes=params.get("hierarchical_max_genes", 5_000),
+        )
+        matrix_key = cluster_matrix_family_key(config)
+        return ("cluster", cluster_plot_family_key(matrix_key, config))
+
+    if plot_id == "gene_dendrogram":
+        config = build_studio_cluster_config(
+            bsx_path=bsx_path,
+            annot_path=annot_gff_path,
+            context=params["context"],
+            limit_genes=params["limit_genes"] or None,
+            min_coverage=params["min_coverage"],
+            query_block_merge_gap_bp=params["query_block_merge_gap_bp"],
+            n_clusters=params["n_clusters"],
+            seed=params["seed"],
+            hierarchical_enabled=True,
+            hierarchical_max_genes=params.get("hierarchical_max_genes", 5_000),
+        )
+        matrix_key = cluster_matrix_family_key(config)
+        return ("cluster-hierarchy", cluster_dendrogram_family_key(matrix_key, config))
+
+    return None
+
+
 def _manual_params(params: dict[str, Any]) -> dict[str, Any]:
     return {
         "assembly_mode": params["assembly_mode"],
@@ -668,23 +939,18 @@ def _manual_params(params: dict[str, Any]) -> dict[str, Any]:
         "down_bins": params["down_bins"],
         "flank_bp": params["flank_bp"],
         "limit_regions": params["limit_regions"] or None,
+        "manual_part_specs": _manual_part_specs_from_params(params),
     }
 
 
-def _cluster_params(params: dict[str, Any], *, hierarchical_enabled: bool) -> dict[str, Any]:
-    return {
-        "context_name": params["context"],
-        "limit_genes": params["limit_genes"] or None,
-        "min_coverage": params["min_coverage"],
-        "query_block_merge_gap_bp": params["query_block_merge_gap_bp"],
-        "n_clusters": params["n_clusters"],
-        "seed": params["seed"],
-        "hierarchical_enabled": hierarchical_enabled,
-        "hierarchical_max_genes": params.get("hierarchical_max_genes", 5_000),
-    }
-
-
-def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: dict[str, Any]) -> Figure:
+def build_plot(
+    *,
+    plot_id: str,
+    bsx_path: Path,
+    annot_gff_path: Path,
+    params: dict[str, Any],
+    progress_callback: Callable[[str, str, float], None] | None = None,
+) -> Figure:
     hv.extension("plotly")
     height = int(params["height"])
     context_name = params["context"]
@@ -692,23 +958,52 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
     language = params.get("language", "en")
     spec = _plot_spec(language, plot_id)
 
+    def stage(zone: str, en_label: str, ru_label: str, progress: float) -> None:
+        if progress_callback is not None:
+            progress_callback(zone, ru_label if language == "ru" else en_label, progress)
+
     if plot_id in {"metagene_line", "metagene_heatmap", "segment_box", "segment_violin"}:
-        drd, segments = _metagene_data(
+        manual_part_specs = _manual_part_specs_from_params(params)
+        if manual_part_specs:
+            stage(
+                "metagene_workspace",
+                "Prepare user-defined manual workspace",
+                "Подготовка user-defined manual workspace",
+                0.12,
+            )
+        else:
+            stage("metagene_workspace", "Prepare shared metagene workspace", "Подготовка общего metagene workspace", 0.12)
+        workspace = _metagene_family_workspace(
             bsx_path=str(bsx_path),
             annot_gff_path=str(annot_gff_path),
             **_manual_params(params),
         )
+        if workspace.n_regions == 0:
+            if manual_part_specs:
+                raise RuntimeError(
+                    "Manual regions produced 0 profiles. Check chromosome names and coordinates against "
+                    "the uploaded report.bsx. For the bundled repo test data, use contigs such as "
+                    "NC_003070.9 rather than chr1."
+                )
+            raise RuntimeError(
+                "Metagene workspace produced 0 profiles. Check that the selected context and limits "
+                "match the uploaded report.bsx / annot.gff pair."
+            )
+        drd = workspace.drd
+        segments = list(workspace.segments)
         if plot_id == "metagene_line":
             smooth_window = params.get("smooth_window", 0)
+            stage("metagene_render", "Render line profile", "Рендер линейного профиля", 0.72)
             plot = line_plot(
                 drd,
                 name=context_name,
-                segments=list(segments),
+                segments=segments,
                 smooth=(smooth_window or None),
                 title=f"{spec.title} | n={len(drd.positions)}",
                 width=1100,
                 height=height,
             )
+            stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.90)
             return _hv_plot_to_figure(
                 plot,
                 height=height,
@@ -718,14 +1013,16 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
             )
         if plot_id == "metagene_heatmap":
             rank_rows = params.get("rank_rows", 0)
+            stage("metagene_render", "Render ranked heatmap", "Рендер ranked heatmap", 0.72)
             plot = heatmap(
                 drd,
-                segments=list(segments),
+                segments=segments,
                 rank_rows=(rank_rows or None),
                 title=f"{spec.title} | n={len(drd.positions)}",
                 width=1200,
                 height=height,
             )
+            stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.90)
             return _hv_plot_to_figure(
                 plot,
                 height=height,
@@ -735,16 +1032,34 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
             )
 
         if plot_id == "segment_box":
-            plot = box_plot(
-                drd,
-                segments=list(segments),
-                per_region=params["per_region"],
-                distribution_mode=params["distribution_mode"],
-                as_percent=params["as_percent"],
-                title=spec.title,
-                width=1000,
-                height=height,
-            )
+            if not params["per_region"] and params["distribution_mode"] == "segments":
+                stage(
+                    "metagene_distribution",
+                    "Reuse prepared segment distributions",
+                    "Переиспользование подготовленных segment distributions",
+                    0.72,
+                )
+                data = workspace.box_segments_percent if params["as_percent"] else workspace.box_segments
+                plot = _distribution_plot(
+                    data,
+                    kind="box",
+                    title=spec.title,
+                    width=1000,
+                    height=height,
+                )
+            else:
+                stage("metagene_render", "Render segment box plot", "Рендер segment box plot", 0.72)
+                plot = box_plot(
+                    drd,
+                    segments=segments,
+                    per_region=params["per_region"],
+                    distribution_mode=params["distribution_mode"],
+                    as_percent=params["as_percent"],
+                    title=spec.title,
+                    width=1000,
+                    height=height,
+                )
+            stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.90)
             return _hv_plot_to_figure(
                 plot,
                 height=height,
@@ -753,16 +1068,69 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
                 language=language,
             )
 
-        plot = violin_plot(
-            drd,
-            segments=list(segments),
-            per_region=params["per_region"],
-            distribution_mode=params["distribution_mode"],
-            as_percent=params["as_percent"],
-            title=spec.title,
-            width=1000,
+        if not params["per_region"] and params["distribution_mode"] == "segments":
+            stage(
+                "metagene_distribution",
+                "Reuse prepared segment distributions",
+                "Переиспользование подготовленных segment distributions",
+                0.72,
+            )
+            data = workspace.violin_segments_percent if params["as_percent"] else workspace.violin_segments
+            plot = _distribution_plot(
+                data,
+                kind="violin",
+                title=spec.title,
+                width=1000,
+                height=height,
+            )
+        else:
+            stage("metagene_render", "Render segment violin plot", "Рендер segment violin plot", 0.72)
+            plot = violin_plot(
+                drd,
+                segments=segments,
+                per_region=params["per_region"],
+                distribution_mode=params["distribution_mode"],
+                as_percent=params["as_percent"],
+                title=spec.title,
+                width=1000,
+                height=height,
+            )
+        stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.90)
+        if False and plot_id == "chromosome_manhattan":
+            stage("chrmap_render", "Render Manhattan plot", "Р РµРЅРґРµСЂ Manhattan plot", 0.76)
+            plot = build_chromosome_manhattan_plot(
+                data,
+                name=bsx_path.stem,
+                title="Chromosome methylation Manhattan plot",
+                width=1100,
+                height=height,
+                point_size=params.get("point_size", 5),
+            )
+        return _hv_plot_to_figure(
+            plot,
             height=height,
+            title=spec.title,
+            theme_name=theme_name,
+            language=language,
         )
+
+    if plot_id == "chromosome_manhattan":
+        stage("chrmap_aggregate", "Aggregate chromosome bins", "РђРіСЂРµРіР°С†РёСЏ chromosome bins", 0.18)
+        data = _chromosome_map_data(
+            bsx_path=str(bsx_path),
+            context_name=context_name,
+            bin_size_bp=params["bin_size_bp"],
+        )
+        stage("chrmap_render", "Render Manhattan plot", "Р РµРЅРґРµСЂ Manhattan plot", 0.76)
+        plot = build_chromosome_manhattan_plot(
+            data,
+            name=bsx_path.stem,
+            title="Chromosome methylation Manhattan plot",
+            width=1100,
+            height=height,
+            point_size=params.get("point_size", 5),
+        )
+        stage("plotly_convert", "Convert to Plotly figure", "РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ РІ Plotly figure", 0.90)
         return _hv_plot_to_figure(
             plot,
             height=height,
@@ -772,11 +1140,13 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
         )
 
     if plot_id == "chromosome_map":
+        stage("chrmap_aggregate", "Aggregate chromosome bins", "Агрегация chromosome bins", 0.18)
         data = _chromosome_map_data(
             bsx_path=str(bsx_path),
             context_name=context_name,
             bin_size_bp=params["bin_size_bp"],
         )
+        stage("chrmap_render", "Render chromosome map", "Рендер chromosome map", 0.76)
         plot = build_chromosome_methylation_map(
             data,
             name=bsx_path.stem,
@@ -784,6 +1154,7 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
             width=1100,
             height=height,
         )
+        stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.90)
         return _hv_plot_to_figure(
             plot,
             height=height,
@@ -793,20 +1164,30 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
         )
 
     if plot_id == "gene_pca":
-        result = _cluster_result(
+        stage("cluster_matrix", "Prepare shared gene profile matrix", "Подготовка общей gene profile matrix", 0.18)
+        workspace = _cluster_family_workspace(
             bsx_path=str(bsx_path),
             annot_gff_path=str(annot_gff_path),
-            **_cluster_params(params, hierarchical_enabled=False),
+            context_name=params["context"],
+            limit_genes=params["limit_genes"] or None,
+            min_coverage=params["min_coverage"],
+            query_block_merge_gap_bp=params["query_block_merge_gap_bp"],
+            n_clusters=params["n_clusters"],
+            seed=params["seed"],
+            hierarchical_max_genes=params.get("hierarchical_max_genes", 5_000),
         )
+        stage("cluster_workspace", "Reuse prepared clustering workspace", "Переиспользование готового clustering workspace", 0.72)
+        stage("cluster_plot_data", "Prepare PCA plot data", "Подготовка PCA plot data", 0.84)
         plot = (
             GeneEmbeddingPlotComposer(
                 title=f"Gene PCA | limit={params['limit_genes'] or 'None'}",
                 width=900,
                 height=height,
             )
-            .add_data(build_gene_embedding_data(result))
+            .add_data(workspace.embedding_data)
             .finish()
         )
+        stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.92)
         return _hv_plot_to_figure(
             plot,
             height=height,
@@ -816,12 +1197,21 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
         )
 
     if plot_id == "gene_dendrogram":
-        result = _cluster_result(
+        stage("cluster_matrix", "Prepare shared gene profile matrix", "Подготовка общей gene profile matrix", 0.18)
+        workspace = _cluster_dendrogram_workspace(
             bsx_path=str(bsx_path),
             annot_gff_path=str(annot_gff_path),
-            **_cluster_params(params, hierarchical_enabled=True),
+            context_name=params["context"],
+            limit_genes=params["limit_genes"] or None,
+            min_coverage=params["min_coverage"],
+            query_block_merge_gap_bp=params["query_block_merge_gap_bp"],
+            n_clusters=params["n_clusters"],
+            seed=params["seed"],
+            hierarchical_max_genes=params.get("hierarchical_max_genes", 5_000),
         )
-        dendrogram_data = build_gene_dendrogram_data(result)
+        stage("cluster_hierarchy", "Build hierarchical branch", "Построение иерархической ветки", 0.74)
+        stage("cluster_plot_data", "Prepare dendrogram data", "Подготовка dendrogram data", 0.84)
+        dendrogram_data = workspace.dendrogram_data
         if dendrogram_data is None:
             raise RuntimeError(
                 "Dendrogram data is empty. Try increasing limit_genes or relaxing constraints."
@@ -835,6 +1225,7 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
             .add_data(dendrogram_data)
             .finish()
         )
+        stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.92)
         return _hv_plot_to_figure(
             plot,
             height=height,
@@ -844,17 +1235,27 @@ def build_plot(*, plot_id: str, bsx_path: Path, annot_gff_path: Path, params: di
         )
 
     if plot_id == "cluster_metagene":
-        result = _cluster_result(
+        stage("cluster_matrix", "Prepare shared gene profile matrix", "Подготовка общей gene profile matrix", 0.18)
+        workspace = _cluster_family_workspace(
             bsx_path=str(bsx_path),
             annot_gff_path=str(annot_gff_path),
-            **_cluster_params(params, hierarchical_enabled=False),
+            context_name=params["context"],
+            limit_genes=params["limit_genes"] or None,
+            min_coverage=params["min_coverage"],
+            query_block_merge_gap_bp=params["query_block_merge_gap_bp"],
+            n_clusters=params["n_clusters"],
+            seed=params["seed"],
+            hierarchical_max_genes=params.get("hierarchical_max_genes", 5_000),
         )
+        stage("cluster_workspace", "Reuse prepared clustering workspace", "Переиспользование готового clustering workspace", 0.72)
+        stage("cluster_plot_data", "Prepare cluster metagene data", "Подготовка cluster metagene data", 0.84)
         plot = build_cluster_metagene_plot(
-            build_cluster_metagene_data(result),
+            workspace.cluster_metagene_data,
             title=f"Cluster metagene | limit={params['limit_genes'] or 'None'}",
             width=1100,
             height=height,
         )
+        stage("plotly_convert", "Convert to Plotly figure", "Преобразование в Plotly figure", 0.92)
         return _hv_plot_to_figure(
             plot,
             height=height,
@@ -874,11 +1275,19 @@ def cached_or_build_plot(
     inputs_fingerprint: str,
     params: dict[str, Any],
     force_rebuild: bool,
+    progress_callback: Callable[[str, str, float], None] | None = None,
 ) -> tuple[Figure, bool, Path]:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_file = _cache_path(spec.plot_id, params, inputs_fingerprint)
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     if cache_file.exists() and not force_rebuild:
+        if progress_callback is not None:
+            language = params.get("language", "en")
+            progress_callback(
+                "cache_read",
+                "Чтение Plotly figure из кэша" if language == "ru" else "Load Plotly figure from cache",
+                0.40,
+            )
         return pio.from_json(cache_file.read_text(encoding="utf-8")), True, cache_file
 
     fig = build_plot(
@@ -886,8 +1295,23 @@ def cached_or_build_plot(
         bsx_path=bsx_path,
         annot_gff_path=annot_gff_path,
         params=params,
+        progress_callback=progress_callback,
     )
+    if progress_callback is not None:
+        language = params.get("language", "en")
+        progress_callback(
+            "cache_write",
+            "Запись Plotly figure в кэш" if language == "ru" else "Write Plotly figure to cache",
+            0.97,
+        )
     cache_file.write_text(fig.to_json(), encoding="utf-8")
+    if progress_callback is not None:
+        language = params.get("language", "en")
+        progress_callback(
+            "complete",
+            "Построение завершено" if language == "ru" else "Build complete",
+            1.0,
+        )
     return fig, False, cache_file
 
 
@@ -902,7 +1326,7 @@ def configure_page() -> None:
 
 def apply_page_style(theme_name: str, language: str) -> None:
     tokens = _theme_tokens(theme_name)
-    bg_text = "#eef4f2" if theme_name == "Dark" else "#1e2521"
+    bg_text = tokens["font_color"]
     app_font = _font_family(language)
     mono_font = _mono_font_family()
     st.markdown(
@@ -910,6 +1334,10 @@ def apply_page_style(theme_name: str, language: str) -> None:
         <style>
           html, body, [class*="css"] {{
             font-family: {app_font};
+          }}
+          h1, h2, h3, h4, h5, h6,
+          .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {{
+            color: {tokens["font_color"]};
           }}
           .stApp {{
             color: {bg_text};
@@ -1119,10 +1547,25 @@ def apply_page_style(theme_name: str, language: str) -> None:
             font-size: 1.18rem;
             font-weight: 650;
             line-height: 1.2;
+            color: {tokens["font_color"]};
           }}
           .plot-desc, .docs-card p, .docs-card li {{
             color: {tokens["text_soft"]};
             line-height: 1.58;
+          }}
+          .module-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin: 1rem 0 .35rem;
+          }}
+          .module-title {{
+            margin: 0;
+            color: {tokens["font_color"]};
+            font-size: 1.08rem;
+            font-weight: 650;
+            line-height: 1.2;
           }}
           .cache-pill {{
             display: inline-flex;
@@ -1167,6 +1610,38 @@ def apply_page_style(theme_name: str, language: str) -> None:
             padding: .9rem .95rem .25rem;
             background: {tokens["surface_alt"]};
           }}
+          [data-testid="stWidgetLabel"] p,
+          [data-testid="stWidgetLabel"] span,
+          [data-testid="stCheckbox"] label,
+          [data-testid="stRadio"] label,
+          [data-testid="stSelectbox"] label,
+          [data-testid="stMultiSelect"] label,
+          [data-testid="stNumberInput"] label,
+          [data-testid="stTextArea"] label,
+          [data-testid="stTextInput"] label {{
+            color: {tokens["font_color"]} !important;
+          }}
+          [data-baseweb="select"] > div,
+          [data-baseweb="base-input"],
+          [data-baseweb="base-input"] > div,
+          [data-testid="stNumberInput"] > div > div,
+          [data-testid="stTextArea"] textarea,
+          [data-testid="stTextInput"] input {{
+            background: {tokens["control_bg"]} !important;
+            border-color: {tokens["control_border"]} !important;
+            color: {tokens["control_text"]} !important;
+          }}
+          [data-baseweb="select"] *,
+          [data-testid="stNumberInput"] input,
+          [data-testid="stTextArea"] textarea,
+          [data-testid="stTextInput"] input {{
+            color: {tokens["control_text"]} !important;
+            -webkit-text-fill-color: {tokens["control_text"]} !important;
+          }}
+          [data-baseweb="select"] svg,
+          [data-testid="stNumberInput"] button svg {{
+            fill: {tokens["control_text"]} !important;
+          }}
           [data-testid="stExpander"] {{
             border: 1px solid {tokens["surface_border"]};
             border-radius: 14px;
@@ -1175,6 +1650,7 @@ def apply_page_style(theme_name: str, language: str) -> None:
           }}
           [data-testid="stExpander"] summary {{
             font-weight: 650;
+            color: {tokens["font_color"]};
           }}
           [data-baseweb="tab-list"] {{
             gap: .4rem;
@@ -1183,20 +1659,84 @@ def apply_page_style(theme_name: str, language: str) -> None:
             border-radius: 10px 10px 0 0;
             padding: .55rem .9rem;
             font-weight: 600;
+            color: {tokens["text_soft"]};
+            background: transparent;
+            border: 1px solid transparent;
+          }}
+          [data-baseweb="tab"][aria-selected="true"] {{
+            color: {tokens["accent"]};
+            background: {tokens["surface"]};
+            border-color: {tokens["surface_border_strong"]};
+          }}
+          [data-baseweb="tab"][aria-selected="false"] {{
+            color: {tokens["font_color"]};
+            opacity: 0.88;
+          }}
+          .build-status {{
+            margin: .55rem 0 .7rem;
+            padding: .85rem .95rem;
+            border: 1px solid {tokens["surface_border"]};
+            border-radius: 12px;
+            background: {tokens["surface_alt"]};
+          }}
+          .build-status strong {{
+            display: block;
+            margin-bottom: .32rem;
+            color: {tokens["font_color"]};
+          }}
+          .build-status p {{
+            margin: 0;
+            color: {tokens["text_soft"]};
+            line-height: 1.5;
+          }}
+          .timing-panel {{
+            margin: .65rem 0 .4rem;
+            padding: .85rem .95rem;
+            border: 1px solid {tokens["surface_border"]};
+            border-radius: 12px;
+            background: {tokens["surface"]};
+          }}
+          .timing-panel h4 {{
+            margin: 0 0 .5rem;
+            font-size: .95rem;
+          }}
+          .timing-row {{
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: .2rem 0;
+            color: {tokens["text_soft"]};
+            font-family: {mono_font};
+            font-size: .84rem;
           }}
           .stButton > button,
-          .stDownloadButton > button {{
+          .stDownloadButton > button,
+          div[data-testid="stFormSubmitButton"] > button {{
             border-radius: 10px;
-            border: 1px solid {tokens["surface_border_strong"]};
+            border: 1px solid {tokens["button_border"]};
             background: {tokens["button_bg"]};
             color: {tokens["button_text"]};
             font-weight: 600;
+            box-shadow: {tokens["button_shadow"]};
           }}
           .stButton > button:hover,
-          .stDownloadButton > button:hover {{
+          .stDownloadButton > button:hover,
+          div[data-testid="stFormSubmitButton"] > button:hover {{
             border-color: {tokens["button_hover_border"]};
             color: {tokens["button_hover_text"]};
             background: {tokens["button_hover_bg"]};
+          }}
+          .stButton > button:focus,
+          .stDownloadButton > button:focus,
+          div[data-testid="stFormSubmitButton"] > button:focus,
+          .stButton > button:focus-visible,
+          .stDownloadButton > button:focus-visible,
+          div[data-testid="stFormSubmitButton"] > button:focus-visible {{
+            color: {tokens["button_text"]};
+            background: {tokens["button_bg"]};
+            border-color: {tokens["button_hover_border"]};
+            box-shadow: 0 0 0 2px {tokens["accent_soft"]};
+            outline: none;
           }}
           [data-testid="stFileUploader"] section {{
             border-radius: 12px;
@@ -1412,6 +1952,55 @@ def common_manual_controls(prefix: str, language: str) -> dict[str, Any]:
         limit_regions = st.number_input(limit_label, min_value=0, max_value=500_000, value=0, step=100, key=f"{prefix}_limit")
     with c4:
         height = st.number_input(height_label, min_value=260, max_value=1400, value=520, step=20, key=f"{prefix}_height")
+    if language == "ru":
+        st.caption(
+            "Ручные регионы для low-level manual path. "
+            "Используются только в `manual-composed`. "
+            "Формат строки: `label chrom start end strand`. "
+            "Ниже уже подставлен promoter-focused пример для repo test data. "
+            "Если поля очистить, останется fallback через annot.gff."
+        )
+        upstream_regions_label = "Ручные upstream регионы"
+        body_regions_label = "Ручные body регионы"
+        downstream_regions_label = "Ручные downstream регионы"
+    else:
+        st.caption(
+            "Manual regions for the low-level manual path. "
+            "These fields are only used in `manual-composed`. "
+            "Line format: `label chrom start end strand`. "
+            "A promoter-focused example for the repo test data is preloaded below. "
+            "If you clear these fields, the annot.gff-derived fallback remains active."
+        )
+        upstream_regions_label = "Manual upstream regions"
+        body_regions_label = "Manual body regions"
+        downstream_regions_label = "Manual downstream regions"
+
+    promoter_defaults = _promoter_focus_manual_defaults()
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        manual_upstream_regions = st.text_area(
+            upstream_regions_label,
+            value=promoter_defaults["upstream"],
+            height=140,
+            key=f"{prefix}_manual_upstream_v2",
+            placeholder=promoter_defaults["upstream"],
+        )
+    with d2:
+        manual_body_regions = st.text_area(
+            body_regions_label,
+            value=promoter_defaults["body"],
+            height=140,
+            key=f"{prefix}_manual_body_v2",
+            placeholder=promoter_defaults["body"],
+        )
+    with d3:
+        manual_downstream_regions = st.text_area(
+            downstream_regions_label,
+            value=promoter_defaults["downstream"],
+            height=140,
+            key=f"{prefix}_manual_downstream_v2",
+            placeholder=promoter_defaults["downstream"],
+        )
     return {
         "context": context,
         "assembly_mode": assembly_mode,
@@ -1421,6 +2010,9 @@ def common_manual_controls(prefix: str, language: str) -> dict[str, Any]:
         "down_bins": int(down_bins),
         "limit_regions": int(limit_regions),
         "height": int(height),
+        "manual_upstream_regions": manual_upstream_regions,
+        "manual_body_regions": manual_body_regions,
+        "manual_downstream_regions": manual_downstream_regions,
     }
 
 
@@ -1504,15 +2096,30 @@ def plot_params_ui(spec: PlotSpec, language: str) -> dict[str, Any]:
         with c3:
             params["distribution_mode"] = st.selectbox("Режим распределения" if language == "ru" else "Distribution mode", ["segments"], key=f"{prefix}_mode")
         return params
-    if spec.plot_id == "chromosome_map":
-        c1, c2, c3 = st.columns(3)
+    if spec.plot_id in {"chromosome_map", "chromosome_manhattan"}:
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             context = st.selectbox("Контекст" if language == "ru" else "Context", ["CG", "CHG", "CHH"], key=f"{prefix}_context")
         with c2:
             bin_size = st.number_input("Размер бина, bp" if language == "ru" else "Bin size, bp", min_value=1_000, max_value=500_000_000, value=5_000_000, step=500_000, key=f"{prefix}_bin")
         with c3:
             height = st.number_input("Высота графика" if language == "ru" else "Graph height", min_value=260, max_value=1000, value=390, step=20, key=f"{prefix}_height")
-        return {"context": context, "bin_size_bp": int(bin_size), "height": int(height)}
+        with c4:
+            point_size = st.number_input(
+                "Р Р°Р·РјРµСЂ С‚РѕС‡РєРё" if language == "ru" else "Point size",
+                min_value=1,
+                max_value=24,
+                value=5,
+                step=1,
+                key=f"{prefix}_point_size",
+                disabled=spec.plot_id != "chromosome_manhattan",
+            )
+        return {
+            "context": context,
+            "bin_size_bp": int(bin_size),
+            "height": int(height),
+            "point_size": int(point_size),
+        }
     if spec.plot_id == "gene_pca":
         return common_cluster_controls(prefix, language, default_limit=0, default_height=480)
     if spec.plot_id == "gene_dendrogram":
@@ -1559,26 +2166,119 @@ def render_plot_card(
 
     cache_file = _cache_path(spec.plot_id, params, inputs_fingerprint)
     should_show_cached = cache_file.exists() and not submitted
+    family_identity = _plot_family_key(
+        plot_id=spec.plot_id,
+        bsx_path=bsx_path,
+        annot_gff_path=annot_gff_path,
+        params=params,
+    )
+    workspace_known_before = (
+        family_identity is not None and family_identity[1] in _workspace_registry()
+    )
+    progress_info = st.empty()
+    progress_bar = st.empty()
+    timing_info = st.empty()
     if submitted or should_show_cached:
         try:
-            spinner_label = (
-                "Строю график..." if submitted and (force or not cache_file.exists()) else "Загружаю из кэша..."
-            ) if language == "ru" else (
-                "Building plot..." if submitted and (force or not cache_file.exists()) else "Loading cached plot..."
-            )
-            with st.spinner(spinner_label):
-                fig, from_cache, resolved_cache_file = cached_or_build_plot(
-                    spec=spec,
-                    bsx_path=bsx_path,
-                    annot_gff_path=annot_gff_path,
-                    inputs_fingerprint=inputs_fingerprint,
-                    params=params,
-                    force_rebuild=force,
+            started_at = perf_counter()
+            current_zone_id: str | None = None
+            current_zone_label: str | None = None
+            current_zone_started_at: float | None = None
+            zone_timings: list[tuple[str, float]] = []
+
+            def progress_callback(zone_id: str, zone_label: str, progress: float) -> None:
+                nonlocal current_zone_id, current_zone_label, current_zone_started_at
+                now = perf_counter()
+                if current_zone_id is None:
+                    current_zone_id = zone_id
+                    current_zone_label = zone_label
+                    current_zone_started_at = now
+                elif zone_id != current_zone_id:
+                    if current_zone_label is not None and current_zone_started_at is not None:
+                        zone_timings.append((current_zone_label, now - current_zone_started_at))
+                    current_zone_id = zone_id
+                    current_zone_label = zone_label
+                    current_zone_started_at = now
+
+                elapsed = now - started_at
+                remaining = _estimate_remaining(elapsed, progress)
+                percent = max(0, min(100, int(round(progress * 100))))
+                progress_bar.progress(percent, text=f"{percent}% · {zone_label}")
+                progress_info.markdown(
+                    f"""
+                    <div class="build-status">
+                      <strong>{"Телеметрия построения" if language == "ru" else "Build telemetry"}</strong>
+                      <p>
+                        {"Текущая зона" if language == "ru" else "Current zone"}: <code>{zone_label}</code><br/>
+                        {"Прошло" if language == "ru" else "Elapsed"}: <code>{_format_duration(elapsed)}</code><br/>
+                        {"Осталось примерно" if language == "ru" else "Estimated remaining"}: <code>{_format_duration(remaining)}</code>
+                      </p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
+
+            fig, from_cache, resolved_cache_file = cached_or_build_plot(
+                spec=spec,
+                bsx_path=bsx_path,
+                annot_gff_path=annot_gff_path,
+                inputs_fingerprint=inputs_fingerprint,
+                params=params,
+                force_rebuild=force,
+                progress_callback=progress_callback,
+            )
+
+            completed_at = perf_counter()
+            total_elapsed = completed_at - started_at
+            if current_zone_label is not None and current_zone_started_at is not None:
+                zone_timings.append((current_zone_label, completed_at - current_zone_started_at))
+            progress_bar.progress(
+                100,
+                text="100% · " + ("Готово" if language == "ru" else "Complete"),
+            )
+            timing_rows = "".join(
+                f'<div class="timing-row"><span>{label}</span><span>{_format_duration(seconds)}</span></div>'
+                for label, seconds in zone_timings
+            )
+            timing_info.markdown(
+                f"""
+                <div class="timing-panel">
+                  <h4>{"Разбиение по зонам" if language == "ru" else "Stage timing breakdown"}</h4>
+                  {timing_rows}
+                  <div class="timing-row"><span>{"Всего" if language == "ru" else "Total"}</span><span>{_format_duration(total_elapsed)}</span></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            workspace_reused = workspace_known_before
+            if family_identity is not None and not from_cache:
+                workspace_reused = _remember_workspace(family_identity[1])
             st.markdown(
                 f'<span class="cache-pill">{"Загружено из кэша" if from_cache else "Построено сейчас"}</span>' if language == "ru"
                 else f'<span class="cache-pill">{"Loaded from cache" if from_cache else "Built now"}</span>',
                 unsafe_allow_html=True,
+            )
+            if family_identity is not None and (workspace_known_before or not from_cache):
+                family_kind = family_identity[0]
+                if language == "ru":
+                    family_label = {
+                        "metagene": "metagene family",
+                        "cluster": "cluster family",
+                        "cluster-hierarchy": "cluster hierarchy family",
+                    }.get(family_kind, family_kind)
+                    family_status = "переиспользовано" if workspace_reused else "подготовлено сейчас"
+                else:
+                    family_label = family_kind.replace("-", " ")
+                    family_status = "reused" if workspace_reused else "prepared now"
+                st.markdown(
+                    f'<span class="cache-pill">{family_label}: {family_status}</span>',
+                    unsafe_allow_html=True,
+                )
+            _store_plot_snapshot(
+                plot_id=spec.plot_id,
+                fig=fig,
+                params=params,
+                inputs_fingerprint=inputs_fingerprint,
             )
             st.plotly_chart(
                 fig,
@@ -1600,7 +2300,33 @@ def render_plot_card(
                 else "Try reducing gene or region limits, then verify that report.bsx and annot.gff are compatible."
             )
     else:
-        st.caption("Для текущего набора параметров график ещё не построен." if language == "ru" else "This plot has not been built for the current parameter set yet.")
+        snapshot = _get_plot_snapshot(spec.plot_id)
+        if snapshot is not None and snapshot.get("inputs_fingerprint") == inputs_fingerprint:
+            fig = pio.from_json(snapshot["fig_json"])
+            snapshot_height = int(snapshot.get("height", params.get("height", spec.default_height)))
+            fig = _style_figure(
+                fig,
+                height=snapshot_height,
+                title=spec.title,
+                theme_name=theme_name,
+                language=language,
+            )
+            st.markdown(
+                f'<span class="cache-pill">{"Показан последний построенный результат" if language == "ru" else "Showing last rendered result"}</span>',
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Смена темы или языка не удаляет уже построенный график. Перестрой модуль, если хочешь пересчитать его под текущий набор параметров."
+                if language == "ru"
+                else "Theme or language changes do not clear the last rendered plot. Rebuild the module if you want to recompute it for the current parameter set."
+            )
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                config={"responsive": True, "displaylogo": False, "displayModeBar": "hover"},
+            )
+        else:
+            st.caption("Для текущего набора параметров график ещё не построен." if language == "ru" else "This plot has not been built for the current parameter set yet.")
 
 
 def render_documentation_tab(language: str) -> None:
@@ -1785,6 +2511,115 @@ PYTHONPATH=src sphinx-build -b html docs/source docs/build/html</code></pre>
         )
 
 
+def _compat_preview(items: tuple[str, ...], *, limit: int = 10) -> str:
+    if not items:
+        return "-"
+    preview = list(items[:limit])
+    if len(items) > limit:
+        preview.append("...")
+    return ", ".join(preview)
+
+
+def render_input_compatibility_report(report: SeqnameCompatibilityReport, language: str) -> None:
+    if language == "ru":
+        title = "Совместимость входных данных"
+        exact_message = "Seqnames в report.bsx и annot.gff совпадают без нормализации."
+        normalized_message = (
+            "Сырые seqnames различаются, но совпадают после мягкой нормализации. "
+            "Такой набор, скорее всего, пригоден для работы, но лучше заранее унифицировать naming scheme."
+        )
+        mismatch_message = (
+            "Несовпадение seqnames остаётся даже после мягкой нормализации. "
+            "Обычно это означает разные сборки, accession-style names против коротких имён хромосом "
+            "или необходимость ручного маппинга."
+        )
+        report_count_label = "Seqnames в report.bsx"
+        annot_count_label = "Seqnames в annot.gff"
+        raw_diff_label = "Raw mismatch"
+        normalized_diff_label = "Normalized mismatch"
+        details_label = "Детали сравнения seqnames"
+        only_report_raw_label = "Только в report.bsx (raw)"
+        only_annot_raw_label = "Только в annot.gff (raw)"
+        only_report_norm_label = "Только в report.bsx (normalized)"
+        only_annot_norm_label = "Только в annot.gff (normalized)"
+        mapping_hints_label = "Подсказки по возможному маппингу"
+        mapping_empty = "Подсказки не требуются."
+        no_diff = "Нет различий."
+    else:
+        title = "Input compatibility"
+        exact_message = "Seqnames in report.bsx and annot.gff match exactly."
+        normalized_message = (
+            "Raw seqnames differ, but they align after soft normalization. "
+            "The dataset is likely usable, but upstream name harmonization is still recommended."
+        )
+        mismatch_message = (
+            "Seqname mismatch remains after soft normalization. "
+            "This usually means different assemblies, accession-style names versus short chromosome names, "
+            "or a manual mapping step is required."
+        )
+        report_count_label = "Seqnames in report.bsx"
+        annot_count_label = "Seqnames in annot.gff"
+        raw_diff_label = "Raw mismatch"
+        normalized_diff_label = "Normalized mismatch"
+        details_label = "Seqname comparison details"
+        only_report_raw_label = "Only in report.bsx (raw)"
+        only_annot_raw_label = "Only in annot.gff (raw)"
+        only_report_norm_label = "Only in report.bsx (normalized)"
+        only_annot_norm_label = "Only in annot.gff (normalized)"
+        mapping_hints_label = "Potential mapping hints"
+        mapping_empty = "No mapping hints are needed."
+        no_diff = "No differences."
+
+    st.markdown(f"### {title}")
+
+    if report.status == "exact":
+        st.success(exact_message)
+    elif report.status == "normalized":
+        st.warning(normalized_message)
+    else:
+        st.error(mismatch_message)
+
+    count_cols = st.columns(4)
+    count_cols[0].metric(report_count_label, len(report.report_raw_seqnames))
+    count_cols[1].metric(annot_count_label, len(report.annot_raw_seqnames))
+    count_cols[2].metric(
+        raw_diff_label,
+        len(report.only_report_raw) + len(report.only_annot_raw),
+    )
+    count_cols[3].metric(
+        normalized_diff_label,
+        len(report.only_report_normalized) + len(report.only_annot_normalized),
+    )
+
+    with st.expander(details_label, expanded=report.status != "exact"):
+        detail_cols = st.columns(2)
+        with detail_cols[0]:
+            st.markdown(f"**{only_report_raw_label}**")
+            st.code(_compat_preview(report.only_report_raw), language=None)
+            st.markdown(f"**{only_report_norm_label}**")
+            st.code(_compat_preview(report.only_report_normalized), language=None)
+        with detail_cols[1]:
+            st.markdown(f"**{only_annot_raw_label}**")
+            st.code(_compat_preview(report.only_annot_raw), language=None)
+            st.markdown(f"**{only_annot_norm_label}**")
+            st.code(_compat_preview(report.only_annot_normalized), language=None)
+
+        st.markdown(f"**{mapping_hints_label}**")
+        if report.mapping_hints:
+            st.code(
+                "\n".join(
+                    f"{report_name} <-> {annot_name}"
+                    for report_name, annot_name in report.mapping_hints[:12]
+                ),
+                language=None,
+            )
+        else:
+            st.caption(mapping_empty)
+
+        if report.status == "exact":
+            st.caption(no_diff)
+
+
 def render_sidebar() -> tuple[Any, Any, str, str]:
     language = st.sidebar.segmented_control("Language / Язык", options=["en", "ru"], default="en", key="studio_language")
     st.sidebar.markdown(
@@ -1844,6 +2679,14 @@ def main() -> None:
             else "Each analysis module has independent parameters, its own execution trigger, and a deterministic on-disk Plotly cache key."
         )
 
+        render_input_compatibility_report(
+            _input_seqname_compatibility_report(
+                bsx_path=str(bsx_path),
+                annot_gff_path=str(annot_gff_path),
+            ),
+            language,
+        )
+
         for spec in _plot_specs(language):
             if spec.plot_id == "metagene_line":
                 st.markdown("### AW25 · Визуализация метагена" if language == "ru" else "### AW25 · Metagene visualization")
@@ -1854,7 +2697,27 @@ def main() -> None:
             elif spec.plot_id == "gene_pca":
                 st.markdown("### AW25 · Кластеризация и группировка" if language == "ru" else "### AW25 · Clustering and grouping")
                 st.caption("PCA с метками KMeans, dendrogram и optional cluster-level metagene outputs." if language == "ru" else "KMeans-labeled PCA, dendrogram, and optional cluster-level metagene outputs.")
-            with st.expander(spec.title, expanded=spec.plot_id == "metagene_line"):
+            panel_open = _plot_panel_state(spec.plot_id)
+            header_cols = st.columns([8, 1.6])
+            with header_cols[0]:
+                st.markdown(
+                    f'<div class="module-row"><h3 class="module-title">{spec.title}</h3></div>',
+                    unsafe_allow_html=True,
+                )
+            with header_cols[1]:
+                toggle_label = (
+                    "Скрыть" if (language == "ru" and panel_open)
+                    else "Показать" if language == "ru"
+                    else "Hide" if panel_open
+                    else "Show"
+                )
+                if st.button(
+                    toggle_label,
+                    key=f"toggle_{spec.plot_id}",
+                    use_container_width=True,
+                ):
+                    _toggle_plot_panel(spec.plot_id)
+            if _plot_panel_state(spec.plot_id):
                 render_plot_card(
                     spec=spec,
                     bsx_path=bsx_path,
