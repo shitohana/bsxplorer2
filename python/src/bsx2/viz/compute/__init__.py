@@ -20,6 +20,13 @@ from .distribution import (
     build_box_distribution_data,
     build_violin_distribution_data,
 )
+from .input_compat import (
+    SeqnameCompatibilityReport,
+    build_seqname_compatibility_report,
+    normalize_seqname,
+    read_bsx_seqnames,
+    read_gff_seqnames,
+)
 from .metagene import (
     AnnotProfileLayout,
     AnnotProfilePart,
@@ -34,6 +41,22 @@ from .metagene import (
     segments_total_bins,
 )
 from .metagene_layouts import build_annotation_metagene, build_manual_metagene
+from .studio_workspaces import (
+    ManualRegionSpec,
+    PreparedClusterDendrogramFamily,
+    PreparedClusterFamily,
+    PreparedClusterMatrixWorkspace,
+    PreparedMetageneFamily,
+    build_studio_cluster_config,
+    cluster_dendrogram_family_key,
+    cluster_matrix_family_key,
+    cluster_plot_family_key,
+    metagene_family_key,
+    prepare_cluster_dendrogram_family,
+    prepare_cluster_family,
+    prepare_cluster_matrix_workspace,
+    prepare_metagene_family,
+)
 from .windowing import _bin_points_windows_fast, _rank_compress
 
 __all__ = [
@@ -57,6 +80,11 @@ __all__ = [
     "SortBy",
     "build_box_distribution_data",
     "build_violin_distribution_data",
+    "SeqnameCompatibilityReport",
+    "normalize_seqname",
+    "read_bsx_seqnames",
+    "read_gff_seqnames",
+    "build_seqname_compatibility_report",
     "AnnotProfilePart",
     "AnnotProfileLayout",
     "MetageneProfileSegment",
@@ -68,6 +96,20 @@ __all__ = [
     "compute_from_annot",
     "build_annotation_metagene",
     "build_manual_metagene",
+    "PreparedMetageneFamily",
+    "ManualRegionSpec",
+    "PreparedClusterMatrixWorkspace",
+    "PreparedClusterFamily",
+    "PreparedClusterDendrogramFamily",
+    "build_studio_cluster_config",
+    "metagene_family_key",
+    "cluster_matrix_family_key",
+    "cluster_plot_family_key",
+    "cluster_dendrogram_family_key",
+    "prepare_metagene_family",
+    "prepare_cluster_matrix_workspace",
+    "prepare_cluster_family",
+    "prepare_cluster_dendrogram_family",
     "segment_boundaries",
     "segments_total_bins",
     "_bin_points_windows_fast",

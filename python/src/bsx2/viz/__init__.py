@@ -6,10 +6,14 @@ from .chrline import (
     compute_chr_line_data,
 )
 from .chrmap import (
+    ChromosomeManhattanPlotComposer,
     ChromosomeMethylationMapComposer,
     ChromosomeMethylationMapData,
     ChromosomeMethylationTrack,
+    ManhattanMethylationPlotComposer,
+    build_chromosome_manhattan_plot,
     build_chromosome_methylation_map,
+    chromosome_manhattan_plot,
     chromosome_methylation_map,
     compute_chromosome_methylation_map_data,
 )
@@ -73,9 +77,13 @@ __all__ = [
     "ChromosomeMethylationTrack",
     "ChromosomeMethylationMapData",
     "ChromosomeMethylationMapComposer",
+    "ChromosomeManhattanPlotComposer",
+    "ManhattanMethylationPlotComposer",
     "compute_chromosome_methylation_map_data",
     "build_chromosome_methylation_map",
+    "build_chromosome_manhattan_plot",
     "chromosome_methylation_map",
+    "chromosome_manhattan_plot",
     "GeneEmbeddingData",
     "GeneEmbeddingPlotComposer",
     "GeneDendrogramData",
