@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -159,6 +160,7 @@ class DmrCurveResult:
             "warnings": list(self.warnings),
             "quality_status": self.quality_status,
             "quality_reasons": list(self.quality_reasons),
+            "recommended_use": _recommended_use(self),
             "table_preview": _json_safe(preview),
             "figure_type": _figure_type(self.figure),
             "spec": self.spec.to_dict(),
@@ -218,6 +220,7 @@ class DmrCurveBundle:
                     "has_figure": bool(result and result.figure is not None),
                     "quality_status": result.quality_status if result else "unknown",
                     "quality_reasons": ";".join(result.quality_reasons) if result else "",
+                    "recommended_use": _recommended_use(result) if result else "dashboard_only",
                     "n_warnings": len(result.warnings) if result else 0,
                     "warnings": ";".join(result.warnings) if result else "",
                 }
@@ -327,6 +330,8 @@ def make_dmr_chromosome_curve(
         table = dmr.groupby(["chrom", group_by], dropna=False).size().reset_index(name="n_dmrs_in_input")
     else:
         table = dmr.groupby("chrom", dropna=False).size().reset_index(name="n_dmrs_in_input")
+    if "chrom" in table:
+        table = table.sort_values("chrom", key=lambda values: values.map(_natural_chrom_sort_key)).reset_index(drop=True)
     figure = _bar_figure(table, x="chrom", y="n_dmrs_in_input", title=spec.title, y_label="n_DMRs_in_input") if render else None
     n_rows = int(table["n_dmrs_in_input"].sum()) if "n_dmrs_in_input" in table else 0
     top_fraction = float(table["n_dmrs_in_input"].max() / n_rows) if n_rows else 0.0
@@ -441,7 +446,22 @@ def make_dmr_pca_curve(
             warnings.extend(design_warnings)
             if "sample_id" in design_df:
                 table = table.merge(design_df.drop_duplicates("sample_id"), on="sample_id", how="left")
-            summary = {"explained_variance": explained[:2], "n_regions": int(matrix.shape[0]), "n_samples": int(matrix.shape[1])}
+            sample_order = _sample_order_table_from_design(design_df, matrix.columns)
+            explained_table = pd.DataFrame(
+                {
+                    "component": [f"PC{i + 1}" for i in range(min(2, len(explained)))],
+                    "explained_variance_fraction": explained[:2],
+                    "explained_variance_percent": [value * 100 for value in explained[:2]],
+                }
+            )
+            summary = {
+                "explained_variance": explained[:2],
+                "n_regions": int(matrix.shape[0]),
+                "n_samples": int(matrix.shape[1]),
+                "pca_input": "DMR methylation matrix Y/m",
+                "sample_order": sample_order.to_dict(orient="records"),
+                "explained_variance_table": explained_table.to_dict(orient="records"),
+            }
             x_label = f"PC1 ({explained[0] * 100:.1f}% variance)" if explained else "PC1"
             y_label = f"PC2 ({explained[1] * 100:.1f}% variance)" if len(explained) > 1 else "PC2"
             figure = _scatter_figure(table, "PC1", "PC2", "condition", spec.title, x_label=x_label, y_label=y_label) if render else None
@@ -484,7 +504,14 @@ def make_dmr_heatmap_curve(
         matrix = _sort_matrix_by_dmr_table(matrix, dmr, sort_by, top_n)
     table = matrix.reset_index().rename(columns={"index": "region_id"})
     figure = _heatmap_figure(matrix, spec.title) if render else None
-    summary = {"n_regions": int(matrix.shape[0]), "n_samples": int(matrix.shape[1]), "selection": sort_by}
+    design_df, _ = coerce_table(design, read_design_table) if design is not None else (pd.DataFrame(), [])
+    sample_order = _sample_order_table_from_design(design_df, matrix.columns)
+    summary = {
+        "n_regions": int(matrix.shape[0]),
+        "n_samples": int(matrix.shape[1]),
+        "selection": sort_by,
+        "sample_order": sample_order.to_dict(orient="records"),
+    }
     required_warnings = _has_required_warning([w for w in warnings if w != "matrix_imputation_median_used"])
     quality_status = "thesis_ready" if not table.empty and not required_warnings else ("skipped" if table.empty else "warning")
     quality_reasons = ["valid region_counts/design sample mapping; DMR methylation matrix created"] if quality_status == "thesis_ready" else warnings
@@ -525,15 +552,11 @@ def make_dmr_volcano_curve(
         capped_count = int(table["q_capped"].sum())
         if capped_count:
             warnings.append(f"volcano_q_values_capped_count={capped_count}")
-        figure = _scatter_figure(
+        figure = _volcano_figure(
             table,
-            "delta",
-            "neg_log10_q_capped",
-            "evidence_class",
             spec.title,
-            y_label=f"-log10(q), capped at {q_cap:g}",
-            hline=-math.log10(0.05),
-            alpha=0.5,
+            q_cap=q_cap,
+            delta_threshold=0.25,
         ) if render else None
         quality_status = "warning" if capped_count > max(10, len(table) * 0.1) else "thesis_ready"
         quality_reasons = ["q-values transformed with finite cap for plotting"]
@@ -570,6 +593,7 @@ def make_dmr_evidence_bar_curve(
         quality_reasons = ["evidence_class column is required"]
     else:
         table = dmr.groupby("evidence_class", dropna=False).size().reset_index(name="n_dmrs")
+        table = _sort_evidence_class_counts(table)
         quality_status = "thesis_ready"
         quality_reasons = ["region-level DMR table includes evidence_class"]
     figure = _bar_figure(table, "evidence_class", "n_dmrs", spec.title) if render else None
@@ -718,6 +742,7 @@ def save_dmr_curve_bundle_outputs(
         save_payload = (not thesis_ready_only) or result.quality_status == "thesis_ready"
         if save_payload and result.table is not None and "tsv" in formats:
             result.save_table(tables_dir / f"{result.spec.curve_id}.tsv")
+            _save_named_curve_tables(result, tables_dir)
         if save_payload and result.figure is not None and "png" in formats:
             result.save_figure(figures_dir / f"{result.spec.curve_id}.png")
         result.save_summary(logs_dir / f"{result.spec.curve_id}.summary.json")
@@ -748,8 +773,10 @@ def _distribution_table(
             return pd.DataFrame(columns=["group", "value"]), warnings
         data = counts.copy()
         data["value"] = np.where(data["m"] > 0, data["Y"] / data["m"], np.nan)
+        condition_order: list[str] = []
         if "condition" not in data.columns and "condition" in design_df.columns:
             data = data.merge(design_df[["sample_id", "condition"]].drop_duplicates("sample_id"), on="sample_id", how="left")
+            condition_order = _first_seen_order(design_df["condition"])
         elif "condition" in data.columns and "condition" in design_df.columns:
             data = data.merge(
                 design_df[["sample_id", "condition"]].drop_duplicates("sample_id"),
@@ -757,13 +784,17 @@ def _distribution_table(
                 how="left",
                 suffixes=("", "_design"),
             )
+            condition_order = _first_seen_order(design_df["condition"])
         condition_col = "condition" if "condition" in data.columns else "condition_design"
         if condition_col not in data.columns:
             warnings.append("methylation_by_condition_missing_condition_column;using_unknown")
             data["group"] = "unknown"
         else:
             data["group"] = data[condition_col].fillna("unknown")
-        return data[["region_id", "sample_id", "group", "value"]].dropna(subset=["value"]), warnings
+        out = data[["region_id", "sample_id", "group", "value"]].dropna(subset=["value"]).copy()
+        if condition_order:
+            out["group"] = pd.Categorical(out["group"], categories=condition_order, ordered=True)
+        return out, warnings
 
     dmr, dmr_warnings = coerce_table(dmr_table, read_dmr_table)
     warnings.extend(dmr_warnings)
@@ -779,6 +810,10 @@ def _distribution_table(
         return pd.DataFrame(columns=["group", "value"]), warnings
     table = dmr[[col for col in ["region_id", group_col, value_col] if col in dmr]].copy()
     table = table.rename(columns={group_col: "group", value_col: "value"})
+    if mode == "delta_by_context":
+        context_order = [ctx for ctx in ("CG", "CHG", "CHH") if ctx in set(table["group"].dropna().astype(str))]
+        if context_order:
+            table["group"] = pd.Categorical(table["group"].astype(str), categories=context_order, ordered=True)
     return table.dropna(subset=["value"]), warnings
 
 
@@ -805,7 +840,8 @@ def _region_methylation_matrix(
     data["methylation"] = np.where(data["m"] >= min_total, data["Y"] / data["m"], np.nan)
     matrix = data.pivot_table(index="region_id", columns="sample_id", values="methylation", aggfunc="mean")
     if design_df is not None and "sample_id" in design_df.columns:
-        sample_order = [sample for sample in design_df["sample_id"].astype(str).tolist() if sample in set(matrix.columns.astype(str))]
+        order_table = _sample_order_table_from_design(design_df, matrix.columns)
+        sample_order = order_table["sample_id"].astype(str).tolist() if "sample_id" in order_table else []
         if sample_order:
             matrix.columns = matrix.columns.astype(str)
             matrix = matrix.loc[:, sample_order]
@@ -848,8 +884,8 @@ def _beta_binom_summary_curve(beta: pd.DataFrame, warnings: list[str], input_nam
     spec = _spec(
         "dmr_beta_binomial_summary",
         "dmr_beta_binomial_bar",
-        "Beta-binomial validation summary",
-        "Counts beta-binomial validation status classes.",
+        "Beta-binomial validation status",
+        "QC/status summary, not DMR class distribution.",
         {"beta_binom": input_name},
         {"x": "qc_flag_or_significance", "y": "n_regions"},
         {},
@@ -862,19 +898,27 @@ def _beta_binom_summary_curve(beta: pd.DataFrame, warnings: list[str], input_nam
         quality_reasons = ["beta-binomial table empty"]
     elif "qc_flag" in beta:
         table = beta.groupby("qc_flag", dropna=False).size().reset_index(name="n_regions").rename(columns={"qc_flag": "status"})
-        quality_status = "thesis_ready"
-        quality_reasons = ["beta-binomial QC flags available"]
+        quality_status = "supplementary"
+        quality_reasons = ["beta-binomial QC/status summary, not DMR class distribution"]
     elif "significant_beta_binom" in beta:
         table = beta.groupby("significant_beta_binom", dropna=False).size().reset_index(name="n_regions").rename(columns={"significant_beta_binom": "status"})
-        quality_status = "thesis_ready"
-        quality_reasons = ["beta-binomial significance column available"]
+        quality_status = "supplementary"
+        quality_reasons = ["beta-binomial validation status summary, not DMR class distribution"]
     else:
         warnings.append("beta_binom_summary_missing_qc_or_significance_columns")
         table = pd.DataFrame(columns=["status", "n_regions"])
         quality_status = "skipped"
         quality_reasons = ["beta-binomial summary requires qc_flag or significant_beta_binom"]
     figure = _bar_figure(table, "status", "n_regions", spec.title) if render else None
-    return DmrCurveResult(spec, figure, table, {"n_rows": int(len(beta))}, warnings, quality_status, quality_reasons)
+    return DmrCurveResult(
+        spec,
+        figure,
+        table,
+        {"n_rows": int(len(beta)), "summary_note": "QC/status summary, not DMR class distribution"},
+        warnings,
+        quality_status,
+        quality_reasons,
+    )
 
 
 def _annotation_summary_curve(annotation: pd.DataFrame, warnings: list[str], input_name: str, render: bool) -> DmrCurveResult:
@@ -899,7 +943,7 @@ def _annotation_summary_curve(annotation: pd.DataFrame, warnings: list[str], inp
         table = annotation[[ann_col, count_col]].copy().rename(columns={ann_col: "annotation"})
         table[count_col] = pd.to_numeric(table[count_col], errors="coerce")
         warnings = _dedupe_strings(warnings + ["annotation_input_is_summary_not_region_level"])
-        quality_status = "exploratory"
+        quality_status = "supplementary"
         quality_reasons = ["annotation input is an enrichment/summary table, not one row per DMR"]
     else:
         warnings = _dedupe_strings(warnings + ["annotation_summary_not_plotted_requires_region_level_or_count_column"])
@@ -959,6 +1003,103 @@ def _dedupe_strings(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
 
 
+def _recommended_use(result: DmrCurveResult) -> str:
+    if result.quality_status == "skipped":
+        return "skipped"
+    thesis_main = {
+        "dmr_chromosome_distribution",
+        "dmr_evidence_class_counts",
+        "dmr_box_delta_by_context",
+        "dmr_violin_methylation_by_condition",
+        "dmr_heatmap",
+        "dmr_pca",
+        "dmr_caller_support",
+    }
+    supplementary = {
+        "dmr_volcano",
+        "dmr_beta_binomial_summary",
+        "dmr_annotation_summary",
+    }
+    if result.spec.curve_id in thesis_main and result.quality_status == "thesis_ready":
+        return "thesis_main"
+    if result.spec.curve_id in supplementary:
+        return "supplementary"
+    return "dashboard_only"
+
+
+def _natural_chrom_sort_key(value: Any) -> tuple[int, str, int, str]:
+    text = str(value)
+    match = re.match(r"^(?:chr)?([A-Za-z]+)(\d+)$", text)
+    if match:
+        prefix, number = match.groups()
+        prefix_order = {"A": 0, "C": 1}.get(prefix.upper(), 2)
+        return (prefix_order, prefix.upper(), int(number), text)
+    return (9, text, 0, text)
+
+
+def _first_seen_order(values: Iterable[Any]) -> list[str]:
+    order: list[str] = []
+    for value in values:
+        if pd.isna(value):
+            continue
+        text = str(value)
+        if text not in order:
+            order.append(text)
+    return order
+
+
+def _sample_order_table_from_design(design_df: pd.DataFrame | None, available_samples: Iterable[Any]) -> pd.DataFrame:
+    available = [str(sample) for sample in available_samples]
+    if design_df is None or design_df.empty or "sample_id" not in design_df.columns:
+        return pd.DataFrame({"sample_order": range(1, len(available) + 1), "sample_id": available})
+    design = design_df.copy()
+    design["sample_id"] = design["sample_id"].astype(str)
+    design = design[design["sample_id"].isin(available)].drop_duplicates("sample_id")
+    if design.empty:
+        return pd.DataFrame({"sample_order": range(1, len(available) + 1), "sample_id": available})
+    design["_input_order"] = design["sample_id"].map({sample: idx for idx, sample in enumerate(available)})
+    sort_cols: list[str] = []
+    for col in ("condition", "tissue_stage"):
+        if col in design.columns:
+            sort_cols.append(col)
+    if "replicate" in design.columns:
+        design["_replicate_sort"] = pd.to_numeric(design["replicate"], errors="coerce")
+        sort_cols.append("_replicate_sort")
+    sort_cols.append("_input_order")
+    design = design.sort_values(sort_cols, kind="stable")
+    missing = [sample for sample in available if sample not in set(design["sample_id"])]
+    if missing:
+        design = pd.concat([design, pd.DataFrame({"sample_id": missing, "_input_order": range(len(available), len(available) + len(missing))})], ignore_index=True)
+    design.insert(0, "sample_order", range(1, len(design) + 1))
+    keep = ["sample_order", "sample_id"] + [col for col in ("condition", "tissue_stage", "replicate", "batch") if col in design.columns]
+    return design[keep]
+
+
+def _sort_evidence_class_counts(table: pd.DataFrame) -> pd.DataFrame:
+    order = {"candidate_only": 0, "weak": 1, "moderate": 2, "strong": 3}
+    out = table.copy()
+    out["_order"] = out["evidence_class"].map(order).fillna(99)
+    return out.sort_values(["_order", "evidence_class"], kind="stable").drop(columns="_order").reset_index(drop=True)
+
+
+def _ordered_group_values(table: pd.DataFrame, group: str) -> list[Any]:
+    values = table[group]
+    if isinstance(values.dtype, pd.CategoricalDtype):
+        present = set(values.dropna().astype(str))
+        return [category for category in values.cat.categories if str(category) in present]
+    return _first_seen_order(values)
+
+
+def _save_named_curve_tables(result: DmrCurveResult, tables_dir: Path) -> None:
+    if result.spec.curve_id == "dmr_heatmap" and result.summary.get("sample_order"):
+        pd.DataFrame(result.summary["sample_order"]).to_csv(tables_dir / "sample_order.tsv", sep="\t", index=False)
+    if result.spec.curve_id == "dmr_pca":
+        if result.table is not None:
+            result.table.to_csv(tables_dir / "pca_scores.tsv", sep="\t", index=False)
+        if result.summary.get("explained_variance_table"):
+            pd.DataFrame(result.summary["explained_variance_table"]).to_csv(tables_dir / "pca_explained_variance.tsv", sep="\t", index=False)
+
+
 def _bar_figure(table: pd.DataFrame, x: str, y: str, title: str, y_label: str | None = None) -> object | None:
     if table.empty or x not in table or y not in table:
         return None
@@ -989,7 +1130,7 @@ def _box_figure(table: pd.DataFrame, group: str, value: str, title: str, y_label
         matplotlib.use("Agg", force=True)
         import matplotlib.pyplot as plt
 
-        groups = [name for name, _ in table.groupby(group, dropna=False)]
+        groups = _ordered_group_values(table, group)
         data = [table.loc[table[group] == name, value].dropna().astype(float).to_numpy() for name in groups]
         fig, ax = plt.subplots(figsize=(7, 4))
         ax.boxplot(data, labels=[str(item) for item in groups], patch_artist=True)
@@ -1012,7 +1153,7 @@ def _violin_figure(table: pd.DataFrame, group: str, value: str, title: str, y_la
         matplotlib.use("Agg", force=True)
         import matplotlib.pyplot as plt
 
-        groups = [name for name, _ in table.groupby(group, dropna=False)]
+        groups = _ordered_group_values(table, group)
         data = [table.loc[table[group] == name, value].dropna().astype(float).to_numpy() for name in groups]
         data = [values for values in data if len(values) > 0]
         if not data:
@@ -1067,6 +1208,60 @@ def _scatter_figure(
         return None
 
 
+def _volcano_figure(
+    table: pd.DataFrame,
+    title: str,
+    q_cap: float = 50.0,
+    delta_threshold: float = 0.25,
+) -> object | None:
+    if table.empty or "delta" not in table or "neg_log10_q_capped" not in table:
+        return None
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        plot_table = table.copy()
+        if "evidence_class" not in plot_table:
+            plot_table["evidence_class"] = "DMR"
+        class_order = ["candidate_only", "weak", "moderate", "qc_limited", "strong"]
+        colors = {
+            "candidate_only": "#94A3B8",
+            "weak": "#60A5FA",
+            "moderate": "#A78BFA",
+            "strong": "#F97316",
+            "qc_limited": "#64748B",
+        }
+        alphas = {"candidate_only": 0.2, "moderate": 0.2, "weak": 0.35, "qc_limited": 0.2, "strong": 0.9}
+        for klass in class_order + [value for value in _first_seen_order(plot_table["evidence_class"]) if value not in class_order]:
+            group_df = plot_table[plot_table["evidence_class"].astype(str) == str(klass)]
+            if group_df.empty:
+                continue
+            ax.scatter(
+                group_df["delta"],
+                group_df["neg_log10_q_capped"],
+                label=str(klass),
+                alpha=alphas.get(str(klass), 0.35),
+                s=12 if klass != "strong" else 18,
+                color=colors.get(str(klass), "#38BDF8"),
+                edgecolors="none",
+            )
+        ax.axhline(-math.log10(0.05), color="#EF4444", linestyle="--", linewidth=1, alpha=0.85)
+        ax.axvline(-delta_threshold, color="#CBD5E1", linestyle=":", linewidth=1, alpha=0.8)
+        ax.axvline(delta_threshold, color="#CBD5E1", linestyle=":", linewidth=1, alpha=0.8)
+        ax.set_ylim(bottom=0, top=q_cap * 1.02)
+        ax.set_title(title)
+        ax.set_xlabel("delta methylation")
+        ax.set_ylabel(f"-log10(q), capped at {q_cap:g}")
+        ax.legend(fontsize=8, markerscale=1.4)
+        fig.tight_layout()
+        return fig
+    except Exception:
+        return None
+
+
 def _heatmap_figure(matrix: pd.DataFrame, title: str) -> object | None:
     if matrix.empty:
         return None
@@ -1114,6 +1309,11 @@ def _write_bundle_summary(path: Path, bundle: DmrCurveBundle, results: list[DmrC
         lines.append(f"- `{result.spec.curve_id}`: {result.spec.title}; reasons: {'; '.join(result.quality_reasons)}")
     if not by_quality.get("exploratory"):
         lines.append("- None.")
+    lines.extend(["", "## Supplementary Curves", ""])
+    for result in by_quality.get("supplementary", []):
+        lines.append(f"- `{result.spec.curve_id}`: {result.spec.title}; recommended_use={_recommended_use(result)}.")
+    if not by_quality.get("supplementary"):
+        lines.append("- None.")
     lines.extend(["", "## Warning / Skipped Curves", ""])
     for key in ("warning", "skipped"):
         for result in by_quality.get(key, []):
@@ -1125,13 +1325,13 @@ def _write_bundle_summary(path: Path, bundle: DmrCurveBundle, results: list[DmrC
             "",
             "## Curve Manifest",
             "",
-            "| curve_id | type | quality | table | figure | warnings |",
-            "|---|---|---|---:|---:|---|",
+            "| curve_id | type | quality | recommended_use | table | figure | warnings |",
+            "|---|---|---|---|---:|---:|---|",
         ]
     )
     for result in results:
         lines.append(
-            f"| `{result.spec.curve_id}` | `{result.spec.curve_type}` | `{result.quality_status}` | {result.table is not None} | {result.figure is not None} | {'; '.join(result.warnings)} |"
+            f"| `{result.spec.curve_id}` | `{result.spec.curve_type}` | `{result.quality_status}` | `{_recommended_use(result)}` | {result.table is not None} | {result.figure is not None} | {'; '.join(result.warnings)} |"
         )
     lines.extend(
         [

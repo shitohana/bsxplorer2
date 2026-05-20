@@ -76,7 +76,13 @@ The bundle builder classifies input tables before treating them as thesis-ready 
 - Annotation composition plots require region-level annotation. Enrichment-only summary tables are plotted only when they contain an explicit numeric count column, and are labelled as enrichment summaries rather than `n_DMRs`.
 - Region-count and design tables are checked for `sample_id` overlap before PCA, heatmap, and methylation-by-condition curves are marked thesis-ready.
 - Volcano plots use a capped transform, `safe_neg_log10_q(q, cap=50)`, so zero or extremely small q-values do not create misleading axes up to 300.
+- Volcano figures draw vertical thresholds at delta methylation `-0.25` and `+0.25` and a horizontal q-value threshold at `q = 0.05`; capped q-values are counted in the summary.
 - Chromosome distribution curves report `n_DMRs_in_input`; if the input has only one chromosome, the curve is marked with a warning because this may indicate a subset table or column-mapping problem.
+- Chromosomes are ordered naturally for B. napus-style names, for example `chrA01 ... chrA10` followed by `chrC01 ... chrC09`.
+- Evidence classes are ordered as `candidate_only`, `weak`, `moderate`, `strong`.
+- DMR methylation-by-condition curves follow condition order from the design table. Heatmap sample columns are sorted by `condition`, `tissue_stage`, and `replicate` when those columns are present.
+- PCA outputs include `pca_scores.tsv` and `pca_explained_variance.tsv`; heatmap outputs include `sample_order.tsv`.
+- `dmr_curve_manifest.tsv` includes `quality_status`, `quality_reasons`, and `recommended_use`. Recommended uses include `thesis_main`, `supplementary`, `dashboard_only`, and `skipped`.
 
 Use `--thesis-ready-only` to save tables/figures only for curves whose semantic QC status is `thesis_ready` while still writing the full manifest and warnings.
 
