@@ -1,99 +1,112 @@
-from .box import box_plot
-from .chrline import (
-    ChrLineData,
-    ChrLinePlotComposer,
-    ChrLineTrack,
-    compute_chr_line_data,
-)
-from .chrmap import (
-    ChromosomeManhattanPlotComposer,
-    ChromosomeMethylationMapComposer,
-    ChromosomeMethylationMapData,
-    ChromosomeMethylationTrack,
-    ManhattanMethylationPlotComposer,
-    build_chromosome_manhattan_plot,
-    build_chromosome_methylation_map,
-    chromosome_manhattan_plot,
-    chromosome_methylation_map,
-    compute_chromosome_methylation_map_data,
-)
-from .clustering import (
-    ClusterMetageneData,
-    ClusterMetageneGroup,
-    GeneDendrogramData,
-    GeneDendrogramPlotComposer,
-    GeneEmbeddingData,
-    GeneEmbeddingPlotComposer,
-    build_cluster_metagene_data,
-    build_cluster_metagene_plot,
-    build_gene_dendrogram_data,
-    build_gene_embedding_data,
-    cluster_metagene_plot,
-    cluster_profile_segments,
-)
-from .heatmap import HeatmapPlotComposer, heatmap
-from .line import LinePlotComposer, line_plot
-from .metagene import (
-    AnnotProfileLayout,
-    AnnotProfilePart,
-    MetageneProfileSegment,
-    build_annotation_metagene,
-    build_manual_metagene,
-    collect_contigs_from_hcannot,
-    collect_layout_parts_from_hcannot,
-    collect_parts_from_hcannot,
-    compose_layout_drd,
-    compute_discrete_regions,
-    compute_from_annot,
-    segment_boundaries,
-    segments_total_bins,
-)
-from .violin import violin_plot
+"""Visualization API exports.
 
-__all__ = [
-    "AnnotProfilePart",
-    "AnnotProfileLayout",
-    "MetageneProfileSegment",
-    "build_annotation_metagene",
-    "build_manual_metagene",
-    "segments_total_bins",
-    "segment_boundaries",
-    "collect_contigs_from_hcannot",
-    "collect_layout_parts_from_hcannot",
-    "collect_parts_from_hcannot",
-    "compose_layout_drd",
-    "compute_discrete_regions",
-    "compute_from_annot",
-    "LinePlotComposer",
-    "HeatmapPlotComposer",
-    "line_plot",
-    "heatmap",
-    "box_plot",
-    "violin_plot",
-    "ChrLineTrack",
-    "ChrLineData",
-    "compute_chr_line_data",
-    "ChrLinePlotComposer",
-    "ChromosomeMethylationTrack",
-    "ChromosomeMethylationMapData",
-    "ChromosomeMethylationMapComposer",
-    "ChromosomeManhattanPlotComposer",
-    "ManhattanMethylationPlotComposer",
-    "compute_chromosome_methylation_map_data",
-    "build_chromosome_methylation_map",
-    "build_chromosome_manhattan_plot",
-    "chromosome_methylation_map",
-    "chromosome_manhattan_plot",
-    "GeneEmbeddingData",
-    "GeneEmbeddingPlotComposer",
-    "GeneDendrogramData",
-    "GeneDendrogramPlotComposer",
-    "ClusterMetageneData",
-    "ClusterMetageneGroup",
-    "build_gene_embedding_data",
-    "build_gene_dendrogram_data",
-    "build_cluster_metagene_data",
-    "build_cluster_metagene_plot",
-    "cluster_metagene_plot",
-    "cluster_profile_segments",
-]
+The full visualization API depends on optional plotting and extension-backed
+modules. Source-tree smoke checks for lightweight cache utilities can run
+without those dependencies; installed environments still expose the same public
+names when imports succeed.
+"""
+
+try:
+    from .box import box_plot
+    from .chrline import (
+        ChrLineData,
+        ChrLinePlotComposer,
+        ChrLineTrack,
+        compute_chr_line_data,
+    )
+    from .chrmap import (
+        ChromosomeManhattanPlotComposer,
+        ChromosomeMethylationMapComposer,
+        ChromosomeMethylationMapData,
+        ChromosomeMethylationTrack,
+        ManhattanMethylationPlotComposer,
+        build_chromosome_manhattan_plot,
+        build_chromosome_methylation_map,
+        chromosome_manhattan_plot,
+        chromosome_methylation_map,
+        compute_chromosome_methylation_map_data,
+    )
+    from .clustering import (
+        ClusterMetageneData,
+        ClusterMetageneGroup,
+        GeneDendrogramData,
+        GeneDendrogramPlotComposer,
+        GeneEmbeddingData,
+        GeneEmbeddingPlotComposer,
+        build_cluster_metagene_data,
+        build_cluster_metagene_plot,
+        build_gene_dendrogram_data,
+        build_gene_embedding_data,
+        cluster_metagene_plot,
+        cluster_profile_segments,
+    )
+    from .heatmap import HeatmapPlotComposer, heatmap
+    from .line import LinePlotComposer, line_plot
+    from .metagene import (
+        AnnotProfileLayout,
+        AnnotProfilePart,
+        MetageneProfileSegment,
+        build_annotation_metagene,
+        build_manual_metagene,
+        collect_contigs_from_hcannot,
+        collect_layout_parts_from_hcannot,
+        collect_parts_from_hcannot,
+        compose_layout_drd,
+        compute_discrete_regions,
+        compute_from_annot,
+        segment_boundaries,
+        segments_total_bins,
+    )
+    from .violin import violin_plot
+except ModuleNotFoundError as exc:
+    if exc.name not in {"bsx2._bsx2", "beartype", "holoviews", "panel"}:
+        raise
+    __all__: list[str] = []
+else:
+    __all__ = [
+        "AnnotProfilePart",
+        "AnnotProfileLayout",
+        "MetageneProfileSegment",
+        "build_annotation_metagene",
+        "build_manual_metagene",
+        "segments_total_bins",
+        "segment_boundaries",
+        "collect_contigs_from_hcannot",
+        "collect_layout_parts_from_hcannot",
+        "collect_parts_from_hcannot",
+        "compose_layout_drd",
+        "compute_discrete_regions",
+        "compute_from_annot",
+        "LinePlotComposer",
+        "HeatmapPlotComposer",
+        "line_plot",
+        "heatmap",
+        "box_plot",
+        "violin_plot",
+        "ChrLineTrack",
+        "ChrLineData",
+        "compute_chr_line_data",
+        "ChrLinePlotComposer",
+        "ChromosomeMethylationTrack",
+        "ChromosomeMethylationMapData",
+        "ChromosomeMethylationMapComposer",
+        "ChromosomeManhattanPlotComposer",
+        "ManhattanMethylationPlotComposer",
+        "compute_chromosome_methylation_map_data",
+        "build_chromosome_methylation_map",
+        "build_chromosome_manhattan_plot",
+        "chromosome_methylation_map",
+        "chromosome_manhattan_plot",
+        "GeneEmbeddingData",
+        "GeneEmbeddingPlotComposer",
+        "GeneDendrogramData",
+        "GeneDendrogramPlotComposer",
+        "ClusterMetageneData",
+        "ClusterMetageneGroup",
+        "build_gene_embedding_data",
+        "build_gene_dendrogram_data",
+        "build_cluster_metagene_data",
+        "build_cluster_metagene_plot",
+        "cluster_metagene_plot",
+        "cluster_profile_segments",
+    ]

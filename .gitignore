@@ -8,6 +8,7 @@
 .ruff_cache
 .vscode
 .venv
+.streamlit/
 .pytest_cache
 *.ipc
 *.lock
@@ -30,8 +31,25 @@ env*/
 
 # Python cache
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.pyo
+*.log
+*.tmp
+tmp/
+temp/
+python/.aw25_plot_cache/
+python/.aw25_uploaded_inputs/
+python/.streamlit/
+python/streamlit.log
+outputs/
+*.bsx
+*.bam
+*.bai
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
 
 # build/packaging
 *.egg-info/
