@@ -3,15 +3,18 @@ from pathlib import Path
 
 import pandas as pd
 
-from bsx2.viz.dmr_curve_data import normalize_dmr_curve_columns
+from bsx2.viz.dmr_curve_data import classify_annotation_table, normalize_dmr_curve_columns
 from bsx2.viz.dmr_curves import (
     DmrCurveSpec,
+    make_dmr_annotation_summary_curve,
     make_dmr_box_curve,
     make_dmr_chromosome_curve,
     make_dmr_heatmap_curve,
     make_dmr_line_curve,
     make_dmr_pca_curve,
     make_dmr_violin_curve,
+    make_dmr_volcano_curve,
+    safe_neg_log10_q,
 )
 
 
@@ -77,8 +80,9 @@ def test_column_normalization_aliases():
 
 def test_chromosome_curve_from_synthetic_dmr():
     result = make_dmr_chromosome_curve(_dmr_table(), render=False)
-    assert result.table["n_dmrs"].sum() == 3
+    assert result.table["n_dmrs_in_input"].sum() == 3
     assert result.spec.curve_type == "dmr_chromosome"
+    assert result.quality_status == "thesis_ready"
 
 
 def test_box_and_violin_curve_specs_from_synthetic_dmr():
@@ -108,6 +112,33 @@ def test_missing_positional_signal_warns_not_crash():
     result = make_dmr_line_curve(_dmr_table(), render=False)
     assert result.table is None
     assert result.warnings
+    assert result.quality_status == "skipped"
+
+
+def test_safe_q_transform_caps_zero_and_tiny_values():
+    transformed = safe_neg_log10_q(pd.Series([0, 1e-80, 0.05, None]), cap=50)
+    assert transformed.loc[0, "neg_log10_q_capped"] == 50
+    assert transformed.loc[1, "neg_log10_q_capped"] == 50
+    assert transformed.loc[0, "q_capped"]
+    assert transformed.loc[1, "q_capped"]
+    assert transformed.loc[2, "neg_log10_q_capped"] < 2
+
+
+def test_volcano_curve_reports_capped_q_values():
+    dmr = _dmr_table()
+    dmr["q"] = [0, 1e-80, 0.05]
+    result = make_dmr_volcano_curve(dmr, render=False)
+    assert "neg_log10_q_capped" in result.table.columns
+    assert result.summary["q_capped_count"] == 2
+
+
+def test_annotation_enrichment_without_counts_is_skipped():
+    annotation = pd.DataFrame({"annotation": ["promoter", "gene_body"], "p_value": [0.1, 0.2]})
+    semantic_type, warnings = classify_annotation_table(annotation)
+    assert semantic_type == "enrichment_summary"
+    result = make_dmr_annotation_summary_curve(annotation, warnings, "DataFrame", render=False)
+    assert result.quality_status == "skipped"
+    assert result.table.empty
 
 
 def test_dashboard_payload_is_json_serializable():

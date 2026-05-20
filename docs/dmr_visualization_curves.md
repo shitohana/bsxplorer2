@@ -61,10 +61,26 @@ The output directory contains:
 - `dmr_curve_bundle.json`
 - `dmr_curve_manifest.tsv`
 - `dmr_curve_bundle_summary.md`
+- `dmr_input_semantic_qc.tsv`
+- `dmr_table_selection_report.md`
 - `specs/*.json`
 - `tables/*.tsv`
 - `figures/*.png` when rendering dependencies are available
 - `warnings.tsv`
+
+## Semantic QC
+
+The bundle builder classifies input tables before treating them as thesis-ready plots:
+
+- DMR tables must contain `region_id` or interval coordinates (`chrom/start/end`).
+- Annotation composition plots require region-level annotation. Enrichment-only summary tables are plotted only when they contain an explicit numeric count column, and are labelled as enrichment summaries rather than `n_DMRs`.
+- Region-count and design tables are checked for `sample_id` overlap before PCA, heatmap, and methylation-by-condition curves are marked thesis-ready.
+- Volcano plots use a capped transform, `safe_neg_log10_q(q, cap=50)`, so zero or extremely small q-values do not create misleading axes up to 300.
+- Chromosome distribution curves report `n_DMRs_in_input`; if the input has only one chromosome, the curve is marked with a warning because this may indicate a subset table or column-mapping problem.
+
+Use `--thesis-ready-only` to save tables/figures only for curves whose semantic QC status is `thesis_ready` while still writing the full manifest and warnings.
+
+Use `--prefer-full-dmr-table` when the requested input might be a top/head/subset table. The CLI searches nearby BSX2 outputs for a fuller region-level DMR table and records the decision in `dmr_table_selection_report.md`.
 
 ## Limitations
 

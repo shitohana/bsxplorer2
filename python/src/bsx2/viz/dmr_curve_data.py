@@ -29,6 +29,18 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "condition": ("condition", "group", "treatment"),
 }
 
+ANNOTATION_COLUMNS = ("annotation", "feature_type", "region_class", "genomic_feature", "feature", "region_type", "class")
+COUNT_COLUMNS = (
+    "count",
+    "n_regions",
+    "n_dmrs",
+    "n",
+    "frequency",
+    "overlap_count",
+    "observed_dmr_count",
+    "dmr_count",
+)
+
 
 def _key(column: object) -> str:
     return str(column).strip().lower().replace("-", "_").replace(".", "_").replace(" ", "_")
@@ -132,9 +144,133 @@ def coerce_table(value: Any, reader=read_table, *, max_rows: int | None = None) 
     return None, [f"unsupported table input type: {type(value).__name__}"]
 
 
+def classify_dmr_table(df: pd.DataFrame) -> tuple[str, list[str]]:
+    """Classify whether a DMR-like table is region-level or only a summary."""
+
+    warnings: list[str] = []
+    if df is None or df.empty:
+        return "unsupported", ["dmr_table_empty"]
+    normalized, norm_warnings = normalize_dmr_curve_columns(df, require_coordinates=False)
+    warnings.extend(norm_warnings)
+    has_region = "region_id" in normalized.columns or {"chrom", "start", "end"}.issubset(normalized.columns)
+    if not has_region:
+        return "unsupported", warnings + ["dmr_table_missing_region_id_or_coordinates"]
+    if len(normalized) < 20:
+        return "summary_table", warnings + ["dmr_table_has_few_rows_check_summary_input"]
+    if "chrom" in normalized.columns and normalized["chrom"].nunique(dropna=True) == 1:
+        warnings.append("single_chromosome_input")
+    return ("full_region_level_dmr" if len(normalized) >= 1000 else "top_region_level_dmr"), warnings
+
+
+def classify_annotation_table(df: pd.DataFrame) -> tuple[str, list[str]]:
+    """Classify annotation input as region-level, enrichment/feature summary, or unsupported."""
+
+    warnings: list[str] = []
+    if df is None or df.empty:
+        return "unsupported", ["annotation_table_empty"]
+    normalized, norm_warnings = normalize_dmr_curve_columns(df, require_coordinates=False)
+    warnings.extend(norm_warnings)
+    lower = {_key(col): col for col in normalized.columns}
+    has_region = "region_id" in normalized.columns or {"chrom", "start", "end"}.issubset(normalized.columns)
+    ann_cols = [lower[_key(col)] for col in ANNOTATION_COLUMNS if _key(col) in lower]
+    count_cols = [lower[_key(col)] for col in COUNT_COLUMNS if _key(col) in lower]
+    enrichment_cols = [col for col in normalized.columns if _key(col) in {"p_value", "pvalue", "pval", "q_value", "qvalue", "fdr", "enrichment", "odds_ratio", "fraction"}]
+    if has_region and ann_cols:
+        return "region_level_annotation", warnings
+    if ann_cols and (count_cols or enrichment_cols):
+        return "enrichment_summary", warnings + ["annotation_input_is_summary_not_region_level"]
+    if ann_cols:
+        return "feature_summary", warnings + ["annotation_summary_missing_region_ids_and_count_column"]
+    return "unsupported", warnings + ["annotation_table_missing_annotation_like_column"]
+
+
+def classify_region_counts_table(df: pd.DataFrame) -> tuple[str, list[str]]:
+    """Classify whether a table can support DMR sample-level methylation curves."""
+
+    warnings: list[str] = []
+    if df is None or df.empty:
+        return "unsupported", ["region_counts_empty"]
+    normalized, norm_warnings = normalize_dmr_curve_columns(df, require_coordinates=False)
+    warnings.extend(norm_warnings)
+    required = [col for col in ("region_id", "sample_id", "Y", "m") if col not in normalized.columns]
+    if required:
+        return "unsupported", warnings + ["region_counts_missing_columns:" + ",".join(required)]
+    n_samples = normalized["sample_id"].nunique(dropna=True)
+    if n_samples < 2:
+        warnings.append("region_counts_have_fewer_than_two_samples")
+    return "region_sample_counts", warnings
+
+
+def classify_design_table(df: pd.DataFrame, region_counts_df: pd.DataFrame | None = None) -> tuple[str, list[str]]:
+    """Classify design table and optionally check sample overlap with region counts."""
+
+    warnings: list[str] = []
+    if df is None or df.empty:
+        return "unsupported", ["design_table_empty"]
+    normalized, norm_warnings = normalize_dmr_curve_columns(df, require_coordinates=False)
+    warnings.extend(norm_warnings)
+    required = [col for col in ("sample_id", "condition") if col not in normalized.columns]
+    if required:
+        return "unsupported", warnings + ["design_missing_columns:" + ",".join(required)]
+    if normalized["sample_id"].duplicated().any():
+        warnings.append("design_has_duplicate_sample_id")
+    if region_counts_df is not None and not region_counts_df.empty:
+        counts_norm, _ = normalize_dmr_curve_columns(region_counts_df, require_coordinates=False)
+        if "sample_id" in counts_norm.columns:
+            counts_samples = set(counts_norm["sample_id"].dropna().astype(str))
+            design_samples = set(normalized["sample_id"].dropna().astype(str))
+            missing_design = sorted(counts_samples - design_samples)
+            missing_counts = sorted(design_samples - counts_samples)
+            if missing_design:
+                warnings.append("samples_in_counts_missing_from_design:" + ",".join(missing_design[:10]))
+            if missing_counts:
+                warnings.append("samples_in_design_missing_from_counts:" + ",".join(missing_counts[:10]))
+    return "sample_design", warnings
+
+
+def find_best_dmr_table(start_path: str | Path) -> tuple[Path | None, str]:
+    """Find a fuller DMR table near ``start_path`` for distribution-style curves."""
+
+    start = Path(start_path)
+    search_roots = [start.parent]
+    for parent in start.parents:
+        if parent.name in {"run", "processed_geo_cx"}:
+            search_roots.append(parent)
+    candidates: list[tuple[tuple[int, int, int, int], Path]] = []
+    for root in dict.fromkeys(search_roots):
+        if not root.exists():
+            continue
+        for name in ("dmr_evidence_scores.tsv", "dmr_regions.tsv", "dmr_region_count_tests.tsv"):
+            path = root / name
+            if not path.exists():
+                continue
+            try:
+                with path.open("r", encoding="utf-8", errors="replace") as fh:
+                    header = fh.readline().rstrip("\n").split("\t")
+                    n_rows = sum(1 for _ in fh)
+            except Exception:
+                continue
+            low = {_key(col) for col in header}
+            has_coord = int(bool({"chrom", "chr", "seqname"} & low) and bool({"start", "start_bp"} & low) and bool({"end", "end_bp"} & low))
+            has_evidence = int("evidence_class" in low)
+            is_subset = int(any(token in path.name.lower() for token in ("top", "head", "subset", "smoke")))
+            score = (has_coord, n_rows, has_evidence, -is_subset)
+            candidates.append((score, path))
+    if not candidates:
+        return None, "no_candidate_dmr_table_found"
+    candidates.sort(reverse=True, key=lambda item: item[0])
+    selected = candidates[0][1]
+    return selected, f"selected_by_has_coordinates_row_count_evidence_columns:{selected}"
+
+
 __all__ = [
     "COLUMN_ALIASES",
+    "classify_annotation_table",
+    "classify_design_table",
+    "classify_dmr_table",
+    "classify_region_counts_table",
     "coerce_table",
+    "find_best_dmr_table",
     "normalize_dmr_curve_columns",
     "read_annotation_table",
     "read_beta_binom_table",
