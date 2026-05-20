@@ -6,17 +6,19 @@
 
 The viewer helps inspect DMR regions, evidence scores, optional beta-binomial validation results, external caller support, and annotation or enrichment outputs from existing TSV files. It is suitable for demonstrations and thesis defense workflows where the statistical outputs have already been produced.
 
+The UI uses one dark theme. Inputs live in the sidebar; the main page contains the guide, empty-state card, summary cards, plots, and tables. The sidebar file recommendations are shown as wrapping filename pills so long TSV names do not overflow the panel.
+
 ## How To Launch
 
 ```bash
 streamlit run apps/bsx2_dmr_viewer.py
 ```
 
-The app uses upload widgets by default. A local-path mode is available only when running the app locally and must be explicitly enabled in the sidebar.
+The app uses upload widgets in the sidebar by default. A local-path mode is available only when running the app locally and must be explicitly enabled in the sidebar with `Use local file paths instead of uploads`.
 
 ## What Files To Upload
 
-### Main DMR/evidence TSV
+### Required: Main DMR/evidence TSV
 
 Use this required uploader for the primary region table. Best option:
 
@@ -29,7 +31,7 @@ Also supported:
 
 This table drives region browsing, filtering, summary cards, and most plots.
 
-### Beta-binomial validation TSV
+### Optional: Beta-binomial validation TSV
 
 Optional supporting input. Recommended files:
 
@@ -39,7 +41,7 @@ Optional supporting input. Recommended files:
 
 This adds complementary beta-binomial confirmation metrics when matching columns are present.
 
-### Caller support matrix TSV
+### Optional: Caller support matrix TSV
 
 Optional supporting input. Recommended files:
 
@@ -48,7 +50,7 @@ Optional supporting input. Recommended files:
 
 This shows whether external callers or internal BSX2 support a region.
 
-### Annotation / enrichment TSV
+### Optional: Annotation / enrichment TSV
 
 Optional supporting input. Recommended files:
 

@@ -7,6 +7,7 @@ or external caller execution.
 
 from __future__ import annotations
 
+from html import escape
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -310,34 +311,53 @@ def render_histogram(values: pd.Series, label: str) -> None:
         st.bar_chart(plot_df)
 
 
-def file_list_markdown(files: list[str], best: str | None = None) -> str:
-    lines = []
+def file_pills_html(files: list[str], best: str | None = None) -> str:
+    pills = []
     for filename in files:
-        suffix = " recommended" if filename == best else ""
-        lines.append(f"- `{filename}`{suffix}")
-    return "\n".join(lines)
+        label = escape(filename)
+        marker = '<span class="file-pill-tag">recommended</span>' if filename == best else ""
+        pills.append(f'<span class="file-pill">{label}{marker}</span>')
+    return "\n".join(pills)
 
 
-def render_input_help(config: dict[str, Any]) -> None:
-    st.markdown(f"**Purpose:** {config['purpose']}")
-    st.markdown("**Recommended files:**")
-    st.markdown(file_list_markdown(config["recommended"], config.get("best")))
+def render_input_card(config: dict[str, Any]) -> None:
+    st.markdown(
+        f"""
+        <div class="input-card">
+          <div class="input-card-title">{escape(config["label"])}</div>
+          <div class="input-card-purpose"><b>Purpose:</b> {escape(config["purpose"])}</div>
+          <div class="input-card-subtitle">Recommended</div>
+          <div class="file-list">
+            {file_pills_html(config["recommended"], config.get("best"))}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def load_table_input(key: str, *, use_local_paths: bool) -> tuple[pd.DataFrame | None, str]:
     config = INPUT_GUIDANCE[key]
     label = config["label"]
-    upload = st.file_uploader(label, type=["tsv", "txt", "csv"], key=f"{key}_upload")
-    render_input_help(config)
+    render_input_card(config)
+    upload = None
     path_text = ""
     if use_local_paths:
         path_text = st.text_input(
-            f"Local path for {label}",
+            f"Optional local path for {label}",
             value="",
             key=f"{key}_path",
             placeholder="Local run only: paste a TSV path",
+            help="Local path mode is intended only for local runs.",
         )
-        st.caption("Local path mode is intended only for local runs. Uploaded files remain the normal demo workflow.")
+        st.caption("Local path mode is intended only for local runs.")
+    else:
+        upload = st.file_uploader(
+            label,
+            type=["tsv", "txt", "csv"],
+            key=f"{key}_upload",
+            label_visibility="collapsed",
+        )
     if upload is None and not path_text.strip():
         return None, ""
     try:
@@ -378,30 +398,35 @@ def inject_dark_theme() -> None:
         <style>
         :root {
             color-scheme: dark;
-            --bsx-bg: #080c12;
-            --bsx-bg-2: #0d131b;
-            --bsx-panel: #121a24;
-            --bsx-panel-2: #182231;
-            --bsx-border: #263646;
+            --bsx-bg: #070B12;
+            --bsx-bg-2: #0B1220;
+            --bsx-panel: #111827;
+            --bsx-panel-2: #0F172A;
+            --bsx-border: #263449;
             --bsx-border-2: #36506a;
-            --bsx-text: #eef5ff;
-            --bsx-muted: #9fb1c3;
-            --bsx-accent: #5cc8ff;
+            --bsx-text: #E5EDF7;
+            --bsx-muted: #9FB0C5;
+            --bsx-accent: #38BDF8;
             --bsx-accent-2: #8b7bff;
+            --bsx-accent-muted: #1E3A5F;
             --bsx-warn: #f0ba55;
             --bsx-good: #57d49b;
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         html, body, #root, .stApp,
         [data-testid="stAppViewContainer"] {
             background: radial-gradient(circle at 20% 0%, rgba(92, 200, 255, 0.10), transparent 28%),
-                        linear-gradient(180deg, #080c12 0%, #0b1118 48%, #080c12 100%) !important;
+                        linear-gradient(180deg, #070B12 0%, #0B1220 48%, #070B12 100%) !important;
             color: var(--bsx-text) !important;
         }
 
         [data-testid="stHeader"],
         [data-testid="stToolbar"] {
-            background: rgba(8, 12, 18, 0.96) !important;
+            background: rgba(7, 11, 18, 0.96) !important;
             color: var(--bsx-text) !important;
         }
 
@@ -417,8 +442,12 @@ def inject_dark_theme() -> None:
         }
 
         [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #0d131b 0%, #101722 100%) !important;
+            background: linear-gradient(180deg, #0B1220 0%, #0F172A 100%) !important;
             border-right: 1px solid var(--bsx-border) !important;
+        }
+
+        [data-testid="stSidebar"] * {
+            max-width: 100%;
         }
 
         [data-testid="stSidebarContent"] {
@@ -431,15 +460,23 @@ def inject_dark_theme() -> None:
         label, p, li, span {
             color: var(--bsx-text);
             letter-spacing: 0;
+            overflow-wrap: anywhere;
+        }
+
+        p, li, span, div {
+            overflow-wrap: anywhere;
         }
 
         a { color: var(--bsx-accent); }
+        pre,
         code {
             color: #d8f2ff !important;
-            background: #1b2936 !important;
+            background: #111827 !important;
             border: 1px solid #31465c;
             border-radius: 5px;
             padding: 0.05rem 0.3rem;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }
 
         .muted-note {
@@ -480,13 +517,93 @@ def inject_dark_theme() -> None:
         }
 
         .sidebar-section-title {
-            margin-top: 1.1rem;
+            margin-top: 1rem;
             margin-bottom: 0.45rem;
             color: #d8f2ff;
             font-weight: 700;
             font-size: 0.95rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
+        }
+
+        .input-card {
+            width: 100%;
+            max-width: 100%;
+            background: linear-gradient(180deg, #111827 0%, #0F172A 100%);
+            border: 1px solid var(--bsx-border);
+            border-radius: 8px;
+            padding: 0.72rem 0.78rem;
+            margin: 0.55rem 0 0.42rem 0;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+        }
+
+        .input-card-title {
+            color: var(--bsx-text);
+            font-size: 0.96rem;
+            font-weight: 750;
+            line-height: 1.25;
+            margin-bottom: 0.35rem;
+        }
+
+        .input-card-purpose {
+            color: var(--bsx-muted);
+            font-size: 0.82rem;
+            line-height: 1.35;
+            margin-bottom: 0.55rem;
+        }
+
+        .input-card-purpose b {
+            color: #c8d8ea;
+        }
+
+        .input-card-subtitle {
+            color: #c8d8ea;
+            font-size: 0.74rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 0.34rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            flex-wrap: wrap;
+            gap: 0.34rem;
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .file-pill {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            color: #d8f2ff;
+            background: rgba(30, 58, 95, 0.60);
+            border: 1px solid rgba(56, 189, 248, 0.24);
+            border-radius: 7px;
+            padding: 0.34rem 0.45rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.72rem;
+            line-height: 1.35;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .file-pill-tag {
+            display: inline-block;
+            color: #08111c;
+            background: var(--bsx-accent);
+            border-radius: 999px;
+            padding: 0.05rem 0.32rem;
+            margin-left: 0.35rem;
+            font-family: inherit;
+            font-size: 0.62rem;
+            line-height: 1.2;
+            font-weight: 800;
+            vertical-align: middle;
         }
 
         .upload-start-card {
@@ -516,17 +633,33 @@ def inject_dark_theme() -> None:
         }
 
         [data-testid="stFileUploader"] {
-            background: #111a25 !important;
-            border: 1px dashed var(--bsx-border-2) !important;
+            background: #0F172A !important;
+            border: 1px dashed var(--bsx-border) !important;
             border-radius: 8px !important;
-            padding: 0.55rem !important;
+            padding: 0.32rem !important;
+            margin-bottom: 0.85rem !important;
         }
 
+        [data-testid="stFileUploaderDropzone"],
         [data-testid="stFileUploader"] section {
-            background: #0c131c !important;
+            background: #0B1220 !important;
             border: 1px solid var(--bsx-border) !important;
             border-radius: 8px !important;
             color: var(--bsx-text) !important;
+            min-height: 4.3rem !important;
+            padding: 0.52rem !important;
+        }
+
+        [data-testid="stFileUploaderDropzone"] * {
+            color: var(--bsx-text) !important;
+            overflow-wrap: anywhere;
+        }
+
+        [data-testid="stFileUploader"] small,
+        [data-testid="stFileUploader"] span,
+        [data-testid="stFileUploader"] p {
+            color: var(--bsx-muted) !important;
+            font-size: 0.78rem !important;
         }
 
         input, textarea,
@@ -539,6 +672,20 @@ def inject_dark_theme() -> None:
             color: var(--bsx-text) !important;
             border-color: var(--bsx-border) !important;
             caret-color: var(--bsx-accent) !important;
+        }
+
+        [data-testid="stTextInput"] {
+            margin-bottom: 0.75rem !important;
+        }
+
+        [data-testid="stCheckbox"] label,
+        [data-testid="stCheckbox"] span,
+        [data-testid="stCheckbox"] p {
+            color: var(--bsx-text) !important;
+        }
+
+        [data-testid="stCheckbox"] [data-testid="stMarkdownContainer"] p {
+            font-size: 0.86rem !important;
         }
 
         [data-baseweb="tag"] {
@@ -568,12 +715,6 @@ def inject_dark_theme() -> None:
             color: var(--bsx-text) !important;
             background: linear-gradient(180deg, #1d2b3b, #142031) !important;
             border-bottom-color: var(--bsx-accent) !important;
-        }
-
-        [data-testid="stExpander"] {
-            background: #111a25 !important;
-            border: 1px solid var(--bsx-border) !important;
-            border-radius: 8px !important;
         }
 
         [data-testid="stDataFrame"],
@@ -657,22 +798,20 @@ def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide", initial_sidebar_state="expanded")
     inject_dark_theme()
 
-    st.sidebar.title("BSX2 Viewer")
-    st.sidebar.markdown('<div class="sidebar-section-title">Required input</div>', unsafe_allow_html=True)
-    use_local_paths = st.sidebar.checkbox("Use local file paths instead of uploads", value=False)
-    dmr_df, dmr_warning = load_table_input("main", use_local_paths=use_local_paths)
+    with st.sidebar:
+        st.title("BSX2 Viewer")
+        st.markdown('<div class="sidebar-section-title">Required input</div>', unsafe_allow_html=True)
+        use_local_paths = st.checkbox("Use local file paths instead of uploads", value=False)
+        dmr_df, dmr_warning = load_table_input("main", use_local_paths=use_local_paths)
 
-    st.sidebar.markdown('<div class="sidebar-section-title">Optional supporting inputs</div>', unsafe_allow_html=True)
-    with st.sidebar.expander("Beta-binomial validation", expanded=False):
+        st.markdown('<div class="sidebar-section-title">Optional supporting inputs</div>', unsafe_allow_html=True)
         beta_df, beta_warning = load_table_input("beta", use_local_paths=use_local_paths)
-    with st.sidebar.expander("Caller support matrix", expanded=False):
         support_df, support_warning = load_table_input("support", use_local_paths=use_local_paths)
-    with st.sidebar.expander("Annotation / enrichment", expanded=False):
         annotation_df, annotation_warning = load_table_input("annotation", use_local_paths=use_local_paths)
 
-    for warning in [dmr_warning, beta_warning, support_warning, annotation_warning]:
-        if warning:
-            st.sidebar.warning(warning)
+        for warning in [dmr_warning, beta_warning, support_warning, annotation_warning]:
+            if warning:
+                st.warning(warning)
 
     st.title(APP_TITLE)
     st.caption(APP_DESCRIPTION)
@@ -697,18 +836,19 @@ def main() -> None:
     context_values = sorted(dmr_df[context_col].dropna().astype(str).unique().tolist()) if context_col else []
     evidence_values = sorted(dmr_df[evidence_col].dropna().astype(str).unique().tolist()) if evidence_col else []
 
-    st.sidebar.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
-    selected_contexts = st.sidebar.multiselect("Context", context_values, default=context_values, disabled=not bool(context_values))
-    selected_classes = st.sidebar.multiselect(
-        "Evidence class",
-        evidence_values,
-        default=evidence_values,
-        disabled=not bool(evidence_values),
-    )
-    q_threshold = st.sidebar.slider("q-value threshold", min_value=0.0, max_value=1.0, value=0.05, step=0.01)
-    abs_delta_threshold = st.sidebar.slider("abs(delta) threshold", min_value=0.0, max_value=1.0, value=0.2, step=0.05)
-    caller_support_min = st.sidebar.number_input("Minimum caller support", min_value=0, value=0, step=1)
-    top_n = st.sidebar.number_input("Top N", min_value=10, max_value=100_000, value=500, step=10)
+    with st.sidebar:
+        st.markdown('<div class="sidebar-section-title">Filters</div>', unsafe_allow_html=True)
+        selected_contexts = st.multiselect("Context", context_values, default=context_values, disabled=not bool(context_values))
+        selected_classes = st.multiselect(
+            "Evidence class",
+            evidence_values,
+            default=evidence_values,
+            disabled=not bool(evidence_values),
+        )
+        q_threshold = st.slider("q-value threshold", min_value=0.0, max_value=1.0, value=0.05, step=0.01)
+        abs_delta_threshold = st.slider("abs(delta) threshold", min_value=0.0, max_value=1.0, value=0.2, step=0.05)
+        caller_support_min = st.number_input("Minimum caller support", min_value=0, value=0, step=1)
+        top_n = st.number_input("Top N", min_value=10, max_value=100_000, value=500, step=10)
 
     recognized_notes = []
     for required_label, column_group in [

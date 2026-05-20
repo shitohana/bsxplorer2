@@ -29,6 +29,10 @@ def test_app_has_required_title_and_scope_note():
     assert "How to use this viewer" in text
     assert "dmr_evidence_scores.tsv" in text
     assert "Use local file paths instead of uploads" in text
+    assert "external_caller_support_matrix.tsv" in text
+    assert "file-pill" in text
+    assert "input-card" in text
+    assert "st.sidebar.expander" not in text
 
 
 def test_app_has_no_local_hardcoded_paths():
