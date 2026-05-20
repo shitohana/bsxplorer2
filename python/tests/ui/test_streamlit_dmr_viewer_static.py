@@ -26,6 +26,9 @@ def test_app_has_required_title_and_scope_note():
     text = APP_PATH.read_text(encoding="utf-8")
     assert "BSX2 DMR Evidence Viewer" in text
     assert "does not run DMR calling" in text
+    assert "How to use this viewer" in text
+    assert "dmr_evidence_scores.tsv" in text
+    assert "Use local file paths instead of uploads" in text
 
 
 def test_app_has_no_local_hardcoded_paths():
