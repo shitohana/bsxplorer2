@@ -390,6 +390,7 @@ def _best_overlap(interval: pd.Series, candidates: pd.DataFrame, id_col: str) ->
 def link_dmrs_to_te(dmr_df: pd.DataFrame, te_df: pd.DataFrame | None) -> pd.DataFrame:
     """Annotate DMR links to TE intervals, if TE annotation is available."""
     out = dmr_df.copy()
+    out["te_input_provided"] = te_df is not None
     out["te_overlap"] = False
     out["te_family"] = "NA"
     out["te_class"] = "NA"
@@ -413,6 +414,7 @@ def link_dmrs_to_te(dmr_df: pd.DataFrame, te_df: pd.DataFrame | None) -> pd.Data
 def link_dmrs_to_chromatin(dmr_df: pd.DataFrame, peaks_df: pd.DataFrame | None) -> pd.DataFrame:
     """Annotate DMR links to ready-made chromatin peak intervals."""
     out = dmr_df.copy()
+    out["chromatin_input_provided"] = peaks_df is not None
     out["chromatin_overlap"] = False
     out["peak_type"] = "NA"
     out["peak_signal"] = pd.NA
@@ -446,13 +448,47 @@ def _expression_direction(log2fc: object, q_value: object) -> str:
     return "no_change"
 
 
-def join_expression_evidence(linked_df: pd.DataFrame, expression_df: pd.DataFrame | None) -> pd.DataFrame:
+def _expression_contrast_status(
+    expression_df: pd.DataFrame | None,
+    dmr_contrast_label: str | None,
+    expression_contrast_label: str | None,
+    require_matched_contrast: bool,
+) -> str:
+    if expression_df is None or expression_df.empty:
+        return "no_expression_data"
+    if not dmr_contrast_label or not expression_contrast_label:
+        return "not_validated"
+    if str(dmr_contrast_label) == str(expression_contrast_label):
+        return "matched"
+    if require_matched_contrast:
+        raise ValueError(
+            "DMR and expression contrast labels do not match: "
+            f"{dmr_contrast_label!r} != {expression_contrast_label!r}"
+        )
+    return "mismatch"
+
+
+def join_expression_evidence(
+    linked_df: pd.DataFrame,
+    expression_df: pd.DataFrame | None,
+    *,
+    dmr_contrast_label: str | None = None,
+    expression_contrast_label: str | None = None,
+    require_matched_contrast: bool = False,
+) -> pd.DataFrame:
     """Join ready-made RNA-seq differential expression evidence by linked gene."""
     out = linked_df.copy()
+    contrast_status = _expression_contrast_status(
+        expression_df,
+        dmr_contrast_label,
+        expression_contrast_label,
+        require_matched_contrast,
+    )
     out["rna_seq_log2fc"] = pd.NA
     out["rna_seq_q_value"] = pd.NA
     out["expression_direction"] = "no_expression_data"
     out["expression_supported"] = False
+    out["expression_contrast_status"] = contrast_status
     if expression_df is None or expression_df.empty:
         return out
     expr = expression_df.rename(columns={"q_value": "rna_seq_q_value", "log2FC": "rna_seq_log2fc"})
@@ -474,6 +510,7 @@ def join_expression_evidence(linked_df: pd.DataFrame, expression_df: pd.DataFram
         pd.to_numeric(merged["rna_seq_q_value"], errors="coerce").le(0.1)
         & pd.to_numeric(merged["rna_seq_log2fc"], errors="coerce").abs().gt(0)
     ).fillna(False)
+    merged["expression_contrast_status"] = contrast_status
     return merged
 
 
@@ -487,6 +524,11 @@ def _direction_consistency(row: pd.Series) -> str:
     link_type = str(row.get("link_type", "intergenic"))
     direction = _dmr_direction(row.get("region_delta"))
     expr_direction = str(row.get("expression_direction", "no_expression_data"))
+    contrast_status = str(row.get("expression_contrast_status", "matched"))
+    if contrast_status == "not_validated":
+        return "not_evaluated_contrast_not_validated"
+    if contrast_status == "mismatch":
+        return "not_evaluated_contrast_mismatch"
     if expr_direction == "no_expression_data":
         return "no_expression_data"
     if link_type == "promoter" and direction == "hyper" and expr_direction == "down":
@@ -570,10 +612,19 @@ def add_functional_prioritization_scores(linked_df: pd.DataFrame) -> pd.DataFram
             row_flags.append("no_gene_link")
         if str(row.get("expression_direction", "no_expression_data")) == "no_expression_data":
             row_flags.append("no_expression_data")
-        if not bool(row.get("te_overlap", False)):
-            row_flags.append("no_te_overlap_or_no_te_annotation")
-        if not bool(row.get("chromatin_overlap", False)):
-            row_flags.append("no_chromatin_overlap_or_no_chromatin_data")
+        contrast_status = str(row.get("expression_contrast_status", "matched"))
+        if contrast_status == "not_validated":
+            row_flags.append("expression_contrast_not_validated")
+        elif contrast_status == "mismatch":
+            row_flags.append("expression_contrast_mismatch")
+        if not bool(row.get("te_input_provided", False)):
+            row_flags.append("te_input_missing")
+        elif not bool(row.get("te_overlap", False)):
+            row_flags.append("te_no_overlap")
+        if not bool(row.get("chromatin_input_provided", False)):
+            row_flags.append("chromatin_input_missing")
+        elif not bool(row.get("chromatin_overlap", False)):
+            row_flags.append("chromatin_no_overlap")
         flags.append(";".join(row_flags) if row_flags else "none")
     out["missing_evidence_flags"] = flags
 
@@ -593,12 +644,21 @@ def prioritize_dmr_linked_genes(
     promoter_upstream: int = 2000,
     promoter_downstream: int = 200,
     max_distance: int = 10000,
+    dmr_contrast_label: str | None = None,
+    expression_contrast_label: str | None = None,
+    require_matched_contrast: bool = False,
 ) -> pd.DataFrame:
     """Run the full candidate gene prioritization workflow from normalized tables."""
     linked = link_dmrs_to_genes(dmr_df, gene_df, promoter_upstream, promoter_downstream, max_distance)
     linked = link_dmrs_to_te(linked, te_df)
     linked = link_dmrs_to_chromatin(linked, chromatin_df)
-    linked = join_expression_evidence(linked, expression_df)
+    linked = join_expression_evidence(
+        linked,
+        expression_df,
+        dmr_contrast_label=dmr_contrast_label,
+        expression_contrast_label=expression_contrast_label,
+        require_matched_contrast=require_matched_contrast,
+    )
     return add_functional_prioritization_scores(linked)
 
 

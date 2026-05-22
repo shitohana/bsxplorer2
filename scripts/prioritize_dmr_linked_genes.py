@@ -52,6 +52,9 @@ def _summary_text(result, warnings: list[dict[str, str]], args: argparse.Namespa
         f"- TE annotation: {args.te_annotation or 'not provided'}",
         f"- RNA-seq differential expression: {args.expression or 'not provided'}",
         f"- chromatin peaks: {args.chromatin_peaks or 'not provided'}",
+        f"- DMR contrast label: {args.dmr_contrast_label or 'not provided'}",
+        f"- expression contrast label: {args.expression_contrast_label or 'not provided'}",
+        f"- expression_direction_consistency_evaluated: {_expression_consistency_evaluated(args)}",
         f"- promoter_upstream: {args.promoter_upstream}",
         f"- promoter_downstream: {args.promoter_downstream}",
         f"- max_distance: {args.max_distance}",
@@ -73,6 +76,15 @@ def _summary_text(result, warnings: list[dict[str, str]], args: argparse.Namespa
     return "\n".join(lines)
 
 
+def _expression_consistency_evaluated(args: argparse.Namespace) -> bool:
+    return bool(
+        args.expression
+        and args.dmr_contrast_label
+        and args.expression_contrast_label
+        and args.dmr_contrast_label == args.expression_contrast_label
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prioritize candidate genes linked to existing DMR evidence.")
     parser.add_argument("--dmr-evidence", required=True, help="Existing DMR evidence table.")
@@ -81,6 +93,9 @@ def main() -> int:
     parser.add_argument("--expression", help="Optional ready-made RNA-seq differential expression table.")
     parser.add_argument("--chromatin-peaks", help="Optional BED/narrowPeak-like chromatin peak table.")
     parser.add_argument("--out-dir", required=True, help="Output directory.")
+    parser.add_argument("--dmr-contrast-label", help="Optional DMR contrast label used for delta orientation.")
+    parser.add_argument("--expression-contrast-label", help="Optional RNA-seq contrast label used for log2FC orientation.")
+    parser.add_argument("--require-matched-contrast", action="store_true", help="Fail if DMR and expression contrast labels differ.")
     parser.add_argument("--promoter-upstream", type=int, default=2000)
     parser.add_argument("--promoter-downstream", type=int, default=200)
     parser.add_argument("--max-distance", type=int, default=10000)
@@ -102,6 +117,23 @@ def main() -> int:
         warnings.append({"warning_type": "te_annotation_missing", "message": "TE evidence was not provided; TE-linked support is unavailable.", "severity": "info"})
     if args.expression:
         expression_df = read_expression_table(args.expression)
+        if not args.dmr_contrast_label or not args.expression_contrast_label:
+            warnings.append({
+                "warning_type": "expression_contrast_not_validated",
+                "message": "Expression table was provided, but DMR/expression contrast labels were not both provided; direction consistency was not evaluated.",
+                "severity": "warning",
+            })
+        elif args.dmr_contrast_label != args.expression_contrast_label:
+            if args.require_matched_contrast:
+                raise ValueError(
+                    "DMR and expression contrast labels do not match: "
+                    f"{args.dmr_contrast_label!r} != {args.expression_contrast_label!r}"
+                )
+            warnings.append({
+                "warning_type": "expression_contrast_mismatch",
+                "message": "DMR and expression contrast labels differ; direction consistency was not evaluated.",
+                "severity": "warning",
+            })
     else:
         warnings.append({"warning_type": "expression_missing", "message": "RNA-seq differential expression table was not provided; expression support is marked as no_expression_data.", "severity": "info"})
     if args.chromatin_peaks:
@@ -118,6 +150,9 @@ def main() -> int:
         promoter_upstream=args.promoter_upstream,
         promoter_downstream=args.promoter_downstream,
         max_distance=args.max_distance,
+        dmr_contrast_label=args.dmr_contrast_label,
+        expression_contrast_label=args.expression_contrast_label,
+        require_matched_contrast=args.require_matched_contrast,
     )
 
     result_path = out_dir / "dmr_functional_prioritization.tsv"
@@ -143,6 +178,10 @@ def main() -> int:
             "promoter_upstream": args.promoter_upstream,
             "promoter_downstream": args.promoter_downstream,
             "max_distance": args.max_distance,
+            "dmr_contrast_label": args.dmr_contrast_label,
+            "expression_contrast_label": args.expression_contrast_label,
+            "require_matched_contrast": args.require_matched_contrast,
+            "expression_direction_consistency_evaluated": _expression_consistency_evaluated(args),
         },
         "outputs": {str(path): {"size_bytes": path.stat().st_size, "sha256": _sha256_if_small(path)} for path in outputs},
         "warnings": warnings,

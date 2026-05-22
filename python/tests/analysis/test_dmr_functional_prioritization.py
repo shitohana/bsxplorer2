@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from bsx2.analysis.dmr_functional_prioritization import (
     FUNCTIONAL_PRIORITIZATION_COLUMNS,
@@ -64,7 +65,15 @@ def test_expression_join_and_direction_consistency_rules():
         "p_value": [0.001, 0.001],
         "q_value": [0.01, 0.01],
     })
-    result = prioritize_dmr_linked_genes(_dmrs(), _genes(), expression_df=expr, promoter_upstream=1000, promoter_downstream=200)
+    result = prioritize_dmr_linked_genes(
+        _dmrs(),
+        _genes(),
+        expression_df=expr,
+        promoter_upstream=1000,
+        promoter_downstream=200,
+        dmr_contrast_label="B_vs_A",
+        expression_contrast_label="B_vs_A",
+    )
     hyper = result[result["dmr_id"] == "prom_hyper"].iloc[0]
     hypo = result[result["dmr_id"] == "prom_hypo"].iloc[0]
     body = result[result["dmr_id"] == "body"].iloc[0]
@@ -74,11 +83,52 @@ def test_expression_join_and_direction_consistency_rules():
     assert hyper["functional_support_class"] == "high_confidence_candidate"
 
 
+def test_expression_without_contrast_labels_is_not_evaluated():
+    expr = pd.DataFrame({"gene_id": ["gene1"], "log2FC": [-1.2], "p_value": [0.001], "q_value": [0.01]})
+    result = prioritize_dmr_linked_genes(_dmrs(), _genes(), expression_df=expr, promoter_upstream=1000, promoter_downstream=200)
+    row = result[result["dmr_id"] == "prom_hyper"].iloc[0]
+    assert row["direction_consistency"] == "not_evaluated_contrast_not_validated"
+    assert "expression_contrast_not_validated" in row["missing_evidence_flags"]
+
+
+def test_expression_mismatch_with_require_flag_raises():
+    expr = pd.DataFrame({"gene_id": ["gene1"], "log2FC": [-1.2], "p_value": [0.001], "q_value": [0.01]})
+    with pytest.raises(ValueError, match="contrast labels do not match"):
+        prioritize_dmr_linked_genes(
+            _dmrs(),
+            _genes(),
+            expression_df=expr,
+            promoter_upstream=1000,
+            promoter_downstream=200,
+            dmr_contrast_label="B_vs_A",
+            expression_contrast_label="A_vs_B",
+            require_matched_contrast=True,
+        )
+
+
 def test_missing_rna_seq_flag_and_stable_schema():
     result = prioritize_dmr_linked_genes(_dmrs(), _genes(), promoter_upstream=1000, promoter_downstream=200)
     assert list(result.columns) == FUNCTIONAL_PRIORITIZATION_COLUMNS
     assert "no_expression_data" in result.loc[result["dmr_id"] == "prom_hyper", "missing_evidence_flags"].iloc[0]
     assert result["functional_support_score"].between(0, 100).all()
+
+
+def test_te_missing_and_no_overlap_flags_are_separated():
+    missing = prioritize_dmr_linked_genes(_dmrs(), _genes(), promoter_upstream=1000, promoter_downstream=200)
+    assert "te_input_missing" in missing.loc[missing["dmr_id"] == "prom_hyper", "missing_evidence_flags"].iloc[0]
+
+    te = pd.DataFrame({"te_id": ["te_far"], "chrom": ["chr1"], "start": [9000], "end": [9100], "te_family": ["Gypsy"], "te_class": ["LTR"]})
+    no_overlap = prioritize_dmr_linked_genes(_dmrs(), _genes(), te_df=te, promoter_upstream=1000, promoter_downstream=200)
+    assert "te_no_overlap" in no_overlap.loc[no_overlap["dmr_id"] == "prom_hyper", "missing_evidence_flags"].iloc[0]
+
+
+def test_chromatin_missing_and_no_overlap_flags_are_separated():
+    missing = prioritize_dmr_linked_genes(_dmrs(), _genes(), promoter_upstream=1000, promoter_downstream=200)
+    assert "chromatin_input_missing" in missing.loc[missing["dmr_id"] == "prom_hyper", "missing_evidence_flags"].iloc[0]
+
+    peaks = pd.DataFrame({"peak_id": ["peak_far"], "chrom": ["chr1"], "start": [9000], "end": [9100], "signal": [5], "peak_type": ["ATAC"]})
+    no_overlap = prioritize_dmr_linked_genes(_dmrs(), _genes(), chromatin_df=peaks, promoter_upstream=1000, promoter_downstream=200)
+    assert "chromatin_no_overlap" in no_overlap.loc[no_overlap["dmr_id"] == "prom_hyper", "missing_evidence_flags"].iloc[0]
 
 
 def test_join_expression_evidence_without_expression_is_nonfatal():

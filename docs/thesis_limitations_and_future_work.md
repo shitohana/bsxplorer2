@@ -5,7 +5,7 @@
 - Seqname harmonization for arbitrary contigs and scaffolds.
 - Assembly coordinate checks with warning-only reports.
 - RegionSignal API for unified interval aggregation.
-- Rust-backed `.bsx` RegionSignal count aggregation path with pandas fallback.
+- Rust-backed indexed `.bsx` RegionSignal count aggregation path with pandas fallback.
 - DiscreteRegionData cache for reuse after extraction.
 - Regional Evidence Model.
 - Beta-binomial aggregated GLM validation.
@@ -22,6 +22,8 @@
   random-effect GLMM.
 - QC importers do not estimate conversion failure without spike-in or explicit
   conversion reports.
+- Rust RegionSignal exposes `chunk_size` for future chunked implementations; the
+  current `.bsx` path performs indexed per-region queries.
 
 ## Future Work
 

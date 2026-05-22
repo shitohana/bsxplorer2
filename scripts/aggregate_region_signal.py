@@ -48,10 +48,13 @@ def main() -> int:
     backend_used = args.backend
     warnings: list[str] = []
     counts: pd.DataFrame | str
-    if args.backend == "rust" or (args.backend == "auto" and counts_path.suffix == ".bsx" and backend_info["rust"]):
+    opposite_policy = str(args.strand_policy).lower() == "opposite"
+    if args.backend == "rust" or (args.backend == "auto" and counts_path.suffix == ".bsx" and backend_info["rust"] and not opposite_policy):
         counts = str(counts_path)
         backend_used = "rust"
     else:
+        if args.backend == "auto" and counts_path.suffix == ".bsx" and opposite_policy:
+            raise SystemExit("backend='auto' with strand_policy='opposite' requires a pandas-compatible counts table; Rust backend does not support opposite strand aggregation.")
         if args.backend == "auto" and counts_path.suffix == ".bsx" and not backend_info["rust"]:
             raise SystemExit("backend='auto' received a .bsx file, but the Rust binding is unavailable")
         if args.backend == "rust":

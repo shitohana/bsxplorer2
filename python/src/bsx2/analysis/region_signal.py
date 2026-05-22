@@ -143,15 +143,25 @@ def available_region_signal_backends() -> dict[str, object]:
         "rust": rust_available,
         "pandas": True,
         "default": "rust" if rust_available else "pandas",
+        "notes": {
+            "rust": "Rust backend supports both/plus/minus/region_strand strand policies.",
+            "pandas": "Pandas backend supports both/plus/minus/region_strand/opposite strand policies.",
+        },
     }
 
 
 def _resolve_backend(
     backend: Literal["auto", "rust", "pandas"],
     methylation_path: str | Path | None,
+    strand_policy: str = "both",
 ) -> Literal["rust", "pandas"]:
     if backend not in {"auto", "rust", "pandas"}:
         raise ValueError("backend must be auto, rust, or pandas")
+    normalized_strand_policy = _normalize_strand_policy(strand_policy)
+    if normalized_strand_policy == "opposite":
+        if backend == "rust":
+            raise ValueError("strand_policy='opposite' is not supported by Rust backend; use backend='pandas' or backend='auto'.")
+        return "pandas"
     if backend == "pandas":
         return "pandas"
 
@@ -276,7 +286,7 @@ def aggregate_region_signal(
     if selected_methylation_path is None and isinstance(counts_df, (str, Path)):
         selected_methylation_path = counts_df
 
-    backend_used = _resolve_backend(selected_backend, selected_methylation_path)
+    backend_used = _resolve_backend(selected_backend, selected_methylation_path, config.strand_policy)
     if backend_used == "rust":
         from .region_signal_rust import aggregate_region_signal_rust
 

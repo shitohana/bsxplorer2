@@ -55,6 +55,8 @@ def aggregate_region_signal_rust(
 ) -> pd.DataFrame:
     if _aggregate_region_counts_rust is None:
         raise RuntimeError("Rust region aggregation binding is not available")
+    if str(strand_policy).lower() == "opposite":
+        raise ValueError("strand_policy='opposite' is not supported by Rust backend; use backend='pandas' or backend='auto'.")
 
     regions = regions_df.copy()
     if "seqname" not in regions.columns and "chrom" in regions.columns:

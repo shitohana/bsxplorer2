@@ -99,6 +99,26 @@ def test_invalid_coordinates_raise_clear_error() -> None:
         aggregate_region_signal(regions, _counts(), RegionSignalConfig(backend="pandas"))
 
 
+def test_auto_backend_with_opposite_uses_pandas() -> None:
+    out = aggregate_region_signal(
+        _regions(),
+        _counts(),
+        RegionSignalConfig(backend="auto", strand_policy="opposite", methylation_path="would_prefer_rust.bsx"),
+    )
+    first = out[out["region_id"] == "r1"].iloc[0]
+    assert first["mC"] == 2
+    assert first["uC"] == 3
+
+
+def test_rust_backend_with_opposite_raises_clear_error() -> None:
+    with pytest.raises(ValueError, match="strand_policy='opposite' is not supported by Rust backend"):
+        aggregate_region_signal(
+            _regions(),
+            _counts(),
+            RegionSignalConfig(backend="rust", strand_policy="opposite", methylation_path="sample.bsx"),
+        )
+
+
 def test_cli_backend_pandas(tmp_path: Path) -> None:
     regions_path = tmp_path / "regions.tsv"
     counts_path = tmp_path / "counts.tsv"

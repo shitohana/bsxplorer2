@@ -24,7 +24,7 @@ Python RegionSignal API
 The Rust module is `bsxplorer2::tools::region_aggregation`. It reuses existing
 BSX2 structures:
 
-- `RegionReader` for indexed `.bsx` access.
+- `RegionReader` for indexed `.bsx` per-region access.
 - `Contig` for genomic intervals.
 - `BsxBatch` columns for `position`, `strand`, `context`, `count_m`, and
   `count_total`.
@@ -132,13 +132,17 @@ python scripts/aggregate_region_signal.py \
   behavior.
 - If the Rust extension is unavailable, `backend="auto"` falls back to pandas
   when a pandas-compatible count table is supplied.
+- `strand_policy="opposite"` is currently handled by the pandas backend. The
+  Rust backend supports `both`, `plus`, `minus`, and `region_strand`.
+- `chunk_size` is exposed for future chunked implementations; the current `.bsx`
+  path performs indexed per-region queries.
 - Full production-scale benchmarking on the B. napus six-sample run remains a
   separate future benchmark.
 
 ## Thesis Wording
 
-The Rust/chunked backend accelerates region-level methylation count aggregation
-for `.bsx` methylation files while preserving the same downstream Regional
-Evidence statistical model. The methodical contribution is engineering
-separation of high-throughput count aggregation from evidence scoring, not a new
-DMR calling model.
+The Rust-backed indexed region count aggregation path accelerates region-level
+methylation count aggregation for `.bsx` methylation files while preserving the
+same downstream Regional Evidence statistical model. The methodical contribution
+is engineering separation of high-throughput count aggregation from evidence
+scoring, not a new DMR calling model.
