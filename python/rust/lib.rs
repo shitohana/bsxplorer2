@@ -3,6 +3,7 @@
 
 mod io;
 mod data_structs;
+mod region_aggregation;
 mod utils;
 
 use pyo3::prelude::*;
@@ -40,6 +41,10 @@ fn _bsx2(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<io::region::PyRegionReader>()?;
     m.add_class::<io::region::PyFilterOperation>()?;
     m.add_class::<io::region::PyRegionReaderIterator>()?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        region_aggregation::aggregate_region_counts_rust,
+        m
+    )?)?;
 
     Ok(())
 }

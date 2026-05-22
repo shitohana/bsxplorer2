@@ -10,7 +10,8 @@ stable package modules from CLI wrappers and runtime artifacts.
 
 - `bsx2.analysis.seqname_harmonization`: arbitrary seqname alias checks for non-model organisms; no liftover.
 - `bsx2.analysis.assembly_compatibility`: coordinate bounds diagnostics; no assembly-equivalence inference.
-- `bsx2.analysis.region_signal`: pandas MVP interval aggregation for genes, promoters, BED, DMR and external regions.
+- `bsx2.analysis.region_signal`: interval aggregation for genes, promoters, BED, DMR and external regions with `backend="auto|rust|pandas"`.
+- `bsx2.analysis.region_signal_rust`: Rust-backed `.bsx` count aggregation wrapper for high-throughput RegionSignal use.
 - `bsx2.viz.compute.discrete_region_cache`: compressed cache for extracted regional point data.
 
 ## Implemented Validation / Experimental Modules
@@ -40,5 +41,5 @@ available, the direct synthetic smoke checks provide a local fallback.
 ## Thesis Support
 
 The modules support thesis chapters by making the architecture explicit:
-seqname-safe non-model workflows, interval-based aggregation, reusable display
+seqname-safe non-model workflows, Rust-backed interval aggregation, reusable display
 caches, external candidate harmonization, and documented limitations.

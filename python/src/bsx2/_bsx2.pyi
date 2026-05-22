@@ -454,3 +454,14 @@ class RegionReader:
     def iter_contigs(self, contigs: list[Contig]) -> RegionReaderIterator:
         ...
 
+def aggregate_region_counts_rust(
+    methylation_path: Union[str, Path],
+    regions: list[dict[str, Any]],
+    sample_id: Union[str, None] = None,
+    context: Union[str, None] = None,
+    strand_policy: str = "both",
+    min_total: int = 0,
+    chunk_size: int = 10000,
+    include_empty_regions: bool = True,
+) -> list[dict[str, Any]]:
+    ...

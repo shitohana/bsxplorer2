@@ -5,6 +5,7 @@
 - Seqname harmonization for arbitrary contigs and scaffolds.
 - Assembly coordinate checks with warning-only reports.
 - RegionSignal API for unified interval aggregation.
+- Rust-backed `.bsx` RegionSignal count aggregation path with pandas fallback.
 - DiscreteRegionData cache for reuse after extraction.
 - Regional Evidence Model.
 - Beta-binomial aggregated GLM validation.
@@ -29,5 +30,6 @@
 - Production external caller backend.
 - TE/pericentromere analysis.
 - Methylation-expression integration.
-- Rust/chunked RegionSignal backend.
+- Full production-scale Rust RegionSignal benchmark on multiple large `.bsx`
+  files.
 - Full CLI tutorials.

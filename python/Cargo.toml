@@ -19,7 +19,7 @@ path = "rust/lib.rs"
 nightly = ["bsxplorer2/performant_nightly"]
 
 [dependencies]
-bsxplorer2 = { version = "0.2.3", features = ["compression", "performant", "tools"] }
+bsxplorer2 = { path = "../bsxplorer2", version = "0.2.3", features = ["compression", "performant", "tools"] }
 pyo3 = { version = "=0.22.4", features = ["extension-module", "anyhow", "either"] }
 # We need to use the same version of polars as in the Rust code
 pyo3-polars = {version = "=0.19.0", features = ["dtype-full", "lazy"]}
