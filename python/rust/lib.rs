@@ -1,8 +1,8 @@
 #![allow(unsafe_op_in_unsafe_fn, unused)]
 #![warn(unused_imports, unused_braces)]
 
-mod io;
 mod data_structs;
+mod io;
 mod region_aggregation;
 mod utils;
 
@@ -43,6 +43,10 @@ fn _bsx2(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<io::region::PyRegionReaderIterator>()?;
     m.add_function(pyo3::wrap_pyfunction!(
         region_aggregation::aggregate_region_counts_rust,
+        m
+    )?)?;
+    m.add_function(pyo3::wrap_pyfunction!(
+        region_aggregation::extract_region_cpg_counts_rust,
         m
     )?)?;
 

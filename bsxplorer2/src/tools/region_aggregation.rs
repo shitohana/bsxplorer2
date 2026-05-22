@@ -76,6 +76,21 @@ pub struct RegionCountResult {
     pub coverage_qc: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegionCpgCountResult {
+    pub region_id: String,
+    pub cpg_id: String,
+    pub seqname: String,
+    pub position: PosType,
+    pub strand: String,
+    pub context: String,
+    pub sample_id: String,
+    pub m_c: u64,
+    pub u_c: u64,
+    pub total: u64,
+    pub coverage_qc: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CountRecord {
     pub seqname: String,
@@ -219,6 +234,103 @@ pub fn aggregate_counts_for_regions(
     Ok(results.into_iter().map(|(_, result)| result).collect())
 }
 
+pub fn extract_cpg_counts_for_regions(
+    reader: &mut RegionReader,
+    regions: &[RegionSpec],
+    sample_id: Option<&str>,
+    options: &AggregationOptions,
+) -> Result<Vec<RegionCpgCountResult>> {
+    validate_regions(regions)?;
+
+    let mut region_order = (0..regions.len()).collect::<Vec<_>>();
+    region_order.sort_by(|left, right| {
+        let left_region = &regions[*left];
+        let right_region = &regions[*right];
+        let left_seq = BsxSmallStr::from(left_region.seqname.as_str());
+        let right_seq = BsxSmallStr::from(right_region.seqname.as_str());
+        let left_chr_idx = reader
+            .index()
+            .get_chr_index(&left_seq)
+            .unwrap_or(usize::MAX);
+        let right_chr_idx = reader
+            .index()
+            .get_chr_index(&right_seq)
+            .unwrap_or(usize::MAX);
+        left_chr_idx
+            .cmp(&right_chr_idx)
+            .then(compare_regions(left_region, right_region))
+    });
+
+    let mut results: Vec<(usize, RegionCpgCountResult)> = Vec::new();
+    for region_idx in region_order {
+        let region = &regions[region_idx];
+        if !reader
+            .index()
+            .get_chr_order()
+            .contains(&BsxSmallStr::from(region.seqname.as_str()))
+        {
+            continue;
+        }
+
+        let contig = Contig::new(
+            BsxSmallStr::from(region.seqname.as_str()),
+            region.start,
+            region.end.saturating_add(1),
+            Strand::None,
+        );
+        if let Some(batch) = reader.query(contig, None)? {
+            for result in extract_batch_cpg_counts(region, &batch, sample_id, options) {
+                results.push((region_idx, result));
+            }
+        }
+    }
+
+    results.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then(left.1.position.cmp(&right.1.position))
+            .then(left.1.strand.cmp(&right.1.strand))
+            .then(left.1.context.cmp(&right.1.context))
+    });
+    Ok(results.into_iter().map(|(_, result)| result).collect())
+}
+
+pub fn extract_cpg_counts_for_region_chunk(
+    records: &[CountRecord],
+    regions: &[RegionSpec],
+    sample_id: Option<&str>,
+    options: &AggregationOptions,
+) -> Result<Vec<RegionCpgCountResult>> {
+    validate_regions(regions)?;
+    let mut results = Vec::new();
+
+    for region in regions {
+        for record in records {
+            if record.seqname != region.seqname
+                || record.position < region.start
+                || record.position > region.end
+                || record.count_total < options.min_total
+                || !normalize_or_filter_context(record.context, region.context, options)
+                || !apply_strand_policy(record.strand, region.strand, options)
+            {
+                continue;
+            }
+            results.push(finalize_cpg_count_result(
+                region,
+                record.position,
+                record.strand,
+                record.context,
+                record.count_m,
+                record.count_total,
+                sample_id,
+                options,
+            ));
+        }
+    }
+
+    Ok(results)
+}
+
 pub fn aggregate_counts_for_region_chunk(
     records: &[CountRecord],
     regions: &[RegionSpec],
@@ -322,6 +434,60 @@ fn aggregate_batch(
     accumulator
 }
 
+fn extract_batch_cpg_counts(
+    region: &RegionSpec,
+    batch: &BsxBatch,
+    sample_id: Option<&str>,
+    options: &AggregationOptions,
+) -> Vec<RegionCpgCountResult> {
+    let positions = batch.position();
+    let strands = batch.strand();
+    let contexts = batch.context();
+    let count_m = batch.count_m();
+    let count_total = batch.count_total();
+    let mut results = Vec::new();
+
+    for idx in 0..batch.len() {
+        let Some(position) = positions.get(idx) else {
+            continue;
+        };
+        if position < region.start || position > region.end {
+            continue;
+        }
+
+        let Some(total) = count_total.get(idx) else {
+            continue;
+        };
+        if (total as u32) < options.min_total {
+            continue;
+        }
+
+        let record_context = Context::from(contexts.get(idx));
+        if !normalize_or_filter_context(record_context, region.context, options) {
+            continue;
+        }
+
+        let record_strand = Strand::from(strands.get(idx));
+        if !apply_strand_policy(record_strand, region.strand, options) {
+            continue;
+        }
+
+        let methylated = count_m.get(idx).unwrap_or(0);
+        results.push(finalize_cpg_count_result(
+            region,
+            position,
+            record_strand,
+            record_context,
+            methylated as u32,
+            total as u32,
+            sample_id,
+            options,
+        ));
+    }
+
+    results
+}
+
 pub fn finalize_region_count_result(
     region: &RegionSpec,
     sample_id: Option<&str>,
@@ -364,6 +530,45 @@ pub fn finalize_region_count_result(
         total: accumulator.total,
         n_cytosines: accumulator.n_cytosines,
         mean_methylation,
+        coverage_qc: coverage_qc.to_string(),
+    }
+}
+
+pub fn finalize_cpg_count_result(
+    region: &RegionSpec,
+    position: PosType,
+    strand: Strand,
+    context: Context,
+    count_m: u32,
+    count_total: u32,
+    sample_id: Option<&str>,
+    options: &AggregationOptions,
+) -> RegionCpgCountResult {
+    let count_u = count_total.saturating_sub(count_m);
+    let strand_text = strand.to_string();
+    let context_text = context.to_string();
+    let coverage_qc = if count_total == 0 {
+        "zero_coverage"
+    } else if count_total < options.min_total {
+        "low_coverage"
+    } else {
+        "ok"
+    };
+
+    RegionCpgCountResult {
+        region_id: region.region_id.clone(),
+        cpg_id: format!(
+            "{}:{}:{}:{}",
+            region.seqname, position, strand_text, context_text
+        ),
+        seqname: region.seqname.clone(),
+        position,
+        strand: strand_text,
+        context: context_text,
+        sample_id: sample_id.unwrap_or("").to_string(),
+        m_c: count_m as u64,
+        u_c: count_u as u64,
+        total: count_total as u64,
         coverage_qc: coverage_qc.to_string(),
     }
 }
@@ -507,5 +712,57 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].coverage_qc, "no_records");
         assert_eq!(results[0].total, 0);
+    }
+
+    #[test]
+    fn extracts_cpg_rows_with_stable_ids() {
+        let results = extract_cpg_counts_for_region_chunk(
+            &records(),
+            &[region(1, 25)],
+            Some("sample1"),
+            &default_options(),
+        )
+        .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].cpg_id, "chr1:10:+:CG");
+        assert_eq!(results[0].m_c, 4);
+        assert_eq!(results[0].u_c, 6);
+        assert_eq!(results[0].total, 10);
+        assert_eq!(results[0].sample_id, "sample1");
+    }
+
+    #[test]
+    fn cpg_context_filter_works() {
+        let mut options = default_options();
+        options.context = Some(Context::CG);
+
+        let results = extract_cpg_counts_for_region_chunk(
+            &records(),
+            &[region(1, 40)],
+            None,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|row| row.context == "CG"));
+    }
+
+    #[test]
+    fn cpg_min_total_filter_works() {
+        let mut options = default_options();
+        options.min_total = 6;
+
+        let results = extract_cpg_counts_for_region_chunk(
+            &records(),
+            &[region(1, 40)],
+            None,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|row| row.total >= 6));
     }
 }

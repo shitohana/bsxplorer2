@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use bsxplorer2::data_structs::Strand;
 use bsxplorer2::io::bsx::{BsxFileReader, RegionReader};
 use bsxplorer2::tools::region_aggregation::{
-    aggregate_counts_for_regions, parse_optional_context, AggregationOptions,
-    RegionCountResult, RegionSpec, StrandPolicy,
+    aggregate_counts_for_regions, extract_cpg_counts_for_regions,
+    parse_optional_context, AggregationOptions, RegionCountResult,
+    RegionCpgCountResult, RegionSpec, StrandPolicy,
 };
 use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -73,6 +74,69 @@ pub fn aggregate_region_counts_rust(
     results
         .iter()
         .map(|result| result_to_dict(py, result))
+        .collect()
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    methylation_path,
+    regions,
+    sample_id=None,
+    context=None,
+    strand_policy="both",
+    min_total=0,
+    chunk_size=10000
+))]
+pub fn extract_region_cpg_counts_rust(
+    py: Python<'_>,
+    methylation_path: PathBuf,
+    regions: &Bound<'_, PyAny>,
+    sample_id: Option<String>,
+    context: Option<String>,
+    strand_policy: &str,
+    min_total: u32,
+    chunk_size: usize,
+) -> PyResult<Vec<PyObject>> {
+    if !methylation_path.exists() {
+        return Err(PyFileNotFoundError::new_err(format!(
+            "methylation_path does not exist: {}",
+            methylation_path.display()
+        )));
+    }
+
+    let region_specs = parse_region_specs(regions)?;
+    let options = AggregationOptions {
+        context: parse_optional_context(context.as_deref())
+            .map_err(|err| PyValueError::new_err(err.to_string()))?,
+        strand_policy: StrandPolicy::parse(strand_policy)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?,
+        min_total,
+        chunk_size,
+        include_empty_regions: false,
+    };
+
+    let file = File::open(&methylation_path).map_err(|err| {
+        PyFileNotFoundError::new_err(format!(
+            "Could not open methylation_path {}: {err}",
+            methylation_path.display()
+        ))
+    })?;
+    let reader = BsxFileReader::try_new(file)
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+    let mut region_reader = RegionReader::from_reader(reader)
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+
+    let results = extract_cpg_counts_for_regions(
+        &mut region_reader,
+        &region_specs,
+        sample_id.as_deref(),
+        &options,
+    )
+    .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+
+    results
+        .iter()
+        .map(|result| cpg_result_to_dict(py, result))
         .collect()
 }
 
@@ -197,6 +261,26 @@ fn result_to_dict(
         Some(value) => row.set_item("mean_methylation", value)?,
         None => row.set_item("mean_methylation", py.None())?,
     };
+    row.set_item("coverage_qc", &result.coverage_qc)?;
+    Ok(row.into_py(py))
+}
+
+fn cpg_result_to_dict(
+    py: Python<'_>,
+    result: &RegionCpgCountResult,
+) -> PyResult<PyObject> {
+    let row = PyDict::new_bound(py);
+    row.set_item("region_id", &result.region_id)?;
+    row.set_item("cpg_id", &result.cpg_id)?;
+    row.set_item("seqname", &result.seqname)?;
+    row.set_item("chrom", &result.seqname)?;
+    row.set_item("position", result.position)?;
+    row.set_item("strand", &result.strand)?;
+    row.set_item("context", &result.context)?;
+    row.set_item("sample_id", &result.sample_id)?;
+    row.set_item("mC", result.m_c)?;
+    row.set_item("uC", result.u_c)?;
+    row.set_item("total", result.total)?;
     row.set_item("coverage_qc", &result.coverage_qc)?;
     Ok(row.into_py(py))
 }

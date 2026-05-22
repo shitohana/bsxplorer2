@@ -5,6 +5,27 @@ from typing import List, Union, Tuple, Any, Dict, Sequence
 
 import polars as pl
 
+def aggregate_region_counts_rust(
+    methylation_path: str,
+    regions: Sequence[Dict[str, Any]],
+    sample_id: Union[str, None] = None,
+    context: Union[str, None] = None,
+    strand_policy: str = "both",
+    min_total: int = 0,
+    chunk_size: int = 10000,
+    include_empty_regions: bool = True,
+) -> List[Dict[str, Any]]: ...
+
+def extract_region_cpg_counts_rust(
+    methylation_path: str,
+    regions: Sequence[Dict[str, Any]],
+    sample_id: Union[str, None] = None,
+    context: Union[str, None] = None,
+    strand_policy: str = "both",
+    min_total: int = 0,
+    chunk_size: int = 10000,
+) -> List[Dict[str, Any]]: ...
+
 class Strand(Enum):
     Forward = auto()
     Reverse = auto()
