@@ -7,19 +7,9 @@ mod strings;
 mod utils;
 mod validate;
 
-use clap::{
-    Parser,
-    Subcommand,
-};
-use convert::{
-    FromBsxConvert,
-    R2RConvert,
-    ToBsxConvert,
-};
-use dimred::{
-    DimRedArgs,
-    MergeArgs,
-};
+use clap::{Parser, Subcommand};
+use convert::{FromBsxConvert, R2RConvert, ToBsxConvert};
+use dimred::{DimRedArgs, MergeArgs};
 use sort::SortArgs;
 use validate::ValidateArgs;
 use wild::ArgsOs;

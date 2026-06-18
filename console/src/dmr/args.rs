@@ -1,47 +1,23 @@
 use std::fs::File;
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::{Path, PathBuf};
 
-use anyhow::{
-    anyhow,
-    Context as AnyhowContext,
-    Result,
-};
-use bsxplorer2::data_structs::typedef::{
-    CountType,
-    DensityType,
-    PosType,
-};
+use anyhow::{anyhow, Context as AnyhowContext, Result};
+use bsxplorer2::data_structs::typedef::{CountType, DensityType, PosType};
 use bsxplorer2::data_structs::Context;
 use bsxplorer2::prelude::MultiBsxFileReader;
-use clap::{
-    Args,
-    ValueEnum,
-};
+use clap::{Args, ValueEnum};
 use console::style;
 use csv::WriterBuilder;
 use dialoguer::Confirm;
-use log::{
-    debug,
-    info,
-};
+use log::{debug, info};
 use serde::Serialize;
 use spipe::spipe;
 
 use super::types::DMRegion;
 use crate::dmr::reader::DmrReader;
 use crate::strings::dmr as strings;
-use crate::utils::{
-    check_validate_paths,
-    init_progress,
-    init_readers,
-};
-use crate::{
-    exit_with_msg,
-    PipelineCommand,
-};
+use crate::utils::{check_validate_paths, init_progress, init_readers};
+use crate::{exit_with_msg, PipelineCommand};
 
 #[derive(Args, Debug, Clone)]
 pub struct DmrArgs {
@@ -66,13 +42,13 @@ pub struct DmrArgs {
         required = true,
         help = strings::OUTPUT
     )]
-    pub(crate) output:  PathBuf,
+    pub(crate) output: PathBuf,
     #[arg(
         short, long,
         default_value_t = false,
         help = strings::FORCE
     )]
-    pub(crate) force:   bool,
+    pub(crate) force: bool,
 
     #[clap(
         short, long,
@@ -258,8 +234,7 @@ fn write_dmr_segments(
                 .serialize(dmr)
                 .context(format!("Batch idx: {batch_idx}"))?;
             debug!("DMR written to file");
-        }
-        else {
+        } else {
             debug!("Short DMR - skipping")
         }
     }
@@ -316,8 +291,7 @@ fn filter_dmrs(
                 _ => unreachable!(),
             },
         )
-    }
-    else {
+    } else {
         dmrs.iter().map(|s| s.p_value).collect::<Vec<_>>()
     };
 
@@ -400,16 +374,16 @@ impl PipelineCommand for DmrArgs {
 
 #[derive(Debug, Serialize)]
 struct DmrFilteredRow {
-    chr:         String,
-    start:       u32,
-    end:         u32,
+    chr: String,
+    start: u32,
+    end: u32,
     n_cytosines: usize,
-    padj:        f64,
-    p_utest:     f64,
-    group_a:     f32,
-    group_b:     f32,
-    meth_diff:   f32,
-    meth_mean:   f32,
+    padj: f64,
+    p_utest: f64,
+    group_a: f32,
+    group_b: f32,
+    meth_diff: f32,
+    meth_mean: f32,
 }
 
 impl DmrFilteredRow {

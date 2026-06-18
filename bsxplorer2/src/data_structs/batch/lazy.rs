@@ -1,14 +1,8 @@
 use itertools::Itertools;
 use polars::prelude::*;
 
-use super::{
-    BsxBatch,
-    BsxColumns as BsxCol,
-};
-use crate::data_structs::enums::{
-    Context,
-    Strand,
-};
+use super::{BsxBatch, BsxColumns as BsxCol};
+use crate::data_structs::enums::{Context, Strand};
 
 #[derive(Clone)]
 pub struct LazyBsxBatch {
@@ -71,11 +65,9 @@ impl LazyBsxBatch {
         value: Strand,
     ) -> Self {
         self.filter(match value {
-            Strand::Forward | Strand::Reverse => {
-                BsxCol::Strand
-                    .col()
-                    .eq(lit(Option::<bool>::from(value).unwrap()))
-            },
+            Strand::Forward | Strand::Reverse => BsxCol::Strand
+                .col()
+                .eq(lit(Option::<bool>::from(value).unwrap())),
             _ => BsxCol::Context.col().is_null(),
         })
     }
@@ -86,11 +78,9 @@ impl LazyBsxBatch {
         value: Context,
     ) -> Self {
         self.filter(match value {
-            Context::CG | Context::CHG => {
-                BsxCol::Context
-                    .col()
-                    .eq(lit(Option::<bool>::from(value).unwrap()))
-            },
+            Context::CG | Context::CHG => BsxCol::Context
+                .col()
+                .eq(lit(Option::<bool>::from(value).unwrap())),
             _ => BsxCol::Context.col().is_null(),
         })
     }

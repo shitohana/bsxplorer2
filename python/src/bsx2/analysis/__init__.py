@@ -8,10 +8,43 @@ run raw pipelines or external DMR callers.
 
 from .assembly_compatibility import check_coordinate_bounds, compare_coordinate_sources, normalize_coordinate_table, read_genome_sizes, write_assembly_compatibility_report
 from .bsseq_qc import classify_bsseq_qc, compute_counts_qc, parse_bismark_alignment_report, parse_bismark_dedup_report, parse_bismark_mbias_report, write_bsseq_qc_outputs
-from .dmr_harmonization import assign_missing_dmr_ids, build_caller_support_matrix, canonical_dmr_columns, normalize_dmr_coordinates, validate_canonical_dmr_schema, write_schema_validation_report
+from .dmr_harmonization import (
+    CALLER_MODEL_FAMILY,
+    TIER_DESCRIPTIONS,
+    add_dmr_tiers,
+    assign_final_dmr_tier,
+    assign_missing_dmr_ids,
+    build_caller_support_matrix,
+    build_tier_reasons,
+    caller_model_family,
+    canonical_dmr_columns,
+    compute_multi_caller_evidence_score,
+    compute_validation_robustness_score,
+    normalize_dmr_coordinates,
+    validate_canonical_dmr_schema,
+    write_schema_validation_report,
+)
 from .dmr_functional_prioritization import add_functional_prioritization_scores, join_expression_evidence, link_dmrs_to_chromatin, link_dmrs_to_genes, link_dmrs_to_te, prioritize_dmr_linked_genes, read_chromatin_peaks, read_dmr_evidence_table, read_expression_table, read_gene_annotation, read_te_annotation, write_dmr_functional_prioritization_table
 from .cpg_level_glmm import glmmTMB_available, read_design_table, read_dmr_evidence_for_glmm, read_region_cpg_counts, rscript_available, run_cpg_level_glmm_validation
-from .external_dmr_callers import DMRseqAdapter, DSSAdapter, GenericBedAdapter, MetileneAdapter, MethylKitAdapter, adapter_for_caller
+from .coverage_set_qc import aggregate_counts_common_cpg, aggregate_counts_per_sample, build_cpg_coverage_qc, compare_per_sample_vs_common_sets, normalize_cpg_counts_table
+from .external_dmr_callers import (
+    ADAPTERS,
+    BSmoothAdapter,
+    BiSeqAdapter,
+    CombPAdapter,
+    DMRcateAdapter,
+    DMRseqAdapter,
+    DSSAdapter,
+    GenericBedAdapter,
+    HmmdmAdapter,
+    MethyLassoAdapter,
+    MetileneAdapter,
+    MethylKitAdapter,
+    MethylSigAdapter,
+    MOABSAdapter,
+    RADMethAdapter,
+    adapter_for_caller,
+)
 from .glmm_comparison import compare_beta_binomial_glm_vs_glmm, read_cpg_level_glmm_results, read_region_level_glm_results
 from .region_cpg_counts import extract_region_cpg_counts, extract_region_cpg_counts_pandas, extract_region_cpg_counts_rust, rust_region_cpg_extractor_available
 from .region_signal import RegionSignalConfig, aggregate_region_signal, available_region_signal_backends, normalize_counts_table, normalize_region_table, write_region_signal_qc, write_region_signal_table

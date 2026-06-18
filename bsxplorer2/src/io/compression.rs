@@ -3,12 +3,7 @@ mod inner {
     use std::convert::Infallible;
     use std::fmt::Display;
     use std::fs::File;
-    use std::io::{
-        copy,
-        Seek,
-        SeekFrom,
-        Write,
-    };
+    use std::io::{copy, Seek, SeekFrom, Write};
     use std::str::FromStr;
 
     // Added copy, Seek,
@@ -114,8 +109,7 @@ mod inner {
                         // Extract the first file
                         let mut file_in_zip = archive.by_index(0)?;
                         copy(&mut file_in_zip, &mut temp_file)?;
-                    }
-                    else {
+                    } else {
                         // Handle empty zip file - return empty temp file
                     }
                 },
@@ -138,12 +132,10 @@ mod inner {
             compression_level: u32,
         ) -> anyhow::Result<Box<dyn Write>> {
             let encoder: Box<dyn Write> = match self {
-                Compression::Gz => {
-                    Box::new(flate2::write::GzEncoder::new(
-                        handle,
-                        flate2::Compression::new(compression_level),
-                    ))
-                },
+                Compression::Gz => Box::new(flate2::write::GzEncoder::new(
+                    handle,
+                    flate2::Compression::new(compression_level),
+                )),
                 Compression::Zstd => {
                     Box::new(zstd::Encoder::new(handle, compression_level as i32)?)
                 },
@@ -156,12 +148,10 @@ mod inner {
                 Compression::Xz2 => {
                     Box::new(xz2::write::XzEncoder::new(handle, compression_level))
                 },
-                Compression::Bzip2 => {
-                    Box::new(bzip2::write::BzEncoder::new(
-                        handle,
-                        bzip2::Compression::new(compression_level),
-                    ))
-                },
+                Compression::Bzip2 => Box::new(bzip2::write::BzEncoder::new(
+                    handle,
+                    bzip2::Compression::new(compression_level),
+                )),
                 Compression::Zip => Box::new(zip::write::ZipWriter::new(handle)),
                 Compression::None => Box::new(handle),
             };

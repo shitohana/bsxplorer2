@@ -23,11 +23,7 @@ use rayon::slice::ParallelSliceMut;
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-use Classification::{
-    Core,
-    Edge,
-    Noise,
-};
+use Classification::{Core, Edge, Noise};
 
 use crate::data_structs::typedef::PosType;
 
@@ -126,8 +122,7 @@ impl Model {
                 let val = population.get_unchecked(cur_idx);
                 if val.abs_diff(sample) < self.eps {
                     cur_idx -= 1;
-                }
-                else {
+                } else {
                     break cur_idx + 1;
                 }
             };
@@ -139,8 +134,7 @@ impl Model {
                 let val = population.get_unchecked(cur_idx);
                 if val.abs_diff(sample) < self.eps {
                     cur_idx += 1;
-                }
-                else {
+                } else {
                     break cur_idx - 1;
                 }
             };
@@ -162,8 +156,7 @@ impl Model {
             let mut pop_clone = population.to_vec();
             pop_clone.par_sort_unstable();
             pop_clone
-        }
-        else {
+        } else {
             population.to_vec()
         };
 

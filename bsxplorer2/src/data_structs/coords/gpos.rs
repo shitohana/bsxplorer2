@@ -1,25 +1,16 @@
 use std::fmt::Display;
-use std::ops::{
-    Add,
-    Sub,
-};
+use std::ops::{Add, Sub};
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::NoStrand;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-use crate::data_structs::typedef::{
-    BsxSmallStr,
-    PosType,
-};
+use crate::data_structs::typedef::{BsxSmallStr, PosType};
 
 /// Represents a genomic position with a sequence name and a position.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq, Hash)]
 pub struct GenomicPosition {
-    seqname:  BsxSmallStr,
+    seqname: BsxSmallStr,
     position: PosType,
 }
 
@@ -31,8 +22,7 @@ impl PartialOrd for GenomicPosition {
     ) -> Option<std::cmp::Ordering> {
         if self.seqname == other.seqname {
             self.position.partial_cmp(&other.position)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -77,8 +67,7 @@ impl GenomicPosition {
     ) -> GenomicPosition {
         if shift > 0 {
             self.position += shift.unsigned_abs() as PosType
-        }
-        else {
+        } else {
             self.position -= shift.unsigned_abs() as PosType
         };
         self
@@ -89,7 +78,7 @@ impl From<bio::bio_types::annot::pos::SeqPosUnstranded> for GenomicPosition {
     /// Converts from `bio_types::annot::pos::SeqPosUnstranded`.
     fn from(value: bio::bio_types::annot::pos::SeqPosUnstranded) -> Self {
         Self {
-            seqname:  BsxSmallStr::from(value.refid().clone()),
+            seqname: BsxSmallStr::from(value.refid().clone()),
             position: value.pos() as PosType, // Convert isize to PosType (u32)
         }
     }

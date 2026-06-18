@@ -36,13 +36,6 @@ mod enums;
 mod methstats;
 pub mod typedef;
 
-
 pub use context_data::ContextData;
-pub use enums::{
-    Context,
-    Strand,
-};
-pub use methstats::{
-    MethAgg,
-    RegionMethAgg,
-};
+pub use enums::{Context, Strand};
+pub use methstats::{MethAgg, RegionMethAgg};

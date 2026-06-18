@@ -1,13 +1,7 @@
-use std::io::{
-    Cursor,
-    Write,
-};
+use std::io::{Cursor, Write};
 
 use bio::io::fasta::Writer as FastaWriter;
-use bsxplorer2::io::report::{
-    ReportReaderBuilder,
-    ReportType,
-};
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportType};
 use polars::prelude::*;
 use rand::rngs::StdRng;
 use rstest::*;
@@ -103,8 +97,7 @@ fn test_report_reading_with_alignment(
     if do_alignment {
         report_reader_builder = report_reader_builder
             .with_fasta_path(Some(sequence_file.path().to_path_buf()));
-    }
-    else {
+    } else {
         let index = noodles_fasta::fs::index(sequence_file.path())?;
         noodles_fasta::fai::io::Writer::new(fai_file.reopen()?).write_index(&index)?;
         report_reader_builder =
@@ -150,13 +143,11 @@ fn test_report_reading_with_alignment(
             }
             current_chr = batch_chr;
             current_batch = Some(batch);
-        }
-        else {
+        } else {
             // Same chromosome, extend the current batch
             if let Some(ref mut cb) = current_batch {
                 cb.extend(&batch)?;
-            }
-            else {
+            } else {
                 current_batch = Some(batch);
             }
         }

@@ -1,70 +1,46 @@
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::{Arc, Mutex};
 
-use bsxplorer2::data_structs::batch::{
-    AggMethod,
-    BsxBatch,
-};
+use bsxplorer2::data_structs::batch::{AggMethod, BsxBatch};
 use bsxplorer2::data_structs::coords::ContigIntervalMap;
 use bsxplorer2::data_structs::typedef::PosType;
 use bsxplorer2::prelude::*;
-use bsxplorer2::tools::dimred::{
-    pelt,
-    EqFloat,
-    MethDataBinom,
-};
-use bsxplorer2::utils::{
-    BoundThreadExecutor,
-    THREAD_POOL,
-};
+use bsxplorer2::tools::dimred::{pelt, EqFloat, MethDataBinom};
+use bsxplorer2::utils::{BoundThreadExecutor, THREAD_POOL};
 use clap::Args;
 use crossbeam::channel::Sender;
 use hashbrown::HashMap;
-use itertools::{
-    izip,
-    Itertools,
-};
-use log::{
-    debug,
-    error,
-    info,
-};
+use itertools::{izip, Itertools};
+use log::{debug, error, info};
 use rayon::prelude::*;
 use uuid::Uuid;
 
 use crate::dimred::write_imap;
 use crate::strings::dimred as strings;
-use crate::utils::{
-    check_validate_paths,
-    init_progress,
-    init_readers,
-};
+use crate::utils::{check_validate_paths, init_progress, init_readers};
 use crate::PipelineCommand;
 
 #[derive(Args, Debug, Clone)]
 pub(crate) struct DimRedArgs {
     #[arg(value_parser, num_args=1.., required = true, help = strings::FILES)]
-    files:        Vec<String>,
+    files: Vec<String>,
     #[arg(short, long, required = true, help = strings::OUTPUT)]
-    output:       PathBuf,
+    output: PathBuf,
     #[arg(short, long, help = strings::CONTEXT, default_value_t = Context::CG)]
-    context:      Context,
+    context: Context,
     #[arg(short = 'C', long, help = strings::COVERAGE, default_value_t = 5)]
-    coverage:     u16,
+    coverage: u16,
     #[arg(short, long, help = strings::BETA)]
-    beta:         Option<f64>,
+    beta: Option<f64>,
     #[arg(short, long, default_value_t = 20, help = strings::MIN_SIZE)]
-    min_size:     usize,
+    min_size: usize,
     #[arg(long, default_value_t = 10000, help = strings::CHUNK)]
-    chunk:        usize,
+    chunk: usize,
     #[arg(long, default_value_t = 1000, help = strings::INTERSECTION)]
     intersection: usize,
     #[arg(long, help = strings::JOINT, default_value_t = 5)]
-    joint:        usize,
+    joint: usize,
 }
 
 fn read_thread(
@@ -78,14 +54,12 @@ fn read_thread(
     THREAD_POOL.spawn(move || {
         pbar.wrap_iter(reader.iter_merged(AggMethod::Sum, AggMethod::Mean))
             .enumerate()
-            .filter_map(|(idx, batch_res)| {
-                match batch_res {
-                    Result::Err(e) => {
-                        eprintln!("Error processing batch {}: {}", idx, e);
-                        None
-                    },
-                    Result::Ok(batch) => Some(batch),
-                }
+            .filter_map(|(idx, batch_res)| match batch_res {
+                Result::Err(e) => {
+                    eprintln!("Error processing batch {}: {}", idx, e);
+                    None
+                },
+                Result::Ok(batch) => Some(batch),
             })
             .map(|b| {
                 b.lazy()
@@ -104,7 +78,7 @@ fn read_thread(
 
 struct DimRedRunner {
     cache: Option<(String, BsxBatch)>,
-    args:  DimRedArgs,
+    args: DimRedArgs,
 }
 
 impl DimRedRunner {
@@ -200,8 +174,7 @@ impl DimRedRunner {
                     // Update cache with remainder
                     *cached_batch = to_cache;
                     Some((to_process, false))
-                }
-                else {
+                } else {
                     None
                 }
             },
@@ -225,8 +198,7 @@ fn print_stats(
 ) {
     let compression_ratio = if before_dimred > 0 {
         (after_dimred as f64 / before_dimred as f64) * 100.0
-    }
-    else {
+    } else {
         0.0
     };
 
@@ -275,8 +247,7 @@ fn process_and_store(
     {
         if is_final {
             positions.push(batch.last_pos().unwrap());
-        }
-        else {
+        } else {
             densities.pop();
         }
 
@@ -288,12 +259,10 @@ fn process_and_store(
             izip!(positions, densities)
                 .map(|(pos, density)| (pos, density, uuid::Uuid::new_v4())),
         )
-    }
-    else {
+    } else {
         error!("Could not process batch {}", batch)
     }
 }
-
 
 impl PipelineCommand for DimRedArgs {
     fn run(&self) -> anyhow::Result<()> {
@@ -326,8 +295,7 @@ fn merge_changepoints<I: Eq + Send + Copy>(
                 if curr_id != next_id && (next_pos - curr_pos) <= r as PosType {
                     densities.push(next_density);
                     end_idx += 1;
-                }
-                else {
+                } else {
                     break;
                 }
             }

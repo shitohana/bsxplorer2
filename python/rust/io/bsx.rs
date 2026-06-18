@@ -3,8 +3,7 @@ use std::io::BufWriter;
 use std::path::PathBuf;
 
 use bsxplorer2::io::bsx::{
-    BsxFileReader as RsBsxFileReader,
-    BsxFileWriter as RsBsxIpcWriter,
+    BsxFileReader as RsBsxFileReader, BsxFileWriter as RsBsxIpcWriter,
 };
 use polars::prelude::IpcCompression;
 use pyo3::exceptions::PyIOError;
@@ -12,15 +11,12 @@ use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 
 use crate::data_structs::batch::PyBsxBatch;
-use crate::utils::{
-    FileOrFileLike,
-    SinkHandle,
-};
+use crate::utils::{FileOrFileLike, SinkHandle};
 
 #[pyclass(name = "BsxFileReader", unsendable)]
 #[derive(Debug, Clone)]
 pub struct PyBsxFileReader {
-    reader:            RsBsxFileReader,
+    reader: RsBsxFileReader,
     current_batch_idx: usize,
 }
 
@@ -84,12 +80,12 @@ impl PyBsxFileReader {
             .cache_batches(&batch_indices)
             .map_err(|e| PyPolarsErr::Polars(e).into())
     }
-    
+
     #[getter]
     pub fn n_threads(&self) -> usize {
         self.reader.n_threads()
     }
-    
+
     #[getter]
     pub fn blocks_total(&self) -> usize {
         self.reader.blocks_total()
@@ -104,20 +100,17 @@ impl PyBsxFileReader {
         if let Some(batch) = self.reader.cache_mut().pop_front() {
             self.current_batch_idx += 1;
             Some(Ok(batch.into()))
-        }
-        else if self.current_batch_idx < self.reader.blocks_total() {
+        } else if self.current_batch_idx < self.reader.blocks_total() {
             let to_read = (self.current_batch_idx
                 ..(self.current_batch_idx + self.reader.n_threads()))
                 .collect::<Vec<_>>();
             let cache_res = self.reader.cache_batches(&to_read);
             if cache_res.is_ok() {
                 self.__next__()
-            }
-            else {
+            } else {
                 Some(Err(PyPolarsErr::Polars(cache_res.unwrap_err()).into()))
             }
-        }
-        else {
+        } else {
             None
         }
     }

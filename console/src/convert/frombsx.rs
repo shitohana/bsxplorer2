@@ -2,17 +2,10 @@ use std::fs::File;
 use std::path::PathBuf;
 
 use bsxplorer2::prelude::*;
-use clap::{
-    Args,
-    ValueEnum,
-};
+use clap::{Args, ValueEnum};
 use spipe::spipe;
 
-use crate::utils::{
-    init_progress,
-    validate_input,
-    validate_output,
-};
+use crate::utils::{init_progress, validate_input, validate_output};
 use crate::PipelineCommand;
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]

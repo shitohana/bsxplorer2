@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,10 @@ from bsx2.analysis.region_signal import (
     available_region_signal_backends,
 )
 from bsx2.analysis.region_signal_rust import rust_region_aggregator_available
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SUBPROCESS_ENV = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "python" / "src")}
 
 
 def _regions() -> pd.DataFrame:
@@ -131,7 +136,8 @@ def test_cli_backend_pandas(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/aggregate_region_signal.py",
+            "-m",
+            "dmr_validation_framework.workflows.region_signal_aggregation",
             "--regions",
             str(regions_path),
             "--counts",
@@ -145,7 +151,8 @@ def test_cli_backend_pandas(tmp_path: Path) -> None:
             "--backend",
             "pandas",
         ],
-        cwd=Path(__file__).resolve().parents[3],
+        cwd=REPO_ROOT,
+        env=SUBPROCESS_ENV,
         check=False,
         capture_output=True,
         text=True,
@@ -166,7 +173,8 @@ def test_cli_backend_auto(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/aggregate_region_signal.py",
+            "-m",
+            "dmr_validation_framework.workflows.region_signal_aggregation",
             "--regions",
             str(regions_path),
             "--counts",
@@ -178,7 +186,8 @@ def test_cli_backend_auto(tmp_path: Path) -> None:
             "--backend",
             "auto",
         ],
-        cwd=Path(__file__).resolve().parents[3],
+        cwd=REPO_ROOT,
+        env=SUBPROCESS_ENV,
         check=False,
         capture_output=True,
         text=True,
@@ -198,7 +207,8 @@ def test_cli_backend_rust_clear_message_when_unavailable(tmp_path: Path) -> None
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/aggregate_region_signal.py",
+            "-m",
+            "dmr_validation_framework.workflows.region_signal_aggregation",
             "--regions",
             str(regions_path),
             "--counts",
@@ -210,7 +220,8 @@ def test_cli_backend_rust_clear_message_when_unavailable(tmp_path: Path) -> None
             "--backend",
             "rust",
         ],
-        cwd=Path(__file__).resolve().parents[3],
+        cwd=REPO_ROOT,
+        env=SUBPROCESS_ENV,
         check=False,
         capture_output=True,
         text=True,

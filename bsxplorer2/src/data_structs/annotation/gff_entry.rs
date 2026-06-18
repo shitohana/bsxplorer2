@@ -1,50 +1,34 @@
-use std::fmt::{
-    Debug,
-    Write,
-};
+use std::fmt::{Debug, Write};
 use std::hash::Hash;
 use std::str::FromStr;
-use std::{
-    f64,
-    fmt,
-};
+use std::{f64, fmt};
 
 use anyhow::anyhow;
 use arcstr::ArcStr;
 use hashbrown::HashMap;
 use nanoid::nanoid;
 use paste::paste;
-use serde::de::{
-    self,
-    Deserializer,
-    Visitor,
-};
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::de::{self, Deserializer, Visitor};
+use serde::{Deserialize, Serialize};
 
 use crate::data_structs::coords::Contig;
 use crate::data_structs::enums::Strand;
 use crate::data_structs::typedef::BsxSmallStr;
-use crate::{
-    getter_fn,
-    with_field_fn,
-};
+use crate::{getter_fn, with_field_fn};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GffEntryAttributes {
-    pub id:            Option<BsxSmallStr>,
-    pub name:          Option<Vec<BsxSmallStr>>,
-    pub alias:         Option<Vec<BsxSmallStr>>,
-    pub parent:        Option<Vec<BsxSmallStr>>,
-    pub target:        Option<Vec<Contig>>,
-    pub gap:           Option<Vec<String>>,
-    pub derives_from:  Option<Vec<String>>,
-    pub note:          Option<Vec<String>>,
-    pub dbxref:        Option<Vec<BsxSmallStr>>,
+    pub id: Option<BsxSmallStr>,
+    pub name: Option<Vec<BsxSmallStr>>,
+    pub alias: Option<Vec<BsxSmallStr>>,
+    pub parent: Option<Vec<BsxSmallStr>>,
+    pub target: Option<Vec<Contig>>,
+    pub gap: Option<Vec<String>>,
+    pub derives_from: Option<Vec<String>>,
+    pub note: Option<Vec<String>>,
+    pub dbxref: Option<Vec<BsxSmallStr>>,
     pub ontology_term: Option<Vec<String>>,
-    pub other:         HashMap<String, String>,
+    pub other: HashMap<String, String>,
 }
 
 impl Hash for GffEntryAttributes {
@@ -224,7 +208,8 @@ impl Serialize for GffEntryAttributes {
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         let mut serialized = String::with_capacity(128);
         let mut first = true;
 
@@ -234,8 +219,7 @@ impl Serialize for GffEntryAttributes {
                 if let Some(val) = $field.as_ref() {
                     if !first {
                         serialized.push(';');
-                    }
-                    else {
+                    } else {
                         first = false;
                     }
                     write!(serialized, "{}=", $key)
@@ -244,8 +228,7 @@ impl Serialize for GffEntryAttributes {
                     for item in val {
                         if !first_val {
                             serialized.push(',');
-                        }
-                        else {
+                        } else {
                             first_val = false;
                         }
                         write!(serialized, "{}", item)
@@ -258,8 +241,7 @@ impl Serialize for GffEntryAttributes {
                 if let Some(val) = $field.as_ref() {
                     if !first {
                         serialized.push(';');
-                    }
-                    else {
+                    } else {
                         first = false;
                     }
                     write!(serialized, "{}=", $key)
@@ -268,8 +250,7 @@ impl Serialize for GffEntryAttributes {
                     for item in val {
                         if !first_val {
                             serialized.push(',');
-                        }
-                        else {
+                        } else {
                             first_val = false;
                         }
                         // Apply the provided formatter closure
@@ -303,8 +284,7 @@ impl Serialize for GffEntryAttributes {
         for (k, v) in sorted_other {
             if !first {
                 serialized.push(';');
-            }
-            else {
+            } else {
                 first = false;
             }
             // Use write! for potentially better performance than format! +
@@ -319,7 +299,8 @@ impl Serialize for GffEntryAttributes {
 impl<'de> serde::Deserialize<'de> for GffEntryAttributes {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: Deserializer<'de>, {
+        D: Deserializer<'de>,
+    {
         struct GffEntryAttributesVisitor;
 
         impl Visitor<'_> for GffEntryAttributesVisitor {
@@ -337,7 +318,8 @@ impl<'de> serde::Deserialize<'de> for GffEntryAttributes {
                 value: &str,
             ) -> Result<GffEntryAttributes, E>
             where
-                E: de::Error, {
+                E: de::Error,
+            {
                 GffEntryAttributes::from_str(value).map_err(serde::de::Error::custom)
             }
         }
@@ -347,12 +329,12 @@ impl<'de> serde::Deserialize<'de> for GffEntryAttributes {
 }
 fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
-    D: serde::Deserializer<'de>, {
+    D: serde::Deserializer<'de>,
+{
     let s = String::deserialize(deserializer)?;
     if s == "." {
         Ok(None)
-    }
-    else {
+    } else {
         s.parse::<f64>().map(Some).map_err(|e| {
             serde::de::Error::custom(format!("Failed to parse f64: {}", e))
         })
@@ -361,12 +343,12 @@ where
 
 fn deserialize_optional_u8<'de, D>(deserializer: D) -> Result<Option<u8>, D::Error>
 where
-    D: serde::Deserializer<'de>, {
+    D: serde::Deserializer<'de>,
+{
     let s = String::deserialize(deserializer)?;
     if s == "." {
         Ok(None)
-    }
-    else {
+    } else {
         s.parse::<u8>()
             .map(Some)
             .map_err(|e| serde::de::Error::custom(format!("Failed to parse u8: {}", e)))
@@ -375,28 +357,28 @@ where
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RawGffEntry {
-    pub seqid:        BsxSmallStr,
-    pub source:       BsxSmallStr,
+    pub seqid: BsxSmallStr,
+    pub source: BsxSmallStr,
     pub feature_type: BsxSmallStr,
-    pub start:        u32,
-    pub end:          u32,
+    pub start: u32,
+    pub end: u32,
     #[serde(deserialize_with = "deserialize_optional_f64")]
-    pub score:        Option<f64>,
-    pub strand:       char,
+    pub score: Option<f64>,
+    pub strand: char,
     #[serde(deserialize_with = "deserialize_optional_u8")]
-    pub phase:        Option<u8>,
-    pub attributes:   String,
+    pub phase: Option<u8>,
+    pub attributes: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GffEntry {
-    pub contig:       Contig,
-    pub source:       ArcStr,
+    pub contig: Contig,
+    pub source: ArcStr,
     pub feature_type: ArcStr,
-    pub score:        Option<f64>,
-    pub phase:        Option<u8>,
-    pub attributes:   GffEntryAttributes,
-    pub id:           BsxSmallStr,
+    pub score: Option<f64>,
+    pub phase: Option<u8>,
+    pub attributes: GffEntryAttributes,
+    pub id: BsxSmallStr,
 }
 
 impl From<bio::io::bed::Record> for GffEntry {

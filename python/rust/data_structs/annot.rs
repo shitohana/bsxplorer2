@@ -1,27 +1,14 @@
-use std::collections::{
-    HashMap,
-    HashSet,
-};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use bsxplorer2::data_structs::annotation::{
-    EntryId,
-    GffEntry,
-    GffEntryAttributes,
-    HcAnnotStore,
+    EntryId, GffEntry, GffEntryAttributes, HcAnnotStore,
 };
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::typedef::PosType;
-use pyo3::exceptions::{
-    PyFileNotFoundError,
-    PyRuntimeError,
-    PyValueError,
-};
+use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use slotmap::{
-    Key,
-    KeyData,
-};
+use slotmap::{Key, KeyData};
 
 use crate::data_structs::coords::PyContig;
 
@@ -404,8 +391,7 @@ impl PyAnnotStore {
                     parent_entry.contig.end_gpos(),
                     parent_entry.contig.end_gpos().shift(flank as isize),
                 )
-            }
-            else {
+            } else {
                 // Flank upstream (before start)
                 (
                     parent_entry.contig.start_gpos().shift(flank as isize),
@@ -416,8 +402,7 @@ impl PyAnnotStore {
             // Ensure start <= end for the range
             let (start, end) = if start <= end {
                 (start, end)
-            }
-            else {
+            } else {
                 (end, start)
             };
 
@@ -467,7 +452,7 @@ impl PyAnnotStore {
                 .iter()
                 .map(|(id, entry)| (id.data().as_ffi(), entry.clone()))
                 .collect(),
-            index:   0,
+            index: 0,
         };
         Ok(iter)
     }
@@ -487,7 +472,7 @@ impl PyAnnotStore {
                 .iter()
                 .map(|(id, entry)| (id.data().as_ffi(), entry.clone()))
                 .collect(),
-            index:   0,
+            index: 0,
         };
         Py::new(slf.py(), iter)
     }
@@ -497,7 +482,7 @@ impl PyAnnotStore {
 // Iterator now yields (u64 EntryId, GffEntry)
 pub struct PyAnnotStoreIterator {
     entries: Vec<(u64, GffEntry)>,
-    index:   usize,
+    index: usize,
 }
 
 #[pymethods]
@@ -512,8 +497,7 @@ impl PyAnnotStoreIterator {
             let (id_u64, entry) = slf.entries[slf.index].clone();
             slf.index += 1;
             Some((id_u64, PyGffEntry::from(entry)))
-        }
-        else {
+        } else {
             None
         }
     }

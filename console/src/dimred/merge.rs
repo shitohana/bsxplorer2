@@ -1,26 +1,16 @@
 use std::fs::File;
-use std::io::{
-    BufReader,
-    Read,
-};
+use std::io::{BufReader, Read};
 use std::path::PathBuf;
 
 use bsxplorer2::data_structs::coords::ContigIntervalMap;
 use bsxplorer2::prelude::*;
-use bsxplorer2::tools::dimred::{
-    merge_breakpoints,
-    EqFloat,
-    MergeType,
-};
+use bsxplorer2::tools::dimred::{merge_breakpoints, EqFloat, MergeType};
 use bsxplorer2::utils::THREAD_POOL;
 use clap::Args;
 use rayon::prelude::*;
 
 use crate::dimred::write_imap;
-use crate::utils::{
-    expand_wildcard,
-    CliError,
-};
+use crate::utils::{expand_wildcard, CliError};
 use crate::PipelineCommand;
 
 pub fn read_segments<R: Read>(handle: R) -> anyhow::Result<ContigIntervalMap<EqFloat>> {
@@ -46,11 +36,11 @@ pub fn read_segments<R: Read>(handle: R) -> anyhow::Result<ContigIntervalMap<EqF
 #[derive(Debug, Clone, Args)]
 pub struct MergeArgs {
     #[arg(required = true)]
-    paths:      Vec<String>,
+    paths: Vec<String>,
     #[arg(required = true, default_value_t = MergeType::Full)]
     merge_type: MergeType,
     #[arg(required = true, help = "Prefix for output files")]
-    output:     String,
+    output: String,
 }
 
 impl PipelineCommand for MergeArgs {

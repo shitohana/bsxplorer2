@@ -3,11 +3,8 @@ use itertools::Itertools;
 use polars::prelude::*;
 
 use super::{
-    create_caregorical_dtype,
-    create_empty_categorical_dtype,
-    name_dtype_tuple,
-    BsxBatch,
-    BsxColumns as BsxCol,
+    create_caregorical_dtype, create_empty_categorical_dtype, name_dtype_tuple,
+    BsxBatch, BsxColumns as BsxCol,
 };
 use crate::data_structs::coords::Contig;
 use crate::io::report::ReportType;
@@ -18,15 +15,15 @@ use crate::with_field_fn;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BsxBatchBuilder {
     /// Optional categorical dtype for the chromosome column.
-    pub chr_dtype:        Option<DataType>,
+    pub chr_dtype: Option<DataType>,
     /// Flag to enable null checks.
-    pub check_nulls:      bool,
+    pub check_nulls: bool,
     /// Flag to enable sorted checks on the position column.
-    pub check_sorted:     bool,
+    pub check_sorted: bool,
     /// Flag to enable duplicate checks on the position column.
     pub check_duplicates: bool,
     /// Flag to rechunk the resulting DataFrame.
-    pub rechunk:          bool,
+    pub rechunk: bool,
     /// Flag to check for a single chromosome value per batch.
     pub check_single_chr: bool,
 }
@@ -55,11 +52,11 @@ impl BsxBatchBuilder {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn all_checks() -> Self {
         Self {
-            chr_dtype:        None,
+            chr_dtype: None,
             check_duplicates: true,
-            check_sorted:     true,
-            rechunk:          true,
-            check_nulls:      true,
+            check_sorted: true,
+            rechunk: true,
+            check_nulls: true,
             check_single_chr: true,
         }
     }
@@ -68,11 +65,11 @@ impl BsxBatchBuilder {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn no_checks() -> Self {
         Self {
-            chr_dtype:        None,
+            chr_dtype: None,
             check_duplicates: false,
-            check_sorted:     false,
-            rechunk:          false,
-            check_nulls:      false,
+            check_sorted: false,
+            rechunk: false,
+            check_nulls: false,
             check_single_chr: false,
         }
     }
@@ -84,7 +81,8 @@ impl BsxBatchBuilder {
     ) -> Self
     where
         S: AsRef<str>,
-        P: AsRef<[S]>, {
+        P: AsRef<[S]>,
+    {
         let dtype = Some(create_caregorical_dtype(
             chr_values.into_iter().map(Some).collect_vec(),
         ));
@@ -184,8 +182,7 @@ impl BsxBatchBuilder {
     pub fn concat(mut batches: Vec<BsxBatch>) -> PolarsResult<BsxBatch> {
         if batches.is_empty() {
             return Err(PolarsError::NoData("Vector is empty".into()));
-        }
-        else if batches.len() == 1 {
+        } else if batches.len() == 1 {
             return Ok(batches.pop().unwrap());
         }
 

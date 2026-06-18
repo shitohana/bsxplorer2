@@ -1,8 +1,5 @@
 use std::fs::File;
-use std::io::{
-    BufReader,
-    BufWriter,
-};
+use std::io::{BufReader, BufWriter};
 
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Strand;

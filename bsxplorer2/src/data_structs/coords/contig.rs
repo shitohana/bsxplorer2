@@ -3,27 +3,20 @@ use std::ops::Range;
 
 use bio::bio_types::annot::loc::Loc;
 use bio::bio_types::strand::ReqStrand;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use super::GenomicPosition;
 use crate::data_structs::enums::Strand;
-use crate::data_structs::typedef::{
-    BsxSmallStr,
-    PosType,
-    SeqNameStr,
-};
+use crate::data_structs::typedef::{BsxSmallStr, PosType, SeqNameStr};
 
 /// Represents a contig with a sequence name, start position, end position, and
 /// strand.
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Contig {
     seqname: BsxSmallStr,
-    start:   PosType,
-    end:     PosType,
-    strand:  Strand,
+    start: PosType,
+    end: PosType,
+    strand: Strand,
 }
 
 impl Contig {
@@ -136,9 +129,9 @@ impl From<Range<GenomicPosition>> for Contig {
         }
         Self {
             seqname: value.start.seqname().clone(),
-            start:   value.start.position(),
-            end:     value.end.position(),
-            strand:  Strand::None,
+            start: value.start.position(),
+            end: value.end.position(),
+            strand: Strand::None,
         }
     }
 }
@@ -162,9 +155,9 @@ impl From<bio::io::bed::Record> for Contig {
     fn from(value: bio::io::bed::Record) -> Self {
         Self {
             seqname: BsxSmallStr::from(value.chrom()),
-            start:   value.start() as PosType,
-            end:     value.end() as PosType,
-            strand:  match value.strand() {
+            start: value.start() as PosType,
+            end: value.end() as PosType,
+            strand: match value.strand() {
                 Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
                 Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
                 Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,
@@ -190,9 +183,9 @@ impl From<bio::io::gff::Record> for Contig {
     fn from(value: bio::io::gff::Record) -> Self {
         Self {
             seqname: BsxSmallStr::from(value.seqname()),
-            start:   *value.start() as PosType,
-            end:     *value.end() as PosType,
-            strand:  match value.strand() {
+            start: *value.start() as PosType,
+            end: *value.end() as PosType,
+            strand: match value.strand() {
                 Some(bio::bio_types::strand::Strand::Forward) => Strand::Forward,
                 Some(bio::bio_types::strand::Strand::Reverse) => Strand::Reverse,
                 Some(bio::bio_types::strand::Strand::Unknown) => Strand::None,

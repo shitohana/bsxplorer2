@@ -94,6 +94,9 @@ def compare_beta_binomial_glm_vs_glmm(
         "glmmTMB_unavailable",
         "glmm_temp_dir_missing",
         "model_error",
+        "model_no_lrt",
+        "model_not_converged",
+        "model_singular",
     })
     merged["confirmed_by_glmm"] = glm_sig & glmm_sig
     merged["glm_only_candidate"] = glm_sig & ~glmm_sig

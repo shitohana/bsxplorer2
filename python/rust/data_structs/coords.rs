@@ -1,18 +1,9 @@
-use std::ops::{
-    Add,
-    Sub,
-};
+use std::ops::{Add, Sub};
 
-use bsxplorer2::data_structs::coords::{
-    Contig,
-    GenomicPosition,
-};
+use bsxplorer2::data_structs::coords::{Contig, GenomicPosition};
 use bsxplorer2::data_structs::typedef::BsxSmallStr;
 use bsxplorer2::data_structs::Strand as RsStrand;
-use pyo3::exceptions::{
-    PyNotImplementedError,
-    PyValueError,
-};
+use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use pyo3::prelude::*;
 
 use super::utils::PyStrand;
@@ -20,7 +11,7 @@ use super::utils::PyStrand;
 #[pyclass(name = "GenomicPosition", get_all, set_all)]
 #[derive(Debug, Clone)]
 pub struct PyGenomicPosition {
-    seqname:  String,
+    seqname: String,
     position: u32,
 }
 
@@ -114,12 +105,10 @@ impl PyGenomicPosition {
 
         // Use the Rust Add implementation
         match self_rust.add(other_rust) {
-            Some(result_rust) => {
-                Ok(Some(Self {
-                    seqname:  result_rust.seqname().to_string(),
-                    position: result_rust.position(),
-                }))
-            },
+            Some(result_rust) => Ok(Some(Self {
+                seqname: result_rust.seqname().to_string(),
+                position: result_rust.position(),
+            })),
             None => Ok(None), // Different seqnames
         }
     }
@@ -140,12 +129,10 @@ impl PyGenomicPosition {
 
         // Use the Rust Sub implementation
         match self_rust.sub(other_rust) {
-            Some(result_rust) => {
-                Ok(Some(Self {
-                    seqname:  result_rust.seqname().to_string(),
-                    position: result_rust.position(),
-                }))
-            },
+            Some(result_rust) => Ok(Some(Self {
+                seqname: result_rust.seqname().to_string(),
+                position: result_rust.position(),
+            })),
             None => Ok(None), // Different seqnames or rhs > lhs
         }
     }
@@ -155,7 +142,7 @@ impl PyGenomicPosition {
 impl From<GenomicPosition> for PyGenomicPosition {
     fn from(gp: GenomicPosition) -> Self {
         Self {
-            seqname:  gp.seqname().to_string(),
+            seqname: gp.seqname().to_string(),
             position: gp.position(),
         }
     }
@@ -171,18 +158,18 @@ impl From<&PyGenomicPosition> for GenomicPosition {
 #[derive(Debug, Clone)] // Need these for conversion
 pub struct PyContig {
     pub(crate) seqname: String,
-    pub(crate) start:   u32,
-    pub(crate) end:     u32,
-    pub(crate) strand:  PyStrand, // Store the Rust enum internally
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+    pub(crate) strand: PyStrand, // Store the Rust enum internally
 }
 
 impl From<Contig> for PyContig {
     fn from(value: Contig) -> Self {
         PyContig {
             seqname: value.seqname().to_string(),
-            start:   value.start(),
-            end:     value.end(),
-            strand:  value.strand().into(),
+            start: value.start(),
+            end: value.end(),
+            strand: value.strand().into(),
         }
     }
 }
@@ -238,14 +225,14 @@ impl PyContig {
     // GenomicPosition methods
     fn start_gpos(&self) -> PyGenomicPosition {
         PyGenomicPosition {
-            seqname:  self.seqname.clone(),
+            seqname: self.seqname.clone(),
             position: self.start,
         }
     }
 
     fn end_gpos(&self) -> PyGenomicPosition {
         PyGenomicPosition {
-            seqname:  self.seqname.clone(),
+            seqname: self.seqname.clone(),
             position: self.end,
         }
     }

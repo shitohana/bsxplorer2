@@ -4,9 +4,14 @@ version = "0.1.0"
 description = "A high-performance library for bisulfite sequencing data analysis and DNA methylation research"
 authors = ["shitohana <kyudytskiy@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "bsx2", from = "src" },
+    { include = "dmr_validation_framework", from = "src" },
+]
 
 [tool.poetry.scripts]
 cluster-bsx = "bsx2.clustering.cli:main"
+dmr-validation = "dmr_validation_framework.cli:main"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
@@ -18,6 +23,7 @@ matplotlib = ">=3.8,<4.0"
 plotly = ">=5.0,<6.0"
 pydantic = "~=2.0"
 holoviews = "^1.20.2"
+panel = ">=1.4,<2.0"
 beartype = "^0.18"
 
 [tool.poetry.group.dev.dependencies]
@@ -35,7 +41,7 @@ extend-exclude = ["src/bsx2/_bsx2.pyi"]
 select = ["F", "I", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["bsx2"]
+known-first-party = ["bsx2", "dmr_validation_framework"]
 
 [tool.ruff.format]
 quote-style = "double"

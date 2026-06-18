@@ -7,46 +7,23 @@ use std::process::exit;
 use std::str::FromStr;
 use std::time::Instant;
 
-use anyhow::{
-    bail,
-    ensure,
-};
+use anyhow::{bail, ensure};
 use arcstr::ArcStr;
 use bio::bio_types::annot::pos::Pos;
-use hashbrown::{
-    HashMap,
-    HashSet,
-};
-use itertools::{
-    izip,
-    Itertools,
-};
+use hashbrown::{HashMap, HashSet};
+use itertools::{izip, Itertools};
 use polars_arrow::pushable::Pushable;
 use rayon::iter::IndexedParallelIterator;
 use rayon::prelude::*;
-use rust_lapper::{
-    Interval,
-    Lapper,
-};
+use rust_lapper::{Interval, Lapper};
 use spipe::spipe;
 use typed_floats::PositiveFinite;
 
-use super::dbscan::{
-    self,
-    Classification,
-};
+use super::dbscan::{self, Classification};
 use crate::data_structs::coords::ContigIntervalMap;
-use crate::data_structs::typedef::{
-    DensityType,
-    PosType,
-};
+use crate::data_structs::typedef::{DensityType, PosType};
 use crate::utils::THREAD_POOL;
-use crate::{
-    AggMethod,
-    BsxSmallStr,
-    Contig,
-    Strand,
-};
+use crate::{AggMethod, BsxSmallStr, Contig, Strand};
 
 pub type EqFloat = PositiveFinite;
 
@@ -139,8 +116,7 @@ fn partition_by_dist_chr(
             .unwrap_or(true)
         {
             last_vec.push(new);
-        }
-        else {
+        } else {
             acc.push(vec![new]);
         }
         acc
@@ -278,8 +254,7 @@ fn interleave_single(
     loop {
         if r_idx == r_len {
             break;
-        }
-        else if i_idx != i_len {
+        } else if i_idx != i_len {
             let ref_pos = unsafe { *reference.get_unchecked(r_idx) };
             let int_pos = unsafe { intervals.get_unchecked(i_idx) }.start;
 
@@ -295,8 +270,7 @@ fn interleave_single(
             // Else if positions are equal and not zero reference point
             // is main (i.e. this_is_ref = true). But we update value
             // as well
-            }
-            else if ref_pos == int_pos {
+            } else if ref_pos == int_pos {
                 cached_val = unsafe { intervals.get_unchecked(i_idx) }.val.into();
             }
 
@@ -312,8 +286,7 @@ fn interleave_single(
             // End of aggregation - we encountered reference point. Add the
             // remaining points to agg and finalize it.
             // Agg is reset
-            }
-            else if this_is_ref {
+            } else if this_is_ref {
                 cached_agg += cached_val * (ref_pos - cached_oft) as f64;
                 result.push((cached_pos, cached_agg / (ref_pos - cached_pos) as f64));
 
@@ -324,8 +297,7 @@ fn interleave_single(
             // int -> int
             // Another interval boundary, just update cached value and increment
             // agg.
-            }
-            else if cached_is_ref {
+            } else if cached_is_ref {
                 cached_agg = cached_val * (int_pos - cached_oft) as f64;
                 cached_val = unsafe { intervals.get_unchecked(i_idx) }.val.into();
                 cached_oft = int_pos;
@@ -333,8 +305,7 @@ fn interleave_single(
             // ref -> int
             // Starting an aggregation, update current value (cached_val)
             // and cached_oft;
-            }
-            else {
+            } else {
                 cached_agg += cached_val * (int_pos - cached_oft) as f64;
                 cached_val = unsafe { intervals.get_unchecked(i_idx) }.val.into();
                 cached_oft = int_pos
@@ -347,15 +318,13 @@ fn interleave_single(
                     i_idx += 1;
                 }
             // Otherwise increment reference
-            }
-            else {
+            } else {
                 i_idx += 1
             }
         // If there is no more intervals - just save rest of reference points
         // with the same value (because we assume both reference and sample
         // cover the same region)
-        }
-        else {
+        } else {
             result.push((unsafe { *reference.get_unchecked(r_idx) }, cached_val));
             r_idx += 1;
         }
@@ -391,14 +360,12 @@ pub fn merge_breakpoints(
 ) -> Vec<ContigIntervalMap<EqFloat>> {
     let all_breakpoints = gather_breakpoints(intervals);
 
-    let merged_breakpoints = THREAD_POOL.install(move || {
-        match merge_type {
-            MergeType::Full => preprocess_all_bpoints(all_breakpoints),
-            MergeType::Dbscan(eps, mpt, max_dist, agg_method) => {
-                let partitioned = partition_by_dist(all_breakpoints, max_dist);
-                apply_dbscan(partitioned, eps, mpt, agg_method)
-            },
-        }
+    let merged_breakpoints = THREAD_POOL.install(move || match merge_type {
+        MergeType::Full => preprocess_all_bpoints(all_breakpoints),
+        MergeType::Dbscan(eps, mpt, max_dist, agg_method) => {
+            let partitioned = partition_by_dist(all_breakpoints, max_dist);
+            apply_dbscan(partitioned, eps, mpt, agg_method)
+        },
     });
 
     let result = THREAD_POOL.install(|| {
@@ -424,8 +391,8 @@ pub fn merge_breakpoints(
                         for (v, score) in values {
                             res_intervals.push(Interval {
                                 start: prev_value,
-                                stop:  v,
-                                val:   EqFloat::try_from(score).unwrap(),
+                                stop: v,
+                                val: EqFloat::try_from(score).unwrap(),
                             });
                             prev_value = v;
                         }

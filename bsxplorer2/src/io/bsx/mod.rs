@@ -78,9 +78,6 @@ mod write;
 pub use index::BatchIndex;
 pub use multi::MultiBsxFileReader;
 // pub use read::{BsxFileIterator, BsxFileReader};
-pub use read::{
-    BsxFileIterator,
-    BsxFileReader,
-};
+pub use read::{BsxFileIterator, BsxFileReader};
 pub use region::RegionReader;
 pub use write::BsxFileWriter;

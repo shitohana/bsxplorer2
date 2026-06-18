@@ -113,6 +113,23 @@ poetry install
 - Python usage: see [python/README.md](python/README.md) for metagene, clustering,
   and chromosome-map workflows
 
+## Example: Oryza sativa (rice) methylation visualization
+
+Example visualization outputs produced with the `bsx2` Python layer on a real
+*Oryza sativa* whole-genome bisulfite dataset (GEO accession **GSE202715**;
+4 samples — Seedling vs. Callus, 2 replicates each; contexts CG / CHG / CHH) are
+included under [outputs/oryza_rice_bsx2_figures](outputs/oryza_rice_bsx2_figures):
+
+- **Chromosome methylation maps** — per-chromosome weighted methylation along 1 Mb windows
+- **Methylation distributions** — per-condition box and violin plots
+- **PCA** of the 1 Mb methylation-window matrix
+- **Generic heatmap** — sample × chromosome-context weighted methylation
+- **Metagene profiles and heatmaps** — gene-body ± 2 kb aggregation over MSU7/RGAP annotation
+
+`plots/` holds the standard PNG figures; `plots_highres/` additionally provides
+300 dpi PNG plus scalable vector copies (PDF and SVG) suitable for publication and
+thesis figures.
+
 ## BSX Format (Arrow IPC File Format)
 
 BSXplorer2 uses the BSX file format, built on Arrow IPC, as a storage layer for efficient

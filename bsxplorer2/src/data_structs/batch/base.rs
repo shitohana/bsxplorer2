@@ -1,32 +1,20 @@
 use std::cmp::Ordering;
 use std::fmt::Display;
-use std::ops::{
-    Deref,
-    Index,
-};
+use std::ops::{Deref, Index};
 use std::panic::AssertUnwindSafe;
 use std::str::FromStr;
 
 use anyhow::bail;
-use itertools::{
-    izip,
-    Itertools,
-};
+use itertools::{izip, Itertools};
 use num::Zero;
 use polars::frame::column::ScalarColumn;
 use polars::prelude::*;
 
 use super::{
-    create_empty_categorical_dtype,
-    create_empty_series,
-    get_col_fn,
+    create_empty_categorical_dtype, create_empty_series, get_col_fn,
     BsxColumns as BsxCol,
 };
-use crate::data_structs::typedef::{
-    CountType,
-    DensityType,
-    PosType,
-};
+use crate::data_structs::typedef::{CountType, DensityType, PosType};
 use crate::plsmallstr;
 use crate::prelude::*;
 #[cfg(feature = "tools")]
@@ -339,8 +327,7 @@ impl BsxBatch {
             Err(PolarsError::SchemaMismatch(
                 format!("{:?} != {:?}", res_schema, target_schema).into(),
             ))
-        }
-        else {
+        } else {
             res.collect()
         }
     }
@@ -381,23 +368,17 @@ impl BsxBatch {
         mean: f64,
         pvalue: f64,
     ) -> PolarsResult<Self> {
-        use statrs::distribution::{
-            Binomial,
-            DiscreteCDF,
-        };
+        use statrs::distribution::{Binomial, DiscreteCDF};
         let pvalue_vec = izip!(self.count_m(), self.count_total())
             .map(|(m, n)| (m.unwrap_or(0), n.unwrap_or(0)))
             .map(|(m, n)| {
                 if n.is_zero() {
                     f64::NAN
-                }
-                else if m.is_zero() {
+                } else if m.is_zero() {
                     1.0
-                }
-                else if n == m {
+                } else if n == m {
                     0.0
-                }
-                else {
+                } else {
                     let binom = Binomial::new(mean, n as u64).unwrap();
                     1.0 - binom.cdf(m as u64)
                 }
@@ -409,14 +390,7 @@ impl BsxBatch {
             &pvalue_vec
                 .iter()
                 .cloned()
-                .map(|p| {
-                    if 0.0 <= p && p <= pvalue {
-                        1
-                    }
-                    else {
-                        0
-                    }
-                })
+                .map(|p| if 0.0 <= p && p <= pvalue { 1 } else { 0 })
                 .map(AnyValue::UInt16)
                 .collect_vec(),
             true,
@@ -428,14 +402,7 @@ impl BsxBatch {
             &pvalue_vec
                 .iter()
                 .cloned()
-                .map(|p| {
-                    if !p.is_nan() {
-                        1
-                    }
-                    else {
-                        0
-                    }
-                })
+                .map(|p| if !p.is_nan() { 1 } else { 0 })
                 .map(AnyValue::UInt16)
                 .collect_vec(),
             true,
@@ -671,8 +638,7 @@ impl BsxBatch {
             std::panic::catch_unwind(AssertUnwindSafe(|| self.position().first()));
         if result.is_err() {
             panic!("Polars internal error. Make sure to rechunk the data!")
-        }
-        else {
+        } else {
             result.unwrap()
         }
     }
@@ -687,8 +653,7 @@ impl BsxBatch {
             std::panic::catch_unwind(AssertUnwindSafe(|| self.position().last()));
         if result.is_err() {
             panic!("Polars internal error. Make sure to rechunk the data!")
-        }
-        else {
+        } else {
             result.unwrap()
         }
     }
@@ -744,8 +709,7 @@ impl BsxBatch {
         let last = self.last_pos();
         if let (Some(s), Some(f), Some(l)) = (seqname, first, last) {
             Some(Contig::new(s, f, l, Strand::None))
-        }
-        else {
+        } else {
             None
         }
     }
@@ -770,14 +734,7 @@ impl BsxBatch {
                 .as_materialized_series()
                 .iter()
                 .zip(bitmap.iter())
-                .map(|(v, valid)| {
-                    if *valid {
-                        v
-                    }
-                    else {
-                        AnyValue::Null
-                    }
-                })
+                .map(|(v, valid)| if *valid { v } else { AnyValue::Null })
                 .collect_vec();
             Series::new(column.as_ref().into(), &values)
         })?;
@@ -919,51 +876,39 @@ impl AggMethod {
     #[allow(clippy::type_complexity)]
     pub fn get_fn(&self) -> Box<dyn Fn(&[f32]) -> f64 + Sync + Send> {
         Box::new(match self {
-            AggMethod::Mean => {
-                |arr: &[f32]| {
-                    let len = arr.len();
-                    arr.iter().sum::<f32>() as f64 / len as f64
-                }
+            AggMethod::Mean => |arr: &[f32]| {
+                let len = arr.len();
+                arr.iter().sum::<f32>() as f64 / len as f64
             },
             AggMethod::Sum => |arr: &[f32]| arr.iter().sum::<f32>() as f64,
-            AggMethod::GeometricMean => {
-                |arr: &[f32]| {
-                    let len = arr.len();
-                    if arr.is_empty() {
-                        f64::NAN
-                    }
-                    else {
-                        (arr.iter().map(|v| (*v as f64).ln()).sum::<f64>() / len as f64)
-                            .exp()
-                    }
+            AggMethod::GeometricMean => |arr: &[f32]| {
+                let len = arr.len();
+                if arr.is_empty() {
+                    f64::NAN
+                } else {
+                    (arr.iter().map(|v| (*v as f64).ln()).sum::<f64>() / len as f64)
+                        .exp()
                 }
             },
             #[cfg(feature = "tools")]
-            AggMethod::Median => {
-                |arr: &[f32]| {
-                    use statrs::statistics::*;
-                    if arr.is_empty() {
-                        f64::NAN
-                    }
-                    else {
-                        Data::new(arr.iter().map(|v| *v as f64).collect_vec())
-                            .percentile(50)
-                    }
+            AggMethod::Median => |arr: &[f32]| {
+                use statrs::statistics::*;
+                if arr.is_empty() {
+                    f64::NAN
+                } else {
+                    Data::new(arr.iter().map(|v| *v as f64).collect_vec())
+                        .percentile(50)
                 }
             },
-            AggMethod::Max => {
-                |arr: &[f32]| {
-                    *arr.iter()
-                        .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                        .unwrap_or(&f32::NAN) as f64
-                }
+            AggMethod::Max => |arr: &[f32]| {
+                *arr.iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                    .unwrap_or(&f32::NAN) as f64
             },
-            AggMethod::Min => {
-                |arr: &[f32]| {
-                    *arr.iter()
-                        .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                        .unwrap_or(&f32::NAN) as f64
-                }
+            AggMethod::Min => |arr: &[f32]| {
+                *arr.iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                    .unwrap_or(&f32::NAN) as f64
             },
         })
     }
@@ -972,102 +917,92 @@ impl AggMethod {
     #[allow(clippy::type_complexity)]
     pub fn get_expr(&self) -> Box<dyn Fn(Vec<&Column>) -> Column> {
         Box::new(match self {
-            AggMethod::Mean => {
-                |columns: Vec<&Column>| {
-                    if columns.is_empty() {
-                        return Series::new_empty("".into(), &DataType::Float64).into();
-                    }
-                    let sum: Column = columns
+            AggMethod::Mean => |columns: Vec<&Column>| {
+                if columns.is_empty() {
+                    return Series::new_empty("".into(), &DataType::Float64).into();
+                }
+                let sum: Column = columns
+                    .iter()
+                    .map(|col| {
+                        col.as_materialized_series()
+                            .cast(&DataType::Float64)
+                            .unwrap()
+                    })
+                    .reduce(|acc, series| (&acc + &series).unwrap())
+                    .unwrap()
+                    .into();
+                let count = columns.len() as f64;
+                &sum / count
+            },
+            AggMethod::Sum => |columns: Vec<&Column>| {
+                if columns.is_empty() {
+                    return Series::new_empty("".into(), &DataType::Float64).into();
+                }
+                columns
+                    .iter()
+                    .map(|col| {
+                        col.as_materialized_series()
+                            .cast(&DataType::Float64)
+                            .unwrap()
+                    })
+                    .reduce(|acc, series| (&acc + &series).unwrap())
+                    .unwrap()
+                    .into()
+            },
+            AggMethod::GeometricMean => |columns: Vec<&Column>| {
+                if columns.is_empty() {
+                    return Series::new_empty("".into(), &DataType::Float64).into();
+                }
+                let log_sum = columns
+                    .iter()
+                    .map(|col| {
+                        col.as_materialized_series()
+                            .cast(&DataType::Float64)
+                            .unwrap()
+                            .log(std::f64::consts::E)
+                    })
+                    .reduce(|acc, series| (&acc + &series).unwrap())
+                    .unwrap();
+                let count = columns.len() as f64;
+                let log_mean = &log_sum / count;
+                log_mean.exp().into()
+            },
+            AggMethod::Median => |columns: Vec<&Column>| {
+                if columns.is_empty() {
+                    return Series::new_empty("".into(), &DataType::Float64).into();
+                }
+                let height = columns[0].len();
+                let mut values = Vec::with_capacity(height);
+                for i in 0..height {
+                    let row_values: Vec<f64> = columns
                         .iter()
                         .map(|col| {
                             col.as_materialized_series()
                                 .cast(&DataType::Float64)
                                 .unwrap()
-                        })
-                        .reduce(|acc, series| (&acc + &series).unwrap())
-                        .unwrap()
-                        .into();
-                    let count = columns.len() as f64;
-                    &sum / count
-                }
-            },
-            AggMethod::Sum => {
-                |columns: Vec<&Column>| {
-                    if columns.is_empty() {
-                        return Series::new_empty("".into(), &DataType::Float64).into();
-                    }
-                    columns
-                        .iter()
-                        .map(|col| {
-                            col.as_materialized_series()
-                                .cast(&DataType::Float64)
+                                .get(i)
+                                .unwrap()
+                                .extract::<f64>()
                                 .unwrap()
                         })
-                        .reduce(|acc, series| (&acc + &series).unwrap())
-                        .unwrap()
-                        .into()
-                }
-            },
-            AggMethod::GeometricMean => {
-                |columns: Vec<&Column>| {
-                    if columns.is_empty() {
-                        return Series::new_empty("".into(), &DataType::Float64).into();
-                    }
-                    let log_sum = columns
-                        .iter()
-                        .map(|col| {
-                            col.as_materialized_series()
-                                .cast(&DataType::Float64)
-                                .unwrap()
-                                .log(std::f64::consts::E)
-                        })
-                        .reduce(|acc, series| (&acc + &series).unwrap())
-                        .unwrap();
-                    let count = columns.len() as f64;
-                    let log_mean = &log_sum / count;
-                    log_mean.exp().into()
-                }
-            },
-            AggMethod::Median => {
-                |columns: Vec<&Column>| {
-                    if columns.is_empty() {
-                        return Series::new_empty("".into(), &DataType::Float64).into();
-                    }
-                    let height = columns[0].len();
-                    let mut values = Vec::with_capacity(height);
-                    for i in 0..height {
-                        let row_values: Vec<f64> = columns
-                            .iter()
-                            .map(|col| {
-                                col.as_materialized_series()
-                                    .cast(&DataType::Float64)
-                                    .unwrap()
-                                    .get(i)
-                                    .unwrap()
-                                    .extract::<f64>()
-                                    .unwrap()
-                            })
-                            .collect();
-                        let median = if row_values.is_empty() {
-                            f64::NAN
+                        .collect();
+                    let median = if row_values.is_empty() {
+                        f64::NAN
+                    } else {
+                        let mut sorted = row_values;
+                        sorted.sort_by(|a, b| {
+                            a.partial_cmp(b).unwrap_or(Ordering::Equal)
+                        });
+                        let len = sorted.len();
+                        if len % 2 == 0 {
+                            (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
+                        } else {
+                            sorted[len / 2]
                         }
-                        else {
-                            let mut sorted = row_values;
-                            sorted.sort_by(|a, b| {
-                                a.partial_cmp(b).unwrap_or(Ordering::Equal)
-                            });
-                            let len = sorted.len();
-                            if len % 2 == 0 {
-                                (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
-                            }
-                            else {
-                                sorted[len / 2]
-                            }
-                        };
-                        values.push(median);
-                    }
-                    Series::from_vec("".into(), values).into()
+                    };
+                    values.push(median);
                 }
+                Series::from_vec("".into(), values).into()
             },
             AggMethod::Max => {
                 todo!()

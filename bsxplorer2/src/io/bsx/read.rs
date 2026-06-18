@@ -4,17 +4,10 @@ use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
 use itertools::Itertools;
-use memmap2::{
-    Mmap,
-    MmapOptions,
-};
+use memmap2::{Mmap, MmapOptions};
 use polars::prelude::*;
 use polars_arrow::io::ipc::read::{
-    read_batch,
-    read_file_dictionaries,
-    read_file_metadata,
-    Dictionaries,
-    FileMetadata,
+    read_batch, read_file_dictionaries, read_file_metadata, Dictionaries, FileMetadata,
 };
 use rayon::prelude::*;
 
@@ -25,10 +18,10 @@ use crate::utils::THREAD_POOL;
 // ThreadLocalHandle no longer needs a lifetime parameter as it holds its own
 // Arc<Mmap>
 struct ThreadLocalHandle {
-    _mmap:           Arc<Mmap>, // Hold a clone of the shared Mmap Arc
-    handle:          Cursor<&'static [u8]>, /* Cursor borrowing from the Mmap inside
-                                 * the Arc */
-    data_scratch:    Vec<u8>,
+    _mmap: Arc<Mmap>, // Hold a clone of the shared Mmap Arc
+    handle: Cursor<&'static [u8]>, /* Cursor borrowing from the Mmap inside
+                       * the Arc */
+    data_scratch: Vec<u8>,
     message_scratch: Vec<u8>,
 }
 
@@ -68,8 +61,7 @@ impl ThreadLocalHandle {
         );
         if let Err(err) = chunk {
             Some(Err(err))
-        }
-        else {
+        } else {
             let chunk = chunk.unwrap();
             let result = DataFrame::try_from((chunk, metadata.schema.as_ref()));
             Some(result)
@@ -81,12 +73,12 @@ impl ThreadLocalHandle {
 /// reading batches in parallel.
 pub struct BsxFileReader {
     thread_local_handles: Vec<ThreadLocalHandle>, // Holds the new struct
-    cache:                VecDeque<BsxBatch>,
-    metadata:             Arc<FileMetadata>,
-    dictionaries:         Arc<Dictionaries>,
-    blocks_total:         usize,
-    _mmap:                Arc<Mmap>, /* Still need to hold the original Arc to keep
-                                      * the Mmap alive */
+    cache: VecDeque<BsxBatch>,
+    metadata: Arc<FileMetadata>,
+    dictionaries: Arc<Dictionaries>,
+    blocks_total: usize,
+    _mmap: Arc<Mmap>, /* Still need to hold the original Arc to keep
+                       * the Mmap alive */
 }
 
 impl Clone for BsxFileReader {
@@ -179,8 +171,7 @@ impl BsxFileReader {
         );
         if let Some(Ok(df)) = df {
             Some(Ok(unsafe { BsxBatch::new_unchecked(df) }))
-        }
-        else {
+        } else {
             df.map(|e| Err(e.unwrap_err()))
         }
     }
@@ -267,7 +258,7 @@ impl IntoIterator for BsxFileReader {
 
     fn into_iter(self) -> Self::IntoIter {
         BsxFileIterator {
-            reader:        self,
+            reader: self,
             current_batch: 0,
         }
     }
@@ -275,7 +266,7 @@ impl IntoIterator for BsxFileReader {
 
 /// An iterator over the batches in a `BsxFileReader`.
 pub struct BsxFileIterator {
-    reader:        BsxFileReader,
+    reader: BsxFileReader,
     current_batch: usize,
 }
 
@@ -286,8 +277,7 @@ impl Iterator for BsxFileIterator {
         if let Some(batch) = self.reader.cache_mut().pop_front() {
             self.current_batch += 1;
             Some(Ok(batch))
-        }
-        else if self.current_batch < self.reader.blocks_total() {
+        } else if self.current_batch < self.reader.blocks_total() {
             let to_read = (self.current_batch
                 ..(self.current_batch + self.reader.n_threads()))
                 .collect_vec();
@@ -295,12 +285,10 @@ impl Iterator for BsxFileIterator {
 
             if let Err(err) = cache_res {
                 Some(Err(err))
-            }
-            else {
+            } else {
                 self.next()
             }
-        }
-        else {
+        } else {
             None
         }
     }
@@ -312,13 +300,15 @@ impl Iterator for BsxFileIterator {
 
     fn count(self) -> usize
     where
-        Self: Sized, {
+        Self: Sized,
+    {
         self.reader.blocks_total() - self.current_batch
     }
 
     fn last(self) -> Option<Self::Item>
     where
-        Self: Sized, {
+        Self: Sized,
+    {
         let mut reader = self.reader;
         reader.get_batch(reader.blocks_total() - 1)
     }
@@ -332,5 +322,3 @@ impl Iterator for BsxFileIterator {
         self.reader.get_batch(n)
     }
 }
-
-

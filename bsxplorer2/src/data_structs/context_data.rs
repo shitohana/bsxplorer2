@@ -5,10 +5,7 @@ use polars::frame::DataFrame;
 use polars::prelude::*;
 
 use super::typedef::PosType;
-use crate::data_structs::enums::{
-    Context,
-    Strand,
-};
+use crate::data_structs::enums::{Context, Strand};
 
 #[derive(Debug, Clone)]
 pub struct Entry(PosType, Strand, Context);
@@ -197,8 +194,7 @@ impl ContextData {
             let remaining = self.entries.split_off(&split_entry);
             std::mem::swap(&mut drained, &mut self.entries);
             self.entries = remaining;
-        }
-        else {
+        } else {
             std::mem::swap(&mut drained, &mut self.entries);
         }
 

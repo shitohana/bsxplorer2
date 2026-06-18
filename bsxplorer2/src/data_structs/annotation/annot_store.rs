@@ -6,46 +6,20 @@ use std::io::Read;
 use std::ops::Range;
 use std::sync::Arc;
 
-use anyhow::{
-    anyhow,
-    bail,
-};
+use anyhow::{anyhow, bail};
 use arcstr::ArcStr;
 use hashbrown::HashMap;
 use id_tree::{
-    InsertBehavior,
-    Node,
-    NodeId,
-    NodeIdError,
-    RemoveBehavior,
-    Tree,
-    TreeBuilder,
+    InsertBehavior, Node, NodeId, NodeIdError, RemoveBehavior, Tree, TreeBuilder,
 };
-use itertools::{
-    Either,
-    Itertools,
-};
+use itertools::{Either, Itertools};
 use regex_lite::Regex;
-use slotmap::{
-    new_key_type,
-    KeyData,
-    SlotMap,
-};
+use slotmap::{new_key_type, KeyData, SlotMap};
 
 use super::RawGffEntry;
-use crate::data_structs::annotation::{
-    GffEntry,
-    GffEntryAttributes,
-};
-use crate::data_structs::coords::{
-    Contig,
-    ContigIntervalMap,
-    GenomicPosition,
-};
-use crate::data_structs::typedef::{
-    BsxSmallStr,
-    PosType,
-};
+use crate::data_structs::annotation::{GffEntry, GffEntryAttributes};
+use crate::data_structs::coords::{Contig, ContigIntervalMap, GenomicPosition};
+use crate::data_structs::typedef::{BsxSmallStr, PosType};
 use crate::getter_fn;
 
 // TODO: Somehow change the parent-child id find, so we dont have to
@@ -62,9 +36,9 @@ impl From<u64> for EntryId {
 }
 
 pub struct EntryTree {
-    tree:          Tree<EntryId>,
+    tree: Tree<EntryId>,
     tree_node_ids: HashMap<EntryId, Arc<NodeId>>,
-    tree_root_id:  Arc<NodeId>,
+    tree_root_id: Arc<NodeId>,
 }
 
 impl FromIterator<(EntryId, Option<EntryId>)> for EntryTree {
@@ -109,12 +83,10 @@ impl EntryTree {
             if let Some(parent_id) = parent {
                 if !self.tree_node_ids.contains_key(&parent_id) {
                     queue.push_back((child, Some(parent_id)));
-                }
-                else {
+                } else {
                     self.insert_under(child, parent_id).unwrap()
                 }
-            }
-            else {
+            } else {
                 self.insert_to_root(child).unwrap()
             }
 
@@ -122,8 +94,7 @@ impl EntryTree {
 
             if count == last_len && queue.len() >= last_len {
                 bail!("Some children have unexistent parents")
-            }
-            else {
+            } else {
                 count = 0;
                 last_len = queue.len();
             }
@@ -251,8 +222,8 @@ impl EntryTree {
 }
 
 pub struct HcAnnotStore {
-    entries:      SlotMap<EntryId, GffEntry>,
-    tree:         Either<EntryTree, Option<EntryTree>>,
+    entries: SlotMap<EntryId, GffEntry>,
+    tree: Either<EntryTree, Option<EntryTree>>,
     interval_map:
         Either<ContigIntervalMap<EntryId>, Option<ContigIntervalMap<EntryId>>>,
 }
@@ -260,8 +231,8 @@ pub struct HcAnnotStore {
 impl Default for HcAnnotStore {
     fn default() -> Self {
         Self {
-            entries:      Default::default(),
-            tree:         Either::Right(None),
+            entries: Default::default(),
+            tree: Either::Right(None),
             interval_map: Either::Right(None),
         }
     }
@@ -383,7 +354,8 @@ impl HcAnnotStore {
         flank: i32,
         prefix: &str,
     ) where
-        F: Fn(&GffEntry) -> bool, {
+        F: Fn(&GffEntry) -> bool,
+    {
         let selected_entries = self
             .entries
             .iter()
@@ -398,8 +370,7 @@ impl HcAnnotStore {
                     parent.contig.end_gpos(),
                     parent.contig.end_gpos().shift(flank as isize),
                 )
-            }
-            else {
+            } else {
                 // Flank upstream (before start)
                 (
                     parent.contig.start_gpos().shift(flank as isize),
@@ -410,8 +381,7 @@ impl HcAnnotStore {
             // Ensure start <= end for the range
             let (start, end) = if start <= end {
                 (start, end)
-            }
-            else {
+            } else {
                 (end, start)
             };
 
@@ -463,18 +433,16 @@ impl HcAnnotStore {
         let iter = self
             .entries
             .iter()
-            .map(|(id, entry)| {
-                match entry.attributes().parent() {
-                    Some(parents) if parents.is_empty() => Ok((id, None)),
-                    Some(parents) => {
-                        let first_parent = parents.first().unwrap();
-                        gffid2entryid
-                            .get(first_parent)
-                            .ok_or(anyhow!("No such parent id {}", first_parent))
-                            .map(|(parent)| (id, Some(parent.clone())))
-                    },
-                    None => Ok((id, None)),
-                }
+            .map(|(id, entry)| match entry.attributes().parent() {
+                Some(parents) if parents.is_empty() => Ok((id, None)),
+                Some(parents) => {
+                    let first_parent = parents.first().unwrap();
+                    gffid2entryid
+                        .get(first_parent)
+                        .ok_or(anyhow!("No such parent id {}", first_parent))
+                        .map(|(parent)| (id, Some(parent.clone())))
+                },
+                None => Ok((id, None)),
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -555,8 +523,7 @@ impl HcAnnotStore {
     ) -> anyhow::Result<Option<Vec<EntryId>>> {
         if let Some(tree) = self.tree.as_ref().left() {
             Ok(tree.get_children(id))
-        }
-        else {
+        } else {
             bail!("Tree is not initialized. Call .init_tree() first")
         }
     }
@@ -573,8 +540,7 @@ impl HcAnnotStore {
     ) -> anyhow::Result<Option<EntryId>> {
         if let Some(tree) = self.tree.as_ref().left() {
             Ok(tree.get_parent(*id))
-        }
-        else {
+        } else {
             bail!("Tree is not initialized. Call .init_tree() first")
         }
     }

@@ -1,31 +1,17 @@
 use std::sync::Arc;
 
 use bsxplorer2::data_structs::batch::{
-    AggMethod,
-    BsxBatch,
-    BsxBatchBuilder,
-    BsxColumns,
+    AggMethod, BsxBatch, BsxBatchBuilder, BsxColumns,
 };
 use bsxplorer2::data_structs::ContextData;
 use bsxplorer2::tools::dimred::SegmentAlgorithm;
 use bsxplorer2::utils::get_categorical_dtype;
-use polars::prelude::{
-    DataFrame,
-    IntoSeries,
-};
+use polars::prelude::{DataFrame, IntoSeries};
 use pyo3::prelude::*;
-use pyo3_polars::{
-    PyDataFrame,
-    PyDataType,
-    PySchema,
-    PySeries,
-};
+use pyo3_polars::{PyDataFrame, PyDataType, PySchema, PySeries};
 
 use super::context_data::PyContextData;
-use super::coords::{
-    PyContig,
-    PyGenomicPosition,
-};
+use super::coords::{PyContig, PyGenomicPosition};
 use super::lazy::PyLazyBsxBatch;
 use super::report_schema::PyReportTypeSchema;
 
@@ -464,11 +450,9 @@ impl PyBsxBatch {
         match op {
             pyo3::basic::CompareOp::Eq => Ok(self.inner == other.inner),
             pyo3::basic::CompareOp::Ne => Ok(self.inner != other.inner),
-            _ => {
-                Err(pyo3::exceptions::PyNotImplementedError::new_err(
-                    "Only == and != are supported for BsxBatch",
-                ))
-            },
+            _ => Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                "Only == and != are supported for BsxBatch",
+            )),
         }
     }
 }

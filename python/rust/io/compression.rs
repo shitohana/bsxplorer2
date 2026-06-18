@@ -42,4 +42,3 @@ impl From<Compression> for PyCompression {
         }
     }
 }
-

@@ -1,21 +1,12 @@
-use std::io::{
-    Read,
-    Write,
-};
+use std::io::{Read, Write};
 
 use indexmap::IndexSet;
 use itertools::Itertools;
 use polars::error::PolarsResult;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use super::BsxFileReader;
-use crate::data_structs::coords::{
-    Contig,
-    ContigIntervalMap,
-};
+use crate::data_structs::coords::{Contig, ContigIntervalMap};
 use crate::data_structs::typedef::BsxSmallStr;
 use crate::prelude::Strand;
 
@@ -27,7 +18,7 @@ use crate::prelude::Strand;
 /// batch indices within the file where data for those regions can be found.
 /// It also maintains an ordered list of chromosome names.
 pub struct BatchIndex {
-    map:       ContigIntervalMap<usize>,
+    map: ContigIntervalMap<usize>,
     chr_order: IndexSet<BsxSmallStr>,
 }
 
@@ -113,7 +104,7 @@ impl BatchIndex {
     /// Creates a new empty `BatchIndex`.
     pub fn new() -> Self {
         Self {
-            map:       ContigIntervalMap::new(),
+            map: ContigIntervalMap::new(),
             chr_order: IndexSet::new(),
         }
     }
@@ -157,7 +148,8 @@ impl BatchIndex {
         contigs: I,
     ) -> impl Iterator<Item = Contig>
     where
-        I: IntoIterator<Item = Contig>, {
+        I: IntoIterator<Item = Contig>,
+    {
         contigs
             .into_iter()
             .map(|contig| {
@@ -236,5 +228,3 @@ impl BatchIndex {
         &self.map
     }
 }
-
-

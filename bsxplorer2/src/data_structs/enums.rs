@@ -3,10 +3,7 @@ use std::fmt::Display;
 use std::hash::Hash;
 use std::str::FromStr;
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug, PartialOrd, Ord)]
 pub enum Context {
@@ -70,7 +67,8 @@ impl Serialize for Context {
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
@@ -78,7 +76,8 @@ impl Serialize for Context {
 impl<'de> Deserialize<'de> for Context {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>, {
+        D: serde::Deserializer<'de>,
+    {
         let s = String::deserialize(deserializer)?;
         std::str::FromStr::from_str(&s).map_err(serde::de::Error::custom)
     }
@@ -160,11 +159,15 @@ impl Display for Strand {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Strand::Forward => String::from("+"),
-            Strand::Reverse => String::from("-"),
-            Strand::None => String::from("."),
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Strand::Forward => String::from("+"),
+                Strand::Reverse => String::from("-"),
+                Strand::None => String::from("."),
+            }
+        )
     }
 }
 
@@ -174,7 +177,8 @@ impl Serialize for Strand {
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer, {
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
@@ -182,7 +186,8 @@ impl Serialize for Strand {
 impl<'de> Deserialize<'de> for Strand {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>, {
+        D: serde::Deserializer<'de>,
+    {
         let s = String::deserialize(deserializer)?;
         std::str::FromStr::from_str(&s).map_err(serde::de::Error::custom)
     }

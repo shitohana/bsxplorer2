@@ -1,24 +1,14 @@
-use std::collections::{
-    BTreeMap,
-    BTreeSet,
-    VecDeque,
-};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
-use anyhow::{
-    anyhow,
-    bail,
-};
+use anyhow::{anyhow, bail};
 use itertools::Itertools;
 use polars::error::PolarsResult;
 use polars::prelude::search_sorted::binary_search_ca;
 use polars::prelude::SearchSortedSide;
 
 use super::BsxFileReader;
-use crate::data_structs::batch::{
-    BsxBatch,
-    BsxBatchBuilder,
-};
+use crate::data_structs::batch::{BsxBatch, BsxBatchBuilder};
 use crate::data_structs::coords::Contig;
 use crate::io::bsx::BatchIndex;
 
@@ -30,11 +20,11 @@ type PreprocessFn =
 #[derive(Clone)]
 pub struct RegionReader {
     /// Cache of encoded BSX batches.
-    cache:         BTreeMap<usize, BsxBatch>,
+    cache: BTreeMap<usize, BsxBatch>,
     /// Inner reader for the BSX file.
-    inner:         BsxFileReader,
+    inner: BsxFileReader,
     /// Index of the BSX file.
-    index:         BatchIndex,
+    index: BatchIndex,
     /// Preprocessing function to be applied to each batch before it is cached.
     preprocess_fn: Option<PreprocessFn>,
 }
@@ -55,8 +45,7 @@ impl RegionReader {
 
         if batches_found {
             required_batches
-        }
-        else {
+        } else {
             None
         }
     }
@@ -139,8 +128,7 @@ impl RegionReader {
                     SearchSortedSide::Left,
                     false,
                 )[0]
-            }
-            else {
+            } else {
                 0
             };
 
@@ -151,8 +139,7 @@ impl RegionReader {
                     SearchSortedSide::Left,
                     false,
                 )[0]
-            }
-            else {
+            } else {
                 batch.len() as u32
             };
 
@@ -163,11 +150,9 @@ impl RegionReader {
         res.sort_by_key(|b| b.first_pos());
         if res.is_empty() {
             Ok(None)
-        }
-        else if res.len() == 1 {
+        } else if res.len() == 1 {
             Ok(Some(res.pop().unwrap()))
-        }
-        else {
+        } else {
             Some(BsxBatchBuilder::concat(res))
                 .transpose()
                 .map_err(|e| anyhow::anyhow!(e))
@@ -232,12 +217,10 @@ impl RegionReader {
                 //                   |----<contig>-----|
                 {
                     IntersectionKind::PartialRight
-                }
-                else {
+                } else {
                     IntersectionKind::None
                 }
-            }
-            else {
+            } else {
                 IntersectionKind::None
             };
 
@@ -305,9 +288,9 @@ impl RegionReader {
         contigs: &[Contig],
     ) -> RegionReaderIterator {
         RegionReaderIterator {
-            reader:          self,
+            reader: self,
             pending_contigs: VecDeque::from(contigs.to_vec()),
-            cached_contigs:  VecDeque::new(),
+            cached_contigs: VecDeque::new(),
         }
     }
 
@@ -344,8 +327,7 @@ impl RegionReader {
                 if let Some(required_batches) = self.find(&contig) {
                     self.update_cache(&required_batches)?;
                     self.prepare_region(&contig, postprocess_fn.clone())
-                }
-                else {
+                } else {
                     Ok(None)
                 }
             },
@@ -362,12 +344,10 @@ impl RegionReader {
         if let Some(data) = res {
             if let Some(postprocess_fn) = postprocess_fn {
                 Some(postprocess_fn(data)).transpose()
-            }
-            else {
+            } else {
                 Some(Ok(data)).transpose()
             }
-        }
-        else {
+        } else {
             Ok(None)
         }
     }
@@ -375,9 +355,9 @@ impl RegionReader {
 
 /// Iterator for reading BSX data for multiple contigs using a RegionReader.
 pub struct RegionReaderIterator<'a> {
-    reader:          &'a mut RegionReader,
+    reader: &'a mut RegionReader,
     pending_contigs: VecDeque<Contig>,
-    cached_contigs:  VecDeque<Contig>,
+    cached_contigs: VecDeque<Contig>,
 }
 
 impl Iterator for RegionReaderIterator<'_> {
@@ -386,16 +366,13 @@ impl Iterator for RegionReaderIterator<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(contig) = self.cached_contigs.pop_front() {
             self.reader.query(contig, None::<PreprocessFn>).transpose()
-        }
-        else {
+        } else {
             let fill_cache_res = self.fill_cache();
             if let Some(Ok(_)) = fill_cache_res {
                 self.next()
-            }
-            else if let Some(Err(e)) = fill_cache_res {
+            } else if let Some(Err(e)) = fill_cache_res {
                 Some(Err(e))
-            }
-            else {
+            } else {
                 None
             }
         }
@@ -413,24 +390,21 @@ impl RegionReaderIterator<'_> {
             if cur_chr.is_some() && cur_chr.as_ref() != Some(contig.seqname()) {
                 self.pending_contigs.push_front(contig);
                 break;
-            }
-            else {
+            } else {
                 cur_chr = Some(contig.seqname().clone());
             }
 
             if let Some(batches) = self.reader.find(&contig) {
                 required_batches.append(&mut BTreeSet::from_iter(batches));
                 self.cached_contigs.push_back(contig);
-            }
-            else {
+            } else {
                 continue;
             };
         }
 
         if required_batches.is_empty() {
             None
-        }
-        else {
+        } else {
             let res = self
                 .reader
                 .update_cache(&required_batches.into_iter().collect_vec());

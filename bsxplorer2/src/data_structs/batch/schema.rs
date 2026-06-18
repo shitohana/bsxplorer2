@@ -3,10 +3,7 @@ use std::fmt::Display;
 
 use polars::prelude::*;
 
-use super::{
-    create_empty_categorical_dtype,
-    name_dtype_tuple,
-};
+use super::{create_empty_categorical_dtype, name_dtype_tuple};
 use crate::plsmallstr;
 
 /// Represents the columns expected in BSX data.
@@ -117,22 +114,18 @@ impl BsxColumns {
         value: Box<dyn Any>,
     ) -> Option<AnyValue> {
         match self {
-            BsxColumns::Chr => {
-                value
-                    .downcast_ref::<String>()
-                    .map(|v| AnyValue::StringOwned(v.into()))
-            },
+            BsxColumns::Chr => value
+                .downcast_ref::<String>()
+                .map(|v| AnyValue::StringOwned(v.into())),
             BsxColumns::Position => {
                 value.downcast_ref::<u32>().map(|v| AnyValue::UInt32(*v))
             },
             BsxColumns::Strand => {
                 value.downcast_ref::<bool>().map(|v| AnyValue::Boolean(*v))
             },
-            BsxColumns::Context => {
-                value
-                    .downcast_ref::<Option<bool>>()
-                    .map(|v| v.map(AnyValue::Boolean).unwrap_or(AnyValue::Null))
-            },
+            BsxColumns::Context => value
+                .downcast_ref::<Option<bool>>()
+                .map(|v| v.map(AnyValue::Boolean).unwrap_or(AnyValue::Null)),
             BsxColumns::CountM => {
                 value.downcast_ref::<u16>().map(|v| AnyValue::UInt16(*v))
             },
@@ -166,7 +159,8 @@ impl BsxColumns {
         data: Vec<T>,
     ) -> PolarsResult<Series>
     where
-        T: Sized + 'static, {
+        T: Sized + 'static,
+    {
         let any_vec = data
             .into_iter()
             .map(|value| self.create_anyvalue(Box::new(value)))

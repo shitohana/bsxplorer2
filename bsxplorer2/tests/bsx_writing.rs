@@ -3,16 +3,9 @@ use std::fs::File;
 use std::path::PathBuf;
 
 use bsxplorer2::data_structs::typedef::BsxSmallStr;
-use bsxplorer2::io::bsx::{
-    BatchIndex,
-    BsxFileReader,
-    BsxFileWriter,
-};
+use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, BsxFileWriter};
 use itertools::Itertools;
-use rstest::{
-    fixture,
-    rstest,
-};
+use rstest::{fixture, rstest};
 use tempfile::NamedTempFile;
 
 #[fixture]

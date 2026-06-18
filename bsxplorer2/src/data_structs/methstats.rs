@@ -1,32 +1,17 @@
 #![allow(unused)]
-use std::ops::{
-    Add,
-    AddAssign,
-};
+use std::ops::{Add, AddAssign};
 
 use hashbrown::HashMap;
-use itertools::{
-    izip,
-    Itertools,
-};
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use itertools::{izip, Itertools};
+use serde::{Deserialize, Serialize};
 
-use crate::data_structs::typedef::{
-    CountType,
-    DensityType,
-};
+use crate::data_structs::typedef::{CountType, DensityType};
 use crate::getter_fn;
-use crate::prelude::{
-    Context,
-    Strand,
-};
+use crate::prelude::{Context, Strand};
 
 #[derive(Clone, Debug, Copy, Serialize, Deserialize, PartialEq)]
 pub struct MethAgg {
-    sum:   DensityType,
+    sum: DensityType,
     count: DensityType,
 }
 
@@ -62,7 +47,7 @@ impl Add for MethAgg {
 impl From<(DensityType, DensityType)> for MethAgg {
     fn from(value: (DensityType, DensityType)) -> Self {
         Self {
-            sum:   value.0,
+            sum: value.0,
             count: value.1,
         }
     }
@@ -75,7 +60,7 @@ impl MethAgg {
 
     pub fn new() -> Self {
         Self {
-            sum:   0.0,
+            sum: 0.0,
             count: 0.0,
         }
     }
@@ -95,8 +80,8 @@ impl MethAgg {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct RegionMethAgg {
-    context:  HashMap<Context, MethAgg>,
-    strand:   HashMap<Strand, MethAgg>,
+    context: HashMap<Context, MethAgg>,
+    strand: HashMap<Strand, MethAgg>,
     coverage: HashMap<CountType, usize>,
 }
 

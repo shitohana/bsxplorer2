@@ -5,17 +5,10 @@ use bio::io::fasta::Writer as FastaWriter;
 use bsxplorer2::data_structs::batch::BsxBatch;
 #[cfg(feature = "compression")]
 use bsxplorer2::io::compression::Compression;
-use bsxplorer2::io::report::{
-    ReportReaderBuilder,
-    ReportType,
-    ReportWriter,
-};
+use bsxplorer2::io::report::{ReportReaderBuilder, ReportType, ReportWriter};
 use polars::prelude::*;
 use rand::rngs::StdRng;
-use rstest::{
-    fixture,
-    rstest,
-};
+use rstest::{fixture, rstest};
 
 mod common;
 use common::DemoReportBuilder;
@@ -90,8 +83,7 @@ fn test_report_writing_reading_roundtrip(
         for df in &original_dfs_in_report_format {
             writer.write_df(df)?;
         }
-    }
-    else {
+    } else {
         for batch in original_batches.clone() {
             writer.write_batch(batch)?;
         }
@@ -138,12 +130,10 @@ fn test_report_writing_reading_roundtrip(
             }
             current_original_chr = batch_chr;
             current_original_batch = Some(batch);
-        }
-        else {
+        } else {
             if let Some(ref mut cb) = current_original_batch {
                 cb.extend(&batch)?;
-            }
-            else {
+            } else {
                 current_original_batch = Some(batch);
             }
         }
@@ -171,13 +161,11 @@ fn test_report_writing_reading_roundtrip(
             }
             current_read_chr = batch_chr;
             current_read_batch = Some(batch);
-        }
-        else {
+        } else {
             // Same chromosome, extend the current batch
             if let Some(ref mut cb) = current_read_batch {
                 cb.extend(&batch)?;
-            }
-            else {
+            } else {
                 current_read_batch = Some(batch);
             }
         }

@@ -1,10 +1,7 @@
 use std::fmt;
 
 use num::Float;
-use statrs::distribution::{
-    ContinuousCDF,
-    Normal,
-};
+use statrs::distribution::{ContinuousCDF, Normal};
 use statrs::statistics::Statistics;
 
 /// Calculates Pearson correlation coefficient between two variables.
@@ -26,7 +23,8 @@ where
         + Copy
         + Clone
         + num::traits::NumOps
-        + fmt::Debug, {
+        + fmt::Debug,
+{
     if x.len() != y.len() {
         return 0.0;
     }
@@ -72,7 +70,7 @@ struct Observation<F: Float> {
     /// Which group the observation belongs to (0 for group1, 1 for group2)
     group: usize,
     /// The assigned rank of this observation
-    rank:  f64,
+    rank: f64,
 }
 
 /// Performs Mann-Whitney U test.
@@ -92,19 +90,15 @@ pub fn mann_whitney_u<F: Float>(
     // Combine observations from both groups
     let mut observations: Vec<Observation<F>> = group1
         .iter()
-        .map(|&v| {
-            Observation {
-                value: v,
-                group: 0,
-                rank:  0.0,
-            }
+        .map(|&v| Observation {
+            value: v,
+            group: 0,
+            rank: 0.0,
         })
-        .chain(group2.iter().map(|&v| {
-            Observation {
-                value: v,
-                group: 1,
-                rank:  0.0,
-            }
+        .chain(group2.iter().map(|&v| Observation {
+            value: v,
+            group: 1,
+            rank: 0.0,
         }))
         .collect();
 
@@ -184,8 +178,7 @@ pub fn mann_whitney_u<F: Float>(
     // Apply continuity correction and compute Z-score
     let z = if variance_u > F::from(0.0).unwrap() {
         (u_stat - mean_u + F::from(0.5).unwrap()) / variance_u.sqrt()
-    }
-    else {
+    } else {
         F::from(0.0).unwrap()
     };
     let z = z.to_f64().unwrap();
@@ -197,5 +190,3 @@ pub fn mann_whitney_u<F: Float>(
 
     (u_stat.to_f64().unwrap(), p_value)
 }
-
-

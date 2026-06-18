@@ -1,11 +1,7 @@
 use std::fs::File;
 
 use bsxplorer2::data_structs::batch::BsxBatch;
-use bsxplorer2::io::bsx::{
-    BatchIndex,
-    BsxFileReader,
-    RegionReader,
-};
+use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
 use pyo3::prelude::*;
 use pyo3_polars::error::PyPolarsErr;
 use pyo3_polars::PyDataFrame;
@@ -14,10 +10,7 @@ use super::bsx::PyBsxFileReader;
 use crate::data_structs::batch::PyBsxBatch;
 use crate::data_structs::coords::PyContig;
 use crate::data_structs::index::PyBatchIndex;
-use crate::data_structs::utils::{
-    PyContext,
-    PyStrand,
-};
+use crate::data_structs::utils::{PyContext, PyStrand};
 use crate::utils::FileOrFileLike;
 
 #[derive(Clone)]
@@ -62,16 +55,16 @@ fn apply_filters(
 
 #[pyclass(unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
-    inner:   RegionReader,
+    inner: RegionReader,
     filters: Vec<PyFilterOperation>,
 }
 
 #[pyclass(unsendable, name = "RegionReaderIterator")]
 pub struct PyRegionReaderIterator {
-    inner:         RegionReader,
-    contigs:       Vec<PyContig>,
+    inner: RegionReader,
+    contigs: Vec<PyContig>,
     current_index: usize,
-    filters:       Vec<PyFilterOperation>,
+    filters: Vec<PyFilterOperation>,
 }
 
 #[pymethods]
@@ -87,7 +80,7 @@ impl PyRegionReader {
             BatchIndex::from_reader(&mut reader).map_err(|e| PyPolarsErr::Polars(e))?;
 
         Ok(Self {
-            inner:   RegionReader::new(reader, index, None),
+            inner: RegionReader::new(reader, index, None),
             filters: Vec::new(),
         })
     }
@@ -239,8 +232,7 @@ impl PyRegionReaderIterator {
                     Err(PyErr::from(e))
                 },
             }
-        }
-        else {
+        } else {
             Ok(None) // StopIteration
         }
     }

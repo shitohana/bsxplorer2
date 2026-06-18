@@ -4,10 +4,7 @@ use std::str::FromStr;
 
 use polars::prelude::*;
 
-use crate::utils::{
-    hashmap_from_arrays,
-    schema_from_arrays,
-};
+use crate::utils::{hashmap_from_arrays, schema_from_arrays};
 
 /// Supported methylation report file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -55,27 +52,22 @@ impl ReportType {
     /// Returns column names for this report format.
     pub const fn col_names(&self) -> &[&'static str] {
         match self {
-            Self::Bismark => {
-                &[
-                    "chr", "position", "strand", "count_m", "count_um", "context",
-                    "trinuc",
-                ]
-            },
+            Self::Bismark => &[
+                "chr", "position", "strand", "count_m", "count_um", "context", "trinuc",
+            ],
             Self::Coverage => {
                 &["chr", "start", "end", "density", "count_m", "count_um"]
             },
-            Self::CgMap => {
-                &[
-                    "chr",
-                    "nuc",
-                    "position",
-                    "context",
-                    "dinuc",
-                    "density",
-                    "count_m",
-                    "count_total",
-                ]
-            },
+            Self::CgMap => &[
+                "chr",
+                "nuc",
+                "position",
+                "context",
+                "dinuc",
+                "density",
+                "count_m",
+                "count_total",
+            ],
             Self::BedGraph => &["chr", "start", "end", "density"],
         }
     }

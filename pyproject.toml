@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bsx2"
+version = "0.1.0"
+description = "BSX2 bisulfite sequencing analysis and DMR validation utilities"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "numpy>=2.0",
+    "pandas",
+    "scipy",
+    "matplotlib>=3.8,<4.0",
+    "plotly>=5.0,<6.0",
+    "pydantic~=2.0",
+]
+
+[project.scripts]
+dmr-validation = "dmr_validation_framework.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["python/src"]
+include = ["bsx2*", "dmr_validation_framework*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["python/src"]
+markers = [
+    "perf: synthetic performance smoke scenarios",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["python/src", "python/tests"]
+extend-exclude = ["python/src/bsx2/_bsx2.pyi"]
+
+[tool.ruff.lint]
+select = ["F", "I", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bsx2", "dmr_validation_framework"]

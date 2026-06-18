@@ -2,10 +2,7 @@ use itertools::Itertools;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-use super::{
-    BsxBatch,
-    BsxColumns,
-};
+use super::{BsxBatch, BsxColumns};
 use crate::plsmallstr;
 
 /// Merges multiple `BsxBatch` replicates into a single batch.
@@ -32,11 +29,9 @@ pub fn merge_replicates(
 ) -> PolarsResult<BsxBatch> {
     if batches.is_empty() {
         polars_bail!(InvalidOperation: "batches cannot be empty");
-    }
-    else if batches.len() == 1 {
+    } else if batches.len() == 1 {
         return Ok(batches.pop().unwrap());
-    }
-    else {
+    } else {
         // Assume all batches have the same length and identical chr, pos,
         // strand, context This should be guaranteed by the caller or
         // previous steps (e.g., alignment)
@@ -101,7 +96,8 @@ pub fn merge_replicates(
 pub fn create_caregorical_dtype<S, P>(chr_values: P) -> DataType
 where
     S: AsRef<str>,
-    P: AsRef<[Option<S>]>, {
+    P: AsRef<[Option<S>]>,
+{
     use polars::export::arrow::array::Utf8ViewArray;
     let categories = Utf8ViewArray::from_slice(chr_values);
     let rev_mapping = Arc::new(RevMapping::build_local(categories));
@@ -134,8 +130,4 @@ macro_rules! get_col_fn {
     };
 }
 
-pub(crate) use {
-    create_empty_series,
-    get_col_fn,
-    name_dtype_tuple,
-};
+pub(crate) use {create_empty_series, get_col_fn, name_dtype_tuple};

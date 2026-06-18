@@ -5,16 +5,9 @@ use std::sync::Arc;
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Context;
-use bsxplorer2::io::bsx::{
-    BatchIndex,
-    BsxFileReader,
-    RegionReader,
-};
+use bsxplorer2::io::bsx::{BatchIndex, BsxFileReader, RegionReader};
 use bsxplorer2::prelude::HcAnnotStore;
-use rstest::{
-    fixture,
-    rstest,
-};
+use rstest::{fixture, rstest};
 
 #[fixture]
 fn bsx_reader() -> BsxFileReader {

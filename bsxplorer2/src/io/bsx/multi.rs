@@ -2,11 +2,7 @@ use itertools::Itertools;
 use polars::error::PolarsResult;
 
 use super::BsxFileReader;
-use crate::data_structs::batch::{
-    merge_replicates,
-    AggMethod,
-    BsxBatch,
-};
+use crate::data_structs::batch::{merge_replicates, AggMethod, BsxBatch};
 
 pub struct MultiBsxFileReader {
     readers: Vec<BsxFileReader>,

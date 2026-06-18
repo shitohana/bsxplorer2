@@ -1,8 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{
-    Debug,
-    Display,
-};
+use std::fmt::{Debug, Display};
 use std::fs::File;
 use std::hash::Hash;
 use std::process::exit;
@@ -16,10 +13,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use polars::error::PolarsResult;
 
-use crate::utils::{
-    expand_wildcard,
-    init_progress,
-};
+use crate::utils::{expand_wildcard, init_progress};
 use crate::PipelineCommand;
 
 #[derive(Args, Debug, Clone)]
@@ -155,9 +149,12 @@ impl ValidateArgs {
             .map(|(path, batch)| (batch.len(), path))
             .into_group_map();
 
-        validate_consistency(&batch_sizes, ValidationErrorType::BatchSize {
-            batch_num: batch_count,
-        });
+        validate_consistency(
+            &batch_sizes,
+            ValidationErrorType::BatchSize {
+                batch_num: batch_count,
+            },
+        );
 
         Ok(())
     }
@@ -172,9 +169,12 @@ impl ValidateArgs {
             .map(|(path, batch)| (batch.as_contig().unwrap(), path))
             .into_group_map();
 
-        validate_consistency(&contigs, ValidationErrorType::BatchRange {
-            batch_num: batch_count,
-        });
+        validate_consistency(
+            &contigs,
+            ValidationErrorType::BatchRange {
+                batch_num: batch_count,
+            },
+        );
 
         Ok(())
     }
@@ -191,9 +191,12 @@ impl ValidateArgs {
             })
             .into_group_map();
 
-        validate_consistency(&positions, ValidationErrorType::BatchPositions {
-            batch_num: batch_count,
-        });
+        validate_consistency(
+            &positions,
+            ValidationErrorType::BatchPositions {
+                batch_num: batch_count,
+            },
+        );
 
         Ok(())
     }
@@ -274,7 +277,8 @@ fn validate_consistency<K, V>(
     error_type: ValidationErrorType,
 ) where
     K: Clone + Debug + Hash + Eq,
-    V: Display, {
+    V: Display,
+{
     if grouped_data.len() > 1 {
         let most_common_key = grouped_data
             .keys()

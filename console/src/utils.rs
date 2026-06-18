@@ -1,26 +1,13 @@
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::{Path, PathBuf};
 
-use anyhow::{
-    ensure,
-    Context,
-    Result,
-};
+use anyhow::{ensure, Context, Result};
 use bsxplorer2::prelude::BsxFileReader;
 use clap::ValueEnum;
-use indicatif::{
-    ProgressBar,
-    ProgressStyle,
-};
-use log::{
-    debug,
-    info,
-};
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{debug, info};
 use polars::prelude::IpcCompression;
 use spipe::spipe;
 
@@ -92,8 +79,7 @@ pub fn init_progress(
                     )
                     => Ok
             )
-        }
-        else {
+        } else {
             spipe!(
                 ProgressBar::new_spinner()
                     =>$ .set_style(ProgressStyle::default_spinner()
@@ -102,8 +88,7 @@ pub fn init_progress(
                     => Ok
             )
         }
-    }
-    else {
+    } else {
         Ok(ProgressBar::hidden())
     }
 }
@@ -126,8 +111,7 @@ macro_rules! assert_or_exit {
 pub fn expand_wildcard<S: AsRef<str>>(path: S) -> Result<Vec<PathBuf>, CliError> {
     if path.as_ref().contains('*') || path.as_ref().contains('?') {
         Ok(vec![PathBuf::from(path.as_ref())])
-    }
-    else {
+    } else {
         Ok(glob::glob(path.as_ref())
             .map_err(|_| CliError::PathExpand(path.as_ref().to_string()))?
             .map(|p| p.expect("Failed to access path"))
@@ -200,7 +184,8 @@ pub fn validate_output<P: AsRef<Path>>(path: P) -> anyhow::Result<P> {
 pub fn init_readers<I, S>(iter: I) -> Result<Vec<BsxFileReader>>
 where
     I: IntoIterator<Item = S>,
-    S: AsRef<Path> + Clone, {
+    S: AsRef<Path> + Clone,
+{
     iter.into_iter()
         .map(|p| spipe!{
             p

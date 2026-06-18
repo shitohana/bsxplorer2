@@ -1,23 +1,13 @@
 use std::fs::File;
 use std::path::PathBuf;
 
-use anyhow::{
-    anyhow,
-    ensure,
-};
+use anyhow::{anyhow, ensure};
 use bsxplorer2::prelude::*;
-use clap::{
-    Args,
-    ValueEnum,
-};
+use clap::{Args, ValueEnum};
 use spipe::spipe;
 
 use super::FromReportArgs;
-use crate::utils::{
-    init_progress,
-    validate_output,
-    CliIpcCompression,
-};
+use crate::utils::{init_progress, validate_output, CliIpcCompression};
 use crate::PipelineCommand;
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
@@ -111,8 +101,7 @@ impl PipelineCommand for ToBsxConvert {
                     self.to_compression.into()
                 ) =>? ...
             )
-        }
-        else if let Some(fasta_path) = &self.from_report.fasta_path {
+        } else if let Some(fasta_path) = &self.from_report.fasta_path {
             spipe!(
                 &self.output =>
                 validate_output =>?
@@ -122,8 +111,7 @@ impl PipelineCommand for ToBsxConvert {
                     self.to_compression.into()
                 ) =>? ...
             )
-        }
-        else {
+        } else {
             return Err(anyhow!("Either fasta_path or fai_path must be set"));
         };
 

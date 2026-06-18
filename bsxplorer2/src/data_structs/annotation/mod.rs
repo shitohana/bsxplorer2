@@ -22,14 +22,5 @@
 mod annot_store;
 mod gff_entry;
 
-pub use annot_store::{
-    EntryId,
-    EntryTree,
-    HcAnnotStore,
-};
-pub use gff_entry::{
-    GffEntry,
-    GffEntryAttributes,
-    RawGffEntry,
-};
-
+pub use annot_store::{EntryId, EntryTree, HcAnnotStore};
+pub use gff_entry::{GffEntry, GffEntryAttributes, RawGffEntry};

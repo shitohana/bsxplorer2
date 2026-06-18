@@ -1,23 +1,17 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use anyhow::{
-    Context,
-    Result,
-};
+use anyhow::{Context, Result};
 use itertools::Itertools;
 use polars::prelude::*;
 
-use crate::data_structs::batch::{
-    create_caregorical_dtype,
-    BsxBatch,
-    BsxColumns,
-};
+use crate::data_structs::batch::{create_caregorical_dtype, BsxBatch, BsxColumns};
 
 /// Writer for BSX data in Arrow IPC format with optional compression.
 pub struct BsxFileWriter<W>
 where
-    W: Write, {
+    W: Write,
+{
     writer: polars::io::ipc::BatchedWriter<W>,
     schema: Schema,
 }

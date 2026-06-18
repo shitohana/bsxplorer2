@@ -2,10 +2,7 @@ use std::fs::File;
 use std::path::PathBuf;
 
 use bsxplorer2::prelude::*;
-use clap::{
-    Args,
-    ValueEnum,
-};
+use clap::{Args, ValueEnum};
 
 use super::FromReportArgs;
 use crate::utils::init_progress;

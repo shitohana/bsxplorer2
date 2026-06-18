@@ -1,10 +1,7 @@
 use std::hash::Hash;
 
 use arcstr::ArcStr;
-use num::{
-    PrimInt,
-    Unsigned,
-};
+use num::{PrimInt, Unsigned};
 
 // TODO:    Test, whether using ArcStr improves performance
 //          if no: go back to SmallStr
@@ -14,7 +11,8 @@ pub type CountType = u16;
 pub type DensityType = f32;
 
 pub trait SeqNameStr:
-    for<'a> From<&'a str> + AsRef<str> + Clone + Eq + PartialEq + Hash {
+    for<'a> From<&'a str> + AsRef<str> + Clone + Eq + PartialEq + Hash
+{
 }
 
 pub trait SeqPosNum: Unsigned + PrimInt {}

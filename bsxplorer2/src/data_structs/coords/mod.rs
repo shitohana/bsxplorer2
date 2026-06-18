@@ -17,4 +17,3 @@ mod interval_map;
 pub use contig::Contig;
 pub use gpos::GenomicPosition;
 pub use interval_map::ContigIntervalMap;
-

@@ -8,12 +8,7 @@ use itertools::Itertools;
 use log::info;
 use spipe::spipe;
 
-use crate::utils::{
-    init_progress,
-    validate_input,
-    validate_output,
-    CliIpcCompression,
-};
+use crate::utils::{init_progress, validate_input, validate_output, CliIpcCompression};
 use crate::PipelineCommand;
 
 #[derive(Args, Debug, Clone)]

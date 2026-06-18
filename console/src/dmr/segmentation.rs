@@ -1,14 +1,8 @@
 use std::collections::BTreeSet;
 
-use bsxplorer2::data_structs::typedef::{
-    DensityType,
-    PosType,
-};
+use bsxplorer2::data_structs::typedef::{DensityType, PosType};
 use bsxplorer2::utils::mann_whitney_u;
-use itertools::{
-    izip,
-    Itertools,
-};
+use itertools::{izip, Itertools};
 
 use super::tv1d_clone::condat;
 use super::types::SegmentView;
@@ -109,8 +103,7 @@ pub fn tv_recurse_segment(
             let diff = a - b;
             if diff.abs() > diff_threshold {
                 diff
-            }
-            else {
+            } else {
                 0.0
             }
         })
@@ -126,8 +119,7 @@ pub fn tv_recurse_segment(
             |(mut short, mut better), s| {
                 if s.size() <= min_cpg {
                     short.push(s.clone())
-                }
-                else if s.get_pvalue() < cur_seg.get_pvalue() {
+                } else if s.get_pvalue() < cur_seg.get_pvalue() {
                     better.push(s.clone())
                 }
                 (short, better)
@@ -137,8 +129,7 @@ pub fn tv_recurse_segment(
         result.append(&mut short_segments);
         if better_segments.is_empty() {
             result.push(cur_seg);
-        }
-        else {
+        } else {
             segment_queue.append(&mut better_segments);
         }
 
@@ -250,13 +241,11 @@ fn merge_adjacent_segments(
             // If the difference is not significant, merge the segments.
             if p_value > p_threshold {
                 prev_seg = prev_seg.merge(cur_seg);
-            }
-            else {
+            } else {
                 merged_segments.push(prev_seg);
                 prev_seg = cur_seg.clone();
             }
-        }
-        else {
+        } else {
             merged_segments.push(prev_seg);
             prev_seg = cur_seg.clone();
         }

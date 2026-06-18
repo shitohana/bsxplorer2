@@ -5,14 +5,8 @@ use std::path::PathBuf;
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Strand;
-use bsxplorer2::io::bsx::{
-    BsxFileReader,
-    RegionReader,
-};
-use rstest::{
-    fixture,
-    rstest,
-};
+use bsxplorer2::io::bsx::{BsxFileReader, RegionReader};
+use rstest::{fixture, rstest};
 
 #[fixture]
 fn test_bsxreader() -> BsxFileReader {
@@ -192,8 +186,7 @@ fn check_batch(
 ) -> anyhow::Result<bool> {
     if let Some(b_contig) = batch.as_contig() {
         Ok(b_contig.is_in(contig))
-    }
-    else {
+    } else {
         Ok(true)
     }
 }

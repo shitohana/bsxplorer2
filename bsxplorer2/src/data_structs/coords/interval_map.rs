@@ -1,15 +1,9 @@
 #![allow(unused)]
 use hashbrown::HashMap;
 use itertools::Itertools;
-use rust_lapper::{
-    Interval,
-    Lapper,
-};
+use rust_lapper::{Interval, Lapper};
 use serde::de::DeserializeOwned;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use super::Contig;
 use crate::data_structs::typedef::PosType;
@@ -20,7 +14,8 @@ use crate::BsxSmallStr;
 #[serde(bound = "V: Serialize + DeserializeOwned")]
 pub struct ContigIntervalMap<V>
 where
-    V: Sync + Send + Eq + Clone, {
+    V: Sync + Send + Eq + Clone,
+{
     inner: HashMap<BsxSmallStr, Lapper<PosType, V>>,
 }
 
@@ -62,12 +57,10 @@ where
             let imap = Lapper::new(
                 kv_pairs
                     .into_iter()
-                    .map(|(c, v)| {
-                        Interval {
-                            start: c.start(),
-                            stop:  c.end(),
-                            val:   v,
-                        }
+                    .map(|(c, v)| Interval {
+                        start: c.start(),
+                        stop: c.end(),
+                        val: v,
                     })
                     .collect_vec(),
             );
@@ -89,22 +82,22 @@ where
     pub fn from_breakpoints<K, A>(breakpoints: HashMap<K, A>) -> Self
     where
         K: AsRef<str>,
-        A: AsRef<[(PosType, V)]>, {
+        A: AsRef<[(PosType, V)]>,
+    {
         breakpoints
             .iter()
             .map(|(k, v)| {
                 let key = BsxSmallStr::from(k.as_ref());
                 let value = if v.as_ref().is_empty() {
                     Default::default()
-                }
-                else {
+                } else {
                     let mut res = vec![];
                     let prev_pos = 0;
                     for (end, val) in v.as_ref() {
                         res.push(Interval {
                             start: prev_pos,
-                            stop:  *end,
-                            val:   val.to_owned(),
+                            stop: *end,
+                            val: val.to_owned(),
                         });
                     }
                     res
@@ -147,8 +140,8 @@ where
             .or_insert_with(|| Lapper::new(vec![]));
         imap.insert(Interval {
             start: key.start(),
-            stop:  key.end(),
-            val:   value,
+            stop: key.end(),
+            val: value,
         });
     }
 

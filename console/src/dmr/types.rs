@@ -1,33 +1,22 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
-use bsxplorer2::data_structs::typedef::{
-    DensityType,
-    PosType,
-};
-use bsxplorer2::prelude::{
-    BsxBatch,
-    Contig,
-    Strand,
-};
+use bsxplorer2::data_structs::typedef::{DensityType, PosType};
+use bsxplorer2::prelude::{BsxBatch, Contig, Strand};
 use bsxplorer2::utils::mann_whitney_u;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
-use serde::{
-    Deserialize,
-    Serialize,
-    Serializer,
-};
+use serde::{Deserialize, Serialize, Serializer};
 
 use super::segmentation;
 
 #[derive(Clone, Debug)]
 pub struct SegmentView<'a> {
-    pub(crate) pvalue:    OnceCell<f64>,
+    pub(crate) pvalue: OnceCell<f64>,
     pub(crate) rel_start: usize,
-    pub(crate) rel_end:   usize,
+    pub(crate) rel_end: usize,
     #[allow(clippy::redundant_allocation)]
-    parent:               Arc<&'a SegmentOwned>,
+    parent: Arc<&'a SegmentOwned>,
 }
 
 #[allow(clippy::redundant_allocation)]
@@ -84,8 +73,7 @@ impl<'a> SegmentView<'a> {
             self.rel_start + start,
             if self.rel_start + end <= self.rel_end {
                 self.rel_start + end
-            }
-            else {
+            } else {
                 self.rel_end
             },
             self.parent.clone(),
@@ -104,9 +92,9 @@ impl<'a> SegmentView<'a> {
     pub fn to_owned(&self) -> SegmentOwned {
         SegmentOwned {
             positions: self.positions().to_vec(),
-            group_a:   self.group_a().to_vec(),
-            group_b:   self.group_b().to_vec(),
-            mds_orig:  self.mds_orig().to_vec(),
+            group_a: self.group_a().to_vec(),
+            group_b: self.group_b().to_vec(),
+            mds_orig: self.mds_orig().to_vec(),
         }
     }
 
@@ -136,8 +124,7 @@ impl PartialEq for SegmentView<'_> {
     ) -> bool {
         if self.parent == other.parent {
             self.rel_start == other.rel_start && self.rel_end == other.rel_end
-        }
-        else {
+        } else {
             false
         }
     }
@@ -151,8 +138,7 @@ impl PartialOrd for SegmentView<'_> {
     ) -> Option<Ordering> {
         if self.parent == other.parent {
             self.rel_start.partial_cmp(&other.rel_start)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -172,9 +158,9 @@ impl Ord for SegmentView<'_> {
 
 #[derive(Debug)]
 pub struct SegmentOwned {
-    group_a:   Vec<DensityType>,
-    group_b:   Vec<DensityType>,
-    mds_orig:  Vec<DensityType>,
+    group_a: Vec<DensityType>,
+    group_b: Vec<DensityType>,
+    mds_orig: Vec<DensityType>,
     positions: Vec<PosType>,
 }
 
@@ -241,8 +227,7 @@ impl SegmentOwned {
         split_idxs.reverse();
         if split_idxs.is_empty() {
             vec![self]
-        }
-        else {
+        } else {
             let mut res = split_idxs.into_iter().fold(Vec::new(), |mut acc, idx| {
                 let positions = self.positions.drain(idx..).collect_vec();
                 let group_a = self.group_a.drain(idx..).collect_vec();
@@ -284,16 +269,16 @@ impl SegmentOwned {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMRegion {
-    pub chr:         String,
-    pub start:       PosType,
-    pub end:         PosType,
+    pub chr: String,
+    pub start: PosType,
+    pub end: PosType,
     #[serde(serialize_with = "serialize_scientific")]
-    pub p_value:     f64,
-    pub meth_left:   DensityType,
-    pub meth_right:  DensityType,
+    pub p_value: f64,
+    pub meth_left: DensityType,
+    pub meth_right: DensityType,
     pub n_cytosines: usize,
-    pub meth_diff:   DensityType,
-    pub meth_mean:   DensityType,
+    pub meth_diff: DensityType,
+    pub meth_mean: DensityType,
 }
 
 impl DMRegion {
@@ -332,6 +317,7 @@ fn serialize_scientific<S>(
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
-    S: Serializer, {
+    S: Serializer,
+{
     serializer.serialize_str(&format!("{:e}", x))
 }

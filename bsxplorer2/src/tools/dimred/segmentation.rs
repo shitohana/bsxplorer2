@@ -23,7 +23,7 @@ pub trait SegmentationData {
 /// Data structure for binomial data segmentation, storing cumulative sums.
 pub struct MethDataBinom {
     /// Cumulative sum of methylated counts.
-    count_m_cumsum:     Vec<u32>,
+    count_m_cumsum: Vec<u32>,
     /// Cumulative sum of total counts.
     count_total_cumsum: Vec<u32>,
 }

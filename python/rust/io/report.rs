@@ -3,22 +3,17 @@ use std::path::PathBuf;
 
 use bsxplorer2::io::compression::Compression;
 use bsxplorer2::io::report::{
-    ReportReader as RustReportReader,
-    ReportReaderBuilder,
+    ReportReader as RustReportReader, ReportReaderBuilder,
     ReportWriter as RustReportWriter,
 };
 use polars::frame::DataFrame;
-use pyo3::exceptions::{
-    PyFileNotFoundError,
-    PyRuntimeError,
-    PyValueError,
-};
+use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
-use crate::io::compression::PyCompression;
 use crate::data_structs::batch::PyBsxBatch;
 use crate::data_structs::report_schema::PyReportTypeSchema;
+use crate::io::compression::PyCompression;
 use crate::utils::FileOrFileLike;
 
 #[pyclass(name = "ReportReader", unsendable)]
@@ -73,11 +68,9 @@ impl PyReportReader {
             // Attempt to classify error
             if e.to_string().contains("No such file or directory") {
                 PyFileNotFoundError::new_err(e.to_string())
-            }
-            else if e.to_string().contains("must be specified") {
+            } else if e.to_string().contains("must be specified") {
                 PyValueError::new_err(e.to_string())
-            }
-            else {
+            } else {
                 PyRuntimeError::new_err(format!("Failed to build ReportReader: {}", e))
             }
         })?;
@@ -96,12 +89,10 @@ impl PyReportReader {
             Some(reader) => {
                 match reader.next() {
                     Some(Ok(batch)) => Ok(Some(PyBsxBatch::from(batch))),
-                    Some(Err(e)) => {
-                        Err(PyRuntimeError::new_err(format!(
-                            "Error reading next batch: {}",
-                            e
-                        )))
-                    },
+                    Some(Err(e)) => Err(PyRuntimeError::new_err(format!(
+                        "Error reading next batch: {}",
+                        e
+                    ))),
                     None => {
                         slf.reader = None; // Consume the reader
                         Ok(None) // Signals Python StopIteration
@@ -138,9 +129,8 @@ impl PyReportWriter {
         let file = sink.get_writer()?;
         let sink = BufWriter::new(file);
 
-        let comp_enum = Compression::from(
-            compression.unwrap_or_else(|| PyCompression::No),
-        );
+        let comp_enum =
+            Compression::from(compression.unwrap_or_else(|| PyCompression::No));
 
         let writer = RustReportWriter::try_new(
             sink,
@@ -166,8 +156,7 @@ impl PyReportWriter {
             writer
                 .write_batch(batch.into()) // Clone might be necessary depending on ownership
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to write batch: {}", e)))
-        }
-        else {
+        } else {
             Err(PyRuntimeError::new_err(
                 "Writer is closed or uninitialized.",
             ))
@@ -183,8 +172,7 @@ impl PyReportWriter {
             writer.write_df(&rust_df).map_err(|e| {
                 PyRuntimeError::new_err(format!("Failed to write DataFrame: {}", e))
             })
-        }
-        else {
+        } else {
             Err(PyRuntimeError::new_err(
                 "Writer is closed or uninitialized.",
             ))
@@ -198,8 +186,7 @@ impl PyReportWriter {
             // explicit finish/flush call if the Rust struct exposes one later.
             drop(writer);
             Ok(())
-        }
-        else {
+        } else {
             // Already closed, maybe warn or just do nothing? Let's return Ok
             // for idempotency.
             Ok(())

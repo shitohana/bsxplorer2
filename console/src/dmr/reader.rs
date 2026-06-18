@@ -1,14 +1,7 @@
 use anyhow::anyhow;
 use arcstr::ArcStr;
-use bsxplorer2::data_structs::batch::{
-    merge_replicates,
-    BsxColumns,
-};
-use bsxplorer2::prelude::{
-    AggMethod,
-    BsxBatch,
-    MultiBsxFileReader,
-};
+use bsxplorer2::data_structs::batch::{merge_replicates, BsxColumns};
+use bsxplorer2::prelude::{AggMethod, BsxBatch, MultiBsxFileReader};
 use bsxplorer2::utils::THREAD_POOL;
 use crossbeam::queue::SegQueue;
 use itertools::Itertools;
@@ -16,10 +9,7 @@ use polars::error::PolarsResult;
 use rayon::prelude::*;
 
 use super::segmentation::tv_recurse_segment;
-use super::types::{
-    DMRegion,
-    SegmentOwned,
-};
+use super::types::{DMRegion, SegmentOwned};
 use super::DmrArgs;
 
 fn comp_segment(
@@ -52,14 +42,7 @@ fn merge_for_dmr(
         .map(|b| b.column(BsxColumns::Density))
         .map(|c| c.is_null())
         .fold(vec![0; batches.len()], |agg, v| {
-            let arr_iter = v.iter().map(|b| {
-                if b.unwrap() {
-                    1
-                }
-                else {
-                    0
-                }
-            });
+            let arr_iter = v.iter().map(|b| if b.unwrap() { 1 } else { 0 });
             agg.iter()
                 .zip(arr_iter)
                 .map(|(val, b)| b + *val)
@@ -84,7 +67,7 @@ fn merge_for_dmr(
 }
 
 pub struct DmrReader {
-    config:  DmrArgs,
+    config: DmrArgs,
     readers: (MultiBsxFileReader, MultiBsxFileReader),
 }
 
@@ -110,12 +93,12 @@ impl DmrReader {
 
 pub struct DmrIterator<'a> {
     right_iter: Box<dyn Iterator<Item = PolarsResult<Vec<BsxBatch>>> + 'a>,
-    left_iter:  Box<dyn Iterator<Item = PolarsResult<Vec<BsxBatch>>> + 'a>,
-    config:     &'a DmrArgs,
-    results:    SegQueue<DMRegion>,
-    last_chr:   ArcStr,
-    leftover:   Option<SegmentOwned>,
-    batch_num:  usize,
+    left_iter: Box<dyn Iterator<Item = PolarsResult<Vec<BsxBatch>>> + 'a>,
+    config: &'a DmrArgs,
+    results: SegQueue<DMRegion>,
+    last_chr: ArcStr,
+    leftover: Option<SegmentOwned>,
+    batch_num: usize,
 }
 
 impl<'a> DmrIterator<'a> {
@@ -210,8 +193,7 @@ impl<'a> DmrIterator<'a> {
                 self.results.push(res);
             }
             true
-        }
-        else {
+        } else {
             false
         }
     }
@@ -223,15 +205,13 @@ impl Iterator for DmrIterator<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(dmr) = self.results.pop() {
             Some(Ok(dmr))
-        }
-        else {
+        } else {
             match self.read_segment() {
                 Ok(true) => self.next(),
                 Ok(false) => {
                     if self.process_last_leftover() {
                         self.next()
-                    }
-                    else {
+                    } else {
                         None
                     }
                 },

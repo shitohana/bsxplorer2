@@ -13,7 +13,7 @@ pub use tobsx::ToBsxConvert;
 #[derive(Debug, Clone, Args)]
 pub(self) struct FromReportArgs {
     #[clap(short='f', long = "from", required = true, default_value_t = ReportType::Bismark)]
-    from_type:        ReportType,
+    from_type: ReportType,
     #[clap(short='F', long = "from-compression", required = true, default_value_t = Compression::None)]
     from_compression: Compression,
     #[arg(
@@ -21,9 +21,9 @@ pub(self) struct FromReportArgs {
         default_value_t = false,
         help = "Use less RAM, but elongate computation."
     )]
-    low_memory:       bool,
+    low_memory: bool,
     #[arg(long = "fa", help = "Path to the reference sequence file.")]
-    fasta_path:       Option<PathBuf>,
+    fasta_path: Option<PathBuf>,
     #[arg(long, default_value_t = 2 << 20, help = "Size of raw batches.")]
-    batch_size:       usize,
+    batch_size: usize,
 }

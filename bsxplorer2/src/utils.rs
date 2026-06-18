@@ -18,29 +18,16 @@
 //! - Utility functions for converting between float and integer representations
 //!   of methylation density values.
 
-use std::io::{
-    BufReader,
-    Read,
-};
-use std::sync::atomic::{
-    AtomicUsize,
-    Ordering,
-};
-use std::sync::{
-    Arc,
-    Condvar,
-    Mutex,
-};
+use std::io::{BufReader, Read};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 use itertools::Itertools;
 use noodles_fasta::io::Indexer;
 use once_cell::sync::Lazy;
 use polars::prelude::*;
-use rayon::{
-    ThreadPool,
-    ThreadPoolBuilder,
-};
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
 pub use crate::tools::stats::*;
 
@@ -155,16 +142,16 @@ pub fn read_chrs_from_fa<R: Read>(reader: R) -> anyhow::Result<Vec<String>> {
 }
 
 pub struct Semaphore {
-    count:      AtomicUsize,
-    zero_cvar:  Condvar,
+    count: AtomicUsize,
+    zero_cvar: Condvar,
     zero_mutex: Mutex<()>,
 }
 
 impl Semaphore {
     pub fn new(count: usize) -> Arc<Self> {
         Arc::new(Semaphore {
-            count:      AtomicUsize::new(count),
-            zero_cvar:  Condvar::new(),
+            count: AtomicUsize::new(count),
+            zero_cvar: Condvar::new(),
             zero_mutex: Mutex::new(()),
         })
     }
@@ -205,7 +192,7 @@ impl Semaphore {
 }
 
 pub struct BoundThreadExecutor<'a> {
-    semaphore:   Arc<Semaphore>,
+    semaphore: Arc<Semaphore>,
     thread_pool: &'a ThreadPool,
 }
 
@@ -226,7 +213,8 @@ impl<'a> BoundThreadExecutor<'a> {
         &self,
         op: F,
     ) where
-        F: FnOnce() + Send + 'static, {
+        F: FnOnce() + Send + 'static,
+    {
         let semaphore = Arc::clone(&self.semaphore);
         semaphore.acquire();
         self.thread_pool.spawn(move || {
