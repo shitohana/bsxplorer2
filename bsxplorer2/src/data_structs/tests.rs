@@ -95,7 +95,7 @@ mod enums_tests {
         assert_eq!(Strand::from(false), Strand::Reverse);
 
         assert!(bool::from(Strand::Forward));
-        assert!(bool::from(Strand::Reverse));
+        assert!(!bool::from(Strand::Reverse));
         // Note: bool::from(Strand::None) would panic with unimplemented!()
     }
 
