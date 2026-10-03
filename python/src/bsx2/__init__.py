@@ -1,3 +1,3 @@
-import io, types
+from . import io, types
 
 __all__ = ["io", "types"]

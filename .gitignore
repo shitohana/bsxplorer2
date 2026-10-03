@@ -11,6 +11,7 @@
 .pytest_cache
 *.ipc
 *.lock
+!python/uv.lock
 *.pyc
 *.so
 dist

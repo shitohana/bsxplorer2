@@ -1,4 +1,4 @@
-from src.bsx2 import _bsx2 as x
+from . import _bsx2 as x
 
 Strand = x.Strand
 Context = x.Context
@@ -31,5 +31,5 @@ __all__ = [
     "GffEntry",
     "HcAnnotStore",
     "HcAnnotStoreIterator",
-    "BatchIndex"
+    "BatchIndex",
 ]

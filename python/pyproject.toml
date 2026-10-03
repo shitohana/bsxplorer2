@@ -1,31 +1,27 @@
-[tool.poetry]
+[project]
 name = "bsx2"
 version = "0.1.0"
-description = "A high-performance library for bisulfite sequencing data analysis and DNA methylation research"
-authors = ["shitohana <kyudytskiy@gmail.com>"]
+description = "Rust-backed bisulfite sequencing and DNA methylation analysis"
+authors = [{name = "shitohana", email = "kyudytskiy@gmail.com"}]
 readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "polars>=1.0,<2", "pyarrow", "numpy>=2.0", "scipy",
+    "matplotlib>=3.8,<4", "plotly>=5,<6", "pydantic>=2,<3",
+    "holoviews>=1.20.2,<2", "beartype>=0.21,<0.22",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<3.13"
-polars = "^1.0.0"
-pyarrow = "*"
-numpy = ">=2.0"
-scipy = "*"
-matplotlib = ">=3.8,<4.0"
-plotly = ">=5.0,<6.0"
-pydantic = "~=2.0"
-holoviews = "^1.20.2"
-beartype = "^0.21.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.5"
-tqdm = "^4.67.1"
+[dependency-groups]
+dev = ["pytest>=8.3.5,<9", "maturin>=1.8,<2", "mypy>=1.15,<2", "tqdm>=4.67.1,<5"]
 
 [tool.maturin]
 python-source = "src"
 module-name = "bsx2._bsx2"
-features = ["nightly"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
 
 [build-system]
-requires = ["poetry-core", "maturin>=1,<2"]
+requires = ["maturin>=1.8,<2"]
 build-backend = "maturin"

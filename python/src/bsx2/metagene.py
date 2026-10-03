@@ -11,13 +11,13 @@ from beartype.vale import Is
 
 from bsx2.io import RegionReader
 from bsx2.types import Contig, BsxBatch
-from src.bsx2 import _bsx2
+from . import _bsx2
 
 # TODO: Move to specialized file
 Fraction = Annotated[float, Is[lambda v: 0 <= v <= 1 or math.isnan(v)]]
 Positions = Annotated[
     Sequence[Annotated[float, Is[lambda v: 0 <= v <= 1]]],
-    Is[lambda seq: all(prev < current for prev, current in zip(seq[:-1], seq[1:]))]
+    Is[lambda seq: all(prev < current for prev, current in zip(seq[:-1], seq[1:]))],
 ]
 
 
@@ -28,11 +28,13 @@ class Metagene:
     @classmethod
     @beartype
     def from_reader(
-            cls,
-            reader: RegionReader,
-            contigs: Sequence[Contig],
-            preprocess_fn: Callable[[BsxBatch], Tuple[Positions, Sequence[Fraction]]] = lambda batch: batch.normalized(),
-    ) -> 'Metagene':
+        cls,
+        reader: RegionReader,
+        contigs: Sequence[Contig],
+        preprocess_fn: Callable[
+            [BsxBatch], Tuple[Positions, Sequence[Fraction]]
+        ] = lambda batch: batch.normalized(),
+    ) -> "Metagene":
         contigs = reader.index().sort(list(contigs))
         new = cls()
         for batch, contig in zip(reader.iter_contigs(contigs), contigs):
@@ -46,7 +48,9 @@ class Metagene:
         self.entries[name] = (positions, density)
 
     @beartype
-    def remove(self, name: Hashable) -> Union[Tuple[Positions, Sequence[Fraction]], None]:
+    def remove(
+        self, name: Hashable
+    ) -> Union[Tuple[Positions, Sequence[Fraction]], None]:
         return self.entries.pop(name, None)
 
     @beartype
@@ -54,7 +58,7 @@ class Metagene:
         return self.entries.get(name, None)
 
     @beartype
-    def union(self, other: 'Metagene'):
+    def union(self, other: "Metagene"):
         self.entries |= other.entries
 
     def densities(self) -> Iterator[float]:
@@ -98,6 +102,5 @@ class Metagene:
         self.insert(key, value[0], value[1])
 
     @beartype
-    def __ior__(self, other: 'Metagene'):
+    def __ior__(self, other: "Metagene"):
         self.union(other)
-
