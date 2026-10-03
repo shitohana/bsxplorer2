@@ -1,10 +1,18 @@
+use std::fs::File;
+use std::io::{
+    Read,
+    Seek,
+    Write,
+};
+use std::os::fd::AsRawFd;
+
 use polars::export::rayon::prelude::*;
-use pyo3::exceptions::{PyIOError, PyValueError};
+use pyo3::exceptions::{
+    PyIOError,
+    PyValueError,
+};
 use pyo3::prelude::*;
 use pyo3_file::PyFileLikeObject;
-use std::fs::File;
-use std::io::{Read, Seek, Write};
-use std::os::fd::AsRawFd;
 
 pub trait ReadHandle: Read + Seek + AsRawFd {}
 impl<T: Read + Seek + AsRawFd> ReadHandle for T {}

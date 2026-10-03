@@ -353,9 +353,9 @@ where
         Ok(None)
     }
     else {
-        s.parse::<f64>().map(Some).map_err(|e| {
-            serde::de::Error::custom(format!("Failed to parse f64: {e}"))
-        })
+        s.parse::<f64>()
+            .map(Some)
+            .map_err(|e| serde::de::Error::custom(format!("Failed to parse f64: {e}")))
     }
 }
 

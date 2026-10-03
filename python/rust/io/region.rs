@@ -193,7 +193,9 @@ impl PyRegionReader {
         contigs: Vec<PyContig>,
     ) -> PyResult<PyRegionReaderIterator> {
         let reader = self.inner.clone();
-        let contigs = self.inner.index()
+        let contigs = self
+            .inner
+            .index()
             .sort(contigs.into_iter().map_into())
             .map_into()
             .collect_vec();

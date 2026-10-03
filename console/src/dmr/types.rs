@@ -273,7 +273,7 @@ impl SegmentOwned {
         self
     }
 
-    pub fn to_view(&self) -> SegmentView {
+    pub fn to_view(&self) -> SegmentView<'_> {
         SegmentView::new(0, self.mds_orig.len(), Arc::new(self))
     }
 

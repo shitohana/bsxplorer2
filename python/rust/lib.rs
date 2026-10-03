@@ -1,8 +1,8 @@
 #![allow(unsafe_op_in_unsafe_fn, unused)]
 #![warn(unused_imports, unused_braces)]
 
-mod io;
 mod data_structs;
+mod io;
 mod utils;
 
 use pyo3::prelude::*;

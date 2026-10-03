@@ -262,8 +262,8 @@ impl BsxFileReader {
 }
 
 impl IntoIterator for BsxFileReader {
-    type Item = PolarsResult<BsxBatch>;
     type IntoIter = BsxFileIterator;
+    type Item = PolarsResult<BsxBatch>;
 
     fn into_iter(self) -> Self::IntoIter {
         BsxFileIterator {

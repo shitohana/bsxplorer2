@@ -578,7 +578,8 @@ impl BsxBatch {
                 .map(|v| v.unwrap_or(f32::NAN) as f64)
                 .collect();
             (positions, densities)
-        } else {
+        }
+        else {
             Default::default()
         }
     }

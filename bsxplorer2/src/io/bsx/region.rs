@@ -303,7 +303,7 @@ impl RegionReader {
     pub fn iter_contigs(
         &mut self,
         contigs: &[Contig],
-    ) -> RegionReaderIterator {
+    ) -> RegionReaderIterator<'_> {
         RegionReaderIterator {
             reader:          self,
             pending_contigs: VecDeque::from(contigs.to_vec()),

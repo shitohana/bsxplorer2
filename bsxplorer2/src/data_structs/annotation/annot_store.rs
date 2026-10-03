@@ -504,7 +504,7 @@ impl HcAnnotStore {
         self.interval_map = Either::Left(imap);
     }
 
-    pub fn iter(&self) -> slotmap::basic::Iter<EntryId, GffEntry> {
+    pub fn iter(&self) -> slotmap::basic::Iter<'_, EntryId, GffEntry> {
         self.entries.iter()
     }
 

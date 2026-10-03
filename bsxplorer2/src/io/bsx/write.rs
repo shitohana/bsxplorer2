@@ -60,9 +60,8 @@ where
         fai_path: PathBuf,
         compression: Option<IpcCompression>,
     ) -> Result<Self> {
-        let index = bio::io::fasta::Index::from_file(&fai_path).with_context(|| {
-            format!("Failed to read FASTA index from {fai_path:?}")
-        })?;
+        let index = bio::io::fasta::Index::from_file(&fai_path)
+            .with_context(|| format!("Failed to read FASTA index from {fai_path:?}"))?;
 
         let chr_names = index
             .sequences()

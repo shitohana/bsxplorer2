@@ -115,7 +115,7 @@ impl BsxColumns {
     pub fn create_anyvalue(
         &self,
         value: Box<dyn Any>,
-    ) -> Option<AnyValue> {
+    ) -> Option<AnyValue<'_>> {
         match self {
             BsxColumns::Chr => {
                 value

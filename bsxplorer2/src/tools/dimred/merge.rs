@@ -1,7 +1,10 @@
 #![allow(unused)]
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::{
+    Debug,
+    Display,
+};
 use std::io::Read;
 use std::process::exit;
 use std::str::FromStr;
@@ -58,7 +61,10 @@ pub enum MergeType {
 }
 
 impl Display for MergeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
 }

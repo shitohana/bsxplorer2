@@ -47,10 +47,7 @@ impl PyGenomicPosition {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "GenomicPosition({}:{})",
-            self.seqname, self.position
-        )
+        format!("GenomicPosition({}:{})", self.seqname, self.position)
     }
 
     // Add comparison methods. PartialOrd returns Option<Ordering>.

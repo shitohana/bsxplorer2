@@ -16,9 +16,9 @@ use pyo3::exceptions::{
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 
-use crate::io::compression::PyCompression;
 use crate::data_structs::batch::PyBsxBatch;
 use crate::data_structs::report_schema::PyReportTypeSchema;
+use crate::io::compression::PyCompression;
 use crate::utils::FileOrFileLike;
 
 #[pyclass(name = "ReportReader", unsendable)]
@@ -138,9 +138,8 @@ impl PyReportWriter {
         let file = sink.get_writer()?;
         let sink = BufWriter::new(file);
 
-        let comp_enum = Compression::from(
-            compression.unwrap_or_else(|| PyCompression::No),
-        );
+        let comp_enum =
+            Compression::from(compression.unwrap_or_else(|| PyCompression::No));
 
         let writer = RustReportWriter::try_new(
             sink,
