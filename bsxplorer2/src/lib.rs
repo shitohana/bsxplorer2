@@ -166,7 +166,7 @@
 //!     let fasta_index = PathBuf::from("path/to/your/genome.fa.fai");
 //!
 //!     // Create writer, using FASTA index to get chromosome names
-//!     let mut writer = BsxFileWriter::try_from_sink_and_fai(file, fasta_index, None, None)?;
+//!     let mut writer = BsxFileWriter::try_from_sink_and_fai(file, fasta_index, None)?;
 //!
 //!     // Create some dummy data (replace with your actual data processing)
 //!     let batch1 = BsxBatch::try_from_columns(

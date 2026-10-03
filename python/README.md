@@ -24,6 +24,31 @@ batch = BsxBatch.empty()
 assert batch.is_empty()
 ```
 
+## Tests and typing
+
+```sh
+just py-test
+just py-typecheck
+just test-full
+```
+
+`py-test` rebuilds and tests the installed extension. The pytest suite checks
+access to every native export and its public members, plus synthetic batch,
+annotation, region, iterator, and I/O behavior. `py-typecheck` runs ty and checks
+the shipped stubs against runtime signatures with mypy stubtest. The package
+includes `.pyi` files and `py.typed` for type checkers.
+
+`test-full` runs Python tests, typing checks, distribution validation, Rust
+workspace tests, and core doctests. `rs-test-fast` retains the fast Rust-only
+nextest profile.
+
+The existing Rust Polars adapter requires Python Polars 1.14.0, which is pinned
+in package metadata and the lockfile. Native enum objects are PyO3 classes;
+they are not Python `enum.Enum` subclasses. Schema methods return dictionaries.
+Readers backed by memory maps accept paths and real file descriptors. Writers
+also accept seekable binary streams such as `io.BytesIO`. Use writer context
+managers or `close()` to finalize output and report any finalization errors.
+
 ## Distributions
 
 ```sh
@@ -32,9 +57,24 @@ just py-build
 
 Wheels and a source distribution are written to `dist/`. The Python release
 profile uses panic unwinding for PyO3. The source distribution includes the local
-Rust core, so installation does not silently substitute a registry release.
+Rust core and workspace `Cargo.lock`, so installation does not silently substitute
+a registry release. Repository wheel/editable builds use Cargo `--locked`.
+For source distributions, Cargo may prune unused CLI entries from the archived
+workspace lockfile; the distribution check rejects changed dependency versions.
+Wheel builds bundle required external libraries using maturin's repair option.
 `just maturin debug`, `just maturin release`, and `just maturin build` remain
 available.
+
+```sh
+just py-package-test
+```
+
+This builds both distributions, installs the wheel in a temporary environment,
+and checks imports, stubs, typing, and pytest outside the checkout. It then
+extracts the source distribution, rebuilds its wheel, and repeats the checks.
+Dependencies come from the uv lockfile; the source rebuild reuses the Cargo
+dependency cache. The first release build can take several minutes. Validation
+in this session is limited to local macOS arm64 with Python 3.12.
 
 To update dependencies intentionally, run `uv lock --project python`, review the
 lockfile change, and repeat installation and validation. Normal recipes require

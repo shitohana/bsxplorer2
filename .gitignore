@@ -17,7 +17,7 @@
 dist
 target
 __pycache__
-Cargo.lock
+!/Cargo.lock
 .lapce
 temp
 profile.json.*

@@ -60,7 +60,7 @@
 //!
 //! let annotation = HcAnnotStore::from_bed(File::open(bed_filepath)?)?;
 //! let contigs = region_reader.index().sort(
-//!     annotation.iter().map(|entry| entry.contig().clone())
+//!     annotation.iter().map(|(_, entry)| entry.contig().clone())
 //! ).collect::<Vec<_>>();
 //!
 //! for contig_res in region_reader.iter_contigs(&contigs) {

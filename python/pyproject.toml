@@ -17,6 +17,9 @@ dev = ["pytest>=8.3.5,<9", "maturin>=1.8,<2", "mypy>=1.15,<2", "ty>=0.0.1", "tqd
 [tool.maturin]
 python-source = "src"
 module-name = "bsx2._bsx2"
+profile = "pyrelease"
+editable-profile = "pydev"
+auditwheel = "repair"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
