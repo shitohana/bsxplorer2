@@ -17,19 +17,19 @@ HcAnnotStoreIterator = x.HcAnnotStoreIterator
 BatchIndex = x.BatchIndex
 
 __all__ = [
-    "Strand",
-    "Context",
-    "BsxColumns",
     "AggMethod",
+    "BatchIndex",
     "BsxBatch",
+    "BsxColumns",
+    "Context",
     "ContextData",
-    "ReportTypeSchema",
-    "LazyBsxBatch",
-    "GenomicPosition",
     "Contig",
-    "GffEntryAttributes",
+    "GenomicPosition",
     "GffEntry",
+    "GffEntryAttributes",
     "HcAnnotStore",
     "HcAnnotStoreIterator",
-    "BatchIndex",
+    "LazyBsxBatch",
+    "ReportTypeSchema",
+    "Strand",
 ]

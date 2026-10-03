@@ -1,11 +1,21 @@
-import pytest
 import polars as pl
-from src.bsx2.types import (
-    Strand, Context, BsxColumns, AggMethod, BsxBatch, ContextData,
-    ReportTypeSchema, LazyBsxBatch, GenomicPosition, Contig,
-    GffEntryAttributes, GffEntry, HcAnnotStore
-)
+import pytest
 
+from src.bsx2.types import (
+    AggMethod,
+    BsxBatch,
+    BsxColumns,
+    Context,
+    ContextData,
+    Contig,
+    GenomicPosition,
+    GffEntry,
+    GffEntryAttributes,
+    HcAnnotStore,
+    LazyBsxBatch,
+    ReportTypeSchema,
+    Strand,
+)
 
 # --- Enum Tests ---
 

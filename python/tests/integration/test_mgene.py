@@ -1,9 +1,9 @@
 import pytest
+from shared import RUSTTESTS_DIR
 
 from bsx2.io import RegionReader
 from bsx2.metagene import Metagene
-from bsx2.types import HcAnnotStore, Contig
-from shared import RUSTTESTS_DIR
+from bsx2.types import Contig, HcAnnotStore
 
 
 @pytest.fixture(scope="session")

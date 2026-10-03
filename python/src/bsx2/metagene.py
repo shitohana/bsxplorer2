@@ -1,29 +1,30 @@
-import heapq
 
 import collections
 import itertools
 import math
-from typing import Annotated, Callable
+from collections.abc import Callable
+from typing import Annotated
 
-from beartype.typing import Hashable, Tuple, Sequence, Union, Iterator
 from beartype import beartype
+from beartype.typing import Hashable, Iterator, Sequence, Tuple, Union
 from beartype.vale import Is
 
 from bsx2.io import RegionReader
-from bsx2.types import Contig, BsxBatch
+from bsx2.types import BsxBatch, Contig
+
 from . import _bsx2
 
 # TODO: Move to specialized file
 Fraction = Annotated[float, Is[lambda v: 0 <= v <= 1 or math.isnan(v)]]
 Positions = Annotated[
     Sequence[Annotated[float, Is[lambda v: 0 <= v <= 1]]],
-    Is[lambda seq: all(prev < current for prev, current in zip(seq[:-1], seq[1:]))],
+    Is[lambda seq: all(prev < current for prev, current in itertools.pairwise(seq))],
 ]
 
 
 class Metagene:
     def __init__(self):
-        self.entries: dict[Hashable, Tuple[Positions, Sequence[Fraction]]] = dict()
+        self.entries: dict[Hashable, Tuple[Positions, Sequence[Fraction]]] = {}
 
     @classmethod
     @beartype
@@ -96,7 +97,7 @@ class Metagene:
 
     def __setitem__(self, key, value):
         if not isinstance(value, tuple):
-            raise ValueError("Can't set entry with not a tuple")
+            raise TypeError("Can't set entry with not a tuple")
         if len(value) > 2:
             raise ValueError("Value should be a tuple of [positions, densities]")
         self.insert(key, value[0], value[1])

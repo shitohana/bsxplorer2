@@ -12,12 +12,12 @@ RegionReader = x.RegionReader
 
 __all__ = [
     "BsxFileReader",
-    "IpcCompression",
     "BsxFileWriter",
     "Compression",
+    "FilterOperation",
+    "IpcCompression",
+    "RegionReader",
+    "RegionReaderIterator",
     "ReportReader",
     "ReportWriter",
-    "FilterOperation",
-    "RegionReaderIterator",
-    "RegionReader",
 ]
