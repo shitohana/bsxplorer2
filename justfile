@@ -2,9 +2,7 @@ default:
   just --list
 
 format:
-    cargo +nightly fmt --package bsxplorer2 -- --config-path rustfmt.toml
-    cargo +nightly fmt --package bsxplorer-ci -- --config-path rustfmt.toml
-    cargo +nightly fmt --package bsx2_native -- --config-path rustfmt.toml
+    cargo +nightly fmt --all -- --config-path rustfmt.toml
 
 rs-coverage: rs-test-full
     cargo +nightly llvm-cov --html --package bsxplorer2
