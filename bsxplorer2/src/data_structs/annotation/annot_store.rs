@@ -485,7 +485,7 @@ impl HcAnnotStore {
     }
 
     pub fn init_imap(&mut self) {
-        if self.tree.is_left() {
+        if self.interval_map.is_left() {
             return;
         }
 

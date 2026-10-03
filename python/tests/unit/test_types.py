@@ -1,7 +1,6 @@
 import polars as pl
 import pytest
-
-from src.bsx2.types import (
+from bsx2.types import (
     AggMethod,
     BsxBatch,
     BsxColumns,

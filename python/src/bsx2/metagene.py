@@ -1,4 +1,3 @@
-
 import collections
 import itertools
 import math
@@ -38,7 +37,10 @@ class Metagene:
     ) -> "Metagene":
         contigs = reader.index().sort(list(contigs))
         new = cls()
-        for batch, contig in zip(reader.iter_contigs(contigs), contigs):
+        for contig in contigs:
+            batch = reader.query(contig)
+            if batch is None:
+                continue
             positions, density = preprocess_fn(batch)
             new.insert(str(contig), positions, density)
 
@@ -46,6 +48,8 @@ class Metagene:
 
     @beartype
     def insert(self, name: Hashable, positions: Positions, density: Sequence[Fraction]):
+        if len(positions) != len(density):
+            raise ValueError("Positions and densities must have equal lengths")
         self.entries[name] = (positions, density)
 
     @beartype
@@ -82,6 +86,8 @@ class Metagene:
             Tuple of positions and densities lists
         """
 
+        if not self.entries:
+            return [], []
         positions, densities = zip(*self.entries.values())
         # noinspection PyUnresolvedReferences
         return _bsx2.merge_metagene_values(positions, densities)
@@ -98,10 +104,11 @@ class Metagene:
     def __setitem__(self, key, value):
         if not isinstance(value, tuple):
             raise TypeError("Can't set entry with not a tuple")
-        if len(value) > 2:
+        if len(value) != 2:
             raise ValueError("Value should be a tuple of [positions, densities]")
         self.insert(key, value[0], value[1])
 
     @beartype
     def __ior__(self, other: "Metagene"):
         self.union(other)
+        return self

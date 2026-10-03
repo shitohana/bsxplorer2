@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
@@ -14,10 +13,11 @@ use pyo3_polars::error::PyPolarsErr;
 use crate::data_structs::batch::PyBsxBatch;
 use crate::utils::{
     FileOrFileLike,
+    MmapSource,
     SinkHandle,
 };
 
-#[pyclass(name = "BsxFileReader", unsendable)]
+#[pyclass(module = "bsx2._bsx2", name = "BsxFileReader", unsendable)]
 #[derive(Debug, Clone)]
 pub struct PyBsxFileReader {
     reader:            RsBsxFileReader,
@@ -37,12 +37,8 @@ impl PyBsxFileReader {
 #[pymethods]
 impl PyBsxFileReader {
     #[new]
-    pub fn new(file: FileOrFileLike) -> PyResult<Self> {
-        let reader = match file {
-            FileOrFileLike::File(path) => RsBsxFileReader::try_new(File::open(path)?)?,
-            FileOrFileLike::ROnlyFileLike(handle) => RsBsxFileReader::try_new(handle)?,
-            FileOrFileLike::RWFileLike(handle) => RsBsxFileReader::try_new(handle)?,
-        };
+    pub fn new(file: MmapSource) -> PyResult<Self> {
+        let reader = file.open()?;
         Ok(Self {
             reader,
             current_batch_idx: 0,
@@ -97,6 +93,7 @@ impl PyBsxFileReader {
 
     pub fn __iter__(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
         slf.current_batch_idx = 0;
+        slf.reader.cache_mut().clear();
         slf
     }
 
@@ -107,7 +104,8 @@ impl PyBsxFileReader {
         }
         else if self.current_batch_idx < self.reader.blocks_total() {
             let to_read = (self.current_batch_idx
-                ..(self.current_batch_idx + self.reader.n_threads()))
+                ..(self.current_batch_idx + self.reader.n_threads())
+                    .min(self.reader.blocks_total()))
                 .collect::<Vec<_>>();
             let cache_res = self.reader.cache_batches(&to_read);
             if cache_res.is_ok() {
@@ -123,7 +121,7 @@ impl PyBsxFileReader {
     }
 }
 
-#[pyclass(name = "IpcCompression", eq, eq_int)]
+#[pyclass(module = "bsx2._bsx2", name = "IpcCompression", eq, eq_int)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PyIpcCompression {
     LZ4,
@@ -149,7 +147,7 @@ impl From<IpcCompression> for PyIpcCompression {
     }
 }
 
-#[pyclass(name = "BsxFileWriter", unsendable)]
+#[pyclass(module = "bsx2._bsx2", name = "BsxFileWriter", unsendable)]
 pub struct PyBsxFileWriter {
     writer: Option<RsBsxIpcWriter<BufWriter<Box<dyn SinkHandle>>>>,
 }

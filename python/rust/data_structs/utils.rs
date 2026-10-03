@@ -4,7 +4,7 @@ use bsxplorer2::data_structs::{
 };
 use pyo3::prelude::*;
 
-#[pyclass(name = "Strand", eq, eq_int, hash, frozen)]
+#[pyclass(module = "bsx2._bsx2", name = "Strand", eq, eq_int, hash, frozen)]
 #[derive(PartialEq, Debug, Clone, Copy, Hash, Eq)]
 pub enum PyStrand {
     Forward,
@@ -55,7 +55,7 @@ impl From<PyStrand> for RsStrand {
     }
 }
 
-#[pyclass(name = "Context", eq, eq_int, hash, frozen)]
+#[pyclass(module = "bsx2._bsx2", name = "Context", eq, eq_int, hash, frozen)]
 #[derive(PartialEq, Debug, Clone, Copy, Hash, Eq)]
 pub enum PyContext {
     CG,

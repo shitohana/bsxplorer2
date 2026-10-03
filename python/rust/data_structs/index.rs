@@ -3,6 +3,7 @@ use std::io::{
     BufReader,
     BufWriter,
 };
+use std::path::PathBuf;
 
 use bsxplorer2::data_structs::coords::Contig;
 use bsxplorer2::data_structs::Strand;
@@ -13,7 +14,7 @@ use pyo3::prelude::*;
 use super::coords::PyContig;
 
 /// Python wrapper for BatchIndex
-#[pyclass(name = "BatchIndex")]
+#[pyclass(module = "bsx2._bsx2", name = "BatchIndex")]
 #[derive(Debug, Clone)]
 pub struct PyBatchIndex {
     inner: BatchIndex,
@@ -57,6 +58,9 @@ impl PyBatchIndex {
         end: u32,
         batch_idx: usize,
     ) -> PyResult<()> {
+        if start > end {
+            return Err(PyValueError::new_err("Start must not exceed end"));
+        }
         let contig = Contig::new(seqname.into(), start, end, Strand::None);
         self.inner.insert(contig, batch_idx);
         Ok(())
@@ -70,6 +74,9 @@ impl PyBatchIndex {
         start: u32,
         end: u32,
     ) -> PyResult<Option<Vec<usize>>> {
+        if start > end {
+            return Err(PyValueError::new_err("Start must not exceed end"));
+        }
         let contig = Contig::new(seqname.into(), start, end, Strand::None);
         Ok(self.inner.find(&contig))
     }
@@ -97,7 +104,7 @@ impl PyBatchIndex {
     #[pyo3(text_signature = "($self, filename)")]
     fn save(
         &self,
-        filename: String,
+        filename: PathBuf,
     ) -> PyResult<()> {
         let file =
             File::create(filename).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -112,7 +119,7 @@ impl PyBatchIndex {
     /// Load index from a file
     #[staticmethod]
     #[pyo3(text_signature = "(filename)")]
-    fn load(filename: String) -> PyResult<Self> {
+    fn load(filename: PathBuf) -> PyResult<Self> {
         let file =
             File::open(filename).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let mut reader = BufReader::new(file);

@@ -21,7 +21,7 @@ use crate::data_structs::report_schema::PyReportTypeSchema;
 use crate::io::compression::PyCompression;
 use crate::utils::FileOrFileLike;
 
-#[pyclass(name = "ReportReader", unsendable)]
+#[pyclass(module = "bsx2._bsx2", name = "ReportReader", unsendable)]
 pub struct PyReportReader {
     reader: Option<RustReportReader>,
 }
@@ -49,6 +49,11 @@ impl PyReportReader {
         low_memory: bool,
         compression: Option<PyCompression>,
     ) -> PyResult<Self> {
+        if chunk_size == 0 || batch_size == 0 {
+            return Err(PyValueError::new_err(
+                "Chunk and batch sizes must be positive",
+            ));
+        }
         let mut builder = ReportReaderBuilder::default()
             .with_report_type(report_type.to_rust())
             .with_chunk_size(chunk_size)
@@ -113,7 +118,7 @@ impl PyReportReader {
     }
 }
 
-#[pyclass(name = "ReportWriter", unsendable)]
+#[pyclass(module = "bsx2._bsx2", name = "ReportWriter", unsendable)]
 pub struct PyReportWriter {
     writer: Option<RustReportWriter>,
 }
@@ -135,6 +140,9 @@ impl PyReportWriter {
         compression: Option<PyCompression>,
         compression_level: Option<u32>,
     ) -> PyResult<Self> {
+        if n_threads == 0 {
+            return Err(PyValueError::new_err("n_threads must be positive"));
+        }
         let file = sink.get_writer()?;
         let sink = BufWriter::new(file);
 
@@ -192,11 +200,12 @@ impl PyReportWriter {
 
     pub fn close(&mut self) -> PyResult<()> {
         if let Some(writer) = self.writer.take() {
-            // The underlying BatchedCsvWriter flushes on drop, which happens
-            // when `writer` goes out of scope here. We might add an
-            // explicit finish/flush call if the Rust struct exposes one later.
-            drop(writer);
-            Ok(())
+            writer.finish().map_err(|e| {
+                pyo3::exceptions::PyIOError::new_err(format!(
+                    "Failed to finish report: {}",
+                    e
+                ))
+            })
         }
         else {
             // Already closed, maybe warn or just do nothing? Let's return Ok

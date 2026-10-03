@@ -7,7 +7,7 @@ use super::utils::{
     PyStrand,
 };
 
-#[pyclass(name = "ContextData")]
+#[pyclass(module = "bsx2._bsx2", name = "ContextData")]
 #[derive(Clone)]
 pub struct PyContextData {
     inner: RustContextData,

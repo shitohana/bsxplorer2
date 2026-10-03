@@ -1,7 +1,7 @@
 use bsxplorer2::io::compression::Compression;
 use pyo3::prelude::*; // Assuming bsxplorer2 is the crate name
 
-#[pyclass(name = "Compression", eq, eq_int)]
+#[pyclass(module = "bsx2._bsx2", name = "Compression", eq, eq_int)]
 #[derive(Clone, Debug, Ord, PartialOrd, PartialEq, Eq, Hash)]
 pub enum PyCompression {
     // Had to name it no instead of none, because python interprets

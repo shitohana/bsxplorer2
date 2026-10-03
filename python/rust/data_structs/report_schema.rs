@@ -4,7 +4,7 @@ use bsxplorer2::io::report::ReportType as RustReportTypeSchema;
 use pyo3::prelude::*;
 use pyo3_polars::PySchema;
 
-#[pyclass(name = "ReportTypeSchema", eq, eq_int)]
+#[pyclass(module = "bsx2._bsx2", name = "ReportTypeSchema", eq, eq_int)]
 #[derive(PartialEq, Clone)]
 pub enum PyReportTypeSchema {
     Bismark,

@@ -13,7 +13,7 @@ use super::utils::{
     PyStrand,
 };
 
-#[pyclass(name = "LazyBsxBatch")]
+#[pyclass(module = "bsx2._bsx2", name = "LazyBsxBatch")]
 #[derive(Clone)]
 pub struct PyLazyBsxBatch {
     inner: LazyBsxBatch,

@@ -34,3 +34,8 @@ pub use read::{
 };
 pub use schema::ReportType;
 pub use write::ReportWriter;
+#[cfg(feature = "compression")]
+pub(crate) use write::{
+    shared_output,
+    FinishOutput,
+};

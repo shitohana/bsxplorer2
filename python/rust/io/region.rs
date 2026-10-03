@@ -1,9 +1,6 @@
-use std::fs::File;
-
 use bsxplorer2::data_structs::batch::BsxBatch;
 use bsxplorer2::io::bsx::{
     BatchIndex,
-    BsxFileReader,
     RegionReader,
 };
 use itertools::Itertools;
@@ -18,10 +15,10 @@ use crate::data_structs::utils::{
     PyContext,
     PyStrand,
 };
-use crate::utils::FileOrFileLike;
+use crate::utils::MmapSource;
 
 #[derive(Clone)]
-#[pyclass(name = "FilterOperation")]
+#[pyclass(module = "bsx2._bsx2", name = "FilterOperation")]
 pub enum PyFilterOperation {
     PosLt { value: u32 },
     PosGt { value: u32 },
@@ -33,9 +30,9 @@ pub enum PyFilterOperation {
 fn apply_filters(
     batch: BsxBatch,
     filters: &[PyFilterOperation],
-) -> BsxBatch {
+) -> PyResult<BsxBatch> {
     if filters.is_empty() {
-        return batch;
+        return Ok(batch);
     }
 
     let mut lazy_batch = batch.lazy();
@@ -57,16 +54,18 @@ fn apply_filters(
     }
 
     // This should not fail since we're only applying filters
-    lazy_batch.collect().unwrap()
+    lazy_batch
+        .collect()
+        .map_err(|e| PyPolarsErr::Polars(e).into())
 }
 
-#[pyclass(unsendable, name = "RegionReader")]
+#[pyclass(module = "bsx2._bsx2", unsendable, name = "RegionReader")]
 pub struct PyRegionReader {
     inner:   RegionReader,
     filters: Vec<PyFilterOperation>,
 }
 
-#[pyclass(unsendable, name = "RegionReaderIterator")]
+#[pyclass(module = "bsx2._bsx2", unsendable, name = "RegionReaderIterator")]
 pub struct PyRegionReaderIterator {
     inner:         RegionReader,
     contigs:       Vec<PyContig>,
@@ -77,12 +76,8 @@ pub struct PyRegionReaderIterator {
 #[pymethods]
 impl PyRegionReader {
     #[new]
-    fn new(file: FileOrFileLike) -> PyResult<Self> {
-        let mut reader = match file {
-            FileOrFileLike::File(path) => BsxFileReader::try_new(File::open(path)?)?,
-            FileOrFileLike::ROnlyFileLike(handle) => BsxFileReader::try_new(handle)?,
-            FileOrFileLike::RWFileLike(handle) => BsxFileReader::try_new(handle)?,
-        };
+    fn new(file: MmapSource) -> PyResult<Self> {
+        let mut reader = file.open()?;
         let index: BatchIndex =
             BatchIndex::from_reader(&mut reader).map_err(|e| PyPolarsErr::Polars(e))?;
 
@@ -115,7 +110,7 @@ impl PyRegionReader {
 
         match result {
             Ok(Some(batch)) => {
-                let final_batch = apply_filters(batch, &self.filters);
+                let final_batch = apply_filters(batch, &self.filters)?;
                 Ok(Some(final_batch.into()))
             },
             Ok(None) => Ok(None),
@@ -216,22 +211,20 @@ impl PyRegionReaderIterator {
     }
 
     fn __next__(&mut self) -> PyResult<Option<PyBsxBatch>> {
-        if self.current_index < self.contigs.len() {
+        while self.current_index < self.contigs.len() {
             let contig = self.contigs[self.current_index].clone();
             self.current_index += 1;
 
             let result = self.inner.query(contig.into(), None);
             match result {
                 Ok(Some(batch)) => {
-                    let final_batch = apply_filters(batch, &self.filters);
-                    Ok(Some(final_batch.into()))
+                    let final_batch = apply_filters(batch, &self.filters)?;
+                    return Ok(Some(final_batch.into()));
                 },
-                Ok(None) => self.__next__(), // Skip to next contig if no data
-                Err(e) => Err(PyErr::from(e)),
+                Ok(None) => continue, // Skip absent regions without recursion
+                Err(e) => return Err(PyErr::from(e)),
             }
         }
-        else {
-            Ok(None) // StopIteration
-        }
+        Ok(None) // StopIteration
     }
 }

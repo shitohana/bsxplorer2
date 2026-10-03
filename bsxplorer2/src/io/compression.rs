@@ -62,6 +62,32 @@ mod inner {
         }
     }
 
+    struct FinishOnDrop {
+        writer: Box<dyn Write>,
+        finish: Option<crate::io::report::FinishOutput>,
+    }
+
+    impl Write for FinishOnDrop {
+        fn write(
+            &mut self,
+            bytes: &[u8],
+        ) -> std::io::Result<usize> {
+            self.writer.write(bytes)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.writer.flush()
+        }
+    }
+
+    impl Drop for FinishOnDrop {
+        fn drop(&mut self) {
+            if let Some(finish) = self.finish.take() {
+                let _ = finish();
+            }
+        }
+    }
+
     impl Compression {
         /// Returns the name of the compression algorithm.
         pub fn name(&self) -> &str {
@@ -137,35 +163,75 @@ mod inner {
             handle: W,
             compression_level: u32,
         ) -> anyhow::Result<Box<dyn Write>> {
-            let encoder: Box<dyn Write> = match self {
+            let (writer, finish) =
+                self.get_report_encoder(handle, compression_level)?;
+            Ok(Box::new(FinishOnDrop {
+                writer,
+                finish: Some(finish),
+            }))
+        }
+
+        pub(crate) fn get_report_encoder<W: Write + Seek + 'static>(
+            &self,
+            handle: W,
+            level: u32,
+        ) -> anyhow::Result<(Box<dyn Write>, crate::io::report::FinishOutput)> {
+            Ok(match self {
+                Compression::None => {
+                    crate::io::report::shared_output(handle, |mut w| w.flush())
+                },
                 Compression::Gz => {
-                    Box::new(flate2::write::GzEncoder::new(
-                        handle,
-                        flate2::Compression::new(compression_level),
-                    ))
+                    crate::io::report::shared_output(
+                        flate2::write::GzEncoder::new(
+                            handle,
+                            flate2::Compression::new(level),
+                        ),
+                        |w| w.finish().and_then(|mut sink| sink.flush()),
+                    )
                 },
                 Compression::Zstd => {
-                    Box::new(zstd::Encoder::new(handle, compression_level as i32)?)
+                    crate::io::report::shared_output(
+                        zstd::Encoder::new(handle, level as i32)?,
+                        |w| w.finish().and_then(|mut sink| sink.flush()),
+                    )
                 },
                 Compression::Lz4 => {
-                    let encoder = lz4::EncoderBuilder::new()
-                        .level(compression_level)
-                        .build(handle)?;
-                    Box::new(encoder)
+                    crate::io::report::shared_output(
+                        lz4::EncoderBuilder::new().level(level).build(handle)?,
+                        |w| {
+                            let (mut sink, result) = w.finish();
+                            result?;
+                            sink.flush()
+                        },
+                    )
                 },
                 Compression::Xz2 => {
-                    Box::new(xz2::write::XzEncoder::new(handle, compression_level))
+                    crate::io::report::shared_output(
+                        xz2::write::XzEncoder::new(handle, level),
+                        |w| w.finish().and_then(|mut sink| sink.flush()),
+                    )
                 },
                 Compression::Bzip2 => {
-                    Box::new(bzip2::write::BzEncoder::new(
-                        handle,
-                        bzip2::Compression::new(compression_level),
-                    ))
+                    crate::io::report::shared_output(
+                        bzip2::write::BzEncoder::new(
+                            handle,
+                            bzip2::Compression::new(level),
+                        ),
+                        |w| w.finish().and_then(|mut sink| sink.flush()),
+                    )
                 },
-                Compression::Zip => Box::new(zip::write::ZipWriter::new(handle)),
-                Compression::None => Box::new(handle),
-            };
-            Ok(encoder)
+                Compression::Zip => {
+                    let mut writer = zip::write::ZipWriter::new(handle);
+                    writer.start_file(
+                        "report.tsv",
+                        zip::write::SimpleFileOptions::default(),
+                    )?;
+                    crate::io::report::shared_output(writer, |w| {
+                        let mut sink = w.finish().map_err(std::io::Error::other)?;
+                        sink.flush()
+                    })
+                },
+            })
         }
     }
 }

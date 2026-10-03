@@ -1,4 +1,3 @@
-use std::hash::DefaultHasher;
 use std::sync::Arc;
 
 use bsxplorer2::data_structs::batch::{
@@ -12,7 +11,12 @@ use bsxplorer2::tools::dimred::SegmentAlgorithm;
 use bsxplorer2::utils::get_categorical_dtype;
 use polars::prelude::{
     DataFrame,
+    DataType,
     IntoSeries,
+};
+use pyo3::exceptions::{
+    PyOverflowError,
+    PyValueError,
 };
 use pyo3::prelude::*;
 use pyo3_polars::{
@@ -30,7 +34,7 @@ use super::coords::{
 use super::lazy::PyLazyBsxBatch;
 use super::report_schema::PyReportTypeSchema;
 
-#[pyclass(name = "BsxColumns", eq, eq_int)]
+#[pyclass(module = "bsx2._bsx2", name = "BsxColumns", eq, eq_int)]
 #[derive(Clone, PartialEq, Eq)]
 pub enum PyBsxColumns {
     Chr,
@@ -108,7 +112,7 @@ impl From<BsxColumns> for PyBsxColumns {
     }
 }
 
-#[pyclass(name = "AggMethod", eq, eq_int)]
+#[pyclass(module = "bsx2._bsx2", name = "AggMethod", eq, eq_int)]
 #[derive(Clone, PartialEq, Eq)]
 pub enum PyAggMethod {
     Mean,
@@ -130,7 +134,7 @@ impl From<PyAggMethod> for AggMethod {
     }
 }
 
-#[pyclass(name = "BsxBatch")]
+#[pyclass(module = "bsx2._bsx2", name = "BsxBatch")]
 #[derive(Debug, Clone)]
 pub struct PyBsxBatch {
     inner: BsxBatch,
@@ -144,6 +148,28 @@ impl From<BsxBatch> for PyBsxBatch {
 impl From<PyBsxBatch> for BsxBatch {
     fn from(py_batch: PyBsxBatch) -> Self {
         py_batch.inner
+    }
+}
+
+impl PyBsxBatch {
+    fn check_positions(&self) -> PyResult<()> {
+        if self.inner.position().null_count() > 0 {
+            return Err(PyValueError::new_err("Positions must not contain nulls"));
+        }
+        if !self.inner.position().into_no_null_iter().is_sorted() {
+            return Err(PyValueError::new_err("Positions must be sorted"));
+        }
+        Ok(())
+    }
+
+    fn check_partition_positions(&self) -> PyResult<()> {
+        self.check_positions()?;
+        if self.inner.last_pos() == Some(u32::MAX) {
+            return Err(PyOverflowError::new_err(
+                "Partition end exceeds the u32 coordinate range",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -163,7 +189,29 @@ impl PyBsxBatch {
         count_m: Vec<u16>,
         count_total: Vec<u16>,
     ) -> PyResult<Self> {
+        if [
+            strand.len(),
+            context.len(),
+            count_m.len(),
+            count_total.len(),
+        ]
+        .iter()
+        .any(|&len| len != positions.len())
+        {
+            return Err(PyValueError::new_err(
+                "All input vectors must have the same length",
+            ));
+        }
+        if positions.windows(2).any(|w| w[0] >= w[1]) {
+            return Err(PyValueError::new_err("Positions must be sorted and unique"));
+        }
         let chr_dtype = chr_dtype.map(|s| s.0);
+        if chr_dtype
+            .as_ref()
+            .is_some_and(|dt| !matches!(dt, DataType::Categorical(..)))
+        {
+            return Err(PyValueError::new_err("chr_dtype must be categorical"));
+        }
 
         let inner = BsxBatch::try_from_columns(
             &chr,
@@ -236,6 +284,12 @@ impl PyBsxBatch {
     #[pyo3(signature = (chr_dtype=None))]
     pub fn empty(chr_dtype: Option<PyDataType>) -> PyResult<Self> {
         let chr_dtype_option = chr_dtype.map(|s| s.0);
+        if chr_dtype_option
+            .as_ref()
+            .is_some_and(|dt| !matches!(dt, DataType::Categorical(..)))
+        {
+            return Err(PyValueError::new_err("chr_dtype must be categorical"));
+        }
         Ok(Self {
             inner: BsxBatch::empty(chr_dtype_option.as_ref()),
         })
@@ -347,17 +401,29 @@ impl PyBsxBatch {
     pub fn extend_unchecked(
         &mut self,
         other: &Self,
-    ) {
-        unsafe { self.inner.extend_unchecked(&other.inner) }
+    ) -> PyResult<()> {
+        // Python cannot uphold Rust's unsafe preconditions. Keep the API name,
+        // but validate before allowing data into the batch.
+        self.extend(other)
     }
 
     #[pyo3(signature = (min_size, beta=None))]
     pub fn shrink(
         &self,
+        py: Python<'_>,
         min_size: usize,
         beta: Option<f64>,
     ) -> PyResult<(Vec<f64>, Vec<f64>)> {
-        let result = self.inner.shrink(SegmentAlgorithm::Pelt(beta, min_size))?;
+        self.check_partition_positions()?;
+        if min_size == 0 || beta.is_some_and(|b| !b.is_finite() || b < 0.0) {
+            return Err(PyValueError::new_err(
+                "min_size must be positive and beta finite and nonnegative",
+            ));
+        }
+        let batch = self.inner.clone();
+        let result = py.allow_threads(move || {
+            batch.shrink(SegmentAlgorithm::Pelt(beta, min_size))
+        })?;
         Ok(result)
     }
 
@@ -366,6 +432,7 @@ impl PyBsxBatch {
         n_fragments: usize,
         method: PyAggMethod,
     ) -> PyResult<(Vec<f64>, Vec<f64>)> {
+        self.check_partition_positions()?;
         let result = self.inner.discretise(n_fragments, method.into())?;
         Ok(result)
     }
@@ -375,15 +442,22 @@ impl PyBsxBatch {
         breakpoints: Vec<usize>,
         method: PyAggMethod,
     ) -> PyResult<(Vec<f64>, Vec<f64>)> {
+        self.check_partition_positions()?;
+        if breakpoints.windows(2).any(|w| w[0] >= w[1]) {
+            return Err(PyValueError::new_err(
+                "Breakpoints must be strictly increasing",
+            ));
+        }
         let result = self
             .inner
             .partition(breakpoints, AggMethod::from(method).get_fn())?;
         Ok(result)
     }
 
-    pub fn normalized(&self) -> (Vec<f64>, Vec<f64>) {
+    pub fn normalized(&self) -> PyResult<(Vec<f64>, Vec<f64>)> {
+        self.check_positions()?;
         if let Some((start, end)) = self.inner.first_pos().zip(self.inner.last_pos()) {
-            let length = (end - start + 1) as f64;
+            let length = f64::from(end) - f64::from(start) + 1.0;
             let positions = self
                 .inner
                 .positions_vec()
@@ -396,10 +470,10 @@ impl PyBsxBatch {
                 .iter()
                 .map(|v| v.unwrap_or(f32::NAN) as f64)
                 .collect();
-            (positions, densities)
+            Ok((positions, densities))
         }
         else {
-            Default::default()
+            Ok(Default::default())
         }
     }
 
@@ -433,6 +507,15 @@ impl PyBsxBatch {
         mean: f64,
         pvalue: f64,
     ) -> PyResult<Self> {
+        if !mean.is_finite()
+            || !pvalue.is_finite()
+            || !(0.0..=1.0).contains(&mean)
+            || !(0.0..=1.0).contains(&pvalue)
+        {
+            return Err(PyValueError::new_err(
+                "mean and pvalue must be finite probabilities",
+            ));
+        }
         // clone needed because as_binom takes Self, not &Self
         let binom_batch = self
             .inner

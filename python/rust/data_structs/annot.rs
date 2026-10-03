@@ -24,7 +24,7 @@ use slotmap::{
 
 use crate::data_structs::coords::PyContig;
 
-#[pyclass(name = "GffEntryAttributes")]
+#[pyclass(module = "bsx2._bsx2", name = "GffEntryAttributes")]
 #[derive(Debug, Clone)]
 pub struct PyGffEntryAttributes {
     inner: GffEntryAttributes,
@@ -88,7 +88,7 @@ impl PyGffEntryAttributes {
     }
 }
 
-#[pyclass(name = "GffEntry")]
+#[pyclass(module = "bsx2._bsx2", name = "GffEntry")]
 #[derive(Debug, Clone)]
 pub struct PyGffEntry {
     inner: GffEntry,
@@ -197,7 +197,7 @@ impl PyGffEntry {
     }
 }
 
-#[pyclass(name = "HcAnnotStore")]
+#[pyclass(module = "bsx2._bsx2", name = "HcAnnotStore")]
 pub struct PyAnnotStore {
     inner: HcAnnotStore,
 }
@@ -390,28 +390,28 @@ impl PyAnnotStore {
             .collect();
 
         for (id, parent_entry) in selected_entries {
+            let contig = &parent_entry.contig;
             let (start, end) = if flank > 0 {
-                // Flank downstream (after end)
-                (
-                    parent_entry.contig.end_gpos(),
-                    parent_entry.contig.end_gpos().shift(flank as isize),
-                )
+                let end = contig.end().checked_add(flank as u32).ok_or_else(|| {
+                    PyValueError::new_err("Flank exceeds the coordinate range")
+                })?;
+                (contig.end(), end)
             }
             else {
-                // Flank upstream (before start)
-                (
-                    parent_entry.contig.start_gpos().shift(flank as isize),
-                    parent_entry.contig.start_gpos(),
-                )
+                let start = contig
+                    .start()
+                    .checked_sub(flank.unsigned_abs())
+                    .ok_or_else(|| {
+                        PyValueError::new_err("Flank precedes coordinate zero")
+                    })?;
+                (start, contig.start())
             };
-
-            // Ensure start <= end for the range
-            let (start, end) = if start <= end {
-                (start, end)
-            }
-            else {
-                (end, start)
-            };
+            let flank_contig = bsxplorer2::data_structs::coords::Contig::new(
+                contig.seqname().clone(),
+                start,
+                end,
+                bsxplorer2::data_structs::Strand::None,
+            );
 
             let mut feature_type = prefix.to_string();
             feature_type.push_str(parent_entry.feature_type.as_str());
@@ -423,7 +423,7 @@ impl PyAnnotStore {
                 format!("{}_flank_{}", parent_entry.id(), flank);
 
             let flank_entry = GffEntry::new(
-                (start..end).into(),
+                flank_contig,
                 None,
                 Some(feature_type.into()),
                 None,
@@ -479,7 +479,7 @@ impl PyAnnotStore {
     }
 }
 
-#[pyclass(name = "HcAnnotStoreIterator")]
+#[pyclass(module = "bsx2._bsx2", name = "HcAnnotStoreIterator")]
 // Iterator now yields (u64 EntryId, GffEntry)
 pub struct PyAnnotStoreIterator {
     entries: Vec<(u64, GffEntry)>,

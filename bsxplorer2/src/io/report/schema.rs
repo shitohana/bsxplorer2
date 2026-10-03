@@ -158,7 +158,8 @@ impl ReportType {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn strand_col(&self) -> Option<&'static str> {
         match self {
-            Self::Bismark | Self::CgMap => Some("strand"),
+            Self::Bismark => Some("strand"),
+            Self::CgMap => Some("nuc"),
             Self::BedGraph | Self::Coverage => None,
         }
     }

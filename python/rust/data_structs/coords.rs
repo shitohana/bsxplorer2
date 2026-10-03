@@ -1,7 +1,4 @@
-use std::ops::{
-    Add,
-    Sub,
-};
+use std::ops::Sub;
 
 use bsxplorer2::data_structs::coords::{
     Contig,
@@ -17,7 +14,7 @@ use pyo3::prelude::*;
 
 use super::utils::PyStrand;
 
-#[pyclass(name = "GenomicPosition", get_all, set_all)]
+#[pyclass(module = "bsx2._bsx2", name = "GenomicPosition", get_all, set_all)]
 #[derive(Debug, Clone)]
 pub struct PyGenomicPosition {
     seqname:  String,
@@ -99,26 +96,16 @@ impl PyGenomicPosition {
         &self,
         other: &PyGenomicPosition,
     ) -> PyResult<Option<Self>> {
-        // Convert to Rust type for operation
-        let self_rust = GenomicPosition::new(
-            BsxSmallStr::from(self.seqname.clone()),
-            self.position,
-        );
-        let other_rust = GenomicPosition::new(
-            BsxSmallStr::from(other.seqname.clone()),
-            other.position,
-        );
-
-        // Use the Rust Add implementation
-        match self_rust.add(other_rust) {
-            Some(result_rust) => {
-                Ok(Some(Self {
-                    seqname:  result_rust.seqname().to_string(),
-                    position: result_rust.position(),
-                }))
-            },
-            None => Ok(None), // Different seqnames
+        if self.seqname != other.seqname {
+            return Ok(None);
         }
+        let position = self.position.checked_add(other.position).ok_or_else(|| {
+            pyo3::exceptions::PyOverflowError::new_err("Genomic position overflow")
+        })?;
+        Ok(Some(Self {
+            seqname: self.seqname.clone(),
+            position,
+        }))
     }
 
     fn __sub__(
@@ -164,12 +151,14 @@ impl From<&PyGenomicPosition> for GenomicPosition {
     }
 }
 
-#[pyclass(name = "Contig", get_all, set_all)] // Allows access to seqname, start, end directly
+#[pyclass(module = "bsx2._bsx2", name = "Contig", get_all)] // Allows access to seqname, start, end directly
 #[derive(Debug, Clone)] // Need these for conversion
 pub struct PyContig {
+    #[pyo3(set)]
     pub(crate) seqname: String,
     pub(crate) start:   u32,
     pub(crate) end:     u32,
+    #[pyo3(set)]
     pub(crate) strand:  PyStrand, // Store the Rust enum internally
 }
 
@@ -225,6 +214,30 @@ impl PyContig {
             PyStrand::Reverse => "-".to_string(),
             PyStrand::Null => ".".to_string(),
         }
+    }
+
+    #[setter(start)]
+    fn set_start(
+        &mut self,
+        start: u32,
+    ) -> PyResult<()> {
+        if start > self.end {
+            return Err(PyValueError::new_err("Start must not exceed end"));
+        }
+        self.start = start;
+        Ok(())
+    }
+
+    #[setter(end)]
+    fn set_end(
+        &mut self,
+        end: u32,
+    ) -> PyResult<()> {
+        if end < self.start {
+            return Err(PyValueError::new_err("End must not precede start"));
+        }
+        self.end = end;
+        Ok(())
     }
 
     // Length method
