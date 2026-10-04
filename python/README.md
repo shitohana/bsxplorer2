@@ -5,16 +5,17 @@ Builds from this repository use the local `bsxplorer2` Rust core.
 
 ## Development setup
 
-Install Rust, uv, and just. CPython 3.10–3.12 is supported; the local recipes use
-Python 3.12. From the repository root, run:
+Install Nix and devenv. CPython 3.10–3.12 is supported; the development
+environment uses Python 3.12. From the repository root, run:
 
 ```sh
-just py-setup
+devenv shell
+py-setup
 ```
 
 This installs the dependencies pinned in `python/uv.lock` into `python/.venv`
 and rebuilds the extension with the `pydev` Cargo profile. Repeat after Rust
-changes. Run Python commands with `python/.venv/bin/python`.
+changes. Run Python commands with `python` inside devenv.
 
 ```python
 from bsx2.types import BsxBatch, Strand, Contig
@@ -27,9 +28,9 @@ assert batch.is_empty()
 ## Tests and typing
 
 ```sh
-just py-test
-just py-typecheck
-just test-full
+py-test
+py-typecheck
+test-full
 ```
 
 `py-test` rebuilds and tests the installed extension. The pytest suite checks
@@ -52,30 +53,30 @@ managers or `close()` to finalize output and report any finalization errors.
 ## Distributions
 
 ```sh
-just py-build
+py-build
 ```
 
-Wheels and a source distribution are written to `dist/`. The Python release
-profile uses panic unwinding for PyO3. The source distribution includes the local
+Devenv writes wheels and a source distribution to `dist/`, replacing previous
+`bsx2` distributions. The Python release profile uses panic unwinding for PyO3. The source distribution includes the local
 Rust core and workspace `Cargo.lock`, so installation does not silently substitute
 a registry release. Repository wheel/editable builds use Cargo `--locked`.
 For source distributions, Cargo may prune unused CLI entries from the archived
 workspace lockfile; the distribution check rejects changed dependency versions.
 Wheel builds bundle required external libraries using maturin's repair option.
-`just maturin debug`, `just maturin release`, and `just maturin build` remain
-available.
+`py-develop debug`, `py-develop release`, and `py-build` are available.
+See [the development guide](../DEVELOPMENT.md) for tasks, hooks, and direnv.
 
 ```sh
-just py-package-test
+py-package-test
 ```
 
 This builds both distributions, installs the wheel in a temporary environment,
-and checks imports, stubs, typing, and pytest outside the checkout. It then
+and checks imports, shipped type files, runtime stubs, and pytest outside the checkout. It then
 extracts the source distribution, rebuilds its wheel, and repeats the checks.
-Dependencies come from the uv lockfile; the source rebuild reuses the Cargo
-dependency cache. The first release build can take several minutes. Validation
+Dependencies come from the uv lockfile; archive builds use a dedicated
+Cargo cache in `target/package-check/`. The first release build can take several minutes. Validation
 in this session is limited to local macOS arm64 with Python 3.12.
 
 To update dependencies intentionally, run `uv lock --project python`, review the
-lockfile change, and repeat installation and validation. Normal recipes require
+lockfile change, and repeat installation and validation. Normal commands require
 an unchanged lockfile.

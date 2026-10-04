@@ -69,10 +69,11 @@ unrelated worktree changes, staged changes, and stashes.
   crate, not the whole workspace.
 - Rust integration checks: `rtk cargo test --workspace --all-targets`.
   Core documentation checks: `rtk cargo test --doc -p bsxplorer2`.
-- Format changed Rust packages with nightly and the repository configuration,
-  for example `rtk cargo +nightly fmt -p bsxplorer2 -- --check`.
-  `just format` formats the whole workspace; nextest profiles select core tests.
-  Git hooks format only when Rust files change and run `just rs-test-fast` only
+- Check Rust formatting with the pinned nightly and repository configuration:
+  `rtk proxy devenv tasks run rust:format-check`.
+  `devenv tasks run format:all` formats the Rust workspace and Python;
+  nextest profiles select core tests. Git hooks format only when Rust files
+  change and run `cargo nextest run --locked --profile unit` only
   for pushes to `master` or merge commits into `master`.
 - For CLI changes, exercise affected help and success/failure workflows via
   `rtk cargo run -p bsxplorer-ci --bin bsxplorer -- <arguments>`.

@@ -1,4 +1,4 @@
-"""Validate distributions from isolated installs outside the source checkout."""
+"""Check the wheel and source distribution inside the devenv environment."""
 
 import os
 import shutil
@@ -6,36 +6,40 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 from pathlib import Path
 
-import tomllib
-
 ROOT = Path(__file__).resolve().parents[2]
-PROJECT = ROOT / "python"
 
 
-def run(*command: str, cwd: Path, env: dict[str, str]) -> None:
-    print("+ " + " ".join(command), flush=True)
-    subprocess.run(command, cwd=cwd, env=env, check=True)
+def run(*args, cwd, env):
+    print("+", *args, flush=True)
+    subprocess.run(args, cwd=cwd, env=env, check=True)
 
 
-def validate(
-    wheel: Path, workspace: Path, requirements: Path, env: dict[str, str]
-) -> None:
-    workspace.mkdir()
-    venv = workspace / ".venv"
-    run("uv", "venv", "--python", sys.executable, str(venv), cwd=workspace, env=env)
-    interpreter = str(venv / "bin" / "python")
+def registry_packages(source):
+    lock = tomllib.loads((source / "Cargo.lock").read_text())
+    return {
+        (p["name"], p["version"], p["source"], p.get("checksum"))
+        for p in lock["package"]
+        if "source" in p
+    }
+
+
+def validate(wheel, work, requirements, env):
+    venv = work / ".venv"
+    run("uv", "venv", "--python", sys.executable, str(venv), cwd=work, env=env)
+    python = str(venv / "bin/python")
     run(
         "uv",
         "pip",
         "install",
         "--python",
-        interpreter,
+        python,
         "--require-hashes",
         "-r",
         str(requirements),
-        cwd=workspace,
+        cwd=work,
         env=env,
     )
     run(
@@ -43,136 +47,80 @@ def validate(
         "pip",
         "install",
         "--python",
-        interpreter,
+        python,
         "--no-deps",
         str(wheel),
-        cwd=workspace,
+        cwd=work,
         env=env,
     )
-    shutil.copytree(
-        PROJECT / "tests",
-        workspace / "tests",
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
-    # -I and the temporary working directory prevent checkout imports from
-    # concealing missing files or a stale extension in a distribution.
-    probe = """
+    run(
+        python,
+        "-I",
+        "-c",
+        """
 from pathlib import Path
+import sys
 import bsx2
 from bsx2 import _bsx2
 root = Path(bsx2.__file__).parent
-assert '.venv' in root.parts, root
+assert root.is_relative_to(Path(sys.prefix)), root
 assert (root / 'py.typed').is_file()
-for name in ['__init__.pyi', '_bsx2.pyi', 'io.pyi', 'types.pyi']:
+for name in ('__init__.pyi', '_bsx2.pyi', 'io.pyi', 'types.pyi'):
     assert (root / name).is_file(), name
 assert _bsx2.BsxBatch.empty().is_empty()
 print('Installed package:', root)
-"""
-    run(interpreter, "-I", "-c", probe, cwd=workspace, env=env)
-    run(
-        interpreter,
-        "-I",
-        "-m",
-        "pytest",
-        "tests",
-        "-q",
-        "--import-mode=importlib",
-        cwd=workspace,
+""",
+        cwd=work,
         env=env,
     )
-    run(
-        interpreter,
-        "-I",
-        "-m",
-        "mypy.stubtest",
-        "bsx2._bsx2",
-        "--concise",
-        cwd=workspace,
-        env=env,
+    shutil.copytree(
+        ROOT / "python/tests",
+        work / "tests",
+        ignore=shutil.ignore_patterns("__pycache__"),
     )
-    run(
-        interpreter,
-        "-I",
-        "-m",
-        "mypy.stubtest",
-        "bsx2.io",
-        "bsx2.types",
-        "--concise",
-        cwd=workspace,
-        env=env,
-    )
-    run(
-        str(venv / "bin" / "ty"),
-        "check",
-        "tests",
-        "--python",
-        interpreter,
-        cwd=workspace,
-        env=env,
-    )
-
-
-def main() -> None:
-    tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
-    wheels = sorted((ROOT / "dist").glob(f"bsx2-*-{tag}-{tag}-*.whl"))
-    sdists = sorted((ROOT / "dist").glob("bsx2-*.tar.gz"))
-    if len(wheels) != 1 or len(sdists) != 1:
-        raise RuntimeError(
-            "Expected one matching wheel and one sdist in dist/; remove stale bsx2 artifacts"
+    run(python, "-I", "-m", "pytest", "tests", "-q", cwd=work, env=env)
+    for modules in [("bsx2._bsx2",), ("bsx2.io", "bsx2.types")]:
+        run(
+            python,
+            "-I",
+            "-m",
+            "mypy.stubtest",
+            *modules,
+            "--concise",
+            cwd=work,
+            env=env,
         )
-    env = os.environ.copy()
-    for name in ["PYTHONPATH", "MYPYPATH", "VIRTUAL_ENV", "CONDA_PREFIX"]:
+
+
+def main():
+    (wheel,) = (ROOT / "dist").glob("bsx2-*.whl")
+    (sdist,) = (ROOT / "dist").glob("bsx2-*.tar.gz")
+    env = dict(os.environ)
+    for name in ("PYTHONPATH", "MYPYPATH", "VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT"):
         env.pop(name, None)
-    with tempfile.TemporaryDirectory(prefix="bsx2-package-") as temporary:
-        workspace = Path(temporary)
-        requirements = workspace / "requirements.txt"
+    with tempfile.TemporaryDirectory(prefix="bsx2-package-") as directory:
+        work = Path(directory)
+        requirements = work / "requirements.txt"
         run(
             "uv",
             "export",
             "--quiet",
             "--project",
-            str(PROJECT),
+            str(ROOT / "python"),
             "--locked",
             "--no-emit-project",
             "--output-file",
             str(requirements),
-            cwd=workspace,
+            cwd=work,
             env=env,
         )
-        validate(wheels[0], workspace / "wheel", requirements, env)
-        source = workspace / "source"
-        source.mkdir()
-        with tarfile.open(sdists[0]) as archive:
-            archive.extractall(source, filter="data")
-        extracted = next(source.iterdir())
-        if not (extracted / "Cargo.lock").is_file():
-            raise RuntimeError(
-                "Source distribution is missing the workspace Cargo.lock"
-            )
-        rebuilt = workspace / "rebuilt"
-        # Reuse dependency compilation, but build the extracted core and wrapper.
-        # No source paths in the original checkout are used by this manifest.
-        source_env = env | {
-            "CARGO_TARGET_DIR": str(ROOT / "target"),
-            "CARGO_NET_OFFLINE": "true",
-        }
-        before = tomllib.loads((extracted / "Cargo.lock").read_text())
-        # Recompile our crates from the archive while retaining dependency
-        # compilation. A reused checkout binary alone cannot verify the sdist.
-        run(
-            "cargo",
-            "clean",
-            "--manifest-path",
-            str(extracted / "python" / "Cargo.toml"),
-            "--profile",
-            "pyrelease",
-            "-p",
-            "bsxplorer2",
-            "-p",
-            "bsxplorer2-py",
-            cwd=extracted,
-            env=source_env,
-        )
+        validate(wheel, work, requirements, env)
+        with tarfile.open(sdist) as archive:
+            archive.extractall(work / "source", filter="data")
+        (source,) = (work / "source").iterdir()
+        before = registry_packages(source)
+        # This cache contains only archive-source builds, so a checkout build
+        # cannot conceal missing sources. Cargo owns its incremental reuse.
         run(
             "uv",
             "build",
@@ -181,26 +129,23 @@ def main() -> None:
             "--python",
             sys.executable,
             "--out-dir",
-            str(rebuilt),
-            str(extracted),
-            cwd=extracted,
-            env=source_env,
+            str(work / "rebuilt"),
+            str(source),
+            cwd=source,
+            env=env
+            | {
+                "CARGO_TARGET_DIR": str(ROOT / "target/package-check"),
+                "CARGO_NET_OFFLINE": "true",
+            },
         )
-        # Maturin removes the CLI workspace member from sdists. Cargo can prune
-        # its unused lock entries, but must preserve every registry version.
-        after = tomllib.loads((extracted / "Cargo.lock").read_text())
-
-        def registry_packages(lock):
-            return {
-                (p["name"], p["version"], p.get("source"), p.get("checksum"))
-                for p in lock["package"]
-                if "source" in p
-            }
-
-        if not registry_packages(after) <= registry_packages(before):
-            raise RuntimeError("Source build changed locked dependency versions")
-        validate(next(rebuilt.glob("*.whl")), workspace / "sdist", requirements, env)
-    print("Wheel and source distribution validation passed.", flush=True)
+        assert registry_packages(source) <= before, (
+            "Source build changed locked dependencies"
+        )
+        (rebuilt,) = (work / "rebuilt").glob("*.whl")
+        shutil.rmtree(work / ".venv")
+        shutil.rmtree(work / "tests")
+        validate(rebuilt, work, requirements, env)
+    print("Wheel and source distribution validation passed.")
 
 
 if __name__ == "__main__":

@@ -102,6 +102,8 @@ Check out the console source and commands: [@console](@file:bsxplorer2_dev/conso
 
 ## Installation
 
+For development from this checkout, use the [devenv development guide](DEVELOPMENT.md).
+
 ### For the Console Application (`bsxplorer`)
 Install the console binary directly using Cargo:
 
